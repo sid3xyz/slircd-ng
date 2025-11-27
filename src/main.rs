@@ -1,0 +1,51 @@
+//! slircd-ng - Straylight IRC Daemon (Next Generation)
+//!
+//! A high-performance, multi-threaded IRC server built on zero-copy parsing.
+
+mod config;
+mod network;
+mod state;
+
+use crate::config::Config;
+use crate::network::Gateway;
+use crate::state::Matrix;
+use std::sync::Arc;
+use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Initialize tracing
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .with_target(true)
+        .init();
+
+    // Load configuration
+    let config_path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "config.toml".to_string());
+
+    let config = Config::load(&config_path).map_err(|e| {
+        error!(path = %config_path, error = %e, "Failed to load config");
+        e
+    })?;
+
+    info!(
+        server = %config.server.name,
+        network = %config.server.network,
+        sid = %config.server.sid,
+        "Starting slircd-ng"
+    );
+
+    // Create the Matrix (shared state)
+    let matrix = Arc::new(Matrix::new(&config.server));
+
+    // Start the Gateway
+    let gateway = Gateway::bind(config.listen.address, matrix).await?;
+    gateway.run().await?;
+
+    Ok(())
+}

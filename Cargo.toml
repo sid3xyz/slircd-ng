@@ -1,0 +1,38 @@
+[package]
+name = "slircd-ng"
+version = "0.1.0"
+edition = "2024"
+license = "Unlicense"
+description = "Straylight IRC Daemon - Next Generation"
+
+[[bin]]
+name = "slircd"
+path = "src/main.rs"
+
+[dependencies]
+# Protocol core
+slirc-proto = { git = "https://github.com/sid3xyz/slirc-proto", features = ["tokio"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+bytes = "1"
+
+# Concurrent state
+dashmap = "6"
+parking_lot = "0.12"
+
+# Config
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Time
+chrono = "0.4"

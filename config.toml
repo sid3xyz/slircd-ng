@@ -1,0 +1,15 @@
+# slircd-ng Configuration
+
+[server]
+# Server hostname
+name = "irc.straylight.net"
+# Network name
+network = "Straylight"
+# Server ID (TS6 format: 3 characters)
+sid = "001"
+# Server description
+description = "Straylight IRC Daemon - Next Generation"
+
+[listen]
+# Address to bind to
+address = "0.0.0.0:6667"
