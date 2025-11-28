@@ -35,6 +35,7 @@ use crate::state::Matrix;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, Prefix, Response};
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -51,6 +52,8 @@ pub struct Context<'a> {
     pub handshake: &'a mut HandshakeState,
     /// Database for services.
     pub db: &'a Database,
+    /// Remote address of the client.
+    pub remote_addr: SocketAddr,
 }
 
 /// State tracked during client registration handshake.

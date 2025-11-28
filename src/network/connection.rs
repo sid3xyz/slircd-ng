@@ -86,6 +86,7 @@ impl Connection {
                         sender: &handshake_tx,
                         handshake: &mut handshake,
                         db: &self.db,
+                        remote_addr: self.addr,
                     };
 
                     if let Err(e) = self.registry.dispatch(&mut ctx, &msg).await {
@@ -193,6 +194,7 @@ impl Connection {
                 sender: &outgoing_tx,
                 handshake: &mut handshake,
                 db: &self.db,
+                remote_addr: self.addr,
             };
 
             if let Err(e) = self.registry.dispatch(&mut ctx, &msg).await {

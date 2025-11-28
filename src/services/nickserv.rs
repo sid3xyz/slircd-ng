@@ -310,6 +310,9 @@ impl NickServ {
                     kill_uid: None,
                 }
             }
+            Err(crate::db::DbError::UnknownOption(opt)) => {
+                self.error_reply(&format!("Unknown option: \x02{}\x02. Valid options: EMAIL, ENFORCE, HIDEMAIL, PASSWORD", opt))
+            }
             Err(e) => {
                 warn!(account = %account.name, option = %option, error = ?e, "SET failed");
                 self.error_reply("Failed to update setting.")

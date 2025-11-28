@@ -284,7 +284,7 @@ impl<'a> AccountRepository<'a> {
                     .await?;
             }
             _ => {
-                // Unknown option, ignore
+                return Err(DbError::UnknownOption(option.to_string()));
             }
         }
         Ok(())

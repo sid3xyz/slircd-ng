@@ -32,6 +32,8 @@ pub enum DbError {
     NicknameRegistered(String),
     #[error("invalid password")]
     InvalidPassword,
+    #[error("unknown option: {0}")]
+    UnknownOption(String),
 }
 
 /// Database handle with connection pool.
@@ -46,8 +48,9 @@ impl Database {
         // Create parent directory if it doesn't exist
         if let Some(parent) = Path::new(path).parent()
             && !parent.as_os_str().is_empty()
+            && let Err(e) = std::fs::create_dir_all(parent)
         {
-            std::fs::create_dir_all(parent).ok();
+            tracing::warn!(path = %parent.display(), error = %e, "Failed to create database directory");
         }
 
         // Configure SQLite connection
