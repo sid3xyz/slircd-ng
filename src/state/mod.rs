@@ -5,5 +5,5 @@
 mod matrix;
 mod uid;
 
-pub use matrix::{Channel, Matrix, MemberModes, Topic, User};
+pub use matrix::{Channel, ChannelModes, ListEntry, Matrix, MemberModes, Topic, User, UserModes};
 pub use uid::UidGenerator;

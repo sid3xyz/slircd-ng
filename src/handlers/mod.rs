@@ -6,10 +6,12 @@
 mod channel;
 mod connection;
 mod messaging;
+mod mode;
 
-pub use channel::{JoinHandler, NamesHandler, PartHandler, TopicHandler};
+pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{NickHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
 pub use messaging::{NoticeHandler, PrivmsgHandler};
+pub use mode::ModeHandler;
 
 use crate::state::Matrix;
 use async_trait::async_trait;
@@ -100,6 +102,8 @@ impl Registry {
         handlers.insert("PART", Box::new(PartHandler));
         handlers.insert("TOPIC", Box::new(TopicHandler));
         handlers.insert("NAMES", Box::new(NamesHandler));
+        handlers.insert("MODE", Box::new(ModeHandler));
+        handlers.insert("KICK", Box::new(KickHandler));
 
         // Messaging handlers
         handlers.insert("PRIVMSG", Box::new(PrivmsgHandler));
@@ -142,6 +146,8 @@ fn command_name(cmd: &Command) -> String {
         Command::PART(_, _) => "PART".to_string(),
         Command::TOPIC(_, _) => "TOPIC".to_string(),
         Command::KICK(_, _, _) => "KICK".to_string(),
+        Command::UserMODE(_, _) => "MODE".to_string(),
+        Command::ChannelMODE(_, _) => "MODE".to_string(),
         Command::WHO(..) => "WHO".to_string(),
         Command::WHOIS(..) => "WHOIS".to_string(),
         Command::Response(_, _) => "RESPONSE".to_string(),

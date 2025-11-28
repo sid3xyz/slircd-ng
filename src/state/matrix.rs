@@ -64,6 +64,35 @@ pub struct User {
     pub host: String,
     /// Channels this user is in (lowercase names).
     pub channels: HashSet<String>,
+    /// User modes.
+    pub modes: UserModes,
+}
+
+/// User modes.
+#[derive(Debug, Default, Clone)]
+pub struct UserModes {
+    pub invisible: bool,      // +i
+    pub wallops: bool,        // +w
+    pub oper: bool,           // +o (IRC operator)
+    pub registered: bool,     // +r (identified to NickServ)
+    pub secure: bool,         // +Z (TLS connection)
+}
+
+impl UserModes {
+    /// Convert modes to a string like "+iw".
+    pub fn to_string(&self) -> String {
+        let mut s = String::from("+");
+        if self.invisible { s.push('i'); }
+        if self.wallops { s.push('w'); }
+        if self.oper { s.push('o'); }
+        if self.registered { s.push('r'); }
+        if self.secure { s.push('Z'); }
+        if s == "+" {
+            "+".to_string()
+        } else {
+            s
+        }
+    }
 }
 
 impl User {
@@ -76,6 +105,7 @@ impl User {
             realname,
             host,
             channels: HashSet::new(),
+            modes: UserModes::default(),
         }
     }
 
@@ -93,6 +123,57 @@ pub struct Channel {
     pub created: i64,
     /// Members: UID -> MemberModes
     pub members: HashMap<Uid, MemberModes>,
+    /// Channel modes.
+    pub modes: ChannelModes,
+    /// Ban list (+b).
+    pub bans: Vec<ListEntry>,
+    /// Ban exception list (+e).
+    pub excepts: Vec<ListEntry>,
+    /// Invite exception list (+I).
+    pub invex: Vec<ListEntry>,
+    /// Quiet list (+q).
+    pub quiets: Vec<ListEntry>,
+}
+
+/// Channel modes.
+#[derive(Debug, Default, Clone)]
+pub struct ChannelModes {
+    pub invite_only: bool,      // +i
+    pub moderated: bool,        // +m
+    pub no_external: bool,      // +n
+    pub secret: bool,           // +s
+    pub topic_lock: bool,       // +t
+    pub registered_only: bool,  // +r
+    pub key: Option<String>,    // +k
+    pub limit: Option<u32>,     // +l
+}
+
+impl ChannelModes {
+    /// Convert modes to a string like "+nt".
+    pub fn to_string(&self) -> String {
+        let mut s = String::from("+");
+        if self.invite_only { s.push('i'); }
+        if self.moderated { s.push('m'); }
+        if self.no_external { s.push('n'); }
+        if self.secret { s.push('s'); }
+        if self.topic_lock { s.push('t'); }
+        if self.registered_only { s.push('r'); }
+        if self.key.is_some() { s.push('k'); }
+        if self.limit.is_some() { s.push('l'); }
+        if s == "+" {
+            "+".to_string()
+        } else {
+            s
+        }
+    }
+}
+
+/// An entry in a list (bans, excepts, invex).
+#[derive(Debug, Clone)]
+pub struct ListEntry {
+    pub mask: String,
+    pub set_by: String,
+    pub set_at: i64,
 }
 
 /// Channel topic with metadata.
@@ -131,6 +212,11 @@ impl Channel {
             topic: None,
             created: chrono::Utc::now().timestamp(),
             members: HashMap::new(),
+            modes: ChannelModes::default(),
+            bans: Vec::new(),
+            excepts: Vec::new(),
+            invex: Vec::new(),
+            quiets: Vec::new(),
         }
     }
 
