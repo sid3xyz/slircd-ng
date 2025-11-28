@@ -16,6 +16,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 /// Validates a channel name.
+#[allow(dead_code)]
 fn is_valid_channel(name: &str) -> bool {
     if name.is_empty() || name.len() > 50 {
         return false;
@@ -30,6 +31,7 @@ fn is_valid_channel(name: &str) -> bool {
 }
 
 /// Helper to create a message with user prefix.
+#[allow(dead_code)]
 fn user_message(user: &User, command: Command) -> Message {
     Message {
         tags: None,
