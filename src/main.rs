@@ -3,6 +3,7 @@
 //! A high-performance, multi-threaded IRC server built on zero-copy parsing.
 
 mod config;
+mod handlers;
 mod network;
 mod state;
 

@@ -122,3 +122,11 @@ Spawn subagents for focused tasks:
 
 Example prompt for subagent:
 > "Research how slirc-proto's MessageRef handles tag parsing. Return the key methods and any lifetime considerations."
+
+### slirc-proto Issues
+If you encounter a limitation or missing feature in `slirc-proto` that blocks progress, **stop and describe**:
+1. What you're trying to accomplish
+2. What API is missing or broken
+3. Suggested fix or addition
+
+We maintain `slirc-proto` at [sid3xyz/slirc-proto](https://github.com/sid3xyz/slirc-proto) and can add features as needed.
