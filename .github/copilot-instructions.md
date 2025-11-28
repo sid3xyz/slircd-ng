@@ -104,6 +104,40 @@ This is a new project following the phased plan in `IMPLEMENTATION.md`. Check th
 
 ## AI Agent Workflow
 
+### ⚠️ MANDATORY: slirc-proto First Workflow
+
+**BEFORE implementing any IRC command or feature, you MUST:**
+
+1. **Check slirc-proto FIRST** - Search the [sid3xyz/slirc-proto](https://github.com/sid3xyz/slirc-proto) repository for:
+   - `Command` enum variants for the command you're implementing
+   - `Response` enum variants for any numeric replies needed
+   - Helper functions (parsing, formatting, case handling)
+   - Capability definitions in `caps.rs`
+
+2. **If slirc-proto is lacking** - STOP IMMEDIATELY and:
+   - Describe what's missing (Command variant, Response code, helper function)
+   - Propose the exact addition needed to slirc-proto
+   - Wait for confirmation before proceeding
+   - Do NOT work around missing features with raw strings or hardcoded values
+
+3. **Only then implement in slircd-ng** - After confirming slirc-proto has what you need
+
+**Example workflow:**
+```
+Task: Implement SETNAME command
+
+Step 1: Search slirc-proto for "SETNAME" in Command enum
+Step 2: Search for any Response codes needed (RPL_*, ERR_*)
+Step 3: If missing: STOP, report "slirc-proto needs Command::SETNAME variant"
+Step 4: After slirc-proto is updated: implement handler in slircd-ng
+```
+
+**Anti-patterns to AVOID:**
+- Using `Command::Raw("SETNAME", ...)` when a proper variant should exist
+- Hardcoding numeric codes instead of using `Response::RPL_*` variants
+- Creating IRC parsing/formatting logic that belongs in slirc-proto
+- Ignoring typos in slirc-proto (e.g., `ERR_ALREADYREGISTRED` - fix the library!)
+
 ### Progress Tracking
 - Use **todo lists** to track multi-step tasks and maintain visibility
 - Mark todos in-progress before starting, completed immediately after
@@ -130,3 +164,4 @@ If you encounter a limitation or missing feature in `slirc-proto` that blocks pr
 3. Suggested fix or addition
 
 We maintain `slirc-proto` at [sid3xyz/slirc-proto](https://github.com/sid3xyz/slirc-proto) and can add features as needed.
+
