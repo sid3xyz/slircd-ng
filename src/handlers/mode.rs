@@ -217,7 +217,7 @@ async fn handle_channel_mode(
             ctx,
             &mut channel_guard,
             modes,
-        ).await?;
+        )?;
 
         if !applied.is_empty() {
             // Broadcast the mode change to channel
@@ -331,7 +331,7 @@ async fn send_list_mode(
 
 /// Apply channel mode changes from typed modes.
 /// Returns (applied_string, used_args).
-async fn apply_channel_modes_typed(
+fn apply_channel_modes_typed(
     ctx: &Context<'_>,
     channel: &mut crate::state::Channel,
     modes: &[Mode<ChannelMode>],

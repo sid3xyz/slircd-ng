@@ -256,13 +256,13 @@ impl Channel {
 
     /// Check if user has op.
     pub fn is_op(&self, uid: &str) -> bool {
-        self.members.get(uid).map(|m| m.op).unwrap_or(false)
+        self.members.get(uid).is_some_and(|m| m.op)
     }
 
     /// Check if user has voice or higher.
     #[allow(dead_code)] // Used for +m moderated channels
     pub fn can_speak(&self, uid: &str) -> bool {
-        self.members.get(uid).map(|m| m.op || m.voice).unwrap_or(false)
+        self.members.get(uid).is_some_and(|m| m.op || m.voice)
     }
 
     /// Get list of member UIDs.
@@ -330,12 +330,12 @@ impl Matrix {
 
     /// Broadcast a message to all members of a channel.
     /// Optionally exclude one UID (usually the sender).
-    /// Note: channel_name should already be lowercased by the caller.
+    /// Note: `channel_name` should already be lowercased by the caller.
     pub async fn broadcast_to_channel(&self, channel_name: &str, msg: Message, exclude: Option<&str>) {
         if let Some(channel) = self.channels.get(channel_name) {
             let channel = channel.read().await;
             for uid in channel.members.keys() {
-                if exclude.map(|e| e == uid.as_str()).unwrap_or(false) {
+                if exclude.is_some_and(|e| e == uid.as_str()) {
                     continue;
                 }
                 if let Some(sender) = self.senders.get(uid) {

@@ -415,7 +415,7 @@ fn matches_mask(value: &str, mask: &str) -> bool {
                 let mc = *mc;
                 m_chars.next();
                 match v_chars.next() {
-                    Some(vc) if vc == mc => continue,
+                    Some(vc) if vc == mc => {}
                     _ => return false,
                 }
             }

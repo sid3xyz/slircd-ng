@@ -13,15 +13,11 @@ use slirc_proto::{irc_to_lower, Command, Message, Prefix, Response};
 
 /// Get user's nick, falling back to "*" if not found.
 async fn get_nick_or_star(ctx: &Context<'_>) -> String {
-    ctx.matrix
-        .users
-        .get(ctx.uid)
-        .map(|r| {
-            // We need to block on the async read, but since we're in async context
-            // we can use futures::executor or just handle it differently
-            futures::executor::block_on(async { r.read().await.nick.clone() })
-        })
-        .unwrap_or_else(|| "*".to_string())
+    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+        user_ref.read().await.nick.clone()
+    } else {
+        "*".to_string()
+    }
 }
 
 /// Get user's nick and oper status. Returns None if user not found.

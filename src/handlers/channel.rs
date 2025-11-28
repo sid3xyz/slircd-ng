@@ -15,16 +15,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
-/// Helper to create a message with user prefix.
-#[allow(dead_code)]
-fn user_message(user: &User, command: Command) -> Message {
-    Message {
-        tags: None,
-        prefix: Some(user_prefix(&user.nick, &user.user, &user.host)),
-        command,
-    }
-}
-
 /// Handler for JOIN command.
 pub struct JoinHandler;
 
