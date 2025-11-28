@@ -44,10 +44,10 @@ impl Database {
     /// Create a new database connection, running migrations if needed.
     pub async fn new(path: &str) -> Result<Self, DbError> {
         // Create parent directory if it doesn't exist
-        if let Some(parent) = Path::new(path).parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent).ok();
-            }
+        if let Some(parent) = Path::new(path).parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent).ok();
         }
 
         // Configure SQLite connection
@@ -70,15 +70,33 @@ impl Database {
     }
 
     /// Run embedded migrations.
+    /// Uses a simple migration tracking approach - checks if the accounts table exists.
     async fn run_migrations(pool: &SqlitePool) -> Result<(), DbError> {
-        // We'll use manual migration for the initial schema
-        // since we're embedding it directly
-        sqlx::query(include_str!("../../migrations/001_init.sql"))
-            .execute(pool)
-            .await
-            .ok(); // Ignore errors if tables already exist
+        // Check if the accounts table already exists
+        let table_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts')"
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
 
-        info!("Database migrations complete");
+        if !table_exists {
+            // Run the initial migration
+            // Split by semicolons and execute each statement separately
+            let migration = include_str!("../../migrations/001_init.sql");
+            for statement in migration.split(';') {
+                let statement = statement.trim();
+                if !statement.is_empty() && !statement.starts_with("--") {
+                    sqlx::query(statement)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+            info!("Database migrations applied");
+        } else {
+            info!("Database already initialized");
+        }
+
         Ok(())
     }
 

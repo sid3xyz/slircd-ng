@@ -144,25 +144,24 @@ impl NickServ {
         let target_nick = args[0];
         let password = args.get(1).copied();
 
-        // Check if the user is already identified
-        let is_identified = if let Some(user) = matrix.users.get(uid) {
+        // Check if the user is already identified and get their account
+        let user_account = if let Some(user) = matrix.users.get(uid) {
             let user = user.read().await;
-            user.modes.registered
+            if user.modes.registered {
+                user.account.clone()
+            } else {
+                None
+            }
         } else {
-            false
+            None
         };
 
         // Verify authorization
-        let authorized = if is_identified {
+        let authorized = if let Some(ref account_name) = user_account {
             // User is identified, check if target nick belongs to their account
-            if let Some(user) = matrix.users.get(uid) {
-                let user = user.read().await;
-                if let Some(account) = self.db.accounts().find_by_nickname(target_nick).await.ok().flatten() {
-                    // Compare with user's current nick (assuming account name matches)
-                    account.name.eq_ignore_ascii_case(&user.nick)
-                } else {
-                    false
-                }
+            if let Some(target_account) = self.db.accounts().find_by_nickname(target_nick).await.ok().flatten() {
+                // Check if target belongs to the same account
+                target_account.name.eq_ignore_ascii_case(account_name)
             } else {
                 false
             }
@@ -222,10 +221,10 @@ impl NickServ {
                     self.notice_msg(&format!("  Last seen:  {}", last_seen_dt)),
                 ];
 
-                if !account.hide_email {
-                    if let Some(email) = &account.email {
-                        replies.push(self.notice_msg(&format!("  Email:      {}", email)));
-                    }
+                if !account.hide_email
+                    && let Some(email) = &account.email
+                {
+                    replies.push(self.notice_msg(&format!("  Email:      {}", email)));
                 }
 
                 if account.enforce {
@@ -233,13 +232,13 @@ impl NickServ {
                 }
 
                 // Get linked nicknames
-                if let Ok(nicks) = self.db.accounts().get_nicknames(account.id).await {
-                    if !nicks.is_empty() {
-                        replies.push(self.notice_msg(&format!(
-                            "  Nicknames:  {}",
-                            nicks.join(", ")
-                        )));
-                    }
+                if let Ok(nicks) = self.db.accounts().get_nicknames(account.id).await
+                    && !nicks.is_empty()
+                {
+                    replies.push(self.notice_msg(&format!(
+                        "  Nicknames:  {}",
+                        nicks.join(", ")
+                    )));
                 }
 
                 NickServResult {
@@ -275,13 +274,16 @@ impl NickServ {
             };
         }
 
-        // Check if user is identified
+        // Check if user is identified and get their account name
         let account_name = if let Some(user) = matrix.users.get(uid) {
             let user = user.read().await;
             if !user.modes.registered {
                 return self.error_reply("You are not identified to any account.");
             }
-            user.nick.clone() // Use nick as account name for now
+            match &user.account {
+                Some(name) => name.clone(),
+                None => return self.error_reply("You are not identified to any account."),
+            }
         } else {
             return self.error_reply("Internal error.");
         };
@@ -355,6 +357,8 @@ impl NickServ {
     }
 
     /// Create a NOTICE message from NickServ.
+    /// Note: The target is set to an empty string and will be filled in by
+    /// the route_service_message function with the actual recipient nick.
     fn notice_msg(&self, text: &str) -> Message {
         Message {
             tags: None,
@@ -363,7 +367,8 @@ impl NickServ {
                 "NickServ".to_string(),
                 "services.".to_string(),
             )),
-            command: Command::NOTICE("".to_string(), text.to_string()),
+            // Target is empty and will be replaced by route_service_message
+            command: Command::NOTICE(String::new(), text.to_string()),
         }
     }
 }
@@ -395,17 +400,18 @@ pub async fn route_service_message(
 
         // Handle account identification
         if let Some(account_name) = result.account {
-            // Set +r mode on user
+            // Set +r mode and account on user
             if let Some(user) = matrix.users.get(uid) {
                 let mut user = user.write().await;
                 user.modes.registered = true;
+                user.account = Some(account_name.clone());
                 info!(uid = %uid, account = %account_name, "User identified to account");
             }
         }
 
         // Handle GHOST kill
         if let Some(target_uid) = result.kill_uid {
-            // Send QUIT message to target and disconnect
+            // Send KILL message to target to disconnect them
             if let Some(target_sender) = matrix.senders.get(&target_uid) {
                 let quit_msg = Message {
                     tags: None,

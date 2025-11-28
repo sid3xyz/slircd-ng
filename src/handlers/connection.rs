@@ -159,12 +159,13 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         nick.clone(),
         user.clone(),
         realname,
-        "localhost".to_string(), // TODO: get actual host
+        "localhost".to_string(), // TODO: get actual host from socket
     );
 
-    // Set +r if authenticated via SASL
-    if ctx.handshake.account.is_some() {
+    // Set account and +r if authenticated via SASL
+    if let Some(account_name) = &ctx.handshake.account {
         user_obj.modes.registered = true;
+        user_obj.account = Some(account_name.clone());
     }
 
     ctx.matrix.users.insert(
