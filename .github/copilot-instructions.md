@@ -136,7 +136,7 @@ Step 4: After slirc-proto is updated: implement handler in slircd-ng
 - Using `Command::Raw("SETNAME", ...)` when a proper variant should exist
 - Hardcoding numeric codes instead of using `Response::RPL_*` variants
 - Creating IRC parsing/formatting logic that belongs in slirc-proto
-- Ignoring typos in slirc-proto (e.g., `ERR_ALREADYREGISTRED` - fix the library!)
+- Ignoring typos in slirc-proto (report and fix them!)
 
 ### Progress Tracking
 - Use **todo lists** to track multi-step tasks and maintain visibility
