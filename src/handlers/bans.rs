@@ -6,9 +6,16 @@
 //! - UNKLINE: Remove a K-line
 //! - UNDLINE: Remove a D-line
 
-use super::{server_reply, Context, Handler, HandlerResult};
+use super::{err_needmoreparams, err_noprivileges, Context, Handler, HandlerResult};
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, Prefix, Response};
+use slirc_proto::{Command, Message, Prefix};
+
+/// Get user's nick and oper status. Returns None if user not found.
+async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
+    let user_ref = ctx.matrix.users.get(ctx.uid)?;
+    let user = user_ref.read().await;
+    Some((user.nick.clone(), user.modes.oper))
+}
 
 /// Handler for KLINE command.
 ///
@@ -20,25 +27,13 @@ pub struct KlineHandler;
 impl Handler for KlineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
-        
-        // Get user info
-        let (nick, is_oper) = {
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                (user.nick.clone(), user.modes.oper)
-            } else {
-                return Ok(());
-            }
+
+        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+            return Ok(());
         };
 
-        // Check if user is an operator
         if !is_oper {
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOPRIVILEGES,
-                vec![nick, "Permission Denied - You're not an IRC operator".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
             return Ok(());
         }
 
@@ -62,12 +57,9 @@ impl Handler for KlineHandler {
                 (mask, reason)
             }
             _ => {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![nick, "KLINE".to_string(), "Not enough parameters".to_string()],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "KLINE"))
+                    .await?;
                 return Ok(());
             }
         };
@@ -75,21 +67,13 @@ impl Handler for KlineHandler {
         // TODO: Store K-line in a ban list
         // TODO: Check if any connected users match and disconnect them
 
-        tracing::info!(
-            oper = %nick,
-            mask = %mask,
-            reason = %reason,
-            "KLINE added"
-        );
+        tracing::info!(oper = %nick, mask = %mask, reason = %reason, "KLINE added");
 
         // Send confirmation
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick.clone(),
-                format!("K-line added: {} ({})", mask, reason),
-            ),
+            command: Command::NOTICE(nick, format!("K-line added: {mask} ({reason})")),
         };
         ctx.sender.send(notice).await?;
 
@@ -107,25 +91,13 @@ pub struct DlineHandler;
 impl Handler for DlineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
-        
-        // Get user info
-        let (nick, is_oper) = {
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                (user.nick.clone(), user.modes.oper)
-            } else {
-                return Ok(());
-            }
+
+        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+            return Ok(());
         };
 
-        // Check if user is an operator
         if !is_oper {
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOPRIVILEGES,
-                vec![nick, "Permission Denied - You're not an IRC operator".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
             return Ok(());
         }
 
@@ -143,12 +115,9 @@ impl Handler for DlineHandler {
                 (ip, reason)
             }
             _ => {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![nick, "DLINE".to_string(), "Not enough parameters".to_string()],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "DLINE"))
+                    .await?;
                 return Ok(());
             }
         };
@@ -156,21 +125,13 @@ impl Handler for DlineHandler {
         // TODO: Store D-line in a ban list
         // TODO: Check if any connected users match and disconnect them
 
-        tracing::info!(
-            oper = %nick,
-            ip = %ip,
-            reason = %reason,
-            "DLINE added"
-        );
+        tracing::info!(oper = %nick, ip = %ip, reason = %reason, "DLINE added");
 
         // Send confirmation
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick.clone(),
-                format!("D-line added: {} ({})", ip, reason),
-            ),
+            command: Command::NOTICE(nick, format!("D-line added: {ip} ({reason})")),
         };
         ctx.sender.send(notice).await?;
 
@@ -188,60 +149,36 @@ pub struct UnklineHandler;
 impl Handler for UnklineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
-        
-        // Get user info
-        let (nick, is_oper) = {
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                (user.nick.clone(), user.modes.oper)
-            } else {
-                return Ok(());
-            }
+
+        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+            return Ok(());
         };
 
-        // Check if user is an operator
         if !is_oper {
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOPRIVILEGES,
-                vec![nick, "Permission Denied - You're not an IRC operator".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
             return Ok(());
         }
 
         // Extract mask
         let mask = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => {
-                params[0].clone()
-            }
+            Command::Raw(_, params) if !params.is_empty() => params[0].clone(),
             _ => {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![nick, "UNKLINE".to_string(), "Not enough parameters".to_string()],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "UNKLINE"))
+                    .await?;
                 return Ok(());
             }
         };
 
         // TODO: Remove K-line from ban list
 
-        tracing::info!(
-            oper = %nick,
-            mask = %mask,
-            "UNKLINE removed"
-        );
+        tracing::info!(oper = %nick, mask = %mask, "UNKLINE removed");
 
         // Send confirmation
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick.clone(),
-                format!("K-line removed: {}", mask),
-            ),
+            command: Command::NOTICE(nick, format!("K-line removed: {mask}")),
         };
         ctx.sender.send(notice).await?;
 
@@ -259,60 +196,36 @@ pub struct UndlineHandler;
 impl Handler for UndlineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
-        
-        // Get user info
-        let (nick, is_oper) = {
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                (user.nick.clone(), user.modes.oper)
-            } else {
-                return Ok(());
-            }
+
+        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+            return Ok(());
         };
 
-        // Check if user is an operator
         if !is_oper {
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOPRIVILEGES,
-                vec![nick, "Permission Denied - You're not an IRC operator".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
             return Ok(());
         }
 
         // Extract IP
         let ip = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => {
-                params[0].clone()
-            }
+            Command::Raw(_, params) if !params.is_empty() => params[0].clone(),
             _ => {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![nick, "UNDLINE".to_string(), "Not enough parameters".to_string()],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "UNDLINE"))
+                    .await?;
                 return Ok(());
             }
         };
 
         // TODO: Remove D-line from ban list
 
-        tracing::info!(
-            oper = %nick,
-            ip = %ip,
-            "UNDLINE removed"
-        );
+        tracing::info!(oper = %nick, ip = %ip, "UNDLINE removed");
 
         // Send confirmation
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick.clone(),
-                format!("D-line removed: {}", ip),
-            ),
+            command: Command::NOTICE(nick, format!("D-line removed: {ip}")),
         };
         ctx.sender.send(notice).await?;
 

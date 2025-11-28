@@ -194,23 +194,60 @@ impl Default for Registry {
 /// Extract the command name from a Command enum.
 fn command_name(cmd: &Command) -> String {
     match cmd {
+        // Connection/registration
+        Command::PASS(_) => "PASS".to_string(),
         Command::NICK(_) => "NICK".to_string(),
-        Command::USER(_, _, _) => "USER".to_string(),
-        Command::PING(_, _) => "PING".to_string(),
-        Command::PONG(_, _) => "PONG".to_string(),
+        Command::USER(..) => "USER".to_string(),
+        Command::OPER(..) => "OPER".to_string(),
         Command::QUIT(_) => "QUIT".to_string(),
-        Command::PRIVMSG(_, _) => "PRIVMSG".to_string(),
-        Command::NOTICE(_, _) => "NOTICE".to_string(),
-        Command::JOIN(_, _, _) => "JOIN".to_string(),
-        Command::PART(_, _) => "PART".to_string(),
-        Command::TOPIC(_, _) => "TOPIC".to_string(),
-        Command::KICK(_, _, _) => "KICK".to_string(),
-        Command::UserMODE(_, _) => "MODE".to_string(),
-        Command::ChannelMODE(_, _) => "MODE".to_string(),
+
+        // Channel operations
+        Command::JOIN(..) => "JOIN".to_string(),
+        Command::PART(..) => "PART".to_string(),
+        Command::TOPIC(..) => "TOPIC".to_string(),
+        Command::NAMES(..) => "NAMES".to_string(),
+        Command::LIST(..) => "LIST".to_string(),
+        Command::INVITE(..) => "INVITE".to_string(),
+        Command::KICK(..) => "KICK".to_string(),
+        Command::UserMODE(..) | Command::ChannelMODE(..) => "MODE".to_string(),
+
+        // Messaging
+        Command::PRIVMSG(..) => "PRIVMSG".to_string(),
+        Command::NOTICE(..) => "NOTICE".to_string(),
+
+        // Server queries
+        Command::MOTD(_) => "MOTD".to_string(),
+        Command::LUSERS(..) => "LUSERS".to_string(),
+        Command::VERSION(_) => "VERSION".to_string(),
+        Command::STATS(..) => "STATS".to_string(),
+        Command::TIME(_) => "TIME".to_string(),
+        Command::ADMIN(_) => "ADMIN".to_string(),
+        Command::INFO(_) => "INFO".to_string(),
+
+        // User queries
         Command::WHO(..) => "WHO".to_string(),
         Command::WHOIS(..) => "WHOIS".to_string(),
         Command::WHOWAS(..) => "WHOWAS".to_string(),
-        Command::Response(_, _) => "RESPONSE".to_string(),
+
+        // Miscellaneous
+        Command::PING(..) => "PING".to_string(),
+        Command::PONG(..) => "PONG".to_string(),
+        Command::KILL(..) => "KILL".to_string(),
+        Command::AWAY(_) => "AWAY".to_string(),
+        Command::REHASH => "REHASH".to_string(),
+        Command::DIE => "DIE".to_string(),
+        Command::WALLOPS(_) => "WALLOPS".to_string(),
+        Command::USERHOST(_) => "USERHOST".to_string(),
+        Command::ISON(_) => "ISON".to_string(),
+
+        // Services/admin commands
+        Command::SAJOIN(..) => "SAJOIN".to_string(),
+        Command::SAPART(..) => "SAPART".to_string(),
+        Command::SANICK(..) => "SANICK".to_string(),
+        Command::SAMODE(..) => "SAMODE".to_string(),
+
+        // Responses and fallback
+        Command::Response(..) => "RESPONSE".to_string(),
         Command::Raw(name, _) => name.to_uppercase(),
         _ => "UNKNOWN".to_string(),
     }
@@ -223,4 +260,99 @@ pub fn server_reply(server_name: &str, response: Response, params: Vec<String>) 
         prefix: Some(Prefix::ServerName(server_name.to_string())),
         command: Command::Response(response, params),
     }
+}
+
+// ============================================================================
+// Common error reply helpers
+// ============================================================================
+
+/// Create ERR_NOPRIVILEGES reply (481) - user is not an IRC operator.
+pub fn err_noprivileges(server_name: &str, nick: &str) -> Message {
+    server_reply(
+        server_name,
+        Response::ERR_NOPRIVILEGES,
+        vec![
+            nick.to_string(),
+            "Permission Denied - You're not an IRC operator".to_string(),
+        ],
+    )
+}
+
+/// Create ERR_NEEDMOREPARAMS reply (461) - not enough parameters.
+pub fn err_needmoreparams(server_name: &str, nick: &str, command: &str) -> Message {
+    server_reply(
+        server_name,
+        Response::ERR_NEEDMOREPARAMS,
+        vec![
+            nick.to_string(),
+            command.to_string(),
+            "Not enough parameters".to_string(),
+        ],
+    )
+}
+
+/// Create ERR_NOSUCHNICK reply (401) - no such nick/channel.
+pub fn err_nosuchnick(server_name: &str, nick: &str, target: &str) -> Message {
+    server_reply(
+        server_name,
+        Response::ERR_NOSUCHNICK,
+        vec![
+            nick.to_string(),
+            target.to_string(),
+            "No such nick/channel".to_string(),
+        ],
+    )
+}
+
+/// Create ERR_NOSUCHCHANNEL reply (403) - no such channel.
+pub fn err_nosuchchannel(server_name: &str, nick: &str, channel: &str) -> Message {
+    server_reply(
+        server_name,
+        Response::ERR_NOSUCHCHANNEL,
+        vec![
+            nick.to_string(),
+            channel.to_string(),
+            "No such channel".to_string(),
+        ],
+    )
+}
+
+/// Create ERR_NOTONCHANNEL reply (442) - you're not on that channel.
+pub fn err_notonchannel(server_name: &str, nick: &str, channel: &str) -> Message {
+    server_reply(
+        server_name,
+        Response::ERR_NOTONCHANNEL,
+        vec![
+            nick.to_string(),
+            channel.to_string(),
+            "You're not on that channel".to_string(),
+        ],
+    )
+}
+
+/// Create ERR_CHANOPRIVSNEEDED reply (482) - you're not channel operator.
+pub fn err_chanoprivsneeded(server_name: &str, nick: &str, channel: &str) -> Message {
+    server_reply(
+        server_name,
+        Response::ERR_CHANOPRIVSNEEDED,
+        vec![
+            nick.to_string(),
+            channel.to_string(),
+            "You're not channel operator".to_string(),
+        ],
+    )
+}
+
+/// Create ERR_USERNOTINCHANNEL reply (441) - they aren't on that channel.
+pub fn err_usernotinchannel(server_name: &str, nick: &str, target: &str, channel: &str) -> Message {
+    server_reply(
+        server_name,
+        Response::ERR_USERNOTINCHANNEL,
+        vec![
+            nick.to_string(),
+            target.to_string(),
+            channel.to_string(),
+            "They aren't on that channel".to_string(),
+        ],
+    )
 }
