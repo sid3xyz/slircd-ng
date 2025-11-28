@@ -347,9 +347,7 @@ impl Handler for PassHandler {
         }
 
         let _password = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => {
-                params[0].clone()
-            }
+            Command::PASS(password) => password.clone(),
             _ => {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,

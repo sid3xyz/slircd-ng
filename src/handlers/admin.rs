@@ -47,9 +47,7 @@ impl Handler for SajoinHandler {
 
         // Extract target nick and channel
         let (target_nick, channel_name) = match &msg.command {
-            Command::Raw(_, params) if params.len() >= 2 => {
-                (params[0].clone(), params[1].clone())
-            }
+            Command::SAJOIN(nick, channel) => (nick.clone(), channel.clone()),
             _ => {
                 let reply = server_reply(
                     server_name,
@@ -188,14 +186,7 @@ impl Handler for SapartHandler {
 
         // Extract target nick, channel, and optional reason
         let (target_nick, channel_name, reason) = match &msg.command {
-            Command::Raw(_, params) if params.len() >= 2 => {
-                let reason = if params.len() > 2 {
-                    Some(params[2..].join(" "))
-                } else {
-                    None
-                };
-                (params[0].clone(), params[1].clone(), reason)
-            }
+            Command::SAPART(nick, channel) => (nick.clone(), channel.clone(), None),
             _ => {
                 let reply = server_reply(
                     server_name,
@@ -328,9 +319,7 @@ impl Handler for SanickHandler {
 
         // Extract old and new nicks
         let (old_nick, new_nick) = match &msg.command {
-            Command::Raw(_, params) if params.len() >= 2 => {
-                (params[0].clone(), params[1].clone())
-            }
+            Command::SANICK(old, new) => (old.clone(), new.clone()),
             _ => {
                 let reply = server_reply(
                     server_name,
@@ -468,8 +457,13 @@ impl Handler for SamodeHandler {
 
         // Extract channel and modes
         let (channel_name, mode_str) = match &msg.command {
-            Command::Raw(_, params) if params.len() >= 2 => {
-                (params[0].clone(), params[1..].join(" "))
+            Command::SAMODE(target, modes, params) => {
+                let mode_with_params = if let Some(p) = params {
+                    format!("{} {}", modes, p)
+                } else {
+                    modes.clone()
+                };
+                (target.clone(), mode_with_params)
             }
             _ => {
                 let reply = server_reply(

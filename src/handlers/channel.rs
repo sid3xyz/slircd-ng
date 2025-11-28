@@ -479,11 +479,10 @@ impl Handler for NamesHandler {
             return Err(HandlerError::NotRegistered);
         }
 
-        // NAMES is sent as Raw since it might not be in Command enum
+        // Extract channel name from NAMES command
         let channel_name = match &msg.command {
-            Command::Raw(cmd, params) if cmd.eq_ignore_ascii_case("NAMES") => {
-                params.first().cloned().unwrap_or_default()
-            }
+            Command::NAMES(Some(channels), _) => channels.clone(),
+            Command::NAMES(None, _) => String::new(),
             _ => return Ok(()),
         };
 

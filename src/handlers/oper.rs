@@ -22,9 +22,7 @@ impl Handler for OperHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         // Extract oper credentials from the message
         let (name, password) = match &msg.command {
-            Command::Raw(_, params) if params.len() >= 2 => {
-                (params[0].clone(), params[1].clone())
-            }
+            Command::OPER(n, p) => (n.clone(), p.clone()),
             _ => {
                 // ERR_NEEDMOREPARAMS (461)
                 let server_name = &ctx.matrix.config.server_name;
@@ -120,14 +118,7 @@ impl Handler for KillHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         // Extract target and reason from the message
         let (target_nick, reason) = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => {
-                let reason = if params.len() > 1 {
-                    params[1..].join(" ")
-                } else {
-                    "Killed".to_string()
-                };
-                (params[0].clone(), reason)
-            }
+            Command::KILL(target, reason) => (target.clone(), reason.clone()),
             _ => {
                 // ERR_NEEDMOREPARAMS (461)
                 let server_name = &ctx.matrix.config.server_name;
@@ -286,9 +277,7 @@ impl Handler for WallopsHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         // Extract message from the command
         let wallops_text = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => {
-                params.join(" ")
-            }
+            Command::WALLOPS(text) => text.clone(),
             _ => {
                 // ERR_NEEDMOREPARAMS (461)
                 let server_name = &ctx.matrix.config.server_name;
@@ -343,7 +332,7 @@ impl Handler for WallopsHandler {
                 sender_user,
                 sender_host,
             )),
-            command: Command::Raw("WALLOPS".to_string(), vec![wallops_text]),
+            command: Command::WALLOPS(wallops_text),
         };
 
         // Send to all users with +w mode (wallops)

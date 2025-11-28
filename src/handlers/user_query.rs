@@ -27,14 +27,9 @@ impl Handler for WhoHandler {
             return Ok(());
         }
 
-        // Extract mask and operators_only flag from raw command
+        // Extract mask and operators_only flag
         let (mask, operators_only) = match &msg.command {
             Command::WHO(m, o) => (m.clone(), o.unwrap_or(false)),
-            Command::Raw(_, params) => {
-                let m = params.first().cloned();
-                let o = params.get(1).is_some_and(|s| s == "o");
-                (m, o)
-            }
             _ => (None, false),
         };
 
@@ -165,14 +160,6 @@ impl Handler for WhoisHandler {
         // Extract target nick
         let target = match &msg.command {
             Command::WHOIS(_, target) => target.clone(),
-            Command::Raw(_, params) => {
-                // WHOIS [server] nick - use last param if multiple
-                if params.len() >= 2 {
-                    params[1].clone()
-                } else {
-                    params.first().cloned().unwrap_or_default()
-                }
-            }
             _ => return Ok(()),
         };
 
@@ -336,7 +323,6 @@ impl Handler for WhowasHandler {
         // Extract target nick
         let target = match &msg.command {
             Command::WHOWAS(nick, _, _) => nick.clone(),
-            Command::Raw(_, params) => params.first().cloned().unwrap_or_default(),
             _ => String::new(),
         };
 

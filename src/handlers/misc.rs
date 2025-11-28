@@ -31,13 +31,7 @@ impl Handler for AwayHandler {
 
         // Extract away message (empty = unset)
         let away_msg = match &msg.command {
-            Command::Raw(_, params) => {
-                if params.is_empty() {
-                    None
-                } else {
-                    Some(params.join(" "))
-                }
-            }
+            Command::AWAY(msg) => msg.clone(),
             _ => None,
         };
 
@@ -105,7 +99,7 @@ impl Handler for UserhostHandler {
 
         // Extract nicknames
         let nicks = match &msg.command {
-            Command::Raw(_, params) => params.clone(),
+            Command::USERHOST(nicks) => nicks.clone(),
             _ => vec![],
         };
 
@@ -178,7 +172,7 @@ impl Handler for IsonHandler {
 
         // Extract nicknames
         let nicks = match &msg.command {
-            Command::Raw(_, params) => params.clone(),
+            Command::ISON(nicks) => nicks.clone(),
             _ => vec![],
         };
 
@@ -242,9 +236,7 @@ impl Handler for InviteHandler {
 
         // Extract target nick and channel
         let (target_nick, channel_name) = match &msg.command {
-            Command::Raw(_, params) if params.len() >= 2 => {
-                (params[0].clone(), params[1].clone())
-            }
+            Command::INVITE(nick, channel) => (nick.clone(), channel.clone()),
             _ => {
                 let reply = server_reply(
                     server_name,
@@ -344,7 +336,7 @@ impl Handler for InviteHandler {
                     ctx.handshake.user.clone().unwrap_or_default(),
                     "localhost".to_string(), // TODO: get actual host
                 )),
-                command: Command::Raw("INVITE".to_string(), vec![target_nick.clone(), channel_name.clone()]),
+                command: Command::INVITE(target_nick.clone(), channel_name.clone()),
             };
             let _ = sender.send(invite_msg).await;
         }

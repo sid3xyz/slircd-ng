@@ -364,7 +364,7 @@ impl Handler for StatsHandler {
 
         // Extract query character
         let query = match &msg.command {
-            Command::Raw(_, params) => params.first().and_then(|s| s.chars().next()),
+            Command::STATS(q, _) => q.as_ref().and_then(|s| s.chars().next()),
             _ => None,
         };
 
@@ -522,7 +522,7 @@ impl Handler for ListHandler {
 
         // Extract optional channel filter
         let filter = match &msg.command {
-            Command::Raw(_, params) => params.first().cloned(),
+            Command::LIST(channels, _) => channels.clone(),
             _ => None,
         };
 
