@@ -7,23 +7,26 @@ use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, Command, Message, Response};
 use tracing::{debug, info};
 
-/// Validates an IRC nickname.
+/// Validates an IRC nickname per RFC 2812.
+/// First char: letter or special [\]^_`{|}
+/// Rest: letter, digit, special, or hyphen
 fn is_valid_nick(nick: &str) -> bool {
     if nick.is_empty() || nick.len() > 30 {
         return false;
     }
 
-    let first = nick.chars().next().unwrap();
-    if !first.is_ascii_alphabetic() && first != '_' && !matches!(first, '[' | ']' | '\\' | '`' | '^' | '{' | '}' | '|') {
+    let is_special = |c: char| matches!(c, '[' | ']' | '\\' | '`' | '_' | '^' | '{' | '|' | '}');
+
+    let mut chars = nick.chars();
+    let first = chars.next().unwrap();
+    
+    // First char: letter or special
+    if !first.is_ascii_alphabetic() && !is_special(first) {
         return false;
     }
 
-    nick.chars().all(|c| {
-        c.is_ascii_alphanumeric()
-            || c == '_'
-            || c == '-'
-            || matches!(c, '[' | ']' | '\\' | '`' | '^' | '{' | '}' | '|')
-    })
+    // Rest: letter, digit, special, or hyphen
+    chars.all(|c| c.is_ascii_alphanumeric() || is_special(c) || c == '-')
 }
 
 /// Handler for NICK command.

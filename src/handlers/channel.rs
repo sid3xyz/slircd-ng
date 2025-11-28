@@ -5,7 +5,7 @@
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::state::{Channel, MemberModes, Topic, User};
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, Prefix, Response};
+use slirc_proto::{irc_to_lower, ChannelExt, Command, Message, Prefix, Response};
 
 /// Helper to create a user prefix.
 fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
@@ -14,22 +14,6 @@ fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
-
-/// Validates a channel name per RFC 2811/2812.
-/// Channel names start with '#', '&', '+', or '!' and cannot contain
-/// spaces, commas, or ^G (BEL).
-fn is_valid_channel(name: &str) -> bool {
-    if name.is_empty() || name.len() > 50 {
-        return false;
-    }
-    // Must start with #, &, +, or ! (RFC 2811)
-    let first = name.chars().next().unwrap();
-    if !matches!(first, '#' | '&' | '+' | '!') {
-        return false;
-    }
-    // No spaces, commas, NUL, or BEL (^G) per RFC 2812
-    name.chars().skip(1).all(|c| c != ' ' && c != ',' && c != '\x07' && c != '\0' && c.is_ascii())
-}
 
 /// Helper to create a message with user prefix.
 #[allow(dead_code)]
@@ -68,7 +52,7 @@ impl Handler for JoinHandler {
                 continue;
             }
 
-            if !is_valid_channel(channel_name) {
+            if !channel_name.is_channel_name() {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHCHANNEL,
