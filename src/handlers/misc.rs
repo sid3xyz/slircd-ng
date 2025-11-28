@@ -498,9 +498,9 @@ impl Handler for NsHandler {
 
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Extract the command text from Raw command
+        // Extract the command text from NS/NICKSERV command
         let text = match &msg.command {
-            Command::Raw(_, params) => params.join(" "),
+            Command::NS(params) | Command::NICKSERV(params) => params.join(" "),
             _ => return Ok(()),
         };
 
