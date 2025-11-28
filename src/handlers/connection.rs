@@ -325,3 +325,47 @@ impl Handler for QuitHandler {
         Err(HandlerError::NotRegistered) // We'll use a custom error type later
     }
 }
+
+/// Handler for PASS command.
+///
+/// PASS <password>
+/// Sets the connection password before registration.
+pub struct PassHandler;
+
+#[async_trait]
+impl Handler for PassHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+        // PASS must be sent before NICK/USER
+        if ctx.handshake.registered {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_ALREADYREGISTRED,
+                vec!["*".to_string(), "You may not reregister".to_string()],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        let _password = match &msg.command {
+            Command::Raw(_, params) if !params.is_empty() => {
+                params[0].clone()
+            }
+            _ => {
+                let reply = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::ERR_NEEDMOREPARAMS,
+                    vec!["*".to_string(), "PASS".to_string(), "Not enough parameters".to_string()],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+        };
+
+        // TODO: Store password in handshake state for later validation
+        // For now, we accept any password (no server password configured)
+        
+        debug!("PASS received (not validated - server password not implemented)");
+
+        Ok(())
+    }
+}

@@ -17,9 +17,9 @@ mod user_query;
 pub use admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler};
 pub use bans::{DlineHandler, KlineHandler, UndlineHandler, UnklineHandler};
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
-pub use connection::{NickHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
+pub use connection::{NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
 pub use messaging::{NoticeHandler, PrivmsgHandler};
-pub use misc::{AwayHandler, InviteHandler, IsonHandler, UserhostHandler};
+pub use misc::{AwayHandler, InviteHandler, IsonHandler, KnockHandler, UserhostHandler};
 pub use mode::ModeHandler;
 pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
 pub use server_query::{
@@ -110,6 +110,7 @@ impl Registry {
         // Connection/registration handlers
         handlers.insert("NICK", Box::new(NickHandler));
         handlers.insert("USER", Box::new(UserHandler));
+        handlers.insert("PASS", Box::new(PassHandler));
         handlers.insert("PING", Box::new(PingHandler));
         handlers.insert("PONG", Box::new(PongHandler));
         handlers.insert("QUIT", Box::new(QuitHandler));
@@ -146,6 +147,7 @@ impl Registry {
         handlers.insert("AWAY", Box::new(AwayHandler));
         handlers.insert("USERHOST", Box::new(UserhostHandler));
         handlers.insert("ISON", Box::new(IsonHandler));
+        handlers.insert("KNOCK", Box::new(KnockHandler));
 
         // Operator handlers
         handlers.insert("OPER", Box::new(OperHandler));
