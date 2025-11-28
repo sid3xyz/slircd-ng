@@ -3,10 +3,13 @@
 //! This module contains the Handler trait and command registry for dispatching
 //! incoming IRC messages to appropriate handlers.
 
+mod channel;
 mod connection;
 mod messaging;
 
+pub use channel::{JoinHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{NickHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
+pub use messaging::{NoticeHandler, PrivmsgHandler};
 
 use crate::state::Matrix;
 use async_trait::async_trait;
@@ -91,6 +94,16 @@ impl Registry {
         handlers.insert("PING", Box::new(PingHandler));
         handlers.insert("PONG", Box::new(PongHandler));
         handlers.insert("QUIT", Box::new(QuitHandler));
+
+        // Channel handlers
+        handlers.insert("JOIN", Box::new(JoinHandler));
+        handlers.insert("PART", Box::new(PartHandler));
+        handlers.insert("TOPIC", Box::new(TopicHandler));
+        handlers.insert("NAMES", Box::new(NamesHandler));
+
+        // Messaging handlers
+        handlers.insert("PRIVMSG", Box::new(PrivmsgHandler));
+        handlers.insert("NOTICE", Box::new(NoticeHandler));
 
         Self { handlers }
     }

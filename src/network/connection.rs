@@ -138,6 +138,9 @@ impl Connection {
         let (incoming_tx, mut incoming_rx) = mpsc::channel::<Message>(32);
         let (outgoing_tx, outgoing_rx) = mpsc::channel::<Message>(32);
 
+        // Register sender with Matrix for message routing
+        self.matrix.register_sender(&self.uid, outgoing_tx.clone());
+
         // --- WRITER TASK ---
         let write_handle = tokio::spawn(async move {
             let mut writer = FramedWrite::new(write_half.half, write_half.codec);
@@ -194,12 +197,31 @@ impl Connection {
             }
         }
 
+        // Cleanup: remove user from all channels
+        if let Some(user) = self.matrix.users.get(&self.uid) {
+            let user = user.read().await;
+            let channels: Vec<String> = user.channels.iter().cloned().collect();
+            drop(user);
+
+            for channel_lower in channels {
+                if let Some(channel) = self.matrix.channels.get(&channel_lower) {
+                    let mut channel = channel.write().await;
+                    channel.remove_member(&self.uid);
+                    // If channel is empty, it will be cleaned up eventually
+                }
+            }
+        }
+        self.matrix.users.remove(&self.uid);
+
         // Cleanup: remove nick from index
         if let Some(nick) = &handshake.nick {
             let nick_lower = irc_to_lower(nick);
             self.matrix.nicks.remove(&nick_lower);
             info!(nick = %nick, "Nick released");
         }
+
+        // Unregister sender from Matrix
+        self.matrix.unregister_sender(&self.uid);
 
         info!("Client disconnected");
 
