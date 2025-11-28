@@ -7,11 +7,18 @@ mod channel;
 mod connection;
 mod messaging;
 mod mode;
+mod server_query;
+mod user_query;
 
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{NickHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
 pub use messaging::{NoticeHandler, PrivmsgHandler};
 pub use mode::ModeHandler;
+pub use server_query::{
+    AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler,
+    TimeHandler, VersionHandler,
+};
+pub use user_query::{WhoHandler, WhoisHandler, WhowasHandler};
 
 use crate::state::Matrix;
 use async_trait::async_trait;
@@ -106,10 +113,25 @@ impl Registry {
         handlers.insert("NAMES", Box::new(NamesHandler));
         handlers.insert("MODE", Box::new(ModeHandler));
         handlers.insert("KICK", Box::new(KickHandler));
+        handlers.insert("LIST", Box::new(ListHandler));
 
         // Messaging handlers
         handlers.insert("PRIVMSG", Box::new(PrivmsgHandler));
         handlers.insert("NOTICE", Box::new(NoticeHandler));
+
+        // User query handlers
+        handlers.insert("WHO", Box::new(WhoHandler));
+        handlers.insert("WHOIS", Box::new(WhoisHandler));
+        handlers.insert("WHOWAS", Box::new(WhowasHandler));
+
+        // Server query handlers
+        handlers.insert("VERSION", Box::new(VersionHandler));
+        handlers.insert("TIME", Box::new(TimeHandler));
+        handlers.insert("ADMIN", Box::new(AdminHandler));
+        handlers.insert("INFO", Box::new(InfoHandler));
+        handlers.insert("LUSERS", Box::new(LusersHandler));
+        handlers.insert("STATS", Box::new(StatsHandler));
+        handlers.insert("MOTD", Box::new(MotdHandler));
 
         Self { handlers }
     }
@@ -152,6 +174,7 @@ fn command_name(cmd: &Command) -> String {
         Command::ChannelMODE(_, _) => "MODE".to_string(),
         Command::WHO(..) => "WHO".to_string(),
         Command::WHOIS(..) => "WHOIS".to_string(),
+        Command::WHOWAS(..) => "WHOWAS".to_string(),
         Command::Response(_, _) => "RESPONSE".to_string(),
         Command::Raw(name, _) => name.to_uppercase(),
         _ => "UNKNOWN".to_string(),
