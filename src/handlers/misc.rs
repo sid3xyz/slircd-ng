@@ -3,6 +3,7 @@
 //! RFC 2812 - Miscellaneous and optional commands
 
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, Command, Message, Response};
@@ -500,7 +501,7 @@ impl Handler for NsHandler {
 
         // Extract the command text from NS/NICKSERV command
         let text = match &msg.command {
-            Command::NS(params) | Command::NICKSERV(params) => params.join(" "),
+            Command::NICKSERV(params) => params.join(" "),
             _ => return Ok(()),
         };
 
@@ -523,6 +524,62 @@ impl Handler for NsHandler {
                 ctx.uid,
                 nick,
                 "NickServ",
+                &text,
+                ctx.sender,
+            ).await;
+        }
+
+        Ok(())
+    }
+}
+
+/// Handler for CS (ChanServ alias) command.
+///
+/// `CS <command> [args]`
+///
+/// Shortcut for PRIVMSG ChanServ.
+pub struct CsHandler;
+
+#[async_trait]
+impl Handler for CsHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+        if !ctx.handshake.registered {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_NOTREGISTERED,
+                vec!["*".to_string(), "You have not registered".to_string()],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+
+        // Extract the command text from CS/CHANSERV command
+        let text = match &msg.command {
+            Command::CHANSERV(params) => params.join(" "),
+            _ => return Ok(()),
+        };
+
+        if text.is_empty() {
+            // Show help
+            route_chanserv_message(
+                ctx.matrix,
+                ctx.db,
+                ctx.uid,
+                nick,
+                "ChanServ",
+                "HELP",
+                ctx.sender,
+            ).await;
+        } else {
+            // Route to ChanServ
+            route_chanserv_message(
+                ctx.matrix,
+                ctx.db,
+                ctx.uid,
+                nick,
+                "ChanServ",
                 &text,
                 ctx.sender,
             ).await;

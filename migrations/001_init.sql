@@ -39,3 +39,33 @@ CREATE TABLE dlines (
     set_at INTEGER NOT NULL,
     expires_at INTEGER
 );
+
+-- Phase 3: ChanServ Tables
+
+-- Registered channels
+CREATE TABLE channels (
+    id INTEGER PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    founder_account_id INTEGER NOT NULL REFERENCES accounts(id),
+    registered_at INTEGER NOT NULL,
+    last_used_at INTEGER NOT NULL,
+    description TEXT,
+    mlock TEXT,
+    keeptopic BOOLEAN DEFAULT TRUE
+);
+
+-- Create index for founder lookups
+CREATE INDEX idx_channels_founder ON channels(founder_account_id);
+
+-- Channel access list
+CREATE TABLE channel_access (
+    channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    flags TEXT NOT NULL,
+    added_by TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY (channel_id, account_id)
+);
+
+-- Create index for account access lookups
+CREATE INDEX idx_channel_access_account ON channel_access(account_id);

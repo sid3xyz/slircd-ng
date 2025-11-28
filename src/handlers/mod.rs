@@ -21,7 +21,7 @@ pub use cap::{AuthenticateHandler, CapHandler, SaslState};
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
 pub use messaging::{NoticeHandler, PrivmsgHandler};
-pub use misc::{AwayHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, UserhostHandler};
+pub use misc::{AwayHandler, CsHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, UserhostHandler};
 pub use mode::{apply_channel_modes_typed, ModeHandler};
 pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
 pub use server_query::{
@@ -176,8 +176,8 @@ impl Registry {
         handlers.insert("KNOCK", Box::new(KnockHandler));
 
         // Service aliases
-        handlers.insert("NS", Box::new(NsHandler));
         handlers.insert("NICKSERV", Box::new(NsHandler));
+        handlers.insert("CHANSERV", Box::new(CsHandler));
 
         // Operator handlers
         handlers.insert("OPER", Box::new(OperHandler));
@@ -277,6 +277,8 @@ fn command_name(cmd: &Command) -> String {
         Command::SAPART(..) => "SAPART".to_string(),
         Command::SANICK(..) => "SANICK".to_string(),
         Command::SAMODE(..) => "SAMODE".to_string(),
+        Command::NICKSERV(..) => "NICKSERV".to_string(),
+        Command::CHANSERV(..) => "CHANSERV".to_string(),
 
         // Operator ban commands
         Command::KLINE(..) => "KLINE".to_string(),

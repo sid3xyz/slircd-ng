@@ -3,6 +3,7 @@
 //! Handles PRIVMSG and NOTICE commands for both users and channels.
 
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, Command, Message, Prefix, Response};
@@ -40,6 +41,21 @@ impl Handler for PrivmsgHandler {
         if target_lower == "nickserv" || target_lower == "ns" {
             // Route to NickServ
             if route_service_message(
+                ctx.matrix,
+                ctx.db,
+                ctx.uid,
+                nick,
+                &target,
+                &text,
+                ctx.sender,
+            ).await {
+                return Ok(());
+            }
+        }
+
+        if target_lower == "chanserv" || target_lower == "cs" {
+            // Route to ChanServ
+            if route_chanserv_message(
                 ctx.matrix,
                 ctx.db,
                 ctx.uid,
