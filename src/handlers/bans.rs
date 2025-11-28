@@ -19,7 +19,8 @@ async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
 
 /// Handler for KLINE command.
 ///
-/// KLINE [time] <user@host> :<reason>
+/// `KLINE [time] user@host :reason`
+///
 /// Bans a user mask from the server.
 pub struct KlineHandler;
 
@@ -67,7 +68,8 @@ impl Handler for KlineHandler {
 
 /// Handler for DLINE command.
 ///
-/// DLINE [time] <ip> :<reason>
+/// `DLINE [time] ip :reason`
+///
 /// Bans an IP address from the server.
 pub struct DlineHandler;
 
@@ -115,7 +117,8 @@ impl Handler for DlineHandler {
 
 /// Handler for UNKLINE command.
 ///
-/// UNKLINE <user@host>
+/// `UNKLINE user@host`
+///
 /// Removes a K-line.
 pub struct UnklineHandler;
 
@@ -162,7 +165,8 @@ impl Handler for UnklineHandler {
 
 /// Handler for UNDLINE command.
 ///
-/// UNDLINE <ip>
+/// `UNDLINE ip`
+///
 /// Removes a D-line.
 pub struct UndlineHandler;
 

@@ -12,7 +12,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Handler for VERSION command.
 ///
-/// VERSION [<target>]
+/// `VERSION [target]`
+///
 /// Returns the version of the server.
 pub struct VersionHandler;
 
@@ -56,7 +57,8 @@ impl Handler for VersionHandler {
 
 /// Handler for TIME command.
 ///
-/// TIME [<target>]
+/// `TIME [target]`
+///
 /// Returns the local time on the server.
 pub struct TimeHandler;
 
@@ -93,7 +95,8 @@ impl Handler for TimeHandler {
 
 /// Handler for ADMIN command.
 ///
-/// ADMIN [<target>]
+/// `ADMIN [target]`
+///
 /// Returns administrative information about the server.
 pub struct AdminHandler;
 
@@ -155,7 +158,8 @@ impl Handler for AdminHandler {
 
 /// Handler for INFO command.
 ///
-/// INFO [<target>]
+/// `INFO [target]`
+///
 /// Returns information describing the server.
 pub struct InfoHandler;
 
@@ -211,7 +215,8 @@ impl Handler for InfoHandler {
 
 /// Handler for LUSERS command.
 ///
-/// LUSERS [<mask> [<target>]]
+/// `LUSERS [mask [target]]`
+///
 /// Returns statistics about the size of the IRC network.
 pub struct LusersHandler;
 
@@ -342,7 +347,8 @@ impl Handler for LusersHandler {
 
 /// Handler for STATS command.
 ///
-/// STATS [<query> [<target>]]
+/// `STATS [query [target]]`
+///
 /// Returns statistics about the server.
 pub struct StatsHandler;
 
@@ -437,7 +443,8 @@ impl Handler for StatsHandler {
 
 /// Handler for MOTD command.
 ///
-/// MOTD [<target>]
+/// `MOTD [target]`
+///
 /// Returns the "Message of the Day" for the server.
 pub struct MotdHandler;
 
@@ -500,7 +507,8 @@ impl Handler for MotdHandler {
 
 /// Handler for LIST command.
 ///
-/// LIST [<channels> [<target>]]
+/// `LIST [channels [target]]`
+///
 /// Lists channels and their topics.
 pub struct ListHandler;
 

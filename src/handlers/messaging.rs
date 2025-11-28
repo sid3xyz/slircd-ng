@@ -69,7 +69,7 @@ impl Handler for PrivmsgHandler {
                 // Check +m (moderated) - only ops/voice can speak
                 if channel.modes.moderated {
                     let member_modes = channel.members.get(ctx.uid);
-                    let can_speak = member_modes.map(|m| m.op || m.voice).unwrap_or(false);
+                    let can_speak = member_modes.is_some_and(|m| m.op || m.voice);
                     if !can_speak {
                         let reply = server_reply(
                             &ctx.matrix.server_info.name,
@@ -185,7 +185,7 @@ impl Handler for NoticeHandler {
                 // Check +m (moderated) - silently drop per NOTICE semantics
                 if channel.modes.moderated {
                     let member_modes = channel.members.get(ctx.uid);
-                    let can_speak = member_modes.map(|m| m.op || m.voice).unwrap_or(false);
+                    let can_speak = member_modes.is_some_and(|m| m.op || m.voice);
                     if !can_speak {
                         return Ok(());
                     }

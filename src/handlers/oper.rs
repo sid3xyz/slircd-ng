@@ -42,7 +42,8 @@ fn resolve_nick(ctx: &Context<'_>, nick: &str) -> Option<String> {
 
 /// Handler for OPER command.
 ///
-/// OPER <name> <password>
+/// `OPER name password`
+///
 /// Authenticates a user as an IRC operator.
 pub struct OperHandler;
 
@@ -110,7 +111,8 @@ impl Handler for OperHandler {
 
 /// Handler for KILL command.
 ///
-/// KILL <nickname> :<reason>
+/// `KILL nickname :reason`
+///
 /// Disconnects a user from the network. Requires operator privileges.
 pub struct KillHandler;
 
@@ -209,7 +211,8 @@ impl Handler for KillHandler {
 
 /// Handler for WALLOPS command.
 ///
-/// WALLOPS :<message>
+/// `WALLOPS :message`
+///
 /// Sends a message to all users with +w mode (operators).
 pub struct WallopsHandler;
 

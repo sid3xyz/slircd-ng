@@ -38,7 +38,8 @@ async fn get_user_prefix(ctx: &Context<'_>, uid: &str) -> Option<(String, String
 
 /// Handler for SAJOIN command.
 ///
-/// SAJOIN <nick> <channel>
+/// `SAJOIN nick channel`
+///
 /// Forces a user to join a channel.
 pub struct SajoinHandler;
 
@@ -142,7 +143,8 @@ impl Handler for SajoinHandler {
 
 /// Handler for SAPART command.
 ///
-/// SAPART <nick> <channel> [reason]
+/// `SAPART nick channel [reason]`
+///
 /// Forces a user to leave a channel.
 pub struct SapartHandler;
 
@@ -236,7 +238,8 @@ impl Handler for SapartHandler {
 
 /// Handler for SANICK command.
 ///
-/// SANICK <oldnick> <newnick>
+/// `SANICK oldnick newnick`
+///
 /// Forces a user to change their nickname.
 pub struct SanickHandler;
 
@@ -346,7 +349,8 @@ impl Handler for SanickHandler {
 
 /// Handler for SAMODE command.
 ///
-/// SAMODE <channel> <modes> [params]
+/// `SAMODE channel modes [params]`
+///
 /// Sets channel modes as the server (bypassing op requirement).
 pub struct SamodeHandler;
 

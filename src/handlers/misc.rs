@@ -9,7 +9,8 @@ use tracing::debug;
 
 /// Handler for AWAY command.
 ///
-/// AWAY [<message>]
+/// `AWAY [message]`
+///
 /// Sets or clears away status.
 pub struct AwayHandler;
 
@@ -77,7 +78,8 @@ impl Handler for AwayHandler {
 
 /// Handler for USERHOST command.
 ///
-/// USERHOST <nick> [<nick> ...]
+/// `USERHOST nick [nick ...]`
+///
 /// Returns the user@host for up to 5 nicknames.
 pub struct UserhostHandler;
 
@@ -150,7 +152,8 @@ impl Handler for UserhostHandler {
 
 /// Handler for ISON command.
 ///
-/// ISON <nick> [<nick> ...]
+/// `ISON nick [nick ...]`
+///
 /// Returns which of the given nicknames are online.
 pub struct IsonHandler;
 
@@ -214,7 +217,8 @@ impl Handler for IsonHandler {
 
 /// Handler for INVITE command.
 ///
-/// INVITE <nickname> <channel>
+/// `INVITE nickname channel`
+///
 /// Invites a user to a channel.
 pub struct InviteHandler;
 
@@ -355,7 +359,8 @@ impl Handler for InviteHandler {
 
 /// Handler for KNOCK command.
 ///
-/// KNOCK <channel> [message]
+/// `KNOCK channel [message]`
+///
 /// Requests an invite to a +i channel.
 pub struct KnockHandler;
 

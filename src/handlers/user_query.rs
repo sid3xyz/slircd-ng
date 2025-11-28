@@ -9,7 +9,8 @@ use tracing::debug;
 
 /// Handler for WHO command.
 ///
-/// WHO [<mask> [o]]
+/// `WHO [mask [o]]`
+///
 /// Returns information about users matching the mask.
 /// The 'o' flag restricts results to operators only.
 pub struct WhoHandler;
@@ -140,7 +141,8 @@ impl Handler for WhoHandler {
 
 /// Handler for WHOIS command.
 ///
-/// WHOIS [<server>] <nickmask>
+/// `WHOIS [server] nickmask`
+///
 /// Returns detailed information about a specific user.
 pub struct WhoisHandler;
 
@@ -302,7 +304,8 @@ impl Handler for WhoisHandler {
 
 /// Handler for WHOWAS command.
 ///
-/// WHOWAS <nickname> [<count> [<server>]]
+/// `WHOWAS nickname [count [server]]`
+///
 /// Returns information about a nickname that no longer exists.
 /// Note: Requires whowas history tracking which isn't yet implemented.
 pub struct WhowasHandler;

@@ -328,7 +328,8 @@ impl Handler for QuitHandler {
 
 /// Handler for PASS command.
 ///
-/// PASS <password>
+/// `PASS password`
+///
 /// Sets the connection password before registration.
 pub struct PassHandler;
 

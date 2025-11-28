@@ -95,25 +95,6 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     let topic = channel_guard.topic.clone();
     let canonical_name = channel_guard.name.clone();
 
-    // Build NAMES list before releasing lock
-    let mut names_list = Vec::new();
-    for (uid, member_modes) in &channel_guard.members {
-        if let Some(user_uid) = ctx.matrix.nicks.iter().find(|e| e.value() == uid) {
-            let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
-                format!("{}{}", prefix, user_uid.key())
-            } else {
-                // Get nick from uid
-                if let Some(u) = ctx.matrix.users.get(uid) {
-                    let u = u.read().await;
-                    u.nick.clone()
-                } else {
-                    continue;
-                }
-            };
-            names_list.push(nick_with_prefix);
-        }
-    }
-
     drop(channel_guard);
 
     // Add channel to user's list

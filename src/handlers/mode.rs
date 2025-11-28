@@ -2,8 +2,8 @@
 //!
 //! Handles both user modes and channel modes using slirc-proto's typed MODE parsing.
 //!
-//! User modes: MODE <nick> [+/-<modes>]
-//! Channel modes: MODE <channel> [+/-<modes> [args...]]
+//! - User modes: `MODE nick [+/-modes]`
+//! - Channel modes: `MODE channel [+/-modes [args...]]`
 
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::state::{ListEntry, UserModes};
