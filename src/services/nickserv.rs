@@ -9,7 +9,7 @@
 
 use crate::db::Database;
 use crate::state::Matrix;
-use slirc_proto::{Command, Message, Prefix};
+use slirc_proto::{irc_to_lower, Command, Message, Prefix};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
@@ -386,7 +386,7 @@ pub async fn route_service_message(
     text: &str,
     sender: &mpsc::Sender<Message>,
 ) -> bool {
-    let target_lower = target.to_lowercase();
+    let target_lower = irc_to_lower(target);
 
     if target_lower == "nickserv" || target_lower == "ns" {
         let nickserv = NickServ::new(db.clone());

@@ -36,7 +36,7 @@ impl Handler for PrivmsgHandler {
         let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Check if this is a service message (NickServ, ChanServ, etc.)
-        let target_lower = target.to_lowercase();
+        let target_lower = irc_to_lower(&target);
         if target_lower == "nickserv" || target_lower == "ns" {
             // Route to NickServ
             if route_service_message(
