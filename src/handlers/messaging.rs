@@ -3,6 +3,7 @@
 //! Handles PRIVMSG and NOTICE commands for both users and channels.
 
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, Command, Message, Prefix, Response};
 use tracing::debug;
@@ -33,6 +34,23 @@ impl Handler for PrivmsgHandler {
 
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
         let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+
+        // Check if this is a service message (NickServ, ChanServ, etc.)
+        let target_lower = irc_to_lower(&target);
+        if target_lower == "nickserv" || target_lower == "ns" {
+            // Route to NickServ
+            if route_service_message(
+                ctx.matrix,
+                ctx.db,
+                ctx.uid,
+                nick,
+                &target,
+                &text,
+                ctx.sender,
+            ).await {
+                return Ok(());
+            }
+        }
 
         // Build the outgoing message with user prefix
         let out_msg = Message {
