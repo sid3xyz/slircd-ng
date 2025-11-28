@@ -193,10 +193,10 @@ impl Handler for KillHandler {
                 killer_user,
                 killer_host,
             )),
-            command: Command::Raw("KILL".to_string(), vec![
+            command: Command::KILL(
                 target_nick.clone(),
                 format!("Killed by {} ({})", killer_nick, reason),
-            ]),
+            ),
         };
 
         // TODO: Send KILL to target client and disconnect them
