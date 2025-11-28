@@ -150,6 +150,7 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     let realname = ctx.handshake.realname.as_ref().cloned().unwrap_or_default();
     let server_name = &ctx.matrix.server_info.name;
     let network = &ctx.matrix.server_info.network;
+    let host = ctx.remote_addr.ip().to_string();
 
     ctx.handshake.registered = true;
 
@@ -159,7 +160,7 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         nick.clone(),
         user.clone(),
         realname,
-        "localhost".to_string(), // TODO: get actual host from socket
+        host.clone(),
     );
 
     // Set account and +r if authenticated via SASL
@@ -183,7 +184,7 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             nick.clone(),
             format!(
                 "Welcome to the {} IRC Network {}!{}@{}",
-                network, nick, user, "localhost"
+                network, nick, user, host
             ),
         ],
     );
