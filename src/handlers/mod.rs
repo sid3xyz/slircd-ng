@@ -246,6 +246,15 @@ fn command_name(cmd: &Command) -> String {
         Command::SANICK(..) => "SANICK".to_string(),
         Command::SAMODE(..) => "SAMODE".to_string(),
 
+        // Operator ban commands
+        Command::KLINE(..) => "KLINE".to_string(),
+        Command::DLINE(..) => "DLINE".to_string(),
+        Command::UNKLINE(..) => "UNKLINE".to_string(),
+        Command::UNDLINE(..) => "UNDLINE".to_string(),
+
+        // Channel extension commands
+        Command::KNOCK(..) => "KNOCK".to_string(),
+
         // Responses and fallback
         Command::Response(..) => "RESPONSE".to_string(),
         Command::Raw(name, _) => name.to_uppercase(),

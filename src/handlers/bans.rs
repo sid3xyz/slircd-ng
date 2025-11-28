@@ -37,25 +37,9 @@ impl Handler for KlineHandler {
             return Ok(());
         }
 
-        // Extract parameters
+        // Extract parameters from typed Command::KLINE variant
         let (mask, reason) = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => {
-                // KLINE [time] <user@host> :<reason>
-                // For now, ignore time parameter
-                let mask = if params[0].contains('@') {
-                    params[0].clone()
-                } else if params.len() > 1 {
-                    params[1].clone()
-                } else {
-                    params[0].clone()
-                };
-                let reason = if params.len() > 1 {
-                    params.last().cloned().unwrap_or_else(|| "K-lined".to_string())
-                } else {
-                    "K-lined".to_string()
-                };
-                (mask, reason)
-            }
+            Command::KLINE(_time, mask, reason) => (mask.clone(), reason.clone()),
             _ => {
                 ctx.sender
                     .send(err_needmoreparams(server_name, &nick, "KLINE"))
@@ -101,19 +85,9 @@ impl Handler for DlineHandler {
             return Ok(());
         }
 
-        // Extract parameters
+        // Extract parameters from typed Command::DLINE variant
         let (ip, reason) = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => {
-                // DLINE [time] <ip> :<reason>
-                // For now, ignore time parameter
-                let ip = params[0].clone();
-                let reason = if params.len() > 1 {
-                    params.last().cloned().unwrap_or_else(|| "D-lined".to_string())
-                } else {
-                    "D-lined".to_string()
-                };
-                (ip, reason)
-            }
+            Command::DLINE(_time, host, reason) => (host.clone(), reason.clone()),
             _ => {
                 ctx.sender
                     .send(err_needmoreparams(server_name, &nick, "DLINE"))
@@ -159,9 +133,9 @@ impl Handler for UnklineHandler {
             return Ok(());
         }
 
-        // Extract mask
+        // Extract mask from typed Command::UNKLINE variant
         let mask = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => params[0].clone(),
+            Command::UNKLINE(mask) => mask.clone(),
             _ => {
                 ctx.sender
                     .send(err_needmoreparams(server_name, &nick, "UNKLINE"))
@@ -206,9 +180,9 @@ impl Handler for UndlineHandler {
             return Ok(());
         }
 
-        // Extract IP
+        // Extract IP from typed Command::UNDLINE variant
         let ip = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => params[0].clone(),
+            Command::UNDLINE(host) => host.clone(),
             _ => {
                 ctx.sender
                     .send(err_needmoreparams(server_name, &nick, "UNDLINE"))

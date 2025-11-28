@@ -364,15 +364,9 @@ impl Handler for KnockHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         use slirc_proto::{irc_to_lower, Prefix};
 
+        // Extract parameters from typed Command::KNOCK variant
         let (channel_name, knock_msg) = match &msg.command {
-            Command::Raw(_, params) if !params.is_empty() => {
-                let msg = if params.len() > 1 {
-                    Some(params[1..].join(" "))
-                } else {
-                    None
-                };
-                (params[0].clone(), msg)
-            }
+            Command::KNOCK(channel, msg) => (channel.clone(), msg.clone()),
             _ => {
                 // ERR_NEEDMOREPARAMS (461)
                 let server_name = &ctx.matrix.config.server_name;
@@ -449,7 +443,7 @@ impl Handler for KnockHandler {
         let knock_notice = slirc_proto::Message {
             tags: None,
             prefix: Some(Prefix::Nickname(nick.clone(), user, host)),
-            command: Command::Raw("KNOCK".to_string(), vec![channel_name.clone(), knock_text]),
+            command: Command::KNOCK(channel_name.clone(), Some(knock_text)),
         };
 
         // Send to channel operators
