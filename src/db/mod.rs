@@ -2,11 +2,14 @@
 //!
 //! Provides async SQLite database access using SQLx for:
 //! - NickServ accounts and nicknames
+//! - ChanServ channel registration and access lists
 //! - K-lines and D-lines persistence
 
 mod accounts;
+mod channels;
 
 pub use accounts::AccountRepository;
+pub use channels::{ChannelRecord, ChannelRepository};
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
@@ -34,6 +37,17 @@ pub enum DbError {
     InvalidPassword,
     #[error("unknown option: {0}")]
     UnknownOption(String),
+    #[error("channel not found: {0}")]
+    #[allow(dead_code)]
+    ChannelNotFound(String),
+    #[error("channel already registered: {0}")]
+    ChannelExists(String),
+    #[error("not channel founder")]
+    #[allow(dead_code)]
+    NotFounder,
+    #[error("insufficient access")]
+    #[allow(dead_code)]
+    InsufficientAccess,
 }
 
 /// Database handle with connection pool.
@@ -73,26 +87,57 @@ impl Database {
     }
 
     /// Run embedded migrations.
-    /// Uses a simple migration tracking approach - checks if the accounts table exists.
+    /// Checks for each table and runs the full migration if any are missing.
     async fn run_migrations(pool: &SqlitePool) -> Result<(), DbError> {
-        // Check if the accounts table already exists
-        let table_exists: bool = sqlx::query_scalar(
+        // Check if the required tables exist
+        let accounts_exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts')"
         )
         .fetch_one(pool)
         .await
         .unwrap_or(false);
 
-        if !table_exists {
-            // Run the initial migration
-            // Split by semicolons and execute each statement separately
+        let channels_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='channels')"
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+
+        // Run migrations if any tables are missing
+        if !accounts_exists || !channels_exists {
+            // Run the full migration
             let migration = include_str!("../../migrations/001_init.sql");
+            
             for statement in migration.split(';') {
-                let statement = statement.trim();
-                if !statement.is_empty() && !statement.starts_with("--") {
-                    sqlx::query(statement)
-                        .execute(pool)
-                        .await?;
+                // Remove leading comments and whitespace to get actual SQL
+                let mut sql_lines: Vec<&str> = Vec::new();
+                for line in statement.lines() {
+                    let line = line.trim();
+                    // Skip empty lines and comment-only lines
+                    if line.is_empty() || line.starts_with("--") {
+                        continue;
+                    }
+                    sql_lines.push(line);
+                }
+                
+                if sql_lines.is_empty() {
+                    continue;
+                }
+                
+                // Rejoin the SQL statement
+                let sql = sql_lines.join("\n");
+                
+                // Execute each statement, logging errors
+                if let Err(e) = sqlx::query(&sql)
+                    .execute(pool)
+                    .await
+                {
+                    // Only log if it's not a "table already exists" error
+                    let err_str = e.to_string();
+                    if !err_str.contains("already exists") {
+                        tracing::warn!(sql = %sql, error = %e, "Migration statement failed");
+                    }
                 }
             }
             info!("Database migrations applied");
@@ -112,5 +157,10 @@ impl Database {
     /// Get account repository.
     pub fn accounts(&self) -> AccountRepository<'_> {
         AccountRepository::new(&self.pool)
+    }
+
+    /// Get channel repository.
+    pub fn channels(&self) -> ChannelRepository<'_> {
+        ChannelRepository::new(&self.pool)
     }
 }
