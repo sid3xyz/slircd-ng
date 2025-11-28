@@ -7,9 +7,42 @@
 //! - DIE: Shutdown the server (stub)
 //! - REHASH: Reload server configuration (stub)
 
-use super::{server_reply, Context, Handler, HandlerResult};
+use super::{err_needmoreparams, err_noprivileges, err_nosuchnick, server_reply, Context, Handler, HandlerResult};
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, Prefix, Response};
+use slirc_proto::{irc_to_lower, Command, Message, Prefix, Response};
+
+/// Get user's nick, falling back to "*" if not found.
+async fn get_nick_or_star(ctx: &Context<'_>) -> String {
+    ctx.matrix
+        .users
+        .get(ctx.uid)
+        .map(|r| {
+            // We need to block on the async read, but since we're in async context
+            // we can use futures::executor or just handle it differently
+            futures::executor::block_on(async { r.read().await.nick.clone() })
+        })
+        .unwrap_or_else(|| "*".to_string())
+}
+
+/// Get user's nick and oper status. Returns None if user not found.
+async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
+    let user_ref = ctx.matrix.users.get(ctx.uid)?;
+    let user = user_ref.read().await;
+    Some((user.nick.clone(), user.modes.oper))
+}
+
+/// Get full user info for message construction.
+async fn get_user_full_info(ctx: &Context<'_>) -> Option<(String, String, String, bool)> {
+    let user_ref = ctx.matrix.users.get(ctx.uid)?;
+    let user = user_ref.read().await;
+    Some((user.nick.clone(), user.user.clone(), user.host.clone(), user.modes.oper))
+}
+
+/// Resolve a nick to UID. Returns None if not found.
+fn resolve_nick(ctx: &Context<'_>, nick: &str) -> Option<String> {
+    let lower = irc_to_lower(nick);
+    ctx.matrix.nicks.get(&lower).map(|r| r.value().clone())
+}
 
 /// Handler for OPER command.
 ///
@@ -20,48 +53,24 @@ pub struct OperHandler;
 #[async_trait]
 impl Handler for OperHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+        let server_name = &ctx.matrix.config.server_name;
+
         // Extract oper credentials from the message
         let (name, password) = match &msg.command {
             Command::OPER(n, p) => (n.clone(), p.clone()),
             _ => {
-                // ERR_NEEDMOREPARAMS (461)
-                let server_name = &ctx.matrix.config.server_name;
-                let nick = {
-                    let uid = ctx.uid;
-                    if let Some(user_ref) = ctx.matrix.users.get(uid) {
-                        let user = user_ref.read().await;
-                        user.nick.clone()
-                    } else {
-                        "*".to_string()
-                    }
-                };
-
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![nick, "OPER".to_string(), "Not enough parameters".to_string()],
-                );
-                ctx.sender.send(reply).await?;
+                let nick = get_nick_or_star(ctx).await;
+                ctx.sender.send(err_needmoreparams(server_name, &nick, "OPER")).await?;
                 return Ok(());
             }
         };
 
-        let server_name = &ctx.matrix.config.server_name;
-        let nick = {
-            let uid = ctx.uid;
-            if let Some(user_ref) = ctx.matrix.users.get(uid) {
-                let user = user_ref.read().await;
-                user.nick.clone()
-            } else {
-                "*".to_string()
-            }
-        };
+        let nick = get_nick_or_star(ctx).await;
 
         // Check oper blocks in config
         let oper_block = ctx.matrix.config.oper_blocks.iter().find(|block| block.name == name);
 
         let Some(oper_block) = oper_block else {
-            // ERR_PASSWDMISMATCH (464)
             let reply = server_reply(
                 server_name,
                 Response::ERR_PASSWDMISMATCH,
@@ -73,10 +82,7 @@ impl Handler for OperHandler {
 
         // Validate password
         // TODO: Support bcrypt hashes for production
-        let password_valid = oper_block.password == password;
-
-        if !password_valid {
-            // ERR_PASSWDMISMATCH (464)
+        if oper_block.password != password {
             let reply = server_reply(
                 server_name,
                 Response::ERR_PASSWDMISMATCH,
@@ -95,7 +101,6 @@ impl Handler for OperHandler {
             user.modes.oper = true;
         }
 
-        // RPL_YOUREOPER (381)
         let reply = server_reply(
             server_name,
             Response::RPL_YOUREOPER,
@@ -116,99 +121,43 @@ pub struct KillHandler;
 #[async_trait]
 impl Handler for KillHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+        let server_name = &ctx.matrix.config.server_name;
+
         // Extract target and reason from the message
         let (target_nick, reason) = match &msg.command {
             Command::KILL(target, reason) => (target.clone(), reason.clone()),
             _ => {
-                // ERR_NEEDMOREPARAMS (461)
-                let server_name = &ctx.matrix.config.server_name;
-                let nick = {
-                    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                        let user = user_ref.read().await;
-                        user.nick.clone()
-                    } else {
-                        "*".to_string()
-                    }
-                };
-
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![nick, "KILL".to_string(), "Not enough parameters".to_string()],
-                );
-                ctx.sender.send(reply).await?;
+                let nick = get_nick_or_star(ctx).await;
+                ctx.sender.send(err_needmoreparams(server_name, &nick, "KILL")).await?;
                 return Ok(());
             }
         };
 
-        let server_name = &ctx.matrix.config.server_name;
-        
         // Get killer info
-        let (killer_nick, killer_user, killer_host, is_oper) = {
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                (user.nick.clone(), user.user.clone(), user.host.clone(), user.modes.oper)
-            } else {
-                return Ok(());
-            }
+        let Some((killer_nick, killer_user, killer_host, is_oper)) = get_user_full_info(ctx).await
+        else {
+            return Ok(());
         };
 
-        // Check if user is an operator
         if !is_oper {
-            // ERR_NOPRIVILEGES (481)
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOPRIVILEGES,
-                vec![killer_nick, "Permission Denied - You're not an IRC operator".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_noprivileges(server_name, &killer_nick)).await?;
             return Ok(());
         }
 
         // Find target user
-        use slirc_proto::irc_to_lower;
-        let target_lower = irc_to_lower(&target_nick);
-        let target_uid = ctx.matrix.nicks.get(&target_lower).map(|r| r.value().clone());
-
-        let Some(target_uid) = target_uid else {
-            // ERR_NOSUCHNICK (401)
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOSUCHNICK,
-                vec![killer_nick, target_nick, "No such nick/channel".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+        let Some(target_uid) = resolve_nick(ctx, &target_nick) else {
+            ctx.sender.send(err_nosuchnick(server_name, &killer_nick, &target_nick)).await?;
             return Ok(());
         };
-
-        // Get target's sender to send KILL message
-        // Note: In a real implementation, we'd need access to the target's sender
-        // For now, we just remove them from the matrix state
 
         // Build KILL message
         let kill_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(
-                killer_nick.clone(),
-                killer_user,
-                killer_host,
-            )),
-            command: Command::KILL(
-                target_nick.clone(),
-                format!("Killed by {} ({})", killer_nick, reason),
-            ),
+            prefix: Some(Prefix::Nickname(killer_nick.clone(), killer_user, killer_host)),
+            command: Command::KILL(target_nick.clone(), format!("Killed by {killer_nick} ({reason})")),
         };
 
-        // TODO: Send KILL to target client and disconnect them
-        // This requires access to the router or connection manager
-        // For now, we log the action
-
-        tracing::info!(
-            killer = %killer_nick,
-            target = %target_nick,
-            reason = %reason,
-            "KILL command executed"
-        );
+        tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
 
         // Remove target from all channels and broadcast QUIT
         let target_channels: Vec<String> = {
@@ -220,16 +169,12 @@ impl Handler for KillHandler {
             }
         };
 
-        let quit_reason = format!("Killed by {} ({})", killer_nick, reason);
-        
+        let quit_reason = format!("Killed by {killer_nick} ({reason})");
+
         // Build QUIT message for target
         let quit_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(
-                target_nick.clone(),
-                "user".to_string(),
-                "host".to_string(),
-            )),
+            prefix: Some(Prefix::Nickname(target_nick.clone(), "user".to_string(), "host".to_string())),
             command: Command::QUIT(Some(quit_reason)),
         };
 
@@ -238,7 +183,7 @@ impl Handler for KillHandler {
             if let Some(channel_ref) = ctx.matrix.channels.get(&channel_name) {
                 let mut channel = channel_ref.write().await;
                 channel.members.remove(&target_uid);
-                
+
                 // Broadcast QUIT to remaining channel members
                 for member_uid in channel.members.keys() {
                     if let Some(member_ref) = ctx.matrix.users.get(member_uid) {
@@ -275,70 +220,39 @@ pub struct WallopsHandler;
 #[async_trait]
 impl Handler for WallopsHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+        let server_name = &ctx.matrix.config.server_name;
+
         // Extract message from the command
         let wallops_text = match &msg.command {
             Command::WALLOPS(text) => text.clone(),
             _ => {
-                // ERR_NEEDMOREPARAMS (461)
-                let server_name = &ctx.matrix.config.server_name;
-                let nick = {
-                    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                        let user = user_ref.read().await;
-                        user.nick.clone()
-                    } else {
-                        "*".to_string()
-                    }
-                };
-
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![nick, "WALLOPS".to_string(), "Not enough parameters".to_string()],
-                );
-                ctx.sender.send(reply).await?;
+                let nick = get_nick_or_star(ctx).await;
+                ctx.sender.send(err_needmoreparams(server_name, &nick, "WALLOPS")).await?;
                 return Ok(());
             }
         };
 
-        let server_name = &ctx.matrix.config.server_name;
-        
         // Get sender info
-        let (sender_nick, sender_user, sender_host, is_oper) = {
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                (user.nick.clone(), user.user.clone(), user.host.clone(), user.modes.oper)
-            } else {
-                return Ok(());
-            }
+        let Some((sender_nick, sender_user, sender_host, is_oper)) = get_user_full_info(ctx).await
+        else {
+            return Ok(());
         };
 
-        // Check if user is an operator
         if !is_oper {
-            // ERR_NOPRIVILEGES (481)
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOPRIVILEGES,
-                vec![sender_nick, "Permission Denied - You're not an IRC operator".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_noprivileges(server_name, &sender_nick)).await?;
             return Ok(());
         }
 
         // Build WALLOPS message
         let wallops_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(
-                sender_nick.clone(),
-                sender_user,
-                sender_host,
-            )),
+            prefix: Some(Prefix::Nickname(sender_nick, sender_user, sender_host)),
             command: Command::WALLOPS(wallops_text),
         };
 
-        // Send to all users with +w mode (wallops)
+        // Send to all users with +w mode (wallops) or operators
         for user_entry in ctx.matrix.users.iter() {
             let user = user_entry.read().await;
-            // Check if user has +w mode (wallops) or is an operator
             if (user.modes.wallops || user.modes.oper)
                 && let Some(sender) = ctx.matrix.senders.get(&user.uid)
             {
@@ -360,38 +274,21 @@ pub struct DieHandler;
 impl Handler for DieHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
-        
-        // Get user info
-        let (nick, is_oper) = {
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                (user.nick.clone(), user.modes.oper)
-            } else {
-                return Ok(());
-            }
+
+        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+            return Ok(());
         };
 
-        // Check if user is an operator
         if !is_oper {
-            // ERR_NOPRIVILEGES (481)
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOPRIVILEGES,
-                vec![nick, "Permission Denied - You're not an IRC operator".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
             return Ok(());
         }
 
         // TODO: Implement actual shutdown
-        // For now, just send a notice
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick.clone(),
-                "DIE command received (not implemented - use process signals)".to_string(),
-            ),
+            command: Command::NOTICE(nick.clone(), "DIE command received (not implemented - use process signals)".to_string()),
         };
         ctx.sender.send(notice).await?;
 
@@ -411,30 +308,16 @@ pub struct RehashHandler;
 impl Handler for RehashHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
-        
-        // Get user info
-        let (nick, is_oper) = {
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                (user.nick.clone(), user.modes.oper)
-            } else {
-                return Ok(());
-            }
+
+        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+            return Ok(());
         };
 
-        // Check if user is an operator
         if !is_oper {
-            // ERR_NOPRIVILEGES (481)
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOPRIVILEGES,
-                vec![nick, "Permission Denied - You're not an IRC operator".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
             return Ok(());
         }
 
-        // RPL_REHASHING (382)
         let reply = server_reply(
             server_name,
             Response::RPL_REHASHING,
@@ -446,10 +329,7 @@ impl Handler for RehashHandler {
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick.clone(),
-                "REHASH acknowledged (config reload not yet implemented)".to_string(),
-            ),
+            command: Command::NOTICE(nick.clone(), "REHASH acknowledged (config reload not yet implemented)".to_string()),
         };
         ctx.sender.send(notice).await?;
 
