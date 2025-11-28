@@ -15,19 +15,20 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
-/// Validates a channel name.
-#[allow(dead_code)]
+/// Validates a channel name per RFC 2811/2812.
+/// Channel names start with '#', '&', '+', or '!' and cannot contain
+/// spaces, commas, or ^G (BEL).
 fn is_valid_channel(name: &str) -> bool {
     if name.is_empty() || name.len() > 50 {
         return false;
     }
-    // Must start with # or &
+    // Must start with #, &, +, or ! (RFC 2811)
     let first = name.chars().next().unwrap();
-    if first != '#' && first != '&' {
+    if !matches!(first, '#' | '&' | '+' | '!') {
         return false;
     }
-    // No spaces, commas, or control chars
-    name.chars().skip(1).all(|c| c != ' ' && c != ',' && c != '\x07' && c.is_ascii())
+    // No spaces, commas, NUL, or BEL (^G) per RFC 2812
+    name.chars().skip(1).all(|c| c != ' ' && c != ',' && c != '\x07' && c != '\0' && c.is_ascii())
 }
 
 /// Helper to create a message with user prefix.

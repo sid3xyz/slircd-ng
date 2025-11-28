@@ -42,16 +42,48 @@ impl Handler for PrivmsgHandler {
         };
 
         // Is it a channel or a user?
-        if target.starts_with('#') || target.starts_with('&') {
+        if matches!(target.chars().next(), Some('#' | '&' | '+' | '!')) {
             // Channel message
             let channel_lower = irc_to_lower(&target);
 
             // Check if channel exists
             if let Some(channel) = ctx.matrix.channels.get(&channel_lower) {
                 let channel = channel.read().await;
+                let is_member = channel.is_member(ctx.uid);
 
-                // Check if user is in channel (for now, allow non-members to send)
-                // TODO: Add +n mode check
+                // Check +n (no external messages) - non-members cannot send
+                if channel.modes.no_external && !is_member {
+                    let reply = server_reply(
+                        &ctx.matrix.server_info.name,
+                        Response::ERR_CANNOTSENDTOCHAN,
+                        vec![
+                            nick.to_string(),
+                            target,
+                            "Cannot send to channel (+n)".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                    return Ok(());
+                }
+
+                // Check +m (moderated) - only ops/voice can speak
+                if channel.modes.moderated {
+                    let member_modes = channel.members.get(ctx.uid);
+                    let can_speak = member_modes.map(|m| m.op || m.voice).unwrap_or(false);
+                    if !can_speak {
+                        let reply = server_reply(
+                            &ctx.matrix.server_info.name,
+                            Response::ERR_CANNOTSENDTOCHAN,
+                            vec![
+                                nick.to_string(),
+                                target,
+                                "Cannot send to channel (+m)".to_string(),
+                            ],
+                        );
+                        ctx.sender.send(reply).await?;
+                        return Ok(());
+                    }
+                }
 
                 // Broadcast to all channel members except sender
                 for uid in channel.members.keys() {
@@ -137,12 +169,27 @@ impl Handler for NoticeHandler {
         };
 
         // Is it a channel or a user?
-        if target.starts_with('#') || target.starts_with('&') {
+        if matches!(target.chars().next(), Some('#' | '&' | '+' | '!')) {
             // Channel notice
             let channel_lower = irc_to_lower(&target);
 
             if let Some(channel) = ctx.matrix.channels.get(&channel_lower) {
                 let channel = channel.read().await;
+                let is_member = channel.is_member(ctx.uid);
+
+                // Check +n (no external messages) - silently drop per NOTICE semantics
+                if channel.modes.no_external && !is_member {
+                    return Ok(());
+                }
+
+                // Check +m (moderated) - silently drop per NOTICE semantics
+                if channel.modes.moderated {
+                    let member_modes = channel.members.get(ctx.uid);
+                    let can_speak = member_modes.map(|m| m.op || m.voice).unwrap_or(false);
+                    if !can_speak {
+                        return Ok(());
+                    }
+                }
 
                 // Broadcast to all channel members except sender
                 for uid in channel.members.keys() {

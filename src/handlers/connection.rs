@@ -185,6 +185,7 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     ctx.sender.send(created).await?;
 
     // 004 RPL_MYINFO
+    // Format: <nick> <servername> <version> <usermodes> <chanmodes>
     let myinfo = server_reply(
         server_name,
         Response::RPL_MYINFO,
@@ -192,26 +193,46 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             nick.clone(),
             server_name.clone(),
             "slircd-ng-0.1.0".to_string(),
-            "iowZ".to_string(),      // user modes
-            "biklmnopstv".to_string(), // channel modes
+            "iowrZ".to_string(),       // user modes: invisible, wallops, oper, registered, secure
+            "beIiklmnopqrstv".to_string(), // channel modes
         ],
     );
     ctx.sender.send(myinfo).await?;
 
-    // 005 RPL_ISUPPORT
-    let isupport = server_reply(
+    // 005 RPL_ISUPPORT (split into multiple lines to stay under 512 bytes)
+    // Line 1: Core parameters
+    let isupport1 = server_reply(
         server_name,
         Response::RPL_ISUPPORT,
         vec![
             nick.clone(),
             format!("NETWORK={}", network),
             "CASEMAPPING=rfc1459".to_string(),
-            "NICKLEN=30".to_string(),
-            "CHANNELLEN=50".to_string(),
+            "CHANTYPES=#&+!".to_string(), // All RFC 2811 channel types
+            "PREFIX=(ov)@+".to_string(),
+            "CHANMODES=beIq,k,l,imnrst".to_string(),
             "are supported by this server".to_string(),
         ],
     );
-    ctx.sender.send(isupport).await?;
+    ctx.sender.send(isupport1).await?;
+
+    // Line 2: Limits
+    let isupport2 = server_reply(
+        server_name,
+        Response::RPL_ISUPPORT,
+        vec![
+            nick.clone(),
+            "NICKLEN=30".to_string(),
+            "CHANNELLEN=50".to_string(),
+            "TOPICLEN=390".to_string(),
+            "KICKLEN=390".to_string(),
+            "AWAYLEN=200".to_string(),
+            "MODES=6".to_string(),
+            "MAXTARGETS=4".to_string(),
+            "are supported by this server".to_string(),
+        ],
+    );
+    ctx.sender.send(isupport2).await?;
 
     // 375 RPL_MOTDSTART
     let motdstart = server_reply(
