@@ -6,6 +6,7 @@
 mod channel;
 mod connection;
 mod messaging;
+mod misc;
 mod mode;
 mod server_query;
 mod user_query;
@@ -13,6 +14,7 @@ mod user_query;
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{NickHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
 pub use messaging::{NoticeHandler, PrivmsgHandler};
+pub use misc::{AwayHandler, InviteHandler, IsonHandler, UserhostHandler};
 pub use mode::ModeHandler;
 pub use server_query::{
     AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler,
@@ -114,6 +116,7 @@ impl Registry {
         handlers.insert("MODE", Box::new(ModeHandler));
         handlers.insert("KICK", Box::new(KickHandler));
         handlers.insert("LIST", Box::new(ListHandler));
+        handlers.insert("INVITE", Box::new(InviteHandler));
 
         // Messaging handlers
         handlers.insert("PRIVMSG", Box::new(PrivmsgHandler));
@@ -132,6 +135,11 @@ impl Registry {
         handlers.insert("LUSERS", Box::new(LusersHandler));
         handlers.insert("STATS", Box::new(StatsHandler));
         handlers.insert("MOTD", Box::new(MotdHandler));
+
+        // Misc handlers
+        handlers.insert("AWAY", Box::new(AwayHandler));
+        handlers.insert("USERHOST", Box::new(UserhostHandler));
+        handlers.insert("ISON", Box::new(IsonHandler));
 
         Self { handlers }
     }
