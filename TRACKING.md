@@ -9,44 +9,68 @@
 
 | Branch | Phase | Status | Description |
 |--------|-------|--------|-------------|
-| `feat/p1-caps` | P1 | 🚧 In Progress | CAP negotiation + SASL authentication |
-
----
-
-## Phase 1: Core Protocol Completeness
-
-### Branch: `feat/p1-caps`
-
-**Goal:** Implement IRCv3 CAP negotiation and SASL PLAIN authentication.
-
-**Commits:**
-- [ ] `feat(cap): add CAP handler with LS/REQ/ACK/END support`
-- [ ] `feat(state): add client capabilities to User and HandshakeState`
-- [ ] `feat(auth): add AUTHENTICATE handler for SASL PLAIN`
-- [ ] `feat(connection): integrate CAP into registration flow`
-- [ ] `test(cap): add CAP negotiation integration test`
-
-**Files Changed:**
-- `src/handlers/mod.rs` - Register CAP/AUTHENTICATE handlers
-- `src/handlers/cap.rs` - NEW: CAP command handler
-- `src/handlers/auth.rs` - NEW: AUTHENTICATE command handler
-- `src/state/matrix.rs` - Add capabilities to User struct
-- `src/network/connection.rs` - CAP negotiation integration
-
-**Testing:**
-```bash
-# Test CAP LS
-printf "CAP LS 302\r\n" | nc localhost 6667
-
-# Test full CAP negotiation
-printf "CAP LS 302\r\nNICK test\r\nUSER test 0 * :Test\r\nCAP REQ :multi-prefix\r\nCAP END\r\n" | nc localhost 6667
-```
+| *none* | - | - | Ready for Phase 2 |
 
 ---
 
 ## Completed Phases
 
-*None yet*
+### ✅ Phase 1: CAP/SASL (feat/p1-caps → main)
+
+**Merged:** November 28, 2025 | **Commit:** c46a666
+
+**Implemented:**
+- [x] `CapHandler` - CAP LS/LIST/REQ/ACK/NAK/END subcommands
+- [x] `AuthenticateHandler` - SASL PLAIN stub (accepts any credentials)
+- [x] `HandshakeState` extended with: `cap_negotiating`, `cap_version`, `capabilities`, `sasl_state`, `account`
+- [x] Registration blocked during CAP negotiation (`can_register()` checks `!cap_negotiating`)
+
+**Capabilities Advertised:**
+- `multi-prefix`
+- `userhost-in-names`  
+- `server-time`
+- `echo-message`
+
+**Deferred to Phase 2:**
+- SASL capability (commented out - needs NickServ for credential validation)
+- `away-notify`, `account-notify`, `extended-join` (need services)
+
+**Files Changed:**
+- `src/handlers/cap.rs` - NEW (390 lines)
+- `src/handlers/mod.rs` - Handler registration + HandshakeState fields
+- `src/state/mod.rs` - Allow unused imports
+- `src/state/mode_builder.rs` - Allow dead_code (future ChanServ use)
+
+---
+
+## Phase 2: Database + NickServ (Planned)
+
+### Branch: `feat/p2-database` (not started)
+
+**Goal:** Add SQLite persistence and NickServ service.
+
+**Tasks:**
+- [ ] Add `sqlx` dependency with SQLite feature
+- [ ] Create database schema (accounts, nicknames, channels, klines)
+- [ ] Implement `Database` struct with async connection pool
+- [ ] NickServ: REGISTER, IDENTIFY, GHOST, INFO, SET
+- [ ] Wire SASL PLAIN to validate against accounts table
+- [ ] Enable `sasl` capability in CAP LS
+- [ ] Persist K-lines/D-lines to database
+
+**Dependencies:**
+- `sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }`
+
+---
+
+## Phase 3: ChanServ (Planned)
+
+**Goal:** Channel registration and access control.
+
+**Tasks:**
+- [ ] ChanServ: REGISTER, DROP, ACCESS, OP/DEOP, VOICE/DEVOICE
+- [ ] Auto-op/voice on JOIN for identified users (uses ChannelModeBuilder)
+- [ ] Channel settings (MLOCK, TOPICLOCK, KEEPTOPIC)
 
 ---
 
