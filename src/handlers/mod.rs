@@ -8,6 +8,7 @@ mod connection;
 mod messaging;
 mod misc;
 mod mode;
+mod oper;
 mod server_query;
 mod user_query;
 
@@ -16,6 +17,7 @@ pub use connection::{NickHandler, PingHandler, PongHandler, QuitHandler, UserHan
 pub use messaging::{NoticeHandler, PrivmsgHandler};
 pub use misc::{AwayHandler, InviteHandler, IsonHandler, UserhostHandler};
 pub use mode::ModeHandler;
+pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
 pub use server_query::{
     AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler,
     TimeHandler, VersionHandler,
@@ -140,6 +142,13 @@ impl Registry {
         handlers.insert("AWAY", Box::new(AwayHandler));
         handlers.insert("USERHOST", Box::new(UserhostHandler));
         handlers.insert("ISON", Box::new(IsonHandler));
+
+        // Operator handlers
+        handlers.insert("OPER", Box::new(OperHandler));
+        handlers.insert("KILL", Box::new(KillHandler));
+        handlers.insert("WALLOPS", Box::new(WallopsHandler));
+        handlers.insert("DIE", Box::new(DieHandler));
+        handlers.insert("REHASH", Box::new(RehashHandler));
 
         Self { handlers }
     }

@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Create the Matrix (shared state)
-    let matrix = Arc::new(Matrix::new(&config.server));
+    let matrix = Arc::new(Matrix::new(&config));
 
     // Start the Gateway
     let gateway = Gateway::bind(config.listen.address, matrix).await?;

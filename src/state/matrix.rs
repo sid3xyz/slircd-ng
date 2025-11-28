@@ -3,7 +3,7 @@
 //! The Matrix holds all users, channels, and server state in concurrent
 //! data structures accessible from any async task.
 
-use crate::config::ServerConfig;
+use crate::config::{Config, OperBlock};
 use crate::state::UidGenerator;
 use dashmap::DashMap;
 use std::collections::{HashMap, HashSet};
@@ -43,6 +43,21 @@ pub struct Matrix {
 
     /// UID generator for new connections.
     pub uid_gen: UidGenerator,
+
+    /// Server configuration (for handlers to access).
+    pub config: MatrixConfig,
+}
+
+/// Configuration accessible to handlers via Matrix.
+#[derive(Debug, Clone)]
+pub struct MatrixConfig {
+    /// Server name for replies.
+    pub server_name: String,
+    /// Network name.
+    #[allow(dead_code)] // Used in INFO replies
+    pub network_name: String,
+    /// Operator blocks.
+    pub oper_blocks: Vec<OperBlock>,
 }
 
 /// This server's identity information.
@@ -268,7 +283,7 @@ pub struct Server {
 
 impl Matrix {
     /// Create a new Matrix with the given server configuration.
-    pub fn new(config: &ServerConfig) -> Self {
+    pub fn new(config: &Config) -> Self {
         let now = chrono::Utc::now().timestamp();
 
         Self {
@@ -278,13 +293,18 @@ impl Matrix {
             senders: DashMap::new(),
             servers: DashMap::new(),
             server_info: ServerInfo {
-                sid: config.sid.clone(),
-                name: config.name.clone(),
-                network: config.network.clone(),
-                description: config.description.clone(),
+                sid: config.server.sid.clone(),
+                name: config.server.name.clone(),
+                network: config.server.network.clone(),
+                description: config.server.description.clone(),
                 created: now,
             },
-            uid_gen: UidGenerator::new(config.sid.clone()),
+            uid_gen: UidGenerator::new(config.server.sid.clone()),
+            config: MatrixConfig {
+                server_name: config.server.name.clone(),
+                network_name: config.server.network.clone(),
+                oper_blocks: config.oper.clone(),
+            },
         }
     }
 

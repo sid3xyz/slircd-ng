@@ -21,6 +21,21 @@ pub struct Config {
     pub server: ServerConfig,
     /// Network listen configuration.
     pub listen: ListenConfig,
+    /// Operator blocks.
+    #[serde(default)]
+    pub oper: Vec<OperBlock>,
+}
+
+/// Operator block configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OperBlock {
+    /// Operator name (used in OPER command).
+    pub name: String,
+    /// Password (plaintext for now, TODO: bcrypt support).
+    pub password: String,
+    /// Optional hostmask restriction.
+    #[allow(dead_code)] // TODO: Implement hostmask checking
+    pub hostmask: Option<String>,
 }
 
 /// Server identity configuration.
