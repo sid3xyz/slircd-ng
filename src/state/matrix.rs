@@ -216,13 +216,12 @@ impl Matrix {
 
     /// Broadcast a message to all members of a channel.
     /// Optionally exclude one UID (usually the sender).
+    /// Note: channel_name should already be lowercased by the caller.
     pub async fn broadcast_to_channel(&self, channel_name: &str, msg: Message, exclude: Option<&str>) {
-        let channel_lower = slirc_proto::irc_to_lower(channel_name);
-        
-        if let Some(channel) = self.channels.get(&channel_lower) {
+        if let Some(channel) = self.channels.get(channel_name) {
             let channel = channel.read().await;
             for uid in channel.members.keys() {
-                if exclude.map(|e| e == uid).unwrap_or(false) {
+                if exclude.map(|e| e == uid.as_str()).unwrap_or(false) {
                     continue;
                 }
                 if let Some(sender) = self.senders.get(uid) {

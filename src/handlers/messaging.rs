@@ -55,7 +55,7 @@ impl Handler for PrivmsgHandler {
 
                 // Broadcast to all channel members except sender
                 for uid in channel.members.keys() {
-                    if uid == ctx.uid {
+                    if uid.as_str() == ctx.uid {
                         continue; // Don't echo back to sender
                     }
                     if let Some(sender) = ctx.matrix.senders.get(uid) {
