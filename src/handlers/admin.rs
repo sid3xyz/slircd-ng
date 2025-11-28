@@ -7,12 +7,12 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    err_needmoreparams, err_noprivileges, err_nosuchchannel, err_nosuchnick, server_reply,
-    Context, Handler, HandlerResult,
+    apply_channel_modes_typed, err_needmoreparams, err_noprivileges, err_nosuchchannel,
+    err_nosuchnick, server_reply, Context, Handler, HandlerResult,
 };
 use crate::state::MemberModes;
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, Prefix, Response};
+use slirc_proto::{irc_to_lower, Command, Message, Mode, Prefix, Response};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -368,51 +368,97 @@ impl Handler for SamodeHandler {
             return Ok(());
         }
 
-        // Extract channel and modes
-        let (channel_name, mode_str) = match &msg.command {
+        // Extract channel and modes from Command::SAMODE
+        let (channel_name, modes_str, params) = match &msg.command {
             Command::SAMODE(target, modes, params) => {
-                let mode_with_params = if let Some(p) = params {
-                    format!("{modes} {p}")
-                } else {
-                    modes.clone()
-                };
-                (target.clone(), mode_with_params)
+                (target.clone(), modes.clone(), params.clone())
             }
             _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SAMODE")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "SAMODE"))
+                    .await?;
                 return Ok(());
             }
         };
 
         let channel_lower = irc_to_lower(&channel_name);
 
-        // Check if channel exists
-        if !ctx.matrix.channels.contains_key(&channel_lower) {
-            ctx.sender.send(err_nosuchchannel(server_name, &oper_nick, &channel_name)).await?;
-            return Ok(());
+        // Get channel
+        let channel = match ctx.matrix.channels.get(&channel_lower) {
+            Some(c) => c.clone(),
+            None => {
+                ctx.sender
+                    .send(err_nosuchchannel(server_name, &oper_nick, &channel_name))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Parse mode string into typed modes using slirc-proto
+        // Build the pieces array: ["+ov", "nick1", "nick2"] etc.
+        let mut pieces: Vec<&str> = vec![&modes_str];
+        if let Some(ref p) = params {
+            pieces.extend(p.split_whitespace());
         }
 
-        // TODO: Parse and apply modes
-        // For now, just broadcast the MODE message as if from server
-        let mode_msg = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::Raw("MODE".to_string(), vec![channel_name.clone(), mode_str.clone()]),
+        let typed_modes = match Mode::as_channel_modes(&pieces) {
+            Ok(modes) => modes,
+            Err(e) => {
+                // Invalid mode string - send notice to operator
+                let notice = Message {
+                    tags: None,
+                    prefix: Some(Prefix::ServerName(server_name.clone())),
+                    command: Command::NOTICE(
+                        oper_nick.clone(),
+                        format!("SAMODE error: {e}"),
+                    ),
+                };
+                ctx.sender.send(notice).await?;
+                return Ok(());
+            }
         };
-        ctx.matrix.broadcast_to_channel(&channel_lower, mode_msg, None).await;
 
-        tracing::info!(
-            oper = %oper_nick,
-            channel = %channel_name,
-            modes = %mode_str,
-            "SAMODE: Server mode change"
-        );
+        // Apply modes to channel state
+        let mut channel_guard = channel.write().await;
+        let canonical_name = channel_guard.name.clone();
+
+        let (applied, used_args) = apply_channel_modes_typed(ctx, &mut channel_guard, &typed_modes)?;
+
+        if !applied.is_empty() {
+            // Build the mode params for broadcast
+            let mut mode_params = vec![canonical_name.clone(), applied.clone()];
+            mode_params.extend(used_args);
+
+            // Broadcast as server (not as user)
+            let mode_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::ServerName(server_name.clone())),
+                command: Command::Raw("MODE".to_string(), mode_params),
+            };
+
+            // Broadcast to all channel members
+            for uid in channel_guard.members.keys() {
+                if let Some(sender) = ctx.matrix.senders.get(uid) {
+                    let _ = sender.send(mode_msg.clone()).await;
+                }
+            }
+
+            tracing::info!(
+                oper = %oper_nick,
+                channel = %canonical_name,
+                modes = %applied,
+                "SAMODE: Server mode change applied"
+            );
+        }
 
         // Confirm to operator
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(oper_nick, format!("SAMODE: {channel_name} {mode_str}")),
+            command: Command::NOTICE(
+                oper_nick,
+                format!("SAMODE: {canonical_name} {applied}"),
+            ),
         };
         ctx.sender.send(notice).await?;
 

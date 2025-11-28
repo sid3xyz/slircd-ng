@@ -331,7 +331,9 @@ async fn send_list_mode(
 
 /// Apply channel mode changes from typed modes.
 /// Returns (applied_string, used_args).
-fn apply_channel_modes_typed(
+///
+/// This is public so SAMODE can reuse the mode application logic.
+pub fn apply_channel_modes_typed(
     ctx: &Context<'_>,
     channel: &mut crate::state::Channel,
     modes: &[Mode<ChannelMode>],
