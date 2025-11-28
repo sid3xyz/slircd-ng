@@ -3,11 +3,14 @@
 //! A high-performance, multi-threaded IRC server built on zero-copy parsing.
 
 mod config;
+mod db;
 mod handlers;
 mod network;
+mod services;
 mod state;
 
 use crate::config::Config;
+use crate::db::Database;
 use crate::network::Gateway;
 use crate::state::Matrix;
 use std::sync::Arc;
@@ -41,11 +44,17 @@ async fn main() -> anyhow::Result<()> {
         "Starting slircd-ng"
     );
 
+    // Initialize database
+    let db_path = config.database.as_ref()
+        .map(|d| d.path.as_str())
+        .unwrap_or("slircd.db");
+    let db = Database::new(db_path).await?;
+
     // Create the Matrix (shared state)
     let matrix = Arc::new(Matrix::new(&config));
 
     // Start the Gateway
-    let gateway = Gateway::bind(config.listen.address, matrix).await?;
+    let gateway = Gateway::bind(config.listen.address, matrix, db).await?;
     gateway.run().await?;
 
     Ok(())

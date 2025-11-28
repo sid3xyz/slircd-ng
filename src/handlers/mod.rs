@@ -21,7 +21,7 @@ pub use cap::{AuthenticateHandler, CapHandler, SaslState};
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
 pub use messaging::{NoticeHandler, PrivmsgHandler};
-pub use misc::{AwayHandler, InviteHandler, IsonHandler, KnockHandler, UserhostHandler};
+pub use misc::{AwayHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, UserhostHandler};
 pub use mode::{apply_channel_modes_typed, ModeHandler};
 pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
 pub use server_query::{
@@ -30,6 +30,7 @@ pub use server_query::{
 };
 pub use user_query::{WhoHandler, WhoisHandler, WhowasHandler};
 
+use crate::db::Database;
 use crate::state::Matrix;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, Prefix, Response};
@@ -48,6 +49,8 @@ pub struct Context<'a> {
     pub sender: &'a mpsc::Sender<Message>,
     /// Current handshake state.
     pub handshake: &'a mut HandshakeState,
+    /// Database for services.
+    pub db: &'a Database,
 }
 
 /// State tracked during client registration handshake.
@@ -168,6 +171,10 @@ impl Registry {
         handlers.insert("USERHOST", Box::new(UserhostHandler));
         handlers.insert("ISON", Box::new(IsonHandler));
         handlers.insert("KNOCK", Box::new(KnockHandler));
+
+        // Service aliases
+        handlers.insert("NS", Box::new(NsHandler));
+        handlers.insert("NICKSERV", Box::new(NsHandler));
 
         // Operator handlers
         handlers.insert("OPER", Box::new(OperHandler));

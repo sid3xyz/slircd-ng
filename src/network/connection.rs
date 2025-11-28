@@ -14,6 +14,7 @@
 //!    └─────────────┘     └─────────────┘     └─────────────┘
 //! ```
 
+use crate::db::Database;
 use crate::handlers::{Context, HandshakeState, Registry};
 use crate::state::Matrix;
 use futures_util::SinkExt;
@@ -33,6 +34,7 @@ pub struct Connection {
     matrix: Arc<Matrix>,
     registry: Arc<Registry>,
     stream: TcpStream,
+    db: Database,
 }
 
 impl Connection {
@@ -43,6 +45,7 @@ impl Connection {
         addr: SocketAddr,
         matrix: Arc<Matrix>,
         registry: Arc<Registry>,
+        db: Database,
     ) -> Self {
         Self {
             uid,
@@ -50,6 +53,7 @@ impl Connection {
             matrix,
             registry,
             stream,
+            db,
         }
     }
 
@@ -81,6 +85,7 @@ impl Connection {
                         matrix: &self.matrix,
                         sender: &handshake_tx,
                         handshake: &mut handshake,
+                        db: &self.db,
                     };
 
                     if let Err(e) = self.registry.dispatch(&mut ctx, &msg).await {
@@ -187,6 +192,7 @@ impl Connection {
                 matrix: &self.matrix,
                 sender: &outgoing_tx,
                 handshake: &mut handshake,
+                db: &self.db,
             };
 
             if let Err(e) = self.registry.dispatch(&mut ctx, &msg).await {

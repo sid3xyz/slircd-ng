@@ -24,6 +24,15 @@ pub struct Config {
     /// Operator blocks.
     #[serde(default)]
     pub oper: Vec<OperBlock>,
+    /// Database configuration.
+    pub database: Option<DatabaseConfig>,
+}
+
+/// Database configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DatabaseConfig {
+    /// Path to SQLite database file.
+    pub path: String,
 }
 
 /// Operator block configuration.

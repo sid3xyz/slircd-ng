@@ -13,3 +13,7 @@ description = "Straylight IRC Daemon - Next Generation"
 [listen]
 # Address to bind to
 address = "0.0.0.0:6667"
+
+[database]
+# Path to SQLite database file
+path = "slircd.db"

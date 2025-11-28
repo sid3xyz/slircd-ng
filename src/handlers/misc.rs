@@ -3,6 +3,7 @@
 //! RFC 2812 - Miscellaneous and optional commands
 
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, Command, Message, Response};
 use tracing::debug;
@@ -470,6 +471,62 @@ impl Handler for KnockHandler {
             vec![nick, channel_name, "Your knock has been delivered".to_string()],
         );
         ctx.sender.send(reply).await?;
+
+        Ok(())
+    }
+}
+
+/// Handler for NS (NickServ alias) command.
+///
+/// `NS <command> [args]`
+///
+/// Shortcut for PRIVMSG NickServ.
+pub struct NsHandler;
+
+#[async_trait]
+impl Handler for NsHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+        if !ctx.handshake.registered {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_NOTREGISTERED,
+                vec!["*".to_string(), "You have not registered".to_string()],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+
+        // Extract the command text from Raw command
+        let text = match &msg.command {
+            Command::Raw(_, params) => params.join(" "),
+            _ => return Ok(()),
+        };
+
+        if text.is_empty() {
+            // Show help
+            route_service_message(
+                ctx.matrix,
+                ctx.db,
+                ctx.uid,
+                nick,
+                "NickServ",
+                "HELP",
+                ctx.sender,
+            ).await;
+        } else {
+            // Route to NickServ
+            route_service_message(
+                ctx.matrix,
+                ctx.db,
+                ctx.uid,
+                nick,
+                "NickServ",
+                &text,
+                ctx.sender,
+            ).await;
+        }
 
         Ok(())
     }

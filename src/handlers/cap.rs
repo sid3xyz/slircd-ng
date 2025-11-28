@@ -6,16 +6,15 @@
 use super::{server_reply, Context, Handler, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{CapSubCommand, Command, Message, Prefix, Response};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Capabilities we support (subset of slirc_proto::CAPABILITIES).
-/// Start with core caps, expand in later phases.
 const SUPPORTED_CAPS: &[&str] = &[
     "multi-prefix",
     "userhost-in-names",
     "server-time",
     "echo-message",
-    // Phase 2: "sasl",
+    "sasl",
     // Phase 3: "away-notify", "account-notify", "extended-join",
 ];
 
@@ -274,21 +273,29 @@ impl Handler for AuthenticateHandler {
                 } else {
                     // Try to decode and validate
                     match validate_sasl_plain(&data) {
-                        Ok((authzid, authcid, _password)) => {
-                            // TODO: Actually validate against NickServ database
-                            // For now, just accept any credentials
-                            info!(
-                                nick = %nick,
-                                authzid = %authzid,
-                                authcid = %authcid,
-                                "SASL PLAIN authentication (not validated yet)"
-                            );
+                        Ok((authzid, authcid, password)) => {
+                            // Validate against database
+                            let account_name = if authzid.is_empty() { &authcid } else { &authzid };
+                            match ctx.db.accounts().identify(account_name, &password).await {
+                                Ok(account) => {
+                                    info!(
+                                        nick = %nick,
+                                        account = %account.name,
+                                        "SASL PLAIN authentication successful"
+                                    );
 
-                            // Send success
-                            let user = ctx.handshake.user.clone().unwrap_or_else(|| "*".to_string());
-                            send_sasl_success(ctx, &nick, &user, &authcid).await?;
-                            ctx.handshake.sasl_state = SaslState::Authenticated;
-                            ctx.handshake.account = Some(authcid);
+                                    // Send success
+                                    let user = ctx.handshake.user.clone().unwrap_or_else(|| "*".to_string());
+                                    send_sasl_success(ctx, &nick, &user, &account.name).await?;
+                                    ctx.handshake.sasl_state = SaslState::Authenticated;
+                                    ctx.handshake.account = Some(account.name);
+                                }
+                                Err(e) => {
+                                    warn!(nick = %nick, account = %account_name, error = ?e, "SASL authentication failed");
+                                    send_sasl_fail(ctx, &nick, "Invalid credentials").await?;
+                                    ctx.handshake.sasl_state = SaslState::None;
+                                }
+                            }
                         }
                         Err(e) => {
                             debug!(nick = %nick, error = %e, "SASL PLAIN decode failed");

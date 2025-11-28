@@ -3,6 +3,7 @@
 //! The Gateway binds to a socket and spawns Connection tasks for each
 //! incoming client.
 
+use crate::db::Database;
 use crate::handlers::Registry;
 use crate::network::Connection;
 use crate::state::Matrix;
@@ -16,15 +17,16 @@ pub struct Gateway {
     listener: TcpListener,
     matrix: Arc<Matrix>,
     registry: Arc<Registry>,
+    db: Database,
 }
 
 impl Gateway {
     /// Bind the gateway to the specified address.
-    pub async fn bind(addr: SocketAddr, matrix: Arc<Matrix>) -> std::io::Result<Self> {
+    pub async fn bind(addr: SocketAddr, matrix: Arc<Matrix>, db: Database) -> std::io::Result<Self> {
         let listener = TcpListener::bind(addr).await?;
         let registry = Arc::new(Registry::new());
         info!(%addr, "Gateway listening");
-        Ok(Self { listener, matrix, registry })
+        Ok(Self { listener, matrix, registry, db })
     }
 
     /// Run the gateway, accepting connections forever.
@@ -37,10 +39,11 @@ impl Gateway {
 
                     let matrix = Arc::clone(&self.matrix);
                     let registry = Arc::clone(&self.registry);
+                    let db = self.db.clone();
                     let uid = matrix.uid_gen.next();
 
                     tokio::spawn(async move {
-                        let connection = Connection::new(uid.clone(), stream, addr, matrix, registry);
+                        let connection = Connection::new(uid.clone(), stream, addr, matrix, registry, db);
                         if let Err(e) = connection.run().await {
                             error!(%uid, %addr, error = %e, "Connection error");
                         }

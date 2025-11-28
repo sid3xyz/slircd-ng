@@ -9,7 +9,7 @@
 
 | Branch | Phase | Status | Description |
 |--------|-------|--------|-------------|
-| *none* | - | - | Ready for Phase 2 |
+| copilot/start-phase-2-implementation | 2 | In Progress | Database + NickServ |
 
 ---
 
@@ -43,23 +43,46 @@
 
 ---
 
-## Phase 2: Database + NickServ (Planned)
+## Phase 2: Database + NickServ (In Progress)
 
-### Branch: `feat/p2-database` (not started)
+### Branch: `copilot/start-phase-2-implementation`
 
 **Goal:** Add SQLite persistence and NickServ service.
 
-**Tasks:**
-- [ ] Add `sqlx` dependency with SQLite feature
-- [ ] Create database schema (accounts, nicknames, channels, klines)
-- [ ] Implement `Database` struct with async connection pool
-- [ ] NickServ: REGISTER, IDENTIFY, GHOST, INFO, SET
-- [ ] Wire SASL PLAIN to validate against accounts table
-- [ ] Enable `sasl` capability in CAP LS
-- [ ] Persist K-lines/D-lines to database
+**Tasks Completed:**
+- [x] Add `sqlx` dependency with SQLite feature
+- [x] Add `argon2` and `rand` dependencies for password hashing
+- [x] Create database module with schema migrations
+- [x] Implement embedded migration for accounts, nicknames, klines, dlines tables
+- [x] Create `Database` struct with connection pool
+- [x] Create `AccountRepository` for account management
+- [x] Implement NickServ with REGISTER, IDENTIFY, GHOST, INFO, SET commands
+- [x] Wire SASL PLAIN to validate against database
+- [x] Enable `sasl` capability in CAP LS
+- [x] Add service message routing (PRIVMSG NickServ)
+- [x] Add NS command alias
+- [x] Update User struct creation with +r mode for SASL-authenticated users
+- [x] Add database configuration to config.toml
 
-**Dependencies:**
-- `sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }`
+**New Files:**
+- `migrations/001_init.sql` - Database schema
+- `src/db/mod.rs` - Database module
+- `src/db/accounts.rs` - Account repository
+- `src/services/mod.rs` - Services module
+- `src/services/nickserv.rs` - NickServ implementation
+
+**Modified Files:**
+- `Cargo.toml` - Added sqlx, argon2, rand dependencies
+- `src/main.rs` - Database initialization
+- `src/config.rs` - Database configuration
+- `src/handlers/mod.rs` - Context with db, NS handler registration
+- `src/handlers/cap.rs` - SASL capability enabled, database validation
+- `src/handlers/messaging.rs` - Service message routing
+- `src/handlers/misc.rs` - NS alias handler
+- `src/handlers/connection.rs` - User creation with +r mode
+- `src/network/gateway.rs` - Database passing
+- `src/network/connection.rs` - Database in context
+- `config.toml` - Database path configuration
 
 ---
 
