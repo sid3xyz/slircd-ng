@@ -1,2 +1,8 @@
 /target/
 Cargo.lock
+
+# Database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal

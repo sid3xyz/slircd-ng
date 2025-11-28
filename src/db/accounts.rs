@@ -1,0 +1,310 @@
+//! Account repository for NickServ functionality.
+//!
+//! Handles account registration, authentication, and nickname management.
+
+use super::DbError;
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2,
+};
+use sqlx::SqlitePool;
+
+/// A registered NickServ account.
+#[derive(Debug, Clone)]
+pub struct Account {
+    pub id: i64,
+    pub name: String,
+    pub email: Option<String>,
+    pub registered_at: i64,
+    pub last_seen_at: i64,
+    pub enforce: bool,
+    pub hide_email: bool,
+}
+
+/// Repository for account operations.
+pub struct AccountRepository<'a> {
+    pool: &'a SqlitePool,
+}
+
+impl<'a> AccountRepository<'a> {
+    /// Create a new account repository.
+    pub fn new(pool: &'a SqlitePool) -> Self {
+        Self { pool }
+    }
+
+    /// Register a new account with the given nickname and password.
+    pub async fn register(
+        &self,
+        name: &str,
+        password: &str,
+        email: Option<&str>,
+    ) -> Result<Account, DbError> {
+        // Check if account or nickname already exists
+        if self.find_by_name(name).await?.is_some() {
+            return Err(DbError::AccountExists(name.to_string()));
+        }
+        if self.find_by_nickname(name).await?.is_some() {
+            return Err(DbError::NicknameRegistered(name.to_string()));
+        }
+
+        // Hash the password using Argon2
+        let password_hash = hash_password(password)?;
+        let now = chrono::Utc::now().timestamp();
+
+        // Insert account
+        let result = sqlx::query(
+            r#"
+            INSERT INTO accounts (name, password_hash, email, registered_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(name)
+        .bind(&password_hash)
+        .bind(email)
+        .bind(now)
+        .bind(now)
+        .execute(self.pool)
+        .await?;
+
+        let account_id = result.last_insert_rowid();
+
+        // Link the nickname to the account
+        sqlx::query(
+            r#"
+            INSERT INTO nicknames (name, account_id)
+            VALUES (?, ?)
+            "#,
+        )
+        .bind(name)
+        .bind(account_id)
+        .execute(self.pool)
+        .await?;
+
+        Ok(Account {
+            id: account_id,
+            name: name.to_string(),
+            email: email.map(String::from),
+            registered_at: now,
+            last_seen_at: now,
+            enforce: false,
+            hide_email: true,
+        })
+    }
+
+    /// Verify password and return account if valid.
+    pub async fn identify(&self, name: &str, password: &str) -> Result<Account, DbError> {
+        // First try to find by account name
+        let row = sqlx::query_as::<_, (i64, String, String, Option<String>, i64, i64, bool, bool)>(
+            r#"
+            SELECT id, name, password_hash, email, registered_at, last_seen_at, enforce, hide_email
+            FROM accounts
+            WHERE name = ? COLLATE NOCASE
+            "#,
+        )
+        .bind(name)
+        .fetch_optional(self.pool)
+        .await?;
+
+        // If not found by account name, try nickname
+        let row = match row {
+            Some(r) => r,
+            None => {
+                // Look up account by nickname
+                let account_id = sqlx::query_scalar::<_, i64>(
+                    r#"
+                    SELECT account_id FROM nicknames
+                    WHERE name = ? COLLATE NOCASE
+                    "#,
+                )
+                .bind(name)
+                .fetch_optional(self.pool)
+                .await?
+                .ok_or_else(|| DbError::AccountNotFound(name.to_string()))?;
+
+                sqlx::query_as::<_, (i64, String, String, Option<String>, i64, i64, bool, bool)>(
+                    r#"
+                    SELECT id, name, password_hash, email, registered_at, last_seen_at, enforce, hide_email
+                    FROM accounts
+                    WHERE id = ?
+                    "#,
+                )
+                .bind(account_id)
+                .fetch_one(self.pool)
+                .await?
+            }
+        };
+
+        let (id, name, password_hash, email, registered_at, _last_seen_at, enforce, hide_email) =
+            row;
+
+        // Verify password
+        verify_password(password, &password_hash)?;
+
+        // Update last seen
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("UPDATE accounts SET last_seen_at = ? WHERE id = ?")
+            .bind(now)
+            .bind(id)
+            .execute(self.pool)
+            .await?;
+
+        Ok(Account {
+            id,
+            name,
+            email,
+            registered_at,
+            last_seen_at: now,
+            enforce,
+            hide_email,
+        })
+    }
+
+    /// Find account by name.
+    pub async fn find_by_name(&self, name: &str) -> Result<Option<Account>, DbError> {
+        let row = sqlx::query_as::<_, (i64, String, Option<String>, i64, i64, bool, bool)>(
+            r#"
+            SELECT id, name, email, registered_at, last_seen_at, enforce, hide_email
+            FROM accounts
+            WHERE name = ? COLLATE NOCASE
+            "#,
+        )
+        .bind(name)
+        .fetch_optional(self.pool)
+        .await?;
+
+        Ok(row.map(
+            |(id, name, email, registered_at, last_seen_at, enforce, hide_email)| Account {
+                id,
+                name,
+                email,
+                registered_at,
+                last_seen_at,
+                enforce,
+                hide_email,
+            },
+        ))
+    }
+
+    /// Find account by nickname (looks up in nicknames table first).
+    pub async fn find_by_nickname(&self, nick: &str) -> Result<Option<Account>, DbError> {
+        let account_id = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT account_id FROM nicknames
+            WHERE name = ? COLLATE NOCASE
+            "#,
+        )
+        .bind(nick)
+        .fetch_optional(self.pool)
+        .await?;
+
+        match account_id {
+            Some(id) => self.find_by_id(id).await,
+            None => Ok(None),
+        }
+    }
+
+    /// Find account by ID.
+    pub async fn find_by_id(&self, id: i64) -> Result<Option<Account>, DbError> {
+        let row = sqlx::query_as::<_, (i64, String, Option<String>, i64, i64, bool, bool)>(
+            r#"
+            SELECT id, name, email, registered_at, last_seen_at, enforce, hide_email
+            FROM accounts
+            WHERE id = ?
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(self.pool)
+        .await?;
+
+        Ok(row.map(
+            |(id, name, email, registered_at, last_seen_at, enforce, hide_email)| Account {
+                id,
+                name,
+                email,
+                registered_at,
+                last_seen_at,
+                enforce,
+                hide_email,
+            },
+        ))
+    }
+
+    /// Get all nicknames for an account.
+    pub async fn get_nicknames(&self, account_id: i64) -> Result<Vec<String>, DbError> {
+        let rows = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT name FROM nicknames
+            WHERE account_id = ?
+            "#,
+        )
+        .bind(account_id)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Update account settings.
+    pub async fn set_option(
+        &self,
+        account_id: i64,
+        option: &str,
+        value: &str,
+    ) -> Result<(), DbError> {
+        match option.to_lowercase().as_str() {
+            "email" => {
+                sqlx::query("UPDATE accounts SET email = ? WHERE id = ?")
+                    .bind(value)
+                    .bind(account_id)
+                    .execute(self.pool)
+                    .await?;
+            }
+            "enforce" => {
+                let enforce = matches!(value.to_lowercase().as_str(), "on" | "true" | "1" | "yes");
+                sqlx::query("UPDATE accounts SET enforce = ? WHERE id = ?")
+                    .bind(enforce)
+                    .bind(account_id)
+                    .execute(self.pool)
+                    .await?;
+            }
+            "hidemail" | "hide_email" => {
+                let hide = matches!(value.to_lowercase().as_str(), "on" | "true" | "1" | "yes");
+                sqlx::query("UPDATE accounts SET hide_email = ? WHERE id = ?")
+                    .bind(hide)
+                    .bind(account_id)
+                    .execute(self.pool)
+                    .await?;
+            }
+            "password" => {
+                let password_hash = hash_password(value)?;
+                sqlx::query("UPDATE accounts SET password_hash = ? WHERE id = ?")
+                    .bind(password_hash)
+                    .bind(account_id)
+                    .execute(self.pool)
+                    .await?;
+            }
+            _ => {
+                return Err(DbError::UnknownOption(option.to_string()));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Hash a password using Argon2.
+fn hash_password(password: &str) -> Result<String, DbError> {
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let hash = argon2
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|_| DbError::InvalidPassword)?;
+    Ok(hash.to_string())
+}
+
+/// Verify a password against a stored hash.
+fn verify_password(password: &str, hash: &str) -> Result<(), DbError> {
+    let parsed_hash = PasswordHash::new(hash).map_err(|_| DbError::InvalidPassword)?;
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .map_err(|_| DbError::InvalidPassword)
+}

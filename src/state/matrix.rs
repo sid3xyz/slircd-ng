@@ -84,6 +84,8 @@ pub struct User {
     pub channels: HashSet<String>,
     /// User modes.
     pub modes: UserModes,
+    /// Account name if identified to NickServ.
+    pub account: Option<String>,
 }
 
 /// User modes.
@@ -124,6 +126,7 @@ impl User {
             host,
             channels: HashSet::new(),
             modes: UserModes::default(),
+            account: None,
         }
     }
 
