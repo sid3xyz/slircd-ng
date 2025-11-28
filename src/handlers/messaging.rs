@@ -31,8 +31,8 @@ impl Handler for PrivmsgHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        let nick = ctx.handshake.nick.as_ref().unwrap();
-        let user_name = ctx.handshake.user.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Build the outgoing message with user prefix
         let out_msg = Message {
@@ -158,8 +158,8 @@ impl Handler for NoticeHandler {
             return Ok(());
         }
 
-        let nick = ctx.handshake.nick.as_ref().unwrap();
-        let user_name = ctx.handshake.user.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Build the outgoing message with user prefix
         let out_msg = Message {

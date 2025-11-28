@@ -5,6 +5,7 @@
 
 mod admin;
 mod bans;
+mod cap;
 mod channel;
 mod connection;
 mod messaging;
@@ -16,6 +17,7 @@ mod user_query;
 
 pub use admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler};
 pub use bans::{DlineHandler, KlineHandler, UndlineHandler, UnklineHandler};
+pub use cap::{AuthenticateHandler, CapHandler, SaslState};
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
 pub use messaging::{NoticeHandler, PrivmsgHandler};
@@ -59,12 +61,26 @@ pub struct HandshakeState {
     pub realname: Option<String>,
     /// Whether registration is complete.
     pub registered: bool,
+    /// Whether CAP negotiation is in progress.
+    pub cap_negotiating: bool,
+    /// CAP protocol version (301 or 302).
+    pub cap_version: u32,
+    /// Capabilities enabled by this client.
+    pub capabilities: std::collections::HashSet<String>,
+    /// SASL authentication state.
+    pub sasl_state: SaslState,
+    /// Account name if SASL authenticated.
+    pub account: Option<String>,
 }
 
 impl HandshakeState {
     /// Check if we have both NICK and USER and can complete registration.
+    /// Also requires CAP negotiation to be finished if it was started.
     pub fn can_register(&self) -> bool {
-        self.nick.is_some() && self.user.is_some() && !self.registered
+        self.nick.is_some() 
+            && self.user.is_some() 
+            && !self.registered
+            && !self.cap_negotiating
     }
 }
 
@@ -83,6 +99,8 @@ pub enum HandlerError {
     NotRegistered,
     #[error("already registered")]
     AlreadyRegistered,
+    #[error("internal error: nick or user missing after registration")]
+    NickOrUserMissing,
     #[error("send error: {0}")]
     Send(#[from] mpsc::error::SendError<Message>),
 }
@@ -114,6 +132,8 @@ impl Registry {
         handlers.insert("PING", Box::new(PingHandler));
         handlers.insert("PONG", Box::new(PongHandler));
         handlers.insert("QUIT", Box::new(QuitHandler));
+        handlers.insert("CAP", Box::new(CapHandler));
+        handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
 
         // Channel handlers
         handlers.insert("JOIN", Box::new(JoinHandler));
@@ -200,6 +220,8 @@ fn command_name(cmd: &Command) -> String {
         Command::USER(..) => "USER".to_string(),
         Command::OPER(..) => "OPER".to_string(),
         Command::QUIT(_) => "QUIT".to_string(),
+        Command::CAP(..) => "CAP".to_string(),
+        Command::AUTHENTICATE(_) => "AUTHENTICATE".to_string(),
 
         // Channel operations
         Command::JOIN(..) => "JOIN".to_string(),

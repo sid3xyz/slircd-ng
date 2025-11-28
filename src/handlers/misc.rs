@@ -2,7 +2,7 @@
 //!
 //! RFC 2812 - Miscellaneous and optional commands
 
-use super::{server_reply, Context, Handler, HandlerResult};
+use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, Command, Message, Response};
 use tracing::debug;
@@ -28,7 +28,7 @@ impl Handler for AwayHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Extract away message (empty = unset)
         let away_msg = match &msg.command {
@@ -97,7 +97,7 @@ impl Handler for UserhostHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Extract nicknames
         let nicks = match &msg.command {
@@ -171,7 +171,7 @@ impl Handler for IsonHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Extract nicknames
         let nicks = match &msg.command {
@@ -236,7 +236,7 @@ impl Handler for InviteHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Extract target nick and channel
         let (target_nick, channel_name) = match &msg.command {

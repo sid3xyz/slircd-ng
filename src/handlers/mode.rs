@@ -45,7 +45,7 @@ async fn handle_user_mode(
     target: &str,
     modes: &[Mode<UserMode>],
 ) -> HandlerResult {
-    let nick = ctx.handshake.nick.as_ref().unwrap();
+    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
     // Can only query/change your own modes
     if !irc_eq(target, nick) {
@@ -83,7 +83,7 @@ async fn handle_user_mode(
             // Echo the change back
             let mode_msg = Message {
                 tags: None,
-                prefix: Some(user_prefix(nick, ctx.handshake.user.as_ref().unwrap(), "localhost")),
+                prefix: Some(user_prefix(nick, ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?, "localhost")),
                 command: Command::Raw("MODE".to_string(), vec![nick.clone(), applied.clone()]),
             };
             ctx.sender.send(mode_msg).await?;
@@ -153,8 +153,8 @@ async fn handle_channel_mode(
     channel_name: &str,
     modes: &[Mode<ChannelMode>],
 ) -> HandlerResult {
-    let nick = ctx.handshake.nick.as_ref().unwrap();
-    let user_name = ctx.handshake.user.as_ref().unwrap();
+    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
     let channel_lower = irc_to_lower(channel_name);
 
     // Get channel
@@ -269,7 +269,7 @@ async fn send_list_mode(
     canonical_name: &str,
     list_mode: ChannelMode,
 ) -> HandlerResult {
-    let nick = ctx.handshake.nick.as_ref().unwrap();
+    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
     if let Some(channel) = ctx.matrix.channels.get(channel_lower) {
         let channel = channel.read().await;
@@ -333,6 +333,7 @@ async fn send_list_mode(
 /// Returns (applied_string, used_args).
 ///
 /// This is public so SAMODE can reuse the mode application logic.
+#[allow(clippy::result_large_err)] // HandlerError contains large SendError variant
 pub fn apply_channel_modes_typed(
     ctx: &Context<'_>,
     channel: &mut crate::state::Channel,

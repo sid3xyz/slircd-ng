@@ -66,9 +66,9 @@ impl Handler for JoinHandler {
 /// Join a single channel.
 async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResult {
     let channel_lower = irc_to_lower(channel_name);
-    let nick = ctx.handshake.nick.as_ref().unwrap();
-    let user_name = ctx.handshake.user.as_ref().unwrap();
-    let realname = ctx.handshake.realname.as_ref().unwrap();
+    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let realname = ctx.handshake.realname.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
     // Get or create channel
     let channel = ctx.matrix.channels.entry(channel_lower.clone()).or_insert_with(|| {
@@ -183,8 +183,8 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
 
 /// Leave all channels (JOIN 0).
 async fn leave_all_channels(ctx: &mut Context<'_>) -> HandlerResult {
-    let nick = ctx.handshake.nick.clone().unwrap();
-    let user_name = ctx.handshake.user.clone().unwrap();
+    let nick = ctx.handshake.nick.clone().ok_or(HandlerError::NickOrUserMissing)?;
+    let user_name = ctx.handshake.user.clone().ok_or(HandlerError::NickOrUserMissing)?;
 
     // Get list of channels user is in
     let channels: Vec<String> = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
@@ -217,8 +217,8 @@ impl Handler for PartHandler {
             _ => return Ok(()),
         };
 
-        let nick = ctx.handshake.nick.clone().unwrap();
-        let user_name = ctx.handshake.user.clone().unwrap();
+        let nick = ctx.handshake.nick.clone().ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx.handshake.user.clone().ok_or(HandlerError::NickOrUserMissing)?;
 
         for channel_name in channels_str.split(',') {
             let channel_name = channel_name.trim();
@@ -331,8 +331,8 @@ impl Handler for TopicHandler {
             _ => return Ok(()),
         };
 
-        let nick = ctx.handshake.nick.as_ref().unwrap();
-        let user_name = ctx.handshake.user.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
         let channel_lower = irc_to_lower(&channel_name);
 
         // Get channel
@@ -457,7 +457,7 @@ impl Handler for NamesHandler {
             _ => return Ok(()),
         };
 
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         if channel_name.is_empty() {
             // NAMES without channel - not implemented
@@ -546,8 +546,8 @@ impl Handler for KickHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        let nick = ctx.handshake.nick.as_ref().unwrap();
-        let user_name = ctx.handshake.user.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
         let channel_lower = irc_to_lower(&channel_name);
 
         // Get channel

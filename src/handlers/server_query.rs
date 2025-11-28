@@ -2,7 +2,7 @@
 //!
 //! RFC 2812 §3.4 - Server queries and commands
 
-use super::{server_reply, Context, Handler, HandlerResult};
+use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, Response};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -31,7 +31,7 @@ impl Handler for VersionHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_VERSION (351): <version>.<debuglevel> <server> :<comments>
         #[cfg(debug_assertions)]
@@ -76,7 +76,7 @@ impl Handler for TimeHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_TIME (391): <server> :<string showing server's local time>
         let now = chrono::Local::now();
@@ -114,7 +114,7 @@ impl Handler for AdminHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_ADMINME (256): <server> :Administrative info
         let reply = server_reply(
@@ -177,7 +177,7 @@ impl Handler for InfoHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         let info_lines = [
             format!("slircd-ng v{} - High-performance IRC daemon", VERSION),
@@ -234,7 +234,7 @@ impl Handler for LusersHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Count users and channels
         let total_users = ctx.matrix.users.len();
@@ -366,7 +366,7 @@ impl Handler for StatsHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Extract query character
         let query = match &msg.command {
@@ -462,7 +462,7 @@ impl Handler for MotdHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_MOTDSTART (375): :- <server> Message of the day -
         let reply = server_reply(
@@ -526,7 +526,7 @@ impl Handler for ListHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Extract optional channel filter
         let filter = match &msg.command {

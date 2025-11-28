@@ -142,8 +142,8 @@ impl Handler for UserHandler {
 
 /// Send the welcome burst (001-005 + MOTD) after successful registration.
 async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
-    let nick = ctx.handshake.nick.as_ref().unwrap();
-    let user = ctx.handshake.user.as_ref().unwrap();
+    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let user = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
     let server_name = &ctx.matrix.server_info.name;
     let network = &ctx.matrix.server_info.network;
 

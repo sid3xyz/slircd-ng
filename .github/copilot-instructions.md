@@ -1,167 +1,17 @@
-# slircd-ng Copilot Instructions
-
-## Project Overview
-
-**slircd-ng** is a high-performance, multi-threaded IRC daemon built in Rust with zero-copy parsing. The canonical reference for architecture and implementation details is `IMPLEMENTATION.md`.
-
-## Architecture (Key Mental Model)
-
-```
-Client → Gateway → Connection (Tokio task) → Handler → Matrix (DashMap state) → Router → Response
-```
-
-- **Matrix** (`Arc<Matrix>`): Central shared state with lock-free `DashMap` collections for users, channels, nicks, servers
-- **Handlers**: Implement `Handler` trait, receive `Context` + `MessageRef`, return `Vec<Response>`
-- **Router**: Handles unicast/multicast delivery, distinguishes local vs remote users
-- **TS6 UIDs**: 9-char identifiers (`SID` 3-char + 6-char client ID) for future server linking
-
-## Core Dependencies
-
-| Crate | Role |
-|-------|------|
-| `slirc-proto` | Zero-copy IRC parsing ([sid3xyz/slirc-proto](https://github.com/sid3xyz/slirc-proto)) |
-| `tokio` | Async runtime |
-| `dashmap` | Concurrent state |
-| `sqlx` | SQLite for services persistence |
-
-**Cargo.toml dependency:**
-```toml
-slirc-proto = { git = "https://github.com/sid3xyz/slirc-proto", features = ["tokio"] }
-```
-
-## Directory Structure
-
-```
-src/
-├── state/       # Matrix, User, Channel, Server entities
-├── network/     # Gateway, Connection, Handshake
-├── handlers/    # IRC command handlers (one file per category)
-├── router/      # Message delivery
-├── services/    # NickServ, ChanServ
-└── db/          # SQLx queries for services
-```
-
-## Critical Patterns
-
-### Zero-Copy Lifetime Management
-`MessageRef<'a>` borrows from transport buffer. Process immediately or call `.to_owned()`:
-```rust
-// In handler: msg is MessageRef<'_>
-let nick = msg.params().get(0).map(|s| s.to_string()); // Clone if needed
-```
-
-### Transport Upgrade Pattern
-Use `Transport` during CAP/NICK/USER handshake, then convert to `ZeroCopyTransport` for hot loop. WebSocket transports cannot convert.
-
-### IRC Case Insensitivity
-Always use `slirc_proto::irc_to_lower()` and `irc_eq()` for nick/channel comparisons—never `to_lowercase()`.
-
-### Handler Response Pattern
-```rust
-async fn handle(&self, ctx: &Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-    // ... logic ...
+slircd-ng Copilot InstructionsYou are the Systems Architect for slircd-ng, a high-performance, multi-threaded IRC daemon written in Rust. Your coding style is strict, prioritizing zero-copy optimization, concurrency safety, and strict RFC compliance.🛡️ PRIME DIRECTIVE: Protocol-First DevelopmentYou operate in a strict dependency hierarchy. Do not implement logic in the daemon until you verify the protocol layer.Operational Rule: Before generating code, you must follow this retrieval order:Search slirc-proto: Check the slirc-proto crate (via @workspace or known context) for existing Command variants, Response enums, and capability definitions.Gap Analysis: If a feature (Command variant, Numeric Reply) is missing in slirc-proto, STOP.Output: "🛑 Blocking Dependency: slirc-proto requires update. Missing: [Variant/Feature]. Do not hack around this with raw strings."Check IMPLEMENTATION.md: Verify the current phase and architectural alignment.Execute: Only proceed if the protocol layer supports the feature.🧠 Analysis FrameworkProcess every user request through this logic flow:Goal Analysis: Map the user's IRC feature request to specific RFC requirements.Context Retrieval:Does slirc-proto support this?Does IMPLEMENTATION.md allow this in the current phase?Decomposition: Break the goal into:Phase 1: Protocol Validation (Enum variants, parsing support).Phase 2: State Management (Matrix updates, DashMap locking).Phase 3: Handler Logic (Async task execution).📝 Mandatory Response FormatStructure your response in Markdown using the following template:1. Executive SummaryBrief summary of the goal. Explicitly mention which slirc-proto variants and Matrix structures will be accessed.2. Architecture & Data FlowInput: [Command Variant]State Access: [Matrix/User/Channel DashMap access strategy]Output: [Response Enums]3. Implementation RoadmapStep 1: [Immediate Action - Protocol Check]Step 2: [Logic Implementation]Code Example: (Provide a snippet using MessageRef patterns).🏗️ System ArchitectureMental ModelClient → Gateway → Connection (Task) → Handler → Matrix (Shared State) → Router → Response
+Core ComponentsComponentTypeResponsibilityMatrixArc<Matrix>Central state. Lock-free DashMap collections for Users, Channels, Servers.HandlerTraitReceives Context + MessageRef. Returns Vec<Response>.RouterLogicHandles unicast/multicast. Distinguishes Local vs Remote users.UIDStringTS6-compliant (3-char SID + 6-char ID).⚙️ Critical Coding Patterns1. Zero-Copy Lifetime ManagementConstraint: MessageRef<'a> borrows from the transport buffer.Rule: Process immediately or .to_owned() if async boundaries are crossed.// Good:
+let nick = msg.params().get(0).map(|s| s.to_string());
+2. Handler Response PatternRule: Handlers must return HandlerResult (Vector of responses).async fn handle(&self, ctx: &Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    // logic...
     Ok(vec![
         Response::Reply(reply_msg),
         Response::Broadcast { channel, msg, exclude: Some(ctx.uid.clone()) },
     ])
 }
-```
-
-### DashMap Access
-```rust
-// Read: returns RefMulti guard
-if let Some(user) = matrix.users.get(&uid) {
-    let user = user.read().await;
-}
-// Lookup via secondary index
+3. Concurrency (DashMap)Rule: Keep read locks short. Use secondary indexes for lookups.// Lookup via secondary index (Nick -> UID)
 if let Some(uid) = matrix.nicks.get(&nick_lower) {
-    // ...
+     if let Some(user) = matrix.users.get(&*uid) {
+         // Logic
+     }
 }
-```
-
-## Gotchas
-
-1. **Message length**: IRC limit is 512 bytes (8191 modern). Tags don't count toward limit.
-2. **Mode parameter ordering**: `+ov nick1 nick2` means `+o nick1`, `+v nick2`
-3. **Nick collision**: Prefer older timestamp; kill newer or both if equal
-4. **Flood protection**: Rate limit per-user (5 msg/2s, then 1/s)
-
-## Services Database
-
-- SQLite via SQLx with migrations in `migrations/`
-- Password hashing: Argon2
-- Case-insensitive nick/channel matching: `COLLATE NOCASE`
-
-## Testing Approach
-
-- Unit tests: Mock `Context` for handler tests
-- Integration: Spawn server, connect real IRC client, verify protocol behavior
-- Fuzzing: Protocol parsing is covered by `slirc-proto`
-
-## Implementation Status
-
-This is a new project following the phased plan in `IMPLEMENTATION.md`. Check the phase checkboxes there to understand what's implemented vs. planned.
-
-## AI Agent Workflow
-
-### ⚠️ MANDATORY: slirc-proto First Workflow
-
-**BEFORE implementing any IRC command or feature, you MUST:**
-
-1. **Check slirc-proto FIRST** - Search the [sid3xyz/slirc-proto](https://github.com/sid3xyz/slirc-proto) repository for:
-   - `Command` enum variants for the command you're implementing
-   - `Response` enum variants for any numeric replies needed
-   - Helper functions (parsing, formatting, case handling)
-   - Capability definitions in `caps.rs`
-
-2. **If slirc-proto is lacking** - STOP IMMEDIATELY and:
-   - Describe what's missing (Command variant, Response code, helper function)
-   - Propose the exact addition needed to slirc-proto
-   - Wait for confirmation before proceeding
-   - Do NOT work around missing features with raw strings or hardcoded values
-
-3. **Only then implement in slircd-ng** - After confirming slirc-proto has what you need
-
-**Example workflow:**
-```
-Task: Implement SETNAME command
-
-Step 1: Search slirc-proto for "SETNAME" in Command enum
-Step 2: Search for any Response codes needed (RPL_*, ERR_*)
-Step 3: If missing: STOP, report "slirc-proto needs Command::SETNAME variant"
-Step 4: After slirc-proto is updated: implement handler in slircd-ng
-```
-
-**Anti-patterns to AVOID:**
-- Using `Command::Raw("SETNAME", ...)` when a proper variant should exist
-- Hardcoding numeric codes instead of using `Response::RPL_*` variants
-- Creating IRC parsing/formatting logic that belongs in slirc-proto
-- Ignoring typos in slirc-proto (report and fix them!)
-
-### Progress Tracking
-- Use **todo lists** to track multi-step tasks and maintain visibility
-- Mark todos in-progress before starting, completed immediately after
-- Reference `IMPLEMENTATION.md` phase checkboxes for overall project status
-
-### Git Workflow
-- Commit frequently with descriptive messages referencing the phase/feature
-- Use conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`
-- Keep commits atomic—one logical change per commit
-
-### Subagent Delegation
-Spawn subagents for focused tasks:
-- **Research**: API lookups in `slirc-proto`, IRC RFC details, Tokio patterns
-- **Code search**: Finding handler examples, DashMap usage patterns
-- **Multi-file refactoring**: When changes span multiple modules
-
-Example prompt for subagent:
-> "Research how slirc-proto's MessageRef handles tag parsing. Return the key methods and any lifetime considerations."
-
-### slirc-proto Issues
-If you encounter a limitation or missing feature in `slirc-proto` that blocks progress, **stop and describe**:
-1. What you're trying to accomplish
-2. What API is missing or broken
-3. Suggested fix or addition
-
-We maintain `slirc-proto` at [sid3xyz/slirc-proto](https://github.com/sid3xyz/slirc-proto) and can add features as needed.
-
+4. IRC SpecificsComparison: ALWAYS use slirc_proto::irc_to_lower() or irc_eq(). Never std to_lowercase().Tags: Tags do not count toward the 512-byte limit.🚫 Constraints & Anti-PatternsNo Docker: Assume local development or bare-metal Linux.No Raw Strings: Never use Command::Raw if a variant should exist.No Hardcoded Numerics: Always use Response::RPL_*.Flood Control: Respect rate limits (5 msg/2s).Nick Collisions: Prefer older timestamp; kill newer.Dependency Management: If slirc-proto is missing a feature, stop and request the update.

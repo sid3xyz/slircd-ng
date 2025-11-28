@@ -2,7 +2,7 @@
 //!
 //! RFC 2812 §3.6 - User based queries
 
-use super::{server_reply, Context, Handler, HandlerResult};
+use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, Command, Message, Response};
 use tracing::debug;
@@ -35,7 +35,7 @@ impl Handler for WhoHandler {
         };
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Determine query type
         if let Some(ref mask_str) = mask {
@@ -179,7 +179,7 @@ impl Handler for WhoisHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
         let target_lower = irc_to_lower(&target);
 
         // Look up target user
@@ -343,7 +343,7 @@ impl Handler for WhowasHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().unwrap();
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // TODO: Implement whowas history tracking
         // For now, always return ERR_WASNOSUCHNICK
@@ -431,7 +431,7 @@ fn matches_mask(value: &str, mask: &str) -> bool {
 /// Send ERR_NOSUCHNICK for a target.
 async fn send_no_such_nick(ctx: &mut Context<'_>, target: &str) -> HandlerResult {
     let server_name = &ctx.matrix.server_info.name;
-    let nick = ctx.handshake.nick.as_ref().unwrap();
+    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
     let reply = server_reply(
         server_name,

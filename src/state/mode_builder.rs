@@ -28,14 +28,17 @@ use slirc_proto::{ChannelMode, Mode};
 ///
 /// Generates a `Vec<Mode<ChannelMode>>` that can be passed to the mode application layer.
 /// Metadata (set_by, set_at) should be passed separately when applying the modes.
+#[allow(dead_code)] // Will be used when we implement multi-mode commands
 #[derive(Debug, Clone, Default)]
 pub struct ChannelModeBuilder {
     modes: Vec<Mode<ChannelMode>>,
 }
 
 /// Result from building modes - the modes vector.
+#[allow(dead_code)] // Will be used when we implement multi-mode commands
 pub type ModeChangeResult = Vec<Mode<ChannelMode>>;
 
+#[allow(dead_code)] // Will be used when we implement multi-mode commands
 impl ChannelModeBuilder {
     /// Create a new empty mode builder.
     pub fn new() -> Self {
