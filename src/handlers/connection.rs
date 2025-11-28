@@ -107,7 +107,7 @@ impl Handler for UserHandler {
         if ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
-                Response::ERR_ALREADYREGISTRED,
+                Response::ERR_ALREADYREGISTERED,
                 vec![
                     ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
                     "You may not reregister".to_string(),
@@ -339,7 +339,7 @@ impl Handler for PassHandler {
         if ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
-                Response::ERR_ALREADYREGISTRED,
+                Response::ERR_ALREADYREGISTERED,
                 vec!["*".to_string(), "You may not reregister".to_string()],
             );
             ctx.sender.send(reply).await?;
