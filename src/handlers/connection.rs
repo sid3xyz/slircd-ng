@@ -3,8 +3,11 @@
 //! Handles NICK, USER, PING, PONG, QUIT commands.
 
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use crate::state::User;
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, Command, Message, Response};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 /// Validates an IRC nickname per RFC 2812.
@@ -144,12 +147,32 @@ impl Handler for UserHandler {
 async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
     let user = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let realname = ctx.handshake.realname.as_ref().cloned().unwrap_or_default();
     let server_name = &ctx.matrix.server_info.name;
     let network = &ctx.matrix.server_info.network;
 
     ctx.handshake.registered = true;
 
-    info!(nick = %nick, user = %user, uid = %ctx.uid, "Client registered");
+    // Create user in Matrix
+    let mut user_obj = User::new(
+        ctx.uid.to_string(),
+        nick.clone(),
+        user.clone(),
+        realname,
+        "localhost".to_string(), // TODO: get actual host
+    );
+
+    // Set +r if authenticated via SASL
+    if ctx.handshake.account.is_some() {
+        user_obj.modes.registered = true;
+    }
+
+    ctx.matrix.users.insert(
+        ctx.uid.to_string(),
+        Arc::new(RwLock::new(user_obj)),
+    );
+
+    info!(nick = %nick, user = %user, uid = %ctx.uid, account = ?ctx.handshake.account, "Client registered");
 
     // 001 RPL_WELCOME
     let welcome = server_reply(
