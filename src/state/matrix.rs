@@ -35,6 +35,7 @@ pub struct Matrix {
     pub senders: DashMap<Uid, mpsc::Sender<Message>>,
 
     /// Connected servers (for future linking support).
+    #[allow(dead_code)] // Phase 4+: Server linking
     pub servers: DashMap<Sid, Arc<Server>>,
 
     /// This server's identity.
@@ -46,6 +47,7 @@ pub struct Matrix {
 
 /// This server's identity information.
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields read during welcome/info responses
 pub struct ServerInfo {
     pub sid: Sid,
     pub name: String,
@@ -56,6 +58,7 @@ pub struct ServerInfo {
 
 /// A connected user.
 #[derive(Debug)]
+#[allow(dead_code)] // Fields used by WHOIS/WHO handlers
 pub struct User {
     pub uid: Uid,
     pub nick: String,
@@ -80,7 +83,7 @@ pub struct UserModes {
 
 impl UserModes {
     /// Convert modes to a string like "+iw".
-    pub fn to_string(&self) -> String {
+    pub fn as_mode_string(&self) -> String {
         let mut s = String::from("+");
         if self.invisible { s.push('i'); }
         if self.wallops { s.push('w'); }
@@ -110,6 +113,7 @@ impl User {
     }
 
     /// Get the user's prefix string (nick!user@host).
+    #[allow(dead_code)] // Used in message prefix generation
     pub fn prefix(&self) -> String {
         format!("{}!{}@{}", self.nick, self.user, self.host)
     }
@@ -150,7 +154,7 @@ pub struct ChannelModes {
 
 impl ChannelModes {
     /// Convert modes to a string like "+nt".
-    pub fn to_string(&self) -> String {
+    pub fn as_mode_string(&self) -> String {
         let mut s = String::from("+");
         if self.invite_only { s.push('i'); }
         if self.moderated { s.push('m'); }
@@ -241,11 +245,13 @@ impl Channel {
     }
 
     /// Check if user has voice or higher.
+    #[allow(dead_code)] // Used for +m moderated channels
     pub fn can_speak(&self, uid: &str) -> bool {
         self.members.get(uid).map(|m| m.op || m.voice).unwrap_or(false)
     }
 
     /// Get list of member UIDs.
+    #[allow(dead_code)] // Used for channel-wide operations
     pub fn member_uids(&self) -> Vec<Uid> {
         self.members.keys().cloned().collect()
     }
@@ -253,6 +259,7 @@ impl Channel {
 
 /// A linked server (for future use).
 #[derive(Debug)]
+#[allow(dead_code)] // Phase 4+: Server linking
 pub struct Server {
     pub sid: Sid,
     pub name: String,
@@ -292,6 +299,7 @@ impl Matrix {
     }
 
     /// Send a message to a specific user by UID.
+    #[allow(dead_code)] // Used for direct user messaging
     pub async fn send_to_user(&self, uid: &str, msg: Message) -> bool {
         if let Some(sender) = self.senders.get(uid) {
             sender.send(msg).await.is_ok()

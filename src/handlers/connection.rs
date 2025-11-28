@@ -58,20 +58,20 @@ impl Handler for NickHandler {
         let nick_lower = irc_to_lower(&nick);
 
         // Check if nick is in use
-        if let Some(existing_uid) = ctx.matrix.nicks.get(&nick_lower) {
-            if existing_uid.value() != ctx.uid {
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_NICKNAMEINUSE,
-                    vec![
-                        ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
-                        nick.clone(),
-                        "Nickname is already in use".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
-                return Ok(());
-            }
+        if let Some(existing_uid) = ctx.matrix.nicks.get(&nick_lower)
+            && existing_uid.value() != ctx.uid
+        {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_NICKNAMEINUSE,
+                vec![
+                    ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
+                    nick.clone(),
+                    "Nickname is already in use".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
         }
 
         // Remove old nick from index if changing

@@ -55,6 +55,8 @@ impl HandshakeState {
 
 /// Errors that can occur during command handling.
 #[derive(Debug, Error)]
+#[allow(dead_code)] // Variants will be used as error handling improves
+#[allow(clippy::large_enum_variant)] // Send variant is large but rarely constructed
 pub enum HandlerError {
     #[error("not enough parameters")]
     NeedMoreParams,
@@ -162,14 +164,5 @@ pub fn server_reply(server_name: &str, response: Response, params: Vec<String>) 
         tags: None,
         prefix: Some(Prefix::ServerName(server_name.to_string())),
         command: Command::Response(response, params),
-    }
-}
-
-/// Helper to create a server message with a command.
-pub fn server_message(server_name: &str, command: Command) -> Message {
-    Message {
-        tags: None,
-        prefix: Some(Prefix::ServerName(server_name.to_string())),
-        command,
     }
 }

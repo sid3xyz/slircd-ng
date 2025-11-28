@@ -67,7 +67,7 @@ async fn handle_user_mode(
     if modes.is_empty() {
         // Query: return current modes
         let user = user.read().await;
-        let mode_string = user.modes.to_string();
+        let mode_string = user.modes.as_mode_string();
         let reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_UMODEIS,
@@ -177,7 +177,7 @@ async fn handle_channel_mode(
 
     if modes.is_empty() {
         // Query: return current modes
-        let mode_string = channel_guard.modes.to_string();
+        let mode_string = channel_guard.modes.as_mode_string();
         let reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_CHANNELMODEIS,
@@ -387,12 +387,12 @@ async fn apply_channel_modes_typed(
             // Limit (+l) - requires parameter to set
             ChannelMode::Limit => {
                 if adding {
-                    if let Some(limit_str) = arg {
-                        if let Ok(limit) = limit_str.parse::<u32>() {
-                            channel.modes.limit = Some(limit);
-                            push_mode(&mut applied, &mut current_dir, adding, 'l');
-                            used_args.push(limit_str.to_string());
-                        }
+                    if let Some(limit_str) = arg
+                        && let Ok(limit) = limit_str.parse::<u32>()
+                    {
+                        channel.modes.limit = Some(limit);
+                        push_mode(&mut applied, &mut current_dir, adding, 'l');
+                        used_args.push(limit_str.to_string());
                     }
                 } else {
                     channel.modes.limit = None;

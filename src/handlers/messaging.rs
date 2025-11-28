@@ -161,11 +161,11 @@ impl Handler for NoticeHandler {
             // User notice
             let target_lower = irc_to_lower(&target);
 
-            if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
-                if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
-                    let _ = sender.send(out_msg).await;
-                    debug!(from = %nick, to = %target, "NOTICE to user");
-                }
+            if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower)
+                && let Some(sender) = ctx.matrix.senders.get(target_uid.value())
+            {
+                let _ = sender.send(out_msg).await;
+                debug!(from = %nick, to = %target, "NOTICE to user");
             }
             // No error for non-existent user (per NOTICE semantics)
         }
