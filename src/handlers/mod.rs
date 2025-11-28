@@ -3,6 +3,8 @@
 //! This module contains the Handler trait and command registry for dispatching
 //! incoming IRC messages to appropriate handlers.
 
+mod admin;
+mod bans;
 mod channel;
 mod connection;
 mod messaging;
@@ -12,6 +14,8 @@ mod oper;
 mod server_query;
 mod user_query;
 
+pub use admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler};
+pub use bans::{DlineHandler, KlineHandler, UndlineHandler, UnklineHandler};
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{NickHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
 pub use messaging::{NoticeHandler, PrivmsgHandler};
@@ -149,6 +153,18 @@ impl Registry {
         handlers.insert("WALLOPS", Box::new(WallopsHandler));
         handlers.insert("DIE", Box::new(DieHandler));
         handlers.insert("REHASH", Box::new(RehashHandler));
+
+        // Ban handlers
+        handlers.insert("KLINE", Box::new(KlineHandler));
+        handlers.insert("DLINE", Box::new(DlineHandler));
+        handlers.insert("UNKLINE", Box::new(UnklineHandler));
+        handlers.insert("UNDLINE", Box::new(UndlineHandler));
+
+        // Admin SA* handlers
+        handlers.insert("SAJOIN", Box::new(SajoinHandler));
+        handlers.insert("SAPART", Box::new(SapartHandler));
+        handlers.insert("SANICK", Box::new(SanickHandler));
+        handlers.insert("SAMODE", Box::new(SamodeHandler));
 
         Self { handlers }
     }
