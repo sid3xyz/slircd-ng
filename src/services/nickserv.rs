@@ -548,15 +548,49 @@ pub async fn apply_effect(
         }
 
         ServiceEffect::AccountIdentify { target_uid, account } => {
+            // Get user info for MODE broadcast before we modify the user
+            let (nick, channels) = {
+                if let Some(user_ref) = matrix.users.get(&target_uid) {
+                    let user = user_ref.read().await;
+                    (
+                        user.nick.clone(),
+                        user.channels.iter().cloned().collect::<Vec<_>>(),
+                    )
+                } else {
+                    return;
+                }
+            };
+
             // Set +r mode and account on user
-            if let Some(user) = matrix.users.get(&target_uid) {
-                let mut user = user.write().await;
+            if let Some(user_ref) = matrix.users.get(&target_uid) {
+                let mut user = user_ref.write().await;
                 user.modes.registered = true;
                 user.account = Some(account.clone());
-                info!(uid = %target_uid, account = %account, "User identified to account");
             }
+
             // Clear any nick enforcement timer
             matrix.enforce_timers.remove(&target_uid);
+
+            // Broadcast MODE +r to all channels the user is in
+            let mode_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
+                command: Command::Raw(
+                    "MODE".to_string(),
+                    vec![nick.clone(), "+r".to_string()],
+                ),
+            };
+
+            for channel_name in &channels {
+                matrix.broadcast_to_channel(channel_name, mode_msg.clone(), None).await;
+            }
+
+            // Also send MODE to the user themselves
+            if let Some(sender) = matrix.senders.get(&target_uid) {
+                let _ = sender.send(mode_msg).await;
+            }
+
+            info!(uid = %target_uid, nick = %nick, account = %account, "User identified to account");
         }
 
         ServiceEffect::AccountClear { target_uid } => {
@@ -581,10 +615,24 @@ pub async fn apply_effect(
         }
 
         ServiceEffect::ChannelMode { channel, target_uid, mode_char, adding } => {
+            // Get target nick for MODE message
+            let target_nick = if let Some(user_ref) = matrix.users.get(&target_uid) {
+                user_ref.read().await.nick.clone()
+            } else {
+                return;
+            };
+
+            // Get canonical channel name
+            let canonical_name = if let Some(channel_ref) = matrix.channels.get(&channel) {
+                channel_ref.read().await.name.clone()
+            } else {
+                return;
+            };
+
             // Apply channel mode change
             if let Some(channel_ref) = matrix.channels.get(&channel) {
-                let mut channel = channel_ref.write().await;
-                if let Some(member) = channel.members.get_mut(&target_uid) {
+                let mut channel_guard = channel_ref.write().await;
+                if let Some(member) = channel_guard.members.get_mut(&target_uid) {
                     match mode_char {
                         'o' => member.op = adding,
                         'v' => member.voice = adding,
@@ -592,10 +640,48 @@ pub async fn apply_effect(
                     }
                 }
             }
-            // TODO: Broadcast MODE change to channel members
+
+            // Build MODE message from ChanServ
+            let mode_str = if adding {
+                format!("+{}", mode_char)
+            } else {
+                format!("-{}", mode_char)
+            };
+
+            let mode_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::Nickname(
+                    "ChanServ".to_string(),
+                    "ChanServ".to_string(),
+                    "services.".to_string(),
+                )),
+                command: Command::Raw(
+                    "MODE".to_string(),
+                    vec![canonical_name.clone(), mode_str.clone(), target_nick.clone()],
+                ),
+            };
+
+            // Broadcast MODE change to channel members
+            matrix.broadcast_to_channel(&channel, mode_msg, None).await;
+
+            info!(channel = %canonical_name, target = %target_nick, mode = %mode_str, "ChanServ mode change");
         }
 
         ServiceEffect::ForceNick { target_uid, old_nick, new_nick } => {
+            // Get user info for NICK message before we modify
+            let (username, hostname, channels) = {
+                if let Some(user_ref) = matrix.users.get(&target_uid) {
+                    let user = user_ref.read().await;
+                    (
+                        user.user.clone(),
+                        user.host.clone(),
+                        user.channels.iter().cloned().collect::<Vec<_>>(),
+                    )
+                } else {
+                    return;
+                }
+            };
+
             // Update nick mappings
             let old_nick_lower = irc_to_lower(&old_nick);
             let new_nick_lower = irc_to_lower(&new_nick);
@@ -608,7 +694,23 @@ pub async fn apply_effect(
                 user.nick = new_nick.clone();
             }
             
-            // TODO: Broadcast NICK change to shared channels
+            // Build NICK message
+            let nick_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::Nickname(old_nick.clone(), username, hostname)),
+                command: Command::NICK(new_nick.clone()),
+            };
+
+            // Broadcast NICK change to all shared channels
+            for channel_name in &channels {
+                matrix.broadcast_to_channel(channel_name, nick_msg.clone(), None).await;
+            }
+
+            // Also send to the user themselves
+            if let Some(sender) = matrix.senders.get(&target_uid) {
+                let _ = sender.send(nick_msg).await;
+            }
+
             info!(uid = %target_uid, old = %old_nick, new = %new_nick, "Forced nick change");
         }
     }

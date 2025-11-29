@@ -51,21 +51,65 @@ impl Handler for KlineHandler {
         };
         let reason = msg.arg(1).unwrap_or("No reason given");
 
-        // TODO: Store K-line in a ban list
-        // TODO: Check if any connected users match and disconnect them
+        // Store K-line in database
+        if let Err(e) = ctx.db.bans().add_kline(mask, Some(reason), &nick, None).await {
+            tracing::error!(error = %e, "Failed to add K-line to database");
+        }
 
-        tracing::info!(oper = %nick, mask = %mask, reason = %reason, "KLINE added");
+        // Disconnect any matching users
+        let disconnected = disconnect_matching_kline(ctx, mask, reason).await;
+
+        tracing::info!(
+            oper = %nick, 
+            mask = %mask, 
+            reason = %reason, 
+            disconnected = disconnected,
+            "KLINE added"
+        );
 
         // Send confirmation
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(nick, format!("K-line added: {mask} ({reason})")),
+            command: Command::NOTICE(
+                nick,
+                if disconnected > 0 {
+                    format!("K-line added: {mask} ({reason}) - {disconnected} user(s) disconnected")
+                } else {
+                    format!("K-line added: {mask} ({reason})")
+                },
+            ),
         };
         ctx.sender.send(notice).await?;
 
         Ok(())
     }
+}
+
+/// Disconnect all users matching a K-line mask.
+async fn disconnect_matching_kline(ctx: &Context<'_>, mask: &str, reason: &str) -> usize {
+    let mut disconnected = 0;
+    let mut to_disconnect = Vec::new();
+
+    // Find matching users
+    for entry in ctx.matrix.users.iter() {
+        let uid = entry.key().clone();
+        let user = entry.value().read().await;
+        let user_host = format!("{}@{}", user.user, user.host);
+
+        if wildcard_match(mask, &user_host) {
+            to_disconnect.push(uid);
+        }
+    }
+
+    // Disconnect them
+    for uid in to_disconnect {
+        let quit_reason = format!("K-lined: {}", reason);
+        ctx.matrix.disconnect_user(&uid, &quit_reason).await;
+        disconnected += 1;
+    }
+
+    disconnected
 }
 
 /// Handler for DLINE command.
@@ -101,21 +145,65 @@ impl Handler for DlineHandler {
         };
         let reason = msg.arg(1).unwrap_or("No reason given");
 
-        // TODO: Store D-line in a ban list
-        // TODO: Check if any connected users match and disconnect them
+        // Store D-line in database
+        if let Err(e) = ctx.db.bans().add_dline(ip, Some(reason), &nick, None).await {
+            tracing::error!(error = %e, "Failed to add D-line to database");
+        }
 
-        tracing::info!(oper = %nick, ip = %ip, reason = %reason, "DLINE added");
+        // Disconnect any matching users
+        let disconnected = disconnect_matching_dline(ctx, ip, reason).await;
+
+        tracing::info!(
+            oper = %nick,
+            ip = %ip,
+            reason = %reason,
+            disconnected = disconnected,
+            "DLINE added"
+        );
 
         // Send confirmation
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(nick, format!("D-line added: {ip} ({reason})")),
+            command: Command::NOTICE(
+                nick,
+                if disconnected > 0 {
+                    format!("D-line added: {ip} ({reason}) - {disconnected} user(s) disconnected")
+                } else {
+                    format!("D-line added: {ip} ({reason})")
+                },
+            ),
         };
         ctx.sender.send(notice).await?;
 
         Ok(())
     }
+}
+
+/// Disconnect all users matching a D-line (IP ban).
+async fn disconnect_matching_dline(ctx: &Context<'_>, mask: &str, reason: &str) -> usize {
+    let mut disconnected = 0;
+    let mut to_disconnect = Vec::new();
+
+    // Find matching users by IP (stored in host field for now)
+    for entry in ctx.matrix.users.iter() {
+        let uid = entry.key().clone();
+        let user = entry.value().read().await;
+        
+        // Check if user's host/IP matches the D-line
+        if wildcard_match(mask, &user.host) || cidr_match(mask, &user.host) {
+            to_disconnect.push(uid);
+        }
+    }
+
+    // Disconnect them
+    for uid in to_disconnect {
+        let quit_reason = format!("D-lined: {}", reason);
+        ctx.matrix.disconnect_user(&uid, &quit_reason).await;
+        disconnected += 1;
+    }
+
+    disconnected
 }
 
 /// Handler for UNKLINE command.
@@ -150,15 +238,31 @@ impl Handler for UnklineHandler {
             }
         };
 
-        // TODO: Remove K-line from ban list
+        // Remove K-line from database
+        let removed = match ctx.db.bans().remove_kline(mask).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to remove K-line from database");
+                false
+            }
+        };
 
-        tracing::info!(oper = %nick, mask = %mask, "UNKLINE removed");
+        if removed {
+            tracing::info!(oper = %nick, mask = %mask, "UNKLINE removed");
+        }
 
         // Send confirmation
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(nick, format!("K-line removed: {mask}")),
+            command: Command::NOTICE(
+                nick,
+                if removed {
+                    format!("K-line removed: {mask}")
+                } else {
+                    format!("No K-line found for: {mask}")
+                },
+            ),
         };
         ctx.sender.send(notice).await?;
 
@@ -198,18 +302,130 @@ impl Handler for UndlineHandler {
             }
         };
 
-        // TODO: Remove D-line from ban list
+        // Remove D-line from database
+        let removed = match ctx.db.bans().remove_dline(ip).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to remove D-line from database");
+                false
+            }
+        };
 
-        tracing::info!(oper = %nick, ip = %ip, "UNDLINE removed");
+        if removed {
+            tracing::info!(oper = %nick, ip = %ip, "UNDLINE removed");
+        }
 
         // Send confirmation
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(nick, format!("D-line removed: {ip}")),
+            command: Command::NOTICE(
+                nick,
+                if removed {
+                    format!("D-line removed: {ip}")
+                } else {
+                    format!("No D-line found for: {ip}")
+                },
+            ),
         };
         ctx.sender.send(notice).await?;
 
         Ok(())
     }
+}
+
+/// Simple wildcard matching (* and ?).
+fn wildcard_match(pattern: &str, text: &str) -> bool {
+    let pattern = pattern.to_lowercase();
+    let text = text.to_lowercase();
+
+    let mut p_chars = pattern.chars().peekable();
+    let mut t_chars = text.chars().peekable();
+
+    while let Some(p) = p_chars.next() {
+        match p {
+            '*' => {
+                // Consume consecutive *
+                while p_chars.peek() == Some(&'*') {
+                    p_chars.next();
+                }
+                // If * is at end, match rest
+                if p_chars.peek().is_none() {
+                    return true;
+                }
+                // Try matching from each position
+                while t_chars.peek().is_some() {
+                    let remaining_pattern: String = std::iter::once(p_chars.clone())
+                        .flatten()
+                        .collect();
+                    let remaining_text: String = t_chars.clone().collect();
+                    if wildcard_match(&remaining_pattern, &remaining_text) {
+                        return true;
+                    }
+                    t_chars.next();
+                }
+                return wildcard_match(&p_chars.collect::<String>(), "");
+            }
+            '?' => {
+                if t_chars.next().is_none() {
+                    return false;
+                }
+            }
+            c => {
+                if t_chars.next() != Some(c) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    t_chars.next().is_none()
+}
+
+/// Basic CIDR matching for IP addresses.
+fn cidr_match(cidr: &str, ip: &str) -> bool {
+    // Parse CIDR notation (e.g., "192.168.1.0/24")
+    let parts: Vec<&str> = cidr.split('/').collect();
+    if parts.len() != 2 {
+        return false;
+    }
+
+    let network = parts[0];
+    let prefix_len: u32 = match parts[1].parse() {
+        Ok(p) if p <= 32 => p,
+        _ => return false,
+    };
+
+    // Parse network IP
+    let network_parts: Vec<u8> = network
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    if network_parts.len() != 4 {
+        return false;
+    }
+
+    // Parse target IP
+    let ip_parts: Vec<u8> = ip.split('.').filter_map(|s| s.parse().ok()).collect();
+    if ip_parts.len() != 4 {
+        return false;
+    }
+
+    // Convert to u32
+    let network_u32 = u32::from_be_bytes([
+        network_parts[0],
+        network_parts[1],
+        network_parts[2],
+        network_parts[3],
+    ]);
+    let ip_u32 = u32::from_be_bytes([ip_parts[0], ip_parts[1], ip_parts[2], ip_parts[3]]);
+
+    // Create mask and compare
+    let mask = if prefix_len == 0 {
+        0
+    } else {
+        !0u32 << (32 - prefix_len)
+    };
+
+    (network_u32 & mask) == (ip_u32 & mask)
 }

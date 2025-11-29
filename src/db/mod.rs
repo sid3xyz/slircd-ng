@@ -6,9 +6,11 @@
 //! - K-lines and D-lines persistence
 
 mod accounts;
+mod bans;
 mod channels;
 
 pub use accounts::AccountRepository;
+pub use bans::BanRepository;
 pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -161,5 +163,10 @@ impl Database {
     /// Get channel repository.
     pub fn channels(&self) -> ChannelRepository<'_> {
         ChannelRepository::new(&self.pool)
+    }
+
+    /// Get ban repository.
+    pub fn bans(&self) -> BanRepository<'_> {
+        BanRepository::new(&self.pool)
     }
 }
