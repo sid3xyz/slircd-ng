@@ -156,12 +156,12 @@ This document tracks all features present in `slircd` that need to be implemente
 | REGISTER | ✅ | ✅ | **Implemented:** Register nickname with password/email |
 | IDENTIFY | ✅ | ✅ | **Implemented:** Authenticate to account |
 | GHOST | ✅ | ✅ | **Implemented:** Kill session using your nick |
-| GROUP | ✅ | ❌ | Group nick to account |
-| UNGROUP | ✅ | ❌ | Remove nick from account |
+| GROUP | ✅ | ✅ | **Implemented: Link nickname to existing account** |
+| UNGROUP | ✅ | ✅ | **Implemented: Unlink nickname from account** |
 | INFO | ✅ | ✅ | **Implemented:** Account information |
 | SET | ✅ | ✅ | **Implemented:** Account settings (EMAIL, ENFORCE, etc.) |
 | VERIFY | ✅ | ❌ | Email verification |
-| DROP | ✅ | ❌ | Drop nickname registration |
+| DROP | ✅ | ✅ | **Implemented: Drop account registration** |
 | RECOVER | ✅ | ❌ | Recover registered nick |
 
 ### 3.2 ChanServ Commands

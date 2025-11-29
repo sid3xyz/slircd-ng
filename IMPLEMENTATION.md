@@ -537,6 +537,28 @@ pub enum ServiceEffect {
 - Auditable: Log all service actions for security analysis
 - Network-ready: Effects can be serialized for server-to-server sync
 
+**ServiceEffect Flow Visualization:**
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Handler
+    participant NickServ
+    participant Matrix
+    
+    User->>Handler: PRIVMSG NickServ :IDENTIFY pass
+    Handler->>NickServ: handle(uid, "IDENTIFY", args)
+    Note over NickServ: Pure Logic (No Mutation)
+    NickServ-->>Handler: return Vec<ServiceEffect::Identify>
+    
+    loop Apply Effects
+        Handler->>Matrix: apply_effect(Identify)
+        Matrix->>Matrix: Update User (+r, account)
+        Matrix->>User: Send(MODE +r)
+        Matrix->>User: Send(ACCOUNT name)
+    end
+```
+
 ---
 
 ## 6. Network Protocol (Router)
