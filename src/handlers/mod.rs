@@ -28,7 +28,7 @@ pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHand
 pub use connection::{NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
 pub use misc::{AwayHandler, CsHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, UserhostHandler};
-pub use mode::{apply_channel_modes_typed, ModeHandler};
+pub use mode::{apply_channel_modes_typed, format_modes_for_log, ModeHandler};
 pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
 pub use server_query::{
     AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler,

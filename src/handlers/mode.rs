@@ -150,6 +150,18 @@ async fn handle_user_mode(
     Ok(())
 }
 
+/// Helper to push a mode change to the applied string (user modes only).
+/// User modes still use string-based format for simplicity since they don't need
+/// the same level of type safety as channel modes.
+fn push_user_mode(applied: &mut String, current_dir: &mut char, adding: bool, mode: char) {
+    let dir = if adding { '+' } else { '-' };
+    if *current_dir != dir {
+        applied.push(dir);
+        *current_dir = dir;
+    }
+    applied.push(mode);
+}
+
 /// Apply user mode changes from typed modes, returns (applied_string, rejected_modes).
 fn apply_user_modes_typed(user_modes: &mut UserModes, modes: &[Mode<UserMode>]) -> (String, Vec<UserMode>) {
     let mut applied = String::new();
@@ -163,18 +175,18 @@ fn apply_user_modes_typed(user_modes: &mut UserModes, modes: &[Mode<UserMode>]) 
         match mode_type {
             UserMode::Invisible => {
                 user_modes.invisible = adding;
-                push_mode(&mut applied, &mut current_dir, adding, 'i');
+                push_user_mode(&mut applied, &mut current_dir, adding, 'i');
             }
             UserMode::Wallops => {
                 user_modes.wallops = adding;
-                push_mode(&mut applied, &mut current_dir, adding, 'w');
+                push_user_mode(&mut applied, &mut current_dir, adding, 'w');
             }
             UserMode::Oper | UserMode::LocalOper => {
                 // Oper modes can only be removed, not added by user
                 if !adding {
                     user_modes.oper = false;
                     let c = if *mode_type == UserMode::Oper { 'o' } else { 'O' };
-                    push_mode(&mut applied, &mut current_dir, adding, c);
+                    push_user_mode(&mut applied, &mut current_dir, adding, c);
                 } else {
                     rejected.push(mode_type.clone());
                 }
@@ -254,24 +266,18 @@ async fn handle_channel_mode(
         }
 
         let mut channel_guard = channel.write().await;
-        let (applied, used_args) = apply_channel_modes_typed(
+        let applied_modes = apply_channel_modes_typed(
             ctx,
             &mut channel_guard,
             modes,
         )?;
 
-        if !applied.is_empty() {
-            // Broadcast the mode change to channel
-            // NOTE: Using Command::Raw here because apply_channel_modes_typed returns a
-            // collapsed mode string (+ov-m) rather than Vec<Mode<ChannelMode>>. The
-            // collapsed format is bandwidth-efficient and matches traditional IRC servers.
-            let mut mode_params = vec![canonical_name.clone(), applied.clone()];
-            mode_params.extend(used_args);
-
+        if !applied_modes.is_empty() {
+            // Broadcast the mode change to channel using typed Command
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(user_prefix(nick, user_name, "localhost")),
-                command: Command::Raw("MODE".to_string(), mode_params),
+                command: Command::ChannelMODE(canonical_name.clone(), applied_modes.clone()),
             };
 
             // Broadcast to all channel members
@@ -281,7 +287,7 @@ async fn handle_channel_mode(
                 }
             }
 
-            info!(nick = %nick, channel = %canonical_name, modes = %applied, "Channel modes changed");
+            info!(nick = %nick, channel = %canonical_name, modes = %format_modes_for_log(&applied_modes), "Channel modes changed");
         }
     }
 
@@ -374,7 +380,8 @@ async fn send_list_mode(
 }
 
 /// Apply channel mode changes from typed modes.
-/// Returns (applied_string, used_args).
+/// Returns the successfully applied modes as typed `Mode<ChannelMode>` for use with
+/// `Command::ChannelMODE`, ensuring wire-format correctness via slirc-proto serialization.
 ///
 /// This is public so SAMODE can reuse the mode application logic.
 #[allow(clippy::result_large_err)] // HandlerError contains large SendError variant
@@ -382,10 +389,8 @@ pub fn apply_channel_modes_typed(
     ctx: &Context<'_>,
     channel: &mut crate::state::Channel,
     modes: &[Mode<ChannelMode>],
-) -> Result<(String, Vec<String>), HandlerError> {
-    let mut applied = String::new();
-    let mut used_args = Vec::new();
-    let mut current_dir = ' ';
+) -> Result<Vec<Mode<ChannelMode>>, HandlerError> {
+    let mut applied_modes = Vec::new();
 
     for mode in modes {
         let adding = mode.is_plus();
@@ -396,39 +401,62 @@ pub fn apply_channel_modes_typed(
             // Simple flags (no parameters)
             ChannelMode::NoExternalMessages => {
                 channel.modes.no_external = adding;
-                push_mode(&mut applied, &mut current_dir, adding, 'n');
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::NoExternalMessages, None)
+                } else {
+                    Mode::Minus(ChannelMode::NoExternalMessages, None)
+                });
             }
             ChannelMode::ProtectedTopic => {
                 channel.modes.topic_lock = adding;
-                push_mode(&mut applied, &mut current_dir, adding, 't');
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::ProtectedTopic, None)
+                } else {
+                    Mode::Minus(ChannelMode::ProtectedTopic, None)
+                });
             }
             ChannelMode::InviteOnly => {
                 channel.modes.invite_only = adding;
-                push_mode(&mut applied, &mut current_dir, adding, 'i');
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::InviteOnly, None)
+                } else {
+                    Mode::Minus(ChannelMode::InviteOnly, None)
+                });
             }
             ChannelMode::Moderated => {
                 channel.modes.moderated = adding;
-                push_mode(&mut applied, &mut current_dir, adding, 'm');
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::Moderated, None)
+                } else {
+                    Mode::Minus(ChannelMode::Moderated, None)
+                });
             }
             ChannelMode::Secret => {
                 channel.modes.secret = adding;
-                push_mode(&mut applied, &mut current_dir, adding, 's');
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::Secret, None)
+                } else {
+                    Mode::Minus(ChannelMode::Secret, None)
+                });
             }
             ChannelMode::RegisteredOnly => {
                 channel.modes.registered_only = adding;
-                push_mode(&mut applied, &mut current_dir, adding, 'r');
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::RegisteredOnly, None)
+                } else {
+                    Mode::Minus(ChannelMode::RegisteredOnly, None)
+                });
             }
             // Key (+k) - requires parameter to set
             ChannelMode::Key => {
                 if adding {
                     if let Some(key) = arg {
                         channel.modes.key = Some(key.to_string());
-                        push_mode(&mut applied, &mut current_dir, adding, 'k');
-                        used_args.push(key.to_string());
+                        applied_modes.push(Mode::Plus(ChannelMode::Key, Some(key.to_string())));
                     }
                 } else {
                     channel.modes.key = None;
-                    push_mode(&mut applied, &mut current_dir, adding, 'k');
+                    applied_modes.push(Mode::Minus(ChannelMode::Key, None));
                 }
             }
             // Limit (+l) - requires parameter to set
@@ -438,12 +466,11 @@ pub fn apply_channel_modes_typed(
                         && let Ok(limit) = limit_str.parse::<u32>()
                     {
                         channel.modes.limit = Some(limit);
-                        push_mode(&mut applied, &mut current_dir, adding, 'l');
-                        used_args.push(limit_str.to_string());
+                        applied_modes.push(Mode::Plus(ChannelMode::Limit, Some(limit_str.to_string())));
                     }
                 } else {
                     channel.modes.limit = None;
-                    push_mode(&mut applied, &mut current_dir, adding, 'l');
+                    applied_modes.push(Mode::Minus(ChannelMode::Limit, None));
                 }
             }
             // Ban (+b)
@@ -458,16 +485,14 @@ pub fn apply_channel_modes_typed(
                         // Don't add duplicate bans
                         if !channel.bans.iter().any(|b| b.mask == entry.mask) {
                             channel.bans.push(entry);
-                            push_mode(&mut applied, &mut current_dir, adding, 'b');
-                            used_args.push(mask.to_string());
+                            applied_modes.push(Mode::Plus(ChannelMode::Ban, Some(mask.to_string())));
                         }
                     } else {
                         // Remove ban
                         let before_len = channel.bans.len();
                         channel.bans.retain(|b| b.mask != *mask);
                         if channel.bans.len() != before_len {
-                            push_mode(&mut applied, &mut current_dir, adding, 'b');
-                            used_args.push(mask.to_string());
+                            applied_modes.push(Mode::Minus(ChannelMode::Ban, Some(mask.to_string())));
                         }
                     }
                 }
@@ -483,15 +508,13 @@ pub fn apply_channel_modes_typed(
                         };
                         if !channel.excepts.iter().any(|b| b.mask == entry.mask) {
                             channel.excepts.push(entry);
-                            push_mode(&mut applied, &mut current_dir, adding, 'e');
-                            used_args.push(mask.to_string());
+                            applied_modes.push(Mode::Plus(ChannelMode::Exception, Some(mask.to_string())));
                         }
                     } else {
                         let before_len = channel.excepts.len();
                         channel.excepts.retain(|b| b.mask != *mask);
                         if channel.excepts.len() != before_len {
-                            push_mode(&mut applied, &mut current_dir, adding, 'e');
-                            used_args.push(mask.to_string());
+                            applied_modes.push(Mode::Minus(ChannelMode::Exception, Some(mask.to_string())));
                         }
                     }
                 }
@@ -507,15 +530,13 @@ pub fn apply_channel_modes_typed(
                         };
                         if !channel.invex.iter().any(|b| b.mask == entry.mask) {
                             channel.invex.push(entry);
-                            push_mode(&mut applied, &mut current_dir, adding, 'I');
-                            used_args.push(mask.to_string());
+                            applied_modes.push(Mode::Plus(ChannelMode::InviteException, Some(mask.to_string())));
                         }
                     } else {
                         let before_len = channel.invex.len();
                         channel.invex.retain(|b| b.mask != *mask);
                         if channel.invex.len() != before_len {
-                            push_mode(&mut applied, &mut current_dir, adding, 'I');
-                            used_args.push(mask.to_string());
+                            applied_modes.push(Mode::Minus(ChannelMode::InviteException, Some(mask.to_string())));
                         }
                     }
                 }
@@ -531,15 +552,13 @@ pub fn apply_channel_modes_typed(
                         };
                         if !channel.quiets.iter().any(|b| b.mask == entry.mask) {
                             channel.quiets.push(entry);
-                            push_mode(&mut applied, &mut current_dir, adding, 'q');
-                            used_args.push(mask.to_string());
+                            applied_modes.push(Mode::Plus(ChannelMode::Quiet, Some(mask.to_string())));
                         }
                     } else {
                         let before_len = channel.quiets.len();
                         channel.quiets.retain(|b| b.mask != *mask);
                         if channel.quiets.len() != before_len {
-                            push_mode(&mut applied, &mut current_dir, adding, 'q');
-                            used_args.push(mask.to_string());
+                            applied_modes.push(Mode::Minus(ChannelMode::Quiet, Some(mask.to_string())));
                         }
                     }
                 }
@@ -552,8 +571,11 @@ pub fn apply_channel_modes_typed(
                         let target_uid = target_uid.value().clone();
                         if let Some(member_modes) = channel.members.get_mut(&target_uid) {
                             member_modes.op = adding;
-                            push_mode(&mut applied, &mut current_dir, adding, 'o');
-                            used_args.push(target_nick.to_string());
+                            applied_modes.push(if adding {
+                                Mode::Plus(ChannelMode::Oper, Some(target_nick.to_string()))
+                            } else {
+                                Mode::Minus(ChannelMode::Oper, Some(target_nick.to_string()))
+                            });
                         }
                     }
                 }
@@ -566,8 +588,11 @@ pub fn apply_channel_modes_typed(
                         let target_uid = target_uid.value().clone();
                         if let Some(member_modes) = channel.members.get_mut(&target_uid) {
                             member_modes.voice = adding;
-                            push_mode(&mut applied, &mut current_dir, adding, 'v');
-                            used_args.push(target_nick.to_string());
+                            applied_modes.push(if adding {
+                                Mode::Plus(ChannelMode::Voice, Some(target_nick.to_string()))
+                            } else {
+                                Mode::Minus(ChannelMode::Voice, Some(target_nick.to_string()))
+                            });
                         }
                     }
                 }
@@ -578,15 +603,27 @@ pub fn apply_channel_modes_typed(
         }
     }
 
-    Ok((applied, used_args))
+    Ok(applied_modes)
 }
 
-/// Helper to push a mode change to the applied string.
-fn push_mode(applied: &mut String, current_dir: &mut char, adding: bool, mode: char) {
-    let dir = if adding { '+' } else { '-' };
-    if *current_dir != dir {
-        applied.push(dir);
-        *current_dir = dir;
+/// Format applied modes for logging (e.g., "+o+v nick1 nick2").
+/// Public so SAMODE can use it for operator confirmation messages.
+pub fn format_modes_for_log(modes: &[Mode<ChannelMode>]) -> String {
+    use std::fmt::Write;
+    let mut result = String::new();
+    let mut args = Vec::new();
+    
+    for mode in modes {
+        let _ = write!(result, "{}", mode.flag());
+        if let Some(arg) = mode.arg() {
+            args.push(arg);
+        }
     }
-    applied.push(mode);
+    
+    for arg in args {
+        result.push(' ');
+        result.push_str(arg);
+    }
+    
+    result
 }

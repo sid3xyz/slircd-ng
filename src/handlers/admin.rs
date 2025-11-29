@@ -8,7 +8,7 @@
 
 use super::{
     apply_channel_modes_typed, err_needmoreparams, err_nosuchchannel,
-    err_nosuchnick, require_oper, resolve_nick_to_uid, server_reply, Context, Handler, HandlerResult,
+    err_nosuchnick, format_modes_for_log, require_oper, resolve_nick_to_uid, server_reply, Context, Handler, HandlerResult,
 };
 use crate::state::MemberModes;
 use async_trait::async_trait;
@@ -413,20 +413,14 @@ impl Handler for SamodeHandler {
         let mut channel_guard = channel.write().await;
         let canonical_name = channel_guard.name.clone();
 
-        let (applied, used_args) = apply_channel_modes_typed(ctx, &mut channel_guard, &typed_modes)?;
+        let applied_modes = apply_channel_modes_typed(ctx, &mut channel_guard, &typed_modes)?;
 
-        if !applied.is_empty() {
-            // Build the mode params for broadcast
-            // NOTE: Using Command::Raw because apply_channel_modes_typed returns a collapsed
-            // mode string, not Vec<Mode<ChannelMode>>. See mode.rs for rationale.
-            let mut mode_params = vec![canonical_name.clone(), applied.clone()];
-            mode_params.extend(used_args);
-
-            // Broadcast as server (not as user)
+        if !applied_modes.is_empty() {
+            // Broadcast as server using typed Command
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::ServerName(server_name.clone())),
-                command: Command::Raw("MODE".to_string(), mode_params),
+                command: Command::ChannelMODE(canonical_name.clone(), applied_modes.clone()),
             };
 
             // Broadcast to all channel members
@@ -436,24 +430,38 @@ impl Handler for SamodeHandler {
                 }
             }
 
+            // Format modes for logging
+            let modes_str = format_modes_for_log(&applied_modes);
+
             tracing::info!(
                 oper = %oper_nick,
                 channel = %canonical_name,
-                modes = %applied,
+                modes = %modes_str,
                 "SAMODE: Server mode change applied"
             );
-        }
 
-        // Confirm to operator
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                oper_nick,
-                format!("SAMODE: {canonical_name} {applied}"),
-            ),
-        };
-        ctx.sender.send(notice).await?;
+            // Confirm to operator
+            let notice = Message {
+                tags: None,
+                prefix: Some(Prefix::ServerName(server_name.clone())),
+                command: Command::NOTICE(
+                    oper_nick,
+                    format!("SAMODE: {canonical_name} {modes_str}"),
+                ),
+            };
+            ctx.sender.send(notice).await?;
+        } else {
+            // No modes applied - still confirm to operator
+            let notice = Message {
+                tags: None,
+                prefix: Some(Prefix::ServerName(server_name.clone())),
+                command: Command::NOTICE(
+                    oper_nick,
+                    format!("SAMODE: {canonical_name} (no modes applied)"),
+                ),
+            };
+            ctx.sender.send(notice).await?;
+        }
 
         Ok(())
     }
