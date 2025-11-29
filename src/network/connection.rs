@@ -3,7 +3,7 @@
 //! Each Connection runs in its own Tokio task with the following architecture:
 //!
 //! ```text
-//! Phase 1: Handshake (Transport - owned Messages, sequential)
+//! Phase 1: Handshake (ZeroCopyTransport + FramedWrite, sequential)
 //!    ↓
 //! Phase 2: Unified Zero-Copy Loop (tokio::select!)
 //!    ┌─────────────────────────────────────────────────────┐
@@ -28,14 +28,15 @@ use crate::handlers::{Context, HandshakeState, Registry};
 use crate::network::limit::RateLimiter;
 use crate::state::Matrix;
 use futures_util::SinkExt;
+use slirc_proto::irc::IrcCodec;
 use slirc_proto::transport::ZeroCopyTransport;
-use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Transport};
+use slirc_proto::{irc_to_lower, Command, Message};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_util::codec::FramedWrite;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 // Rate limiter configuration constants (aligned with IRC standard: 5 messages per 2 seconds)
 const RATE_LIMIT_RATE: f32 = 2.5;      // Messages per second (5 msg/2s)
@@ -79,9 +80,14 @@ impl Connection {
             "Client connected"
         );
 
-        // Phase 1: Handshake using Transport (owned Message reads/writes)
-        // Per design: Keep as-is since network latency dominates this cold path.
-        let mut transport = Transport::tcp(self.stream)?;
+        // Split TCP stream for concurrent read/write from the start
+        // This enables true zero-copy reading during both handshake and main loop
+        let (read_half, write_half) = self.stream.into_split();
+        
+        // Setup zero-copy reader and framed writer
+        let codec = IrcCodec::new("utf-8")?;
+        let mut reader = ZeroCopyTransport::new(read_half);
+        let mut writer = FramedWrite::new(write_half, codec);
 
         // Channel for outgoing messages during handshake (drained synchronously)
         let (handshake_tx, mut handshake_rx) = mpsc::channel::<Message>(64);
@@ -89,25 +95,12 @@ impl Connection {
         // Handshake state for this connection
         let mut handshake = HandshakeState::default();
 
-        // Run handshake loop until registered
+        // Phase 1: Handshake using zero-copy reading
+        // Read messages directly as MessageRef without intermediate allocations
         loop {
-            match transport.read_message().await {
-                Ok(Some(msg)) => {
-                    debug!(raw = %msg, "Received message");
-
-                    // Design decision: Handshake uses owned Message but we convert to MessageRef
-                    // for handlers. This is acceptable because:
-                    // 1. Handshake is a cold path (network latency dominates)
-                    // 2. Only ~3-5 messages during handshake (CAP, NICK, USER)
-                    // 3. Keeps handler API uniform across handshake and main loop
-                    let raw_str = msg.to_string();
-                    let msg_ref = match MessageRef::parse(&raw_str) {
-                        Ok(r) => r,
-                        Err(e) => {
-                            debug!(error = ?e, "Failed to parse message for handler");
-                            continue;
-                        }
-                    };
+            match reader.next().await {
+                Some(Ok(msg_ref)) => {
+                    debug!(raw = %msg_ref.raw.trim(), "Received message");
 
                     let mut ctx = Context {
                         uid: &self.uid,
@@ -127,7 +120,7 @@ impl Connection {
 
                     // Drain and write queued responses synchronously
                     while let Ok(response) = handshake_rx.try_recv() {
-                        if let Err(e) = transport.write_message(&response).await {
+                        if let Err(e) = writer.send(response).await {
                             warn!(error = ?e, "Write error during handshake");
                             return Ok(());
                         }
@@ -138,31 +131,19 @@ impl Connection {
                         break;
                     }
                 }
-                Ok(None) => {
-                    info!("Client disconnected during handshake");
+                Some(Err(e)) => {
+                    warn!(error = ?e, "Read error during handshake");
                     return Ok(());
                 }
-                Err(e) => {
-                    warn!(error = ?e, "Read error during handshake");
+                None => {
+                    info!("Client disconnected during handshake");
                     return Ok(());
                 }
             }
         }
 
         // Phase 2: Unified Zero-Copy Loop
-        // Split transport for concurrent read/write
-        let parts = match transport.into_parts() {
-            Ok(p) => p,
-            Err(e) => {
-                error!(error = ?e, "Failed to split transport");
-                return Err(anyhow::anyhow!("Transport split failed"));
-            }
-        };
-        let (read_half, write_half) = parts.split();
-
-        // Setup reader and writer
-        let mut reader = ZeroCopyTransport::with_buffer(read_half.half, read_half.read_buf);
-        let mut writer = FramedWrite::new(write_half.half, write_half.codec);
+        // Reader and writer are already set up from handshake phase
 
         // Rate limiter for flood protection
         let mut rate_limiter = RateLimiter::new(RATE_LIMIT_RATE, RATE_LIMIT_BURST);
