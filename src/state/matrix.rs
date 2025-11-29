@@ -55,17 +55,14 @@ pub struct Matrix {
 /// Configuration accessible to handlers via Matrix.
 #[derive(Debug, Clone)]
 pub struct MatrixConfig {
-    /// Network name.
-    #[allow(dead_code)] // Used in INFO replies
-    pub network_name: String,
     /// Operator blocks.
     pub oper_blocks: Vec<OperBlock>,
 }
 
 /// This server's identity information.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Fields read during welcome/info responses
 pub struct ServerInfo {
+    #[allow(dead_code)] // Phase 4+: Used in server-to-server linking
     pub sid: Sid,
     pub name: String,
     pub network: String,
@@ -75,7 +72,6 @@ pub struct ServerInfo {
 
 /// A connected user.
 #[derive(Debug)]
-#[allow(dead_code)] // Fields used by WHOIS/WHO handlers
 pub struct User {
     pub uid: Uid,
     pub nick: String,
@@ -130,12 +126,6 @@ impl User {
             modes: UserModes::default(),
             account: None,
         }
-    }
-
-    /// Get the user's prefix string (nick!user@host).
-    #[allow(dead_code)] // Used in message prefix generation
-    pub fn prefix(&self) -> String {
-        format!("{}!{}@{}", self.nick, self.user, self.host)
     }
 }
 
@@ -265,13 +255,13 @@ impl Channel {
     }
 
     /// Check if user has voice or higher.
-    #[allow(dead_code)] // Used for +m moderated channels
+    #[allow(dead_code)] // TODO: Use for +m moderated channel enforcement
     pub fn can_speak(&self, uid: &str) -> bool {
         self.members.get(uid).is_some_and(|m| m.op || m.voice)
     }
 
     /// Get list of member UIDs.
-    #[allow(dead_code)] // Used for channel-wide operations
+    #[allow(dead_code)] // TODO: Use for WHO #channel and NAMES
     pub fn member_uids(&self) -> Vec<Uid> {
         self.members.keys().cloned().collect()
     }
@@ -307,7 +297,6 @@ impl Matrix {
             },
             uid_gen: UidGenerator::new(config.server.sid.clone()),
             config: MatrixConfig {
-                network_name: config.server.network.clone(),
                 oper_blocks: config.oper.clone(),
             },
         }
@@ -324,7 +313,7 @@ impl Matrix {
     }
 
     /// Send a message to a specific user by UID.
-    #[allow(dead_code)] // Used for direct user messaging
+    #[allow(dead_code)] // TODO: Use for direct messaging (e.g., SQUERY replies)
     pub async fn send_to_user(&self, uid: &str, msg: Message) -> bool {
         if let Some(sender) = self.senders.get(uid) {
             sender.send(msg).await.is_ok()

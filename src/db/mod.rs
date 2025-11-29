@@ -27,7 +27,6 @@ pub enum DbError {
     #[error("account not found: {0}")]
     AccountNotFound(String),
     #[error("nickname not found: {0}")]
-    #[allow(dead_code)]
     NicknameNotFound(String),
     #[error("account already exists: {0}")]
     AccountExists(String),
@@ -43,10 +42,9 @@ pub enum DbError {
     #[error("channel already registered: {0}")]
     ChannelExists(String),
     #[error("not channel founder")]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Future: channel ownership checks
     NotFounder,
     #[error("insufficient access")]
-    #[allow(dead_code)]
     InsufficientAccess,
 }
 
@@ -153,12 +151,6 @@ impl Database {
         }
 
         Ok(())
-    }
-
-    /// Get the connection pool.
-    #[allow(dead_code)]
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
     }
 
     /// Get account repository.
