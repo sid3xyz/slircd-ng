@@ -2,12 +2,6 @@
 //!
 //! This module contains the Handler trait and command registry for dispatching
 //! incoming IRC messages to appropriate handlers.
-//!
-//! ## Zero-Copy Architecture
-//!
-//! Handlers receive `MessageRef<'_>` which borrows directly from the transport
-//! buffer, avoiding allocations in the hot loop. Use `msg.arg(n)` to access
-//! arguments as `&str` slices.
 
 mod admin;
 mod bans;
@@ -39,7 +33,7 @@ pub use user_query::{WhoHandler, WhoisHandler, WhowasHandler};
 use crate::db::Database;
 use crate::state::Matrix;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{Command, Message, Prefix, Response};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -121,13 +115,10 @@ pub enum HandlerError {
 pub type HandlerResult = Result<(), HandlerError>;
 
 /// Trait implemented by all command handlers.
-///
-/// Handlers receive a borrowed `MessageRef` that references the transport buffer
-/// directly. Use `msg.arg(n)` to access arguments as `&str` slices.
 #[async_trait]
 pub trait Handler: Send + Sync {
     /// Handle an incoming message.
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult;
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult;
 }
 
 /// Registry of command handlers.
@@ -211,11 +202,8 @@ impl Registry {
     }
 
     /// Dispatch a message to the appropriate handler.
-    ///
-    /// Uses `msg.command_name()` to get the command name directly from the
-    /// zero-copy `MessageRef`.
-    pub async fn dispatch(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let cmd_name = msg.command_name().to_ascii_uppercase();
+    pub async fn dispatch(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+        let cmd_name = command_name(&msg.command);
 
         if let Some(handler) = self.handlers.get(cmd_name.as_str()) {
             handler.handle(ctx, msg).await
@@ -230,6 +218,81 @@ impl Registry {
 impl Default for Registry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Extract the command name from a Command enum.
+fn command_name(cmd: &Command) -> String {
+    match cmd {
+        // Connection/registration
+        Command::PASS(_) => "PASS".to_string(),
+        Command::NICK(_) => "NICK".to_string(),
+        Command::USER(..) => "USER".to_string(),
+        Command::OPER(..) => "OPER".to_string(),
+        Command::QUIT(_) => "QUIT".to_string(),
+        Command::CAP(..) => "CAP".to_string(),
+        Command::AUTHENTICATE(_) => "AUTHENTICATE".to_string(),
+
+        // Channel operations
+        Command::JOIN(..) => "JOIN".to_string(),
+        Command::PART(..) => "PART".to_string(),
+        Command::TOPIC(..) => "TOPIC".to_string(),
+        Command::NAMES(..) => "NAMES".to_string(),
+        Command::LIST(..) => "LIST".to_string(),
+        Command::INVITE(..) => "INVITE".to_string(),
+        Command::KICK(..) => "KICK".to_string(),
+        Command::UserMODE(..) | Command::ChannelMODE(..) => "MODE".to_string(),
+
+        // Messaging
+        Command::PRIVMSG(..) => "PRIVMSG".to_string(),
+        Command::NOTICE(..) => "NOTICE".to_string(),
+
+        // Server queries
+        Command::MOTD(_) => "MOTD".to_string(),
+        Command::LUSERS(..) => "LUSERS".to_string(),
+        Command::VERSION(_) => "VERSION".to_string(),
+        Command::STATS(..) => "STATS".to_string(),
+        Command::TIME(_) => "TIME".to_string(),
+        Command::ADMIN(_) => "ADMIN".to_string(),
+        Command::INFO(_) => "INFO".to_string(),
+
+        // User queries
+        Command::WHO(..) => "WHO".to_string(),
+        Command::WHOIS(..) => "WHOIS".to_string(),
+        Command::WHOWAS(..) => "WHOWAS".to_string(),
+
+        // Miscellaneous
+        Command::PING(..) => "PING".to_string(),
+        Command::PONG(..) => "PONG".to_string(),
+        Command::KILL(..) => "KILL".to_string(),
+        Command::AWAY(_) => "AWAY".to_string(),
+        Command::REHASH => "REHASH".to_string(),
+        Command::DIE => "DIE".to_string(),
+        Command::WALLOPS(_) => "WALLOPS".to_string(),
+        Command::USERHOST(_) => "USERHOST".to_string(),
+        Command::ISON(_) => "ISON".to_string(),
+
+        // Services/admin commands
+        Command::SAJOIN(..) => "SAJOIN".to_string(),
+        Command::SAPART(..) => "SAPART".to_string(),
+        Command::SANICK(..) => "SANICK".to_string(),
+        Command::SAMODE(..) => "SAMODE".to_string(),
+        Command::NICKSERV(..) => "NICKSERV".to_string(),
+        Command::CHANSERV(..) => "CHANSERV".to_string(),
+
+        // Operator ban commands
+        Command::KLINE(..) => "KLINE".to_string(),
+        Command::DLINE(..) => "DLINE".to_string(),
+        Command::UNKLINE(..) => "UNKLINE".to_string(),
+        Command::UNDLINE(..) => "UNDLINE".to_string(),
+
+        // Channel extension commands
+        Command::KNOCK(..) => "KNOCK".to_string(),
+
+        // Responses and fallback
+        Command::Response(..) => "RESPONSE".to_string(),
+        Command::Raw(name, _) => name.to_uppercase(),
+        _ => "UNKNOWN".to_string(),
     }
 }
 

@@ -8,7 +8,7 @@
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::state::{ListEntry, UserModes};
 use async_trait::async_trait;
-use slirc_proto::{irc_eq, irc_to_lower, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, UserMode};
+use slirc_proto::{irc_eq, irc_to_lower, ChannelMode, Command, Message, Mode, Prefix, Response, UserMode};
 use tracing::{debug, info};
 
 /// Helper to create a user prefix.
@@ -21,68 +21,22 @@ pub struct ModeHandler;
 
 #[async_trait]
 impl Handler for ModeHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
         }
 
-        // MODE <target> [modes [params]]
-        let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-        let server_name = &ctx.matrix.server_info.name;
-        
-        // Determine if this is a user or channel mode based on target
-        if is_channel_target(target) {
-            // Parse channel modes from args
-            let mode_args: Vec<&str> = msg.args().iter().skip(1).copied().collect();
-            let modes = if mode_args.is_empty() {
-                vec![]
-            } else {
-                match Mode::as_channel_modes(&mode_args) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        debug!(error = ?e, "Failed to parse channel modes");
-                        // Send ERR_UNKNOWNMODE for malformed modes
-                        let reply = server_reply(
-                            server_name,
-                            Response::ERR_UNKNOWNMODE,
-                            vec![nick.clone(), mode_args.first().copied().unwrap_or("").to_string(), "is unknown mode char to me".to_string()],
-                        );
-                        ctx.sender.send(reply).await?;
-                        return Ok(());
-                    }
-                }
-            };
-            handle_channel_mode(ctx, target, &modes).await
-        } else {
-            // Parse user modes from args
-            let mode_args: Vec<&str> = msg.args().iter().skip(1).copied().collect();
-            let modes = if mode_args.is_empty() {
-                vec![]
-            } else {
-                match Mode::as_user_modes(&mode_args) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        debug!(error = ?e, "Failed to parse user modes");
-                        // Send ERR_UMODEUNKNOWNFLAG for malformed user modes
-                        let reply = server_reply(
-                            server_name,
-                            Response::ERR_UMODEUNKNOWNFLAG,
-                            vec![nick.clone(), "Unknown MODE flag".to_string()],
-                        );
-                        ctx.sender.send(reply).await?;
-                        return Ok(());
-                    }
-                }
-            };
-            handle_user_mode(ctx, target, &modes).await
+        // slirc-proto parses MODE into typed variants
+        match &msg.command {
+            Command::UserMODE(target, modes) => {
+                handle_user_mode(ctx, target, modes).await
+            }
+            Command::ChannelMODE(target, modes) => {
+                handle_channel_mode(ctx, target, modes).await
+            }
+            _ => Ok(()),
         }
     }
-}
-
-/// Check if target is a channel (starts with #, &, +, or !)
-fn is_channel_target(target: &str) -> bool {
-    matches!(target.chars().next(), Some('#' | '&' | '+' | '!'))
 }
 
 /// Handle user mode query/change.

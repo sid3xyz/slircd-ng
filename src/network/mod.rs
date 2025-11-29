@@ -1,10 +1,9 @@
 //! Network module.
 //!
-//! Contains the Gateway (TCP listener), Connection handler, and rate limiting.
+//! Contains the Gateway (TCP listener) and Connection handler.
 
 mod connection;
 mod gateway;
-pub mod limit;
 
 pub use connection::Connection;
 pub use gateway::Gateway;

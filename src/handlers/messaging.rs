@@ -6,7 +6,7 @@ use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{irc_to_lower, Command, Message, Prefix, Response};
 use tracing::debug;
 
 /// Helper to create a user prefix.
@@ -19,14 +19,15 @@ pub struct PrivmsgHandler;
 
 #[async_trait]
 impl Handler for PrivmsgHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
         }
 
-        // PRIVMSG <target> <text>
-        let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
+        let (target, text) = match &msg.command {
+            Command::PRIVMSG(t, txt) => (t.clone(), txt.clone()),
+            _ => return Ok(()),
+        };
 
         if target.is_empty() || text.is_empty() {
             return Err(HandlerError::NeedMoreParams);
@@ -36,7 +37,7 @@ impl Handler for PrivmsgHandler {
         let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Check if this is a service message (NickServ, ChanServ, etc.)
-        let target_lower = irc_to_lower(target);
+        let target_lower = irc_to_lower(&target);
         if target_lower == "nickserv" || target_lower == "ns" {
             // Route to NickServ
             if route_service_message(
@@ -44,8 +45,8 @@ impl Handler for PrivmsgHandler {
                 ctx.db,
                 ctx.uid,
                 nick,
-                target,
-                text,
+                &target,
+                &text,
                 ctx.sender,
             ).await {
                 return Ok(());
@@ -59,8 +60,8 @@ impl Handler for PrivmsgHandler {
                 ctx.db,
                 ctx.uid,
                 nick,
-                target,
-                text,
+                &target,
+                &text,
                 ctx.sender,
             ).await {
                 return Ok(());
@@ -71,13 +72,13 @@ impl Handler for PrivmsgHandler {
         let out_msg = Message {
             tags: None,
             prefix: Some(user_prefix(nick, user_name, "localhost")),
-            command: Command::PRIVMSG(target.to_string(), text.to_string()),
+            command: Command::PRIVMSG(target.clone(), text),
         };
 
         // Is it a channel or a user?
         if matches!(target.chars().next(), Some('#' | '&' | '+' | '!')) {
             // Channel message
-            let channel_lower = irc_to_lower(target);
+            let channel_lower = irc_to_lower(&target);
 
             // Check if channel exists
             if let Some(channel) = ctx.matrix.channels.get(&channel_lower) {
@@ -91,7 +92,7 @@ impl Handler for PrivmsgHandler {
                         Response::ERR_CANNOTSENDTOCHAN,
                         vec![
                             nick.to_string(),
-                            target.to_string(),
+                            target,
                             "Cannot send to channel (+n)".to_string(),
                         ],
                     );
@@ -109,7 +110,7 @@ impl Handler for PrivmsgHandler {
                             Response::ERR_CANNOTSENDTOCHAN,
                             vec![
                                 nick.to_string(),
-                                target.to_string(),
+                                target,
                                 "Cannot send to channel (+m)".to_string(),
                             ],
                         );
@@ -136,7 +137,7 @@ impl Handler for PrivmsgHandler {
                     Response::ERR_NOSUCHCHANNEL,
                     vec![
                         nick.to_string(),
-                        target.to_string(),
+                        target,
                         "No such channel".to_string(),
                     ],
                 );
@@ -144,7 +145,7 @@ impl Handler for PrivmsgHandler {
             }
         } else {
             // User message
-            let target_lower = irc_to_lower(target);
+            let target_lower = irc_to_lower(&target);
 
             if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                 // Send to target user
@@ -159,7 +160,7 @@ impl Handler for PrivmsgHandler {
                     Response::ERR_NOSUCHNICK,
                     vec![
                         nick.to_string(),
-                        target.to_string(),
+                        target,
                         "No such nick/channel".to_string(),
                     ],
                 );
@@ -176,14 +177,15 @@ pub struct NoticeHandler;
 
 #[async_trait]
 impl Handler for NoticeHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
         }
 
-        // NOTICE <target> <text>
-        let target = msg.arg(0).unwrap_or("");
-        let text = msg.arg(1).unwrap_or("");
+        let (target, text) = match &msg.command {
+            Command::NOTICE(t, txt) => (t.clone(), txt.clone()),
+            _ => return Ok(()),
+        };
 
         if target.is_empty() || text.is_empty() {
             // NOTICE errors are silently ignored per RFC
@@ -197,13 +199,13 @@ impl Handler for NoticeHandler {
         let out_msg = Message {
             tags: None,
             prefix: Some(user_prefix(nick, user_name, "localhost")),
-            command: Command::NOTICE(target.to_string(), text.to_string()),
+            command: Command::NOTICE(target.clone(), text),
         };
 
         // Is it a channel or a user?
         if matches!(target.chars().next(), Some('#' | '&' | '+' | '!')) {
             // Channel notice
-            let channel_lower = irc_to_lower(target);
+            let channel_lower = irc_to_lower(&target);
 
             if let Some(channel) = ctx.matrix.channels.get(&channel_lower) {
                 let channel = channel.read().await;
@@ -238,7 +240,7 @@ impl Handler for NoticeHandler {
             // No error for non-existent channel (per NOTICE semantics)
         } else {
             // User notice
-            let target_lower = irc_to_lower(target);
+            let target_lower = irc_to_lower(&target);
 
             if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower)
                 && let Some(sender) = ctx.matrix.senders.get(target_uid.value())

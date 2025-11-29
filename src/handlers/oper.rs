@@ -9,7 +9,7 @@
 
 use super::{err_needmoreparams, err_noprivileges, err_nosuchnick, server_reply, Context, Handler, HandlerResult};
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{irc_to_lower, Command, Message, Prefix, Response};
 
 /// Get user's nick, falling back to "*" if not found.
 async fn get_nick_or_star(ctx: &Context<'_>) -> String {
@@ -49,20 +49,12 @@ pub struct OperHandler;
 
 #[async_trait]
 impl Handler for OperHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
-        // OPER <name> <password>
-        let name = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                let nick = get_nick_or_star(ctx).await;
-                ctx.sender.send(err_needmoreparams(server_name, &nick, "OPER")).await?;
-                return Ok(());
-            }
-        };
-        let password = match msg.arg(1) {
-            Some(p) if !p.is_empty() => p,
+        // Extract oper credentials from the message
+        let (name, password) = match &msg.command {
+            Command::OPER(n, p) => (n.clone(), p.clone()),
             _ => {
                 let nick = get_nick_or_star(ctx).await;
                 ctx.sender.send(err_needmoreparams(server_name, &nick, "OPER")).await?;
@@ -126,19 +118,18 @@ pub struct KillHandler;
 
 #[async_trait]
 impl Handler for KillHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
-        // KILL <target> <reason>
-        let target_nick = match msg.arg(0) {
-            Some(t) if !t.is_empty() => t,
+        // Extract target and reason from the message
+        let (target_nick, reason) = match &msg.command {
+            Command::KILL(target, reason) => (target.clone(), reason.clone()),
             _ => {
                 let nick = get_nick_or_star(ctx).await;
                 ctx.sender.send(err_needmoreparams(server_name, &nick, "KILL")).await?;
                 return Ok(());
             }
         };
-        let reason = msg.arg(1).unwrap_or("No reason given");
 
         // Get killer info
         let Some((killer_nick, killer_user, killer_host, is_oper)) = get_user_full_info(ctx).await
@@ -152,8 +143,8 @@ impl Handler for KillHandler {
         }
 
         // Find target user
-        let Some(target_uid) = resolve_nick(ctx, target_nick) else {
-            ctx.sender.send(err_nosuchnick(server_name, &killer_nick, target_nick)).await?;
+        let Some(target_uid) = resolve_nick(ctx, &target_nick) else {
+            ctx.sender.send(err_nosuchnick(server_name, &killer_nick, &target_nick)).await?;
             return Ok(());
         };
 
@@ -161,7 +152,7 @@ impl Handler for KillHandler {
         let kill_msg = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(killer_nick.clone(), killer_user, killer_host)),
-            command: Command::KILL(target_nick.to_string(), format!("Killed by {killer_nick} ({reason})")),
+            command: Command::KILL(target_nick.clone(), format!("Killed by {killer_nick} ({reason})")),
         };
 
         tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
@@ -181,7 +172,7 @@ impl Handler for KillHandler {
         // Build QUIT message for target
         let quit_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(target_nick.to_string(), "user".to_string(), "host".to_string())),
+            prefix: Some(Prefix::Nickname(target_nick.clone(), "user".to_string(), "host".to_string())),
             command: Command::QUIT(Some(quit_reason)),
         };
 
@@ -227,12 +218,12 @@ pub struct WallopsHandler;
 
 #[async_trait]
 impl Handler for WallopsHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
-        // WALLOPS <message>
-        let wallops_text = match msg.arg(0) {
-            Some(t) if !t.is_empty() => t,
+        // Extract message from the command
+        let wallops_text = match &msg.command {
+            Command::WALLOPS(text) => text.clone(),
             _ => {
                 let nick = get_nick_or_star(ctx).await;
                 ctx.sender.send(err_needmoreparams(server_name, &nick, "WALLOPS")).await?;
@@ -255,7 +246,7 @@ impl Handler for WallopsHandler {
         let wallops_msg = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(sender_nick, sender_user, sender_host)),
-            command: Command::WALLOPS(wallops_text.to_string()),
+            command: Command::WALLOPS(wallops_text),
         };
 
         // Send to all users with +w mode (wallops) or operators
@@ -280,7 +271,7 @@ pub struct DieHandler;
 
 #[async_trait]
 impl Handler for DieHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
@@ -314,7 +305,7 @@ pub struct RehashHandler;
 
 #[async_trait]
 impl Handler for RehashHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {

@@ -12,7 +12,7 @@ use super::{
 };
 use crate::state::MemberModes;
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Mode, Prefix, Response};
+use slirc_proto::{irc_to_lower, Command, Message, Mode, Prefix, Response};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -45,7 +45,7 @@ pub struct SajoinHandler;
 
 #[async_trait]
 impl Handler for SajoinHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
@@ -57,16 +57,9 @@ impl Handler for SajoinHandler {
             return Ok(());
         }
 
-        // SAJOIN <nick> <channel>
-        let target_nick = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SAJOIN")).await?;
-                return Ok(());
-            }
-        };
-        let channel_name = match msg.arg(1) {
-            Some(c) if !c.is_empty() => c,
+        // Extract target nick and channel
+        let (target_nick, channel_name) = match &msg.command {
+            Command::SAJOIN(nick, channel) => (nick.clone(), channel.clone()),
             _ => {
                 ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SAJOIN")).await?;
                 return Ok(());
@@ -74,18 +67,18 @@ impl Handler for SajoinHandler {
         };
 
         // Find target user
-        let Some(target_uid) = resolve_nick(ctx, target_nick) else {
-            ctx.sender.send(err_nosuchnick(server_name, &oper_nick, target_nick)).await?;
+        let Some(target_uid) = resolve_nick(ctx, &target_nick) else {
+            ctx.sender.send(err_nosuchnick(server_name, &oper_nick, &target_nick)).await?;
             return Ok(());
         };
 
         // Validate channel name
         if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
-            ctx.sender.send(err_nosuchchannel(server_name, &oper_nick, channel_name)).await?;
+            ctx.sender.send(err_nosuchchannel(server_name, &oper_nick, &channel_name)).await?;
             return Ok(());
         }
 
-        let channel_lower = irc_to_lower(channel_name);
+        let channel_lower = irc_to_lower(&channel_name);
 
         // Get or create channel
         let channel_ref = ctx
@@ -93,7 +86,7 @@ impl Handler for SajoinHandler {
             .channels
             .entry(channel_lower.clone())
             .or_insert_with(|| {
-                Arc::new(RwLock::new(crate::state::Channel::new(channel_name.to_string())))
+                Arc::new(RwLock::new(crate::state::Channel::new(channel_name.clone())))
             })
             .clone();
 
@@ -122,7 +115,7 @@ impl Handler for SajoinHandler {
         let join_msg = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(target_realname, target_user, target_host)),
-            command: Command::JOIN(channel_name.to_string(), None, None),
+            command: Command::JOIN(channel_name.clone(), None, None),
         };
         ctx.matrix.broadcast_to_channel(&channel_lower, join_msg, None).await;
 
@@ -157,7 +150,7 @@ pub struct SapartHandler;
 
 #[async_trait]
 impl Handler for SapartHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
@@ -169,16 +162,9 @@ impl Handler for SapartHandler {
             return Ok(());
         }
 
-        // SAPART <nick> <channel>
-        let target_nick = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SAPART")).await?;
-                return Ok(());
-            }
-        };
-        let channel_name = match msg.arg(1) {
-            Some(c) if !c.is_empty() => c,
+        // Extract target nick, channel, and optional reason
+        let (target_nick, channel_name, reason) = match &msg.command {
+            Command::SAPART(nick, channel) => (nick.clone(), channel.clone(), None),
             _ => {
                 ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SAPART")).await?;
                 return Ok(());
@@ -186,16 +172,16 @@ impl Handler for SapartHandler {
         };
 
         // Find target user
-        let Some(target_uid) = resolve_nick(ctx, target_nick) else {
-            ctx.sender.send(err_nosuchnick(server_name, &oper_nick, target_nick)).await?;
+        let Some(target_uid) = resolve_nick(ctx, &target_nick) else {
+            ctx.sender.send(err_nosuchnick(server_name, &oper_nick, &target_nick)).await?;
             return Ok(());
         };
 
-        let channel_lower = irc_to_lower(channel_name);
+        let channel_lower = irc_to_lower(&channel_name);
 
         // Check if channel exists
         let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) else {
-            ctx.sender.send(err_nosuchchannel(server_name, &oper_nick, channel_name)).await?;
+            ctx.sender.send(err_nosuchchannel(server_name, &oper_nick, &channel_name)).await?;
             return Ok(());
         };
 
@@ -210,7 +196,7 @@ impl Handler for SapartHandler {
         let part_msg = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(target_realname, target_user, target_host)),
-            command: Command::PART(channel_name.to_string(), None),
+            command: Command::PART(channel_name.clone(), reason.clone()),
         };
         ctx.matrix.broadcast_to_channel(&channel_lower, part_msg, None).await;
 
@@ -231,6 +217,7 @@ impl Handler for SapartHandler {
             oper = %oper_nick,
             target = %target_nick,
             channel = %channel_name,
+            reason = ?reason,
             "SAPART: Forced user to leave channel"
         );
 
@@ -258,7 +245,7 @@ pub struct SanickHandler;
 
 #[async_trait]
 impl Handler for SanickHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
@@ -270,16 +257,9 @@ impl Handler for SanickHandler {
             return Ok(());
         }
 
-        // SANICK <oldnick> <newnick>
-        let old_nick = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SANICK")).await?;
-                return Ok(());
-            }
-        };
-        let new_nick = match msg.arg(1) {
-            Some(n) if !n.is_empty() => n,
+        // Extract old and new nicks
+        let (old_nick, new_nick) = match &msg.command {
+            Command::SANICK(old, new) => (old.clone(), new.clone()),
             _ => {
                 ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SANICK")).await?;
                 return Ok(());
@@ -287,19 +267,19 @@ impl Handler for SanickHandler {
         };
 
         // Find target user
-        let old_lower = irc_to_lower(old_nick);
-        let Some(target_uid) = resolve_nick(ctx, old_nick) else {
-            ctx.sender.send(err_nosuchnick(server_name, &oper_nick, old_nick)).await?;
+        let old_lower = irc_to_lower(&old_nick);
+        let Some(target_uid) = resolve_nick(ctx, &old_nick) else {
+            ctx.sender.send(err_nosuchnick(server_name, &oper_nick, &old_nick)).await?;
             return Ok(());
         };
 
         // Check if new nick is already in use
-        let new_lower = irc_to_lower(new_nick);
+        let new_lower = irc_to_lower(&new_nick);
         if ctx.matrix.nicks.contains_key(&new_lower) {
             let reply = server_reply(
                 server_name,
                 Response::ERR_NICKNAMEINUSE,
-                vec![oper_nick.clone(), new_nick.to_string(), "Nickname is already in use".to_string()],
+                vec![oper_nick.clone(), new_nick, "Nickname is already in use".to_string()],
             );
             ctx.sender.send(reply).await?;
             return Ok(());
@@ -318,8 +298,8 @@ impl Handler for SanickHandler {
         // Build NICK message
         let nick_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(old_nick.to_string(), target_user, target_host)),
-            command: Command::NICK(new_nick.to_string()),
+            prefix: Some(Prefix::Nickname(old_nick.clone(), target_user, target_host)),
+            command: Command::NICK(new_nick.clone()),
         };
 
         // Update nick mapping
@@ -329,7 +309,7 @@ impl Handler for SanickHandler {
         // Update user's nick
         if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
             let mut user = user_ref.write().await;
-            user.nick = new_nick.to_string();
+            user.nick = new_nick.clone();
         }
 
         // Broadcast NICK change to all channels the user is in
@@ -376,7 +356,7 @@ pub struct SamodeHandler;
 
 #[async_trait]
 impl Handler for SamodeHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
@@ -388,18 +368,11 @@ impl Handler for SamodeHandler {
             return Ok(());
         }
 
-        // SAMODE <channel> <modes> [params]
-        let channel_name = match msg.arg(0) {
-            Some(c) if !c.is_empty() => c,
-            _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "SAMODE"))
-                    .await?;
-                return Ok(());
+        // Extract channel and modes from Command::SAMODE
+        let (channel_name, modes_str, params) = match &msg.command {
+            Command::SAMODE(target, modes, params) => {
+                (target.clone(), modes.clone(), params.clone())
             }
-        };
-        let modes_str = match msg.arg(1) {
-            Some(m) if !m.is_empty() => m,
             _ => {
                 ctx.sender
                     .send(err_needmoreparams(server_name, &oper_nick, "SAMODE"))
@@ -408,22 +381,25 @@ impl Handler for SamodeHandler {
             }
         };
 
-        let channel_lower = irc_to_lower(channel_name);
+        let channel_lower = irc_to_lower(&channel_name);
 
         // Get channel
         let channel = match ctx.matrix.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
                 ctx.sender
-                    .send(err_nosuchchannel(server_name, &oper_nick, channel_name))
+                    .send(err_nosuchchannel(server_name, &oper_nick, &channel_name))
                     .await?;
                 return Ok(());
             }
         };
 
-        // Build the pieces array: [modes_str, ...remaining args] - avoid intermediate allocation
-        let mut pieces: Vec<&str> = vec![modes_str];
-        pieces.extend(msg.args().iter().skip(2).copied());
+        // Parse mode string into typed modes using slirc-proto
+        // Build the pieces array: ["+ov", "nick1", "nick2"] etc.
+        let mut pieces: Vec<&str> = vec![&modes_str];
+        if let Some(ref p) = params {
+            pieces.extend(p.split_whitespace());
+        }
 
         let typed_modes = match Mode::as_channel_modes(&pieces) {
             Ok(modes) => modes,

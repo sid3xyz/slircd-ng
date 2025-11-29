@@ -5,7 +5,7 @@
 
 use super::{server_reply, Context, Handler, HandlerResult};
 use async_trait::async_trait;
-use slirc_proto::{CapSubCommand, Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{CapSubCommand, Command, Message, Prefix, Response};
 use tracing::{debug, info, warn};
 
 /// Capabilities we support (subset of slirc_proto::CAPABILITIES).
@@ -23,11 +23,12 @@ pub struct CapHandler;
 
 #[async_trait]
 impl Handler for CapHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
         // CAP can be used before and after registration
-        // CAP <subcommand> [arg]
-        let subcommand_str = msg.arg(0).unwrap_or("");
-        let arg = msg.arg(1);
+        let (subcommand, arg, _trailing) = match &msg.command {
+            Command::CAP(_, sub, arg, trailing) => (sub, arg, trailing),
+            _ => return Ok(()),
+        };
 
         // Clone nick upfront to avoid borrowing issues
         let nick = ctx
@@ -36,19 +37,10 @@ impl Handler for CapHandler {
             .clone()
             .unwrap_or_else(|| "*".to_string());
 
-        // Parse subcommand using slirc-proto's FromStr implementation
-        let subcommand: CapSubCommand = match subcommand_str.parse() {
-            Ok(cmd) => cmd,
-            Err(_) => {
-                debug!(subcommand = subcommand_str, "Unknown CAP subcommand");
-                return Ok(());
-            }
-        };
-
         match subcommand {
-            CapSubCommand::LS => handle_ls(ctx, &nick, arg).await,
+            CapSubCommand::LS => handle_ls(ctx, &nick, arg.as_deref()).await,
             CapSubCommand::LIST => handle_list(ctx, &nick).await,
-            CapSubCommand::REQ => handle_req(ctx, &nick, arg).await,
+            CapSubCommand::REQ => handle_req(ctx, &nick, arg.as_deref()).await,
             CapSubCommand::END => handle_end(ctx, &nick).await,
             _ => {
                 // ACK, NAK, NEW, DEL are server-to-client only
@@ -232,9 +224,11 @@ pub struct AuthenticateHandler;
 
 #[async_trait]
 impl Handler for AuthenticateHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        // AUTHENTICATE <data>
-        let data = msg.arg(0).unwrap_or("");
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+        let data = match &msg.command {
+            Command::AUTHENTICATE(d) => d.clone(),
+            _ => return Ok(()),
+        };
 
         // Clone nick upfront to avoid borrowing issues
         let nick = ctx
@@ -278,7 +272,7 @@ impl Handler for AuthenticateHandler {
                     ctx.handshake.sasl_state = SaslState::None;
                 } else {
                     // Try to decode and validate
-                    match validate_sasl_plain(data) {
+                    match validate_sasl_plain(&data) {
                         Ok((authzid, authcid, password)) => {
                             // Validate against database
                             let account_name = if authzid.is_empty() { &authcid } else { &authzid };
