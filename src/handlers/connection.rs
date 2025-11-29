@@ -104,30 +104,28 @@ impl Handler for NickHandler {
 
         if !is_identified {
             // Check if this nick is registered with ENFORCE enabled
-            if let Ok(Some(account)) = ctx.db.accounts().find_by_nickname(nick).await {
-                if account.enforce {
-                    // Start 60 second timer
-                    let deadline = Instant::now() + Duration::from_secs(60);
-                    ctx.matrix.enforce_timers.insert(ctx.uid.to_string(), deadline);
-                    
-                    // Notify user
-                    let notice = Message {
-                        tags: None,
-                        prefix: Some(Prefix::Nickname(
-                            "NickServ".to_string(),
-                            "NickServ".to_string(),
-                            "services.".to_string(),
-                        )),
-                        command: Command::NOTICE(
-                            nick.to_string(),
-                            format!(
-                                "This nickname is registered. Please identify via \x02/msg NickServ IDENTIFY <password>\x02 within 60 seconds."
-                            ),
-                        ),
-                    };
-                    let _ = ctx.sender.send(notice).await;
-                    info!(nick = %nick, uid = %ctx.uid, "Nick enforcement timer started");
-                }
+            if let Ok(Some(account)) = ctx.db.accounts().find_by_nickname(nick).await
+                && account.enforce
+            {
+                // Start 60 second timer
+                let deadline = Instant::now() + Duration::from_secs(60);
+                ctx.matrix.enforce_timers.insert(ctx.uid.to_string(), deadline);
+                
+                // Notify user
+                let notice = Message {
+                    tags: None,
+                    prefix: Some(Prefix::Nickname(
+                        "NickServ".to_string(),
+                        "NickServ".to_string(),
+                        "services.".to_string(),
+                    )),
+                    command: Command::NOTICE(
+                        nick.to_string(),
+                        "This nickname is registered. Please identify via \x02/msg NickServ IDENTIFY <password>\x02 within 60 seconds.".to_string(),
+                    ),
+                };
+                let _ = ctx.sender.send(notice).await;
+                info!(nick = %nick, uid = %ctx.uid, "Nick enforcement timer started");
             }
         }
 
