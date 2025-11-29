@@ -5,16 +5,11 @@
 //! - User modes: `MODE nick [+/-modes]`
 //! - Channel modes: `MODE channel [+/-modes [args...]]`
 
-use super::{err_chanoprivsneeded, server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{err_chanoprivsneeded, server_reply, user_prefix, Context, Handler, HandlerError, HandlerResult};
 use crate::state::{ListEntry, UserModes};
 use async_trait::async_trait;
-use slirc_proto::{irc_eq, irc_to_lower, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, UserMode};
+use slirc_proto::{irc_eq, irc_to_lower, ChannelMode, Command, Message, MessageRef, Mode, Response, UserMode};
 use tracing::{debug, info};
-
-/// Helper to create a user prefix.
-fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
-    Prefix::Nickname(nick.to_string(), user.to_string(), host.to_string())
-}
 
 /// Handler for MODE command.
 pub struct ModeHandler;

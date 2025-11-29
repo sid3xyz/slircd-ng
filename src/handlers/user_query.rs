@@ -2,7 +2,7 @@
 //!
 //! RFC 2812 §3.6 - User based queries
 
-use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{err_notregistered, server_reply, Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, MessageRef, Response};
 use tracing::debug;
@@ -19,12 +19,7 @@ pub struct WhoHandler;
 impl Handler for WhoHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -148,12 +143,7 @@ pub struct WhoisHandler;
 impl Handler for WhoisHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -315,12 +305,7 @@ pub struct WhowasHandler;
 impl Handler for WhowasHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 

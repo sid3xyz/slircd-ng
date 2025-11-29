@@ -2,7 +2,7 @@
 //!
 //! RFC 2812 - Miscellaneous and optional commands
 
-use super::{err_chanoprivsneeded, err_notonchannel, server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{err_chanoprivsneeded, err_notonchannel, err_notregistered, server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
@@ -20,12 +20,7 @@ pub struct AwayHandler;
 impl Handler for AwayHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -86,12 +81,7 @@ pub struct UserhostHandler;
 impl Handler for UserhostHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -157,12 +147,7 @@ pub struct IsonHandler;
 impl Handler for IsonHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -219,12 +204,7 @@ pub struct InviteHandler;
 impl Handler for InviteHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -448,12 +428,7 @@ pub struct NsHandler;
 impl Handler for NsHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -501,12 +476,7 @@ pub struct CsHandler;
 impl Handler for CsHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 

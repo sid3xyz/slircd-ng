@@ -242,6 +242,11 @@ pub fn server_reply(server_name: &str, response: Response, params: Vec<String>) 
     }
 }
 
+/// Helper to create a user prefix (nick!user@host).
+pub fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
+    Prefix::Nickname(nick.to_string(), user.to_string(), host.to_string())
+}
+
 // ============================================================================
 // Common error reply helpers
 // ============================================================================
@@ -334,6 +339,15 @@ pub fn err_usernotinchannel(server_name: &str, nick: &str, target: &str, channel
             channel.to_string(),
             "They aren't on that channel".to_string(),
         ],
+    )
+}
+
+/// Create ERR_NOTREGISTERED reply (451) - you have not registered.
+pub fn err_notregistered(server_name: &str) -> Message {
+    server_reply(
+        server_name,
+        Response::ERR_NOTREGISTERED,
+        vec!["*".to_string(), "You have not registered".to_string()],
     )
 }
 
