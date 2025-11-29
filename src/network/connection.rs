@@ -66,7 +66,7 @@ impl Connection {
         );
 
         // Phase 1: Handshake using Transport (owned Message reads/writes)
-        let mut transport = Transport::tcp(self.stream);
+        let mut transport = Transport::tcp(self.stream)?;
 
         // Channel for outgoing messages during handshake (drained synchronously)
         let (handshake_tx, mut handshake_rx) = mpsc::channel::<Message>(64);
