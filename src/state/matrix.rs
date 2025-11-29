@@ -17,6 +17,10 @@ pub type Uid = String;
 
 /// Server identifier (TS6 format: 3 characters).
 pub type Sid = String;
+use std::collections::VecDeque;
+
+/// Maximum number of WHOWAS entries to keep per nickname.
+const MAX_WHOWAS_PER_NICK: usize = 10;
 
 /// The Matrix - Central shared state container.
 ///
@@ -38,6 +42,9 @@ pub struct Matrix {
     /// Nick enforcement timers: UID -> deadline when they will be renamed.
     pub enforce_timers: DashMap<Uid, Instant>,
 
+    /// WHOWAS history: lowercase nick -> entries (most recent first).
+    pub whowas: DashMap<String, VecDeque<WhowasEntry>>,
+
     /// Connected servers (for future linking support).
     #[allow(dead_code)] // Phase 4+: Server linking
     pub servers: DashMap<Sid, Arc<Server>>,
@@ -50,6 +57,23 @@ pub struct Matrix {
 
     /// Server configuration (for handlers to access).
     pub config: MatrixConfig,
+}
+
+/// An entry in the WHOWAS history for a disconnected user.
+#[derive(Debug, Clone)]
+pub struct WhowasEntry {
+    /// The user's nickname (case-preserved).
+    pub nick: String,
+    /// The user's username.
+    pub user: String,
+    /// The user's hostname.
+    pub host: String,
+    /// The user's realname.
+    pub realname: String,
+    /// Server name they were connected to.
+    pub server: String,
+    /// When they logged out (Unix timestamp).
+    pub logout_time: i64,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -84,6 +108,8 @@ pub struct User {
     pub modes: UserModes,
     /// Account name if identified to NickServ.
     pub account: Option<String>,
+    /// Away message if user is marked away (RFC 2812).
+    pub away: Option<String>,
 }
 
 /// User modes.
@@ -125,6 +151,7 @@ impl User {
             channels: HashSet::new(),
             modes: UserModes::default(),
             account: None,
+            away: None,
         }
     }
 }
@@ -287,6 +314,7 @@ impl Matrix {
             nicks: DashMap::new(),
             senders: DashMap::new(),
             enforce_timers: DashMap::new(),
+            whowas: DashMap::new(),
             servers: DashMap::new(),
             server_info: ServerInfo {
                 sid: config.server.sid.clone(),
@@ -343,29 +371,34 @@ impl Matrix {
     ///
     /// This is the canonical kill logic, used by KILL, GHOST, and enforcement.
     /// It:
-    /// 1. Removes user from all channels and broadcasts QUIT
-    /// 2. Removes from nicks mapping
-    /// 3. Removes from users collection
-    /// 4. Drops the sender (terminates connection task)
+    /// 1. Records WHOWAS entry for historical queries
+    /// 2. Removes user from all channels and broadcasts QUIT
+    /// 3. Removes from nicks mapping
+    /// 4. Removes from users collection
+    /// 5. Drops the sender (terminates connection task)
     ///
     /// Returns the list of channels the user was in (for logging).
     pub async fn disconnect_user(&self, target_uid: &str, quit_reason: &str) -> Vec<String> {
         use slirc_proto::{Command, Prefix};
 
         // Get user info before removal
-        let (nick, user, host, user_channels) = {
+        let (nick, user, host, realname, user_channels) = {
             if let Some(user_ref) = self.users.get(target_uid) {
                 let user = user_ref.read().await;
                 (
                     user.nick.clone(),
                     user.user.clone(),
                     user.host.clone(),
+                    user.realname.clone(),
                     user.channels.iter().cloned().collect::<Vec<_>>(),
                 )
             } else {
                 return vec![];
             }
         };
+
+        // Record WHOWAS entry before user is removed
+        self.record_whowas(&nick, &user, &host, &realname);
 
         // Build QUIT message
         let quit_msg = Message {
@@ -403,5 +436,33 @@ impl Matrix {
         self.senders.remove(target_uid);
 
         user_channels
+    }
+
+    /// Record a WHOWAS entry for a user who is disconnecting.
+    /// 
+    /// Entries are stored per-nick (lowercase) with most recent first.
+    /// Old entries are pruned to keep only MAX_WHOWAS_PER_NICK entries.
+    pub fn record_whowas(&self, nick: &str, user: &str, host: &str, realname: &str) {
+        let nick_lower = slirc_proto::irc_to_lower(nick);
+        let entry = WhowasEntry {
+            nick: nick.to_string(),
+            user: user.to_string(),
+            host: host.to_string(),
+            realname: realname.to_string(),
+            server: self.server_info.name.clone(),
+            logout_time: chrono::Utc::now().timestamp(),
+        };
+
+        self.whowas
+            .entry(nick_lower)
+            .or_default()
+            .push_front(entry);
+
+        // Prune old entries if over the limit
+        if let Some(mut entries) = self.whowas.get_mut(&slirc_proto::irc_to_lower(nick)) {
+            while entries.len() > MAX_WHOWAS_PER_NICK {
+                entries.pop_back();
+            }
+        }
     }
 }

@@ -7,27 +7,14 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    apply_channel_modes_typed, err_needmoreparams, err_noprivileges, err_nosuchchannel,
-    err_nosuchnick, server_reply, Context, Handler, HandlerResult,
+    apply_channel_modes_typed, err_needmoreparams, err_nosuchchannel,
+    err_nosuchnick, require_oper, resolve_nick_to_uid, server_reply, Context, Handler, HandlerResult,
 };
 use crate::state::MemberModes;
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Mode, Prefix, Response};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
-/// Get operator's nick and oper status. Returns None if user not found.
-async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
-    let user_ref = ctx.matrix.users.get(ctx.uid)?;
-    let user = user_ref.read().await;
-    Some((user.nick.clone(), user.modes.oper))
-}
-
-/// Resolve a nick to UID. Returns None if not found.
-fn resolve_nick(ctx: &Context<'_>, nick: &str) -> Option<String> {
-    let lower = irc_to_lower(nick);
-    ctx.matrix.nicks.get(&lower).map(|r| r.value().clone())
-}
 
 /// Get user prefix info (user, host, nick) for message construction.
 async fn get_user_prefix(ctx: &Context<'_>, uid: &str) -> Option<(String, String, String)> {
@@ -48,14 +35,9 @@ impl Handler for SajoinHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(oper_nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &oper_nick)).await?;
-            return Ok(());
-        }
 
         // SAJOIN <nick> <channel>
         let target_nick = match msg.arg(0) {
@@ -74,7 +56,7 @@ impl Handler for SajoinHandler {
         };
 
         // Find target user
-        let Some(target_uid) = resolve_nick(ctx, target_nick) else {
+        let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             ctx.sender.send(err_nosuchnick(server_name, &oper_nick, target_nick)).await?;
             return Ok(());
         };
@@ -160,14 +142,9 @@ impl Handler for SapartHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(oper_nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &oper_nick)).await?;
-            return Ok(());
-        }
 
         // SAPART <nick> <channel>
         let target_nick = match msg.arg(0) {
@@ -186,7 +163,7 @@ impl Handler for SapartHandler {
         };
 
         // Find target user
-        let Some(target_uid) = resolve_nick(ctx, target_nick) else {
+        let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             ctx.sender.send(err_nosuchnick(server_name, &oper_nick, target_nick)).await?;
             return Ok(());
         };
@@ -261,14 +238,9 @@ impl Handler for SanickHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(oper_nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &oper_nick)).await?;
-            return Ok(());
-        }
 
         // SANICK <oldnick> <newnick>
         let old_nick = match msg.arg(0) {
@@ -288,7 +260,7 @@ impl Handler for SanickHandler {
 
         // Find target user
         let old_lower = irc_to_lower(old_nick);
-        let Some(target_uid) = resolve_nick(ctx, old_nick) else {
+        let Some(target_uid) = resolve_nick_to_uid(ctx, old_nick) else {
             ctx.sender.send(err_nosuchnick(server_name, &oper_nick, old_nick)).await?;
             return Ok(());
         };
@@ -379,14 +351,9 @@ impl Handler for SamodeHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(oper_nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &oper_nick)).await?;
-            return Ok(());
-        }
 
         // SAMODE <channel> <modes> [params]
         let channel_name = match msg.arg(0) {

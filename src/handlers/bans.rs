@@ -6,16 +6,9 @@
 //! - UNKLINE: Remove a K-line
 //! - UNDLINE: Remove a D-line
 
-use super::{err_needmoreparams, err_noprivileges, Context, Handler, HandlerResult};
+use super::{err_needmoreparams, require_oper, Context, Handler, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
-
-/// Get user's nick and oper status. Returns None if user not found.
-async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
-    let user_ref = ctx.matrix.users.get(ctx.uid)?;
-    let user = user_ref.read().await;
-    Some((user.nick.clone(), user.modes.oper))
-}
 
 /// Handler for KLINE command.
 ///
@@ -29,14 +22,9 @@ impl Handler for KlineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
-            return Ok(());
-        }
 
         // KLINE [time] <user@host> <reason>
         // For now, assume first arg is mask, second is reason
@@ -124,14 +112,9 @@ impl Handler for DlineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
-            return Ok(());
-        }
 
         // DLINE [time] <ip> <reason>
         let ip = match msg.arg(0) {
@@ -218,14 +201,9 @@ impl Handler for UnklineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
-            return Ok(());
-        }
 
         // UNKLINE <mask>
         let mask = match msg.arg(0) {
@@ -282,14 +260,9 @@ impl Handler for UndlineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
-            return Ok(());
-        }
 
         // UNDLINE <ip>
         let ip = match msg.arg(0) {

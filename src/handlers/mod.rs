@@ -26,7 +26,7 @@ pub use bans::{DlineHandler, KlineHandler, UndlineHandler, UnklineHandler};
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
-pub use messaging::{NoticeHandler, PrivmsgHandler};
+pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
 pub use misc::{AwayHandler, CsHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, UserhostHandler};
 pub use mode::{apply_channel_modes_typed, ModeHandler};
 pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
@@ -165,6 +165,7 @@ impl Registry {
         // Messaging handlers
         handlers.insert("PRIVMSG", Box::new(PrivmsgHandler));
         handlers.insert("NOTICE", Box::new(NoticeHandler));
+        handlers.insert("TAGMSG", Box::new(TagmsgHandler));
 
         // User query handlers
         handlers.insert("WHO", Box::new(WhoHandler));
@@ -351,5 +352,63 @@ pub fn err_notregistered(server_name: &str) -> Message {
         Response::ERR_NOTREGISTERED,
         vec!["*".to_string(), "You have not registered".to_string()],
     )
+}
+
+// ============================================================================
+// User lookup helpers (Phase 1.1: DRY refactoring)
+// ============================================================================
+
+use crate::state::User;
+use std::sync::Arc as StdArc;
+use tokio::sync::RwLock;
+
+/// Resolve a nickname to UID. Returns None if not found.
+/// 
+/// Uses IRC case-folding for comparison.
+pub fn resolve_nick_to_uid(ctx: &Context<'_>, nick: &str) -> Option<String> {
+    let lower = slirc_proto::irc_to_lower(nick);
+    ctx.matrix.nicks.get(&lower).map(|r| r.value().clone())
+}
+
+/// Resolve a nickname to a User Arc. Returns None if not found.
+/// 
+/// This is the preferred helper when you need to access user data.
+pub fn resolve_target(ctx: &Context<'_>, nick: &str) -> Option<StdArc<RwLock<User>>> {
+    let uid = resolve_nick_to_uid(ctx, nick)?;
+    ctx.matrix.users.get(&uid).map(|r| r.clone())
+}
+
+/// Get the current user's nick, falling back to "*" if not found.
+pub async fn get_nick_or_star(ctx: &Context<'_>) -> String {
+    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+        user_ref.read().await.nick.clone()
+    } else {
+        "*".to_string()
+    }
+}
+
+/// Get the current user's nick and oper status. Returns None if user not found.
+pub async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
+    let user_ref = ctx.matrix.users.get(ctx.uid)?;
+    let user = user_ref.read().await;
+    Some((user.nick.clone(), user.modes.oper))
+}
+
+/// Check if the current user is an IRC operator.
+/// 
+/// Returns `Ok(nick)` if they are an oper, or sends `ERR_NOPRIVILEGES` and returns `Err(())`.
+pub async fn require_oper(ctx: &mut Context<'_>) -> Result<String, ()> {
+    let server_name = &ctx.matrix.server_info.name;
+    
+    let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+        return Err(());
+    };
+    
+    if !is_oper {
+        let _ = ctx.sender.send(err_noprivileges(server_name, &nick)).await;
+        return Err(());
+    }
+    
+    Ok(nick)
 }
 

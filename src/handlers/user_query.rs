@@ -48,7 +48,7 @@ impl Handler for WhoHandler {
                             }
 
                             // Build flags: H=here, G=gone (away), *=ircop, @=chanop, +=voice
-                            let mut flags = "H".to_string(); // TODO: track away status
+                            let mut flags = if user.away.is_some() { "G".to_string() } else { "H".to_string() };
                             if user.modes.oper {
                                 flags.push('*');
                             }
@@ -93,7 +93,7 @@ impl Handler for WhoHandler {
                     // Match against nick (simple case-insensitive match or wildcard)
                     let nick_lower = irc_to_lower(&user.nick);
                     if matches_mask(&nick_lower, &mask_lower) {
-                        let mut flags = "H".to_string();
+                        let mut flags = if user.away.is_some() { "G".to_string() } else { "H".to_string() };
                         if user.modes.oper {
                             flags.push('*');
                         }
@@ -269,6 +269,20 @@ impl Handler for WhoisHandler {
                     ctx.sender.send(reply).await?;
                 }
 
+                // RPL_AWAY (301): <nick> :<away message>
+                if let Some(away_msg) = &target_user.away {
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_AWAY,
+                        vec![
+                            nick.clone(),
+                            target_user.nick.clone(),
+                            away_msg.clone(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+
                 // RPL_ENDOFWHOIS (318): <nick> :End of WHOIS list
                 let reply = server_reply(
                     server_name,
@@ -298,7 +312,7 @@ impl Handler for WhoisHandler {
 /// `WHOWAS nickname [count [server]]`
 ///
 /// Returns information about a nickname that no longer exists.
-/// Note: Requires whowas history tracking which isn't yet implemented.
+/// Queries the WHOWAS history stored in Matrix.
 pub struct WhowasHandler;
 
 #[async_trait]
@@ -311,6 +325,10 @@ impl Handler for WhowasHandler {
 
         // WHOWAS <nick> [count [server]]
         let target = msg.arg(0).unwrap_or("");
+        let count: usize = msg.arg(1)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10)  // Default to 10 entries
+            .min(10);        // Cap at 10
 
         if target.is_empty() {
             let reply = server_reply(
@@ -328,20 +346,70 @@ impl Handler for WhowasHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // TODO: Implement whowas history tracking
-        // For now, always return ERR_WASNOSUCHNICK
+        // Look up WHOWAS history
+        let target_lower = irc_to_lower(target);
         
-        // ERR_WASNOSUCHNICK (406): <nick> :There was no such nickname
-        let reply = server_reply(
-            server_name,
-            Response::ERR_WASNOSUCHNICK,
-            vec![
-                nick.clone(),
-                target.to_string(),
-                "There was no such nickname".to_string(),
-            ],
-        );
-        ctx.sender.send(reply).await?;
+        if let Some(entries) = ctx.matrix.whowas.get(&target_lower) {
+            let entries_to_show: Vec<_> = entries.iter().take(count).cloned().collect();
+            
+            if entries_to_show.is_empty() {
+                // No entries found
+                let reply = server_reply(
+                    server_name,
+                    Response::ERR_WASNOSUCHNICK,
+                    vec![
+                        nick.clone(),
+                        target.to_string(),
+                        "There was no such nickname".to_string(),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+            } else {
+                // Send RPL_WHOWASUSER for each entry
+                for entry in entries_to_show {
+                    // RPL_WHOWASUSER (314): <nick> <user> <host> * :<realname>
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_WHOWASUSER,
+                        vec![
+                            nick.clone(),
+                            entry.nick,
+                            entry.user,
+                            entry.host,
+                            "*".to_string(),
+                            entry.realname,
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+
+                    // RPL_WHOISSERVER (312): <nick> <server> :<server info>
+                    // Note: Using same numeric for server info in WHOWAS
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_WHOISSERVER,
+                        vec![
+                            nick.clone(),
+                            target.to_string(),
+                            entry.server.clone(),
+                            format!("Logged out at {}", format_timestamp(entry.logout_time)),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+            }
+        } else {
+            // No history for this nick at all
+            let reply = server_reply(
+                server_name,
+                Response::ERR_WASNOSUCHNICK,
+                vec![
+                    nick.clone(),
+                    target.to_string(),
+                    "There was no such nickname".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+        }
 
         // RPL_ENDOFWHOWAS (369): <nick> :End of WHOWAS
         let reply = server_reply(
@@ -353,6 +421,13 @@ impl Handler for WhowasHandler {
 
         Ok(())
     }
+}
+
+/// Format a Unix timestamp as a human-readable string.
+fn format_timestamp(ts: i64) -> String {
+    chrono::DateTime::from_timestamp(ts, 0)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 /// Check if a string is a valid channel name.
