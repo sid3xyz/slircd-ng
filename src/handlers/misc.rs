@@ -35,10 +35,29 @@ impl Handler for AwayHandler {
         if let Some(away_text) = away_msg
             && !away_text.is_empty()
         {
+            // Get list of channels before setting away status (for away-notify)
+            let channels = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let user = user_ref.read().await;
+                user.channels.iter().cloned().collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+
             // Set away status
             if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
                 let mut user = user_ref.write().await;
                 user.away = Some(away_text.to_string());
+            }
+
+            // Broadcast AWAY to channels with away-notify capability (IRCv3)
+            let away_broadcast = slirc_proto::Message {
+                tags: None,
+                prefix: Some(slirc_proto::Prefix::new(nick, ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?, "localhost")),
+                command: Command::AWAY(Some(away_text.to_string())),
+            };
+
+            for channel_name in &channels {
+                ctx.matrix.broadcast_to_channel(channel_name, away_broadcast.clone(), None).await;
             }
 
             // RPL_NOWAWAY (306)
@@ -55,10 +74,29 @@ impl Handler for AwayHandler {
             return Ok(());
         }
 
+        // Get list of channels before clearing away status (for away-notify)
+        let channels = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let user = user_ref.read().await;
+            user.channels.iter().cloned().collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
         // Clear away status
         if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
             let mut user = user_ref.write().await;
             user.away = None;
+        }
+
+        // Broadcast AWAY (no message) to channels with away-notify capability (IRCv3)
+        let away_broadcast = slirc_proto::Message {
+            tags: None,
+            prefix: Some(slirc_proto::Prefix::new(nick, ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?, "localhost")),
+            command: Command::AWAY(None),
+        };
+
+        for channel_name in &channels {
+            ctx.matrix.broadcast_to_channel(channel_name, away_broadcast.clone(), None).await;
         }
 
         // RPL_UNAWAY (305)

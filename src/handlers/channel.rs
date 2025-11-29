@@ -136,10 +136,28 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     }
 
     // Broadcast JOIN to all channel members (including self)
-    let join_msg = Message {
-        tags: None,
-        prefix: Some(user_prefix(nick, user_name, "localhost")),
-        command: Command::JOIN(canonical_name.clone(), None, None),
+    // Use extended-join format if capability is enabled
+    let join_msg = if ctx.handshake.capabilities.contains("extended-join") {
+        // Get account name for extended join
+        let account = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let user = user_ref.read().await;
+            user.account.clone()
+        } else {
+            None
+        };
+        let account_name = account.as_deref().unwrap_or("*");
+        
+        Message {
+            tags: None,
+            prefix: Some(user_prefix(nick, user_name, "localhost")),
+            command: Command::JOIN(canonical_name.clone(), Some(account_name.to_string()), Some(realname.clone())),
+        }
+    } else {
+        Message {
+            tags: None,
+            prefix: Some(user_prefix(nick, user_name, "localhost")),
+            command: Command::JOIN(canonical_name.clone(), None, None),
+        }
     };
 
     ctx.matrix.broadcast_to_channel(&channel_lower, join_msg, None).await;
