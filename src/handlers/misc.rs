@@ -6,7 +6,7 @@ use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, Response};
+use slirc_proto::{irc_to_lower, Command, MessageRef, Response};
 use tracing::debug;
 
 /// Handler for AWAY command.
@@ -18,7 +18,7 @@ pub struct AwayHandler;
 
 #[async_trait]
 impl Handler for AwayHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -32,11 +32,8 @@ impl Handler for AwayHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Extract away message (empty = unset)
-        let away_msg = match &msg.command {
-            Command::AWAY(msg) => msg.clone(),
-            _ => None,
-        };
+        // AWAY [message]
+        let away_msg = msg.arg(0);
 
         // Update user's away status
         if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
@@ -45,11 +42,11 @@ impl Handler for AwayHandler {
             // For now, we just send the appropriate response
         }
 
-        if let Some(ref msg) = away_msg
-            && !msg.is_empty()
+        if let Some(away_text) = away_msg
+            && !away_text.is_empty()
         {
             // RPL_NOWAWAY (306)
-            debug!(nick = %nick, away = %msg, "User marked as away");
+            debug!(nick = %nick, away = %away_text, "User marked as away");
             let reply = server_reply(
                 server_name,
                 Response::RPL_NOWAWAY,
@@ -87,7 +84,7 @@ pub struct UserhostHandler;
 
 #[async_trait]
 impl Handler for UserhostHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -101,11 +98,8 @@ impl Handler for UserhostHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Extract nicknames
-        let nicks = match &msg.command {
-            Command::USERHOST(nicks) => nicks.clone(),
-            _ => vec![],
-        };
+        // USERHOST <nick> [<nick> ...]
+        let nicks = msg.args();
 
         if nicks.is_empty() {
             let reply = server_reply(
@@ -161,7 +155,7 @@ pub struct IsonHandler;
 
 #[async_trait]
 impl Handler for IsonHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -175,11 +169,8 @@ impl Handler for IsonHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Extract nicknames
-        let nicks = match &msg.command {
-            Command::ISON(nicks) => nicks.clone(),
-            _ => vec![],
-        };
+        // ISON <nick> [<nick> ...]
+        let nicks = msg.args();
 
         if nicks.is_empty() {
             let reply = server_reply(
@@ -197,11 +188,11 @@ impl Handler for IsonHandler {
 
         // Find which nicks are online
         let mut online = Vec::new();
-        for target_nick in &nicks {
+        for target_nick in nicks {
             let target_lower = irc_to_lower(target_nick);
             if ctx.matrix.nicks.contains_key(&target_lower) {
                 // Return the nick as the user typed it (case preserved)
-                online.push(target_nick.clone());
+                online.push((*target_nick).to_string());
             }
         }
 
@@ -226,7 +217,7 @@ pub struct InviteHandler;
 
 #[async_trait]
 impl Handler for InviteHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -240,26 +231,12 @@ impl Handler for InviteHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Extract target nick and channel
-        let (target_nick, channel_name) = match &msg.command {
-            Command::INVITE(nick, channel) => (nick.clone(), channel.clone()),
-            _ => {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![
-                        nick.clone(),
-                        "INVITE".to_string(),
-                        "Not enough parameters".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
-                return Ok(());
-            }
-        };
+        // INVITE <nickname> <channel>
+        let target_nick = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let channel_name = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
 
-        let channel_lower = irc_to_lower(&channel_name);
-        let target_lower = irc_to_lower(&target_nick);
+        let channel_lower = irc_to_lower(channel_name);
+        let target_lower = irc_to_lower(target_nick);
 
         // Check if target exists
         let target_uid = match ctx.matrix.nicks.get(&target_lower) {
@@ -270,7 +247,7 @@ impl Handler for InviteHandler {
                     Response::ERR_NOSUCHNICK,
                     vec![
                         nick.clone(),
-                        target_nick,
+                        target_nick.to_string(),
                         "No such nick/channel".to_string(),
                     ],
                 );
@@ -290,7 +267,7 @@ impl Handler for InviteHandler {
                     Response::ERR_NOTONCHANNEL,
                     vec![
                         nick.clone(),
-                        channel_name.clone(),
+                        channel_name.to_string(),
                         "You're not on that channel".to_string(),
                     ],
                 );
@@ -305,8 +282,8 @@ impl Handler for InviteHandler {
                     Response::ERR_USERONCHANNEL,
                     vec![
                         nick.clone(),
-                        target_nick.clone(),
-                        channel_name.clone(),
+                        target_nick.to_string(),
+                        channel_name.to_string(),
                         "is already on channel".to_string(),
                     ],
                 );
@@ -321,7 +298,7 @@ impl Handler for InviteHandler {
                     Response::ERR_CHANOPRIVSNEEDED,
                     vec![
                         nick.clone(),
-                        channel_name.clone(),
+                        channel_name.to_string(),
                         "You're not channel operator".to_string(),
                     ],
                 );
@@ -342,7 +319,7 @@ impl Handler for InviteHandler {
                     ctx.handshake.user.clone().unwrap_or_default(),
                     "localhost".to_string(), // TODO: get actual host
                 )),
-                command: Command::INVITE(target_nick.clone(), channel_name.clone()),
+                command: Command::INVITE(target_nick.to_string(), channel_name.to_string()),
             };
             let _ = sender.send(invite_msg).await;
         }
@@ -351,7 +328,7 @@ impl Handler for InviteHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_INVITING,
-            vec![nick.clone(), target_nick, channel_name],
+            vec![nick.clone(), target_nick.to_string(), channel_name.to_string()],
         );
         ctx.sender.send(reply).await?;
 
@@ -368,12 +345,12 @@ pub struct KnockHandler;
 
 #[async_trait]
 impl Handler for KnockHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
-        use slirc_proto::{irc_to_lower, Prefix};
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        use slirc_proto::Prefix;
 
-        // Extract parameters from typed Command::KNOCK variant
-        let (channel_name, knock_msg) = match &msg.command {
-            Command::KNOCK(channel, msg) => (channel.clone(), msg.clone()),
+        // KNOCK <channel> [message]
+        let channel_name = match msg.arg(0) {
+            Some(c) if !c.is_empty() => c,
             _ => {
                 // ERR_NEEDMOREPARAMS (461)
                 let server_name = &ctx.matrix.config.server_name;
@@ -395,9 +372,10 @@ impl Handler for KnockHandler {
                 return Ok(());
             }
         };
+        let knock_msg = msg.arg(1);
 
         let server_name = &ctx.matrix.config.server_name;
-        let channel_lower = irc_to_lower(&channel_name);
+        let channel_lower = irc_to_lower(channel_name);
 
         // Get user info
         let (nick, user, host) = {
@@ -414,7 +392,7 @@ impl Handler for KnockHandler {
             let reply = server_reply(
                 server_name,
                 Response::ERR_NOSUCHCHANNEL,
-                vec![nick, channel_name, "No such channel".to_string()],
+                vec![nick, channel_name.to_string(), "No such channel".to_string()],
             );
             ctx.sender.send(reply).await?;
             return Ok(());
@@ -428,7 +406,7 @@ impl Handler for KnockHandler {
                 let reply = server_reply(
                     server_name,
                     Response::ERR_KNOCKONCHAN,
-                    vec![nick, channel_name, "You're already on that channel".to_string()],
+                    vec![nick, channel_name.to_string(), "You're already on that channel".to_string()],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());
@@ -438,7 +416,7 @@ impl Handler for KnockHandler {
                 let reply = server_reply(
                     server_name,
                     Response::ERR_CHANOPEN,
-                    vec![nick.clone(), channel_name, "Channel is open, just join it".to_string()],
+                    vec![nick.clone(), channel_name.to_string(), "Channel is open, just join it".to_string()],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());
@@ -446,11 +424,11 @@ impl Handler for KnockHandler {
         }
 
         // Build KNOCK notification for channel ops
-        let knock_text = knock_msg.unwrap_or_else(|| "has asked for an invite".to_string());
+        let knock_text = knock_msg.map(|s| s.to_string()).unwrap_or_else(|| "has asked for an invite".to_string());
         let knock_notice = slirc_proto::Message {
             tags: None,
             prefix: Some(Prefix::Nickname(nick.clone(), user, host)),
-            command: Command::KNOCK(channel_name.clone(), Some(knock_text)),
+            command: Command::KNOCK(channel_name.to_string(), Some(knock_text)),
         };
 
         // Send to channel operators
@@ -469,7 +447,7 @@ impl Handler for KnockHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_KNOCKDLVR,
-            vec![nick, channel_name, "Your knock has been delivered".to_string()],
+            vec![nick, channel_name.to_string(), "Your knock has been delivered".to_string()],
         );
         ctx.sender.send(reply).await?;
 
@@ -486,7 +464,7 @@ pub struct NsHandler;
 
 #[async_trait]
 impl Handler for NsHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -499,11 +477,8 @@ impl Handler for NsHandler {
 
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Extract the command text from NS/NICKSERV command
-        let text = match &msg.command {
-            Command::NICKSERV(params) => params.join(" "),
-            _ => return Ok(()),
-        };
+        // Join all args into the command text
+        let text = msg.args().join(" ");
 
         if text.is_empty() {
             // Show help
@@ -542,7 +517,7 @@ pub struct CsHandler;
 
 #[async_trait]
 impl Handler for CsHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -555,11 +530,8 @@ impl Handler for CsHandler {
 
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Extract the command text from CS/CHANSERV command
-        let text = match &msg.command {
-            Command::CHANSERV(params) => params.join(" "),
-            _ => return Ok(()),
-        };
+        // Join all args into the command text
+        let text = msg.args().join(" ");
 
         if text.is_empty() {
             // Show help

@@ -8,7 +8,7 @@
 
 use super::{err_needmoreparams, err_noprivileges, Context, Handler, HandlerResult};
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, Prefix};
+use slirc_proto::{Command, Message, MessageRef, Prefix};
 
 /// Get user's nick and oper status. Returns None if user not found.
 async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
@@ -26,7 +26,7 @@ pub struct KlineHandler;
 
 #[async_trait]
 impl Handler for KlineHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
@@ -38,9 +38,10 @@ impl Handler for KlineHandler {
             return Ok(());
         }
 
-        // Extract parameters from typed Command::KLINE variant
-        let (mask, reason) = match &msg.command {
-            Command::KLINE(_time, mask, reason) => (mask.clone(), reason.clone()),
+        // KLINE [time] <user@host> <reason>
+        // For now, assume first arg is mask, second is reason
+        let mask = match msg.arg(0) {
+            Some(m) if !m.is_empty() => m,
             _ => {
                 ctx.sender
                     .send(err_needmoreparams(server_name, &nick, "KLINE"))
@@ -48,6 +49,7 @@ impl Handler for KlineHandler {
                 return Ok(());
             }
         };
+        let reason = msg.arg(1).unwrap_or("No reason given");
 
         // TODO: Store K-line in a ban list
         // TODO: Check if any connected users match and disconnect them
@@ -75,7 +77,7 @@ pub struct DlineHandler;
 
 #[async_trait]
 impl Handler for DlineHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
@@ -87,9 +89,9 @@ impl Handler for DlineHandler {
             return Ok(());
         }
 
-        // Extract parameters from typed Command::DLINE variant
-        let (ip, reason) = match &msg.command {
-            Command::DLINE(_time, host, reason) => (host.clone(), reason.clone()),
+        // DLINE [time] <ip> <reason>
+        let ip = match msg.arg(0) {
+            Some(i) if !i.is_empty() => i,
             _ => {
                 ctx.sender
                     .send(err_needmoreparams(server_name, &nick, "DLINE"))
@@ -97,6 +99,7 @@ impl Handler for DlineHandler {
                 return Ok(());
             }
         };
+        let reason = msg.arg(1).unwrap_or("No reason given");
 
         // TODO: Store D-line in a ban list
         // TODO: Check if any connected users match and disconnect them
@@ -124,7 +127,7 @@ pub struct UnklineHandler;
 
 #[async_trait]
 impl Handler for UnklineHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
@@ -136,9 +139,9 @@ impl Handler for UnklineHandler {
             return Ok(());
         }
 
-        // Extract mask from typed Command::UNKLINE variant
-        let mask = match &msg.command {
-            Command::UNKLINE(mask) => mask.clone(),
+        // UNKLINE <mask>
+        let mask = match msg.arg(0) {
+            Some(m) if !m.is_empty() => m,
             _ => {
                 ctx.sender
                     .send(err_needmoreparams(server_name, &nick, "UNKLINE"))
@@ -172,7 +175,7 @@ pub struct UndlineHandler;
 
 #[async_trait]
 impl Handler for UndlineHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.config.server_name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
@@ -184,9 +187,9 @@ impl Handler for UndlineHandler {
             return Ok(());
         }
 
-        // Extract IP from typed Command::UNDLINE variant
-        let ip = match &msg.command {
-            Command::UNDLINE(host) => host.clone(),
+        // UNDLINE <ip>
+        let ip = match msg.arg(0) {
+            Some(i) if !i.is_empty() => i,
             _ => {
                 ctx.sender
                     .send(err_needmoreparams(server_name, &nick, "UNDLINE"))
