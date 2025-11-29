@@ -417,6 +417,8 @@ impl Handler for SamodeHandler {
 
         if !applied.is_empty() {
             // Build the mode params for broadcast
+            // NOTE: Using Command::Raw because apply_channel_modes_typed returns a collapsed
+            // mode string, not Vec<Mode<ChannelMode>>. See mode.rs for rationale.
             let mut mode_params = vec![canonical_name.clone(), applied.clone()];
             mode_params.extend(used_args);
 

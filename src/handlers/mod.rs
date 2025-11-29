@@ -358,24 +358,12 @@ pub fn err_notregistered(server_name: &str) -> Message {
 // User lookup helpers (Phase 1.1: DRY refactoring)
 // ============================================================================
 
-use crate::state::User;
-use std::sync::Arc as StdArc;
-use tokio::sync::RwLock;
-
 /// Resolve a nickname to UID. Returns None if not found.
 /// 
 /// Uses IRC case-folding for comparison.
 pub fn resolve_nick_to_uid(ctx: &Context<'_>, nick: &str) -> Option<String> {
     let lower = slirc_proto::irc_to_lower(nick);
     ctx.matrix.nicks.get(&lower).map(|r| r.value().clone())
-}
-
-/// Resolve a nickname to a User Arc. Returns None if not found.
-/// 
-/// This is the preferred helper when you need to access user data.
-pub fn resolve_target(ctx: &Context<'_>, nick: &str) -> Option<StdArc<RwLock<User>>> {
-    let uid = resolve_nick_to_uid(ctx, nick)?;
-    ctx.matrix.users.get(&uid).map(|r| r.clone())
 }
 
 /// Get the current user's nick, falling back to "*" if not found.

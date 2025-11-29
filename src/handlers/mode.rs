@@ -122,6 +122,11 @@ async fn handle_user_mode(
 
         if !applied.is_empty() {
             // Echo the change back
+            // NOTE: Using Command::Raw here because apply_user_modes_typed returns a
+            // collapsed mode string (+iw-o) rather than Vec<Mode<UserMode>>. The collapsed
+            // format is bandwidth-efficient and matches traditional IRC servers. To use
+            // Command::UserMODE would require refactoring mode application to return
+            // the original Mode structs.
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(user_prefix(nick, ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?, "localhost")),
@@ -257,6 +262,9 @@ async fn handle_channel_mode(
 
         if !applied.is_empty() {
             // Broadcast the mode change to channel
+            // NOTE: Using Command::Raw here because apply_channel_modes_typed returns a
+            // collapsed mode string (+ov-m) rather than Vec<Mode<ChannelMode>>. The
+            // collapsed format is bandwidth-efficient and matches traditional IRC servers.
             let mut mode_params = vec![canonical_name.clone(), applied.clone()];
             mode_params.extend(used_args);
 

@@ -572,6 +572,8 @@ pub async fn apply_effect(
             matrix.enforce_timers.remove(&target_uid);
 
             // Broadcast MODE +r to all channels the user is in
+            // NOTE: Using Command::Raw for single user mode change. Could use
+            // Command::UserMODE but this is a simple constant string.
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
@@ -642,6 +644,8 @@ pub async fn apply_effect(
             }
 
             // Build MODE message from ChanServ
+            // NOTE: Using Command::Raw for dynamic single-mode change. The mode_char
+            // comes from service effect, not parsed from wire, so we build manually.
             let mode_str = if adding {
                 format!("+{}", mode_char)
             } else {
