@@ -4,7 +4,7 @@
 
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, Response};
+use slirc_proto::{irc_to_lower, MessageRef, Response};
 use tracing::debug;
 
 /// Handler for WHO command.
@@ -17,7 +17,7 @@ pub struct WhoHandler;
 
 #[async_trait]
 impl Handler for WhoHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -28,17 +28,15 @@ impl Handler for WhoHandler {
             return Ok(());
         }
 
-        // Extract mask and operators_only flag
-        let (mask, operators_only) = match &msg.command {
-            Command::WHO(m, o) => (m.clone(), o.unwrap_or(false)),
-            _ => (None, false),
-        };
+        // WHO [mask] [o]
+        let mask = msg.arg(0);
+        let operators_only = msg.arg(1).map(|s| s.eq_ignore_ascii_case("o")).unwrap_or(false);
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Determine query type
-        if let Some(ref mask_str) = mask {
+        if let Some(mask_str) = mask {
             if is_channel_name(mask_str) {
                 // Channel WHO - list channel members
                 let channel_lower = irc_to_lower(mask_str);
@@ -127,7 +125,7 @@ impl Handler for WhoHandler {
         // No mask = return all visible users (typically empty for privacy)
 
         // RPL_ENDOFWHO (315)
-        let end_mask = mask.unwrap_or_else(|| "*".to_string());
+        let end_mask = mask.map(|s| s.to_string()).unwrap_or_else(|| "*".to_string());
         let reply = server_reply(
             server_name,
             Response::RPL_ENDOFWHO,
@@ -148,7 +146,7 @@ pub struct WhoisHandler;
 
 #[async_trait]
 impl Handler for WhoisHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -159,10 +157,13 @@ impl Handler for WhoisHandler {
             return Ok(());
         }
 
-        // Extract target nick
-        let target = match &msg.command {
-            Command::WHOIS(_, target) => target.clone(),
-            _ => return Ok(()),
+        // WHOIS [server] <nick>
+        // If two args, first is server, second is nick
+        // If one arg, it's the nick
+        let target = if msg.args().len() >= 2 {
+            msg.arg(1).unwrap_or("")
+        } else {
+            msg.arg(0).unwrap_or("")
         };
 
         if target.is_empty() {
@@ -180,7 +181,7 @@ impl Handler for WhoisHandler {
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-        let target_lower = irc_to_lower(&target);
+        let target_lower = irc_to_lower(target);
 
         // Look up target user
         if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
@@ -292,10 +293,10 @@ impl Handler for WhoisHandler {
 
                 debug!(requester = %nick, target = %target_user.nick, "WHOIS completed");
             } else {
-                send_no_such_nick(ctx, &target).await?;
+                send_no_such_nick(ctx, target).await?;
             }
         } else {
-            send_no_such_nick(ctx, &target).await?;
+            send_no_such_nick(ctx, target).await?;
         }
 
         Ok(())
@@ -312,7 +313,7 @@ pub struct WhowasHandler;
 
 #[async_trait]
 impl Handler for WhowasHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -323,11 +324,8 @@ impl Handler for WhowasHandler {
             return Ok(());
         }
 
-        // Extract target nick
-        let target = match &msg.command {
-            Command::WHOWAS(nick, _, _) => nick.clone(),
-            _ => String::new(),
-        };
+        // WHOWAS <nick> [count [server]]
+        let target = msg.arg(0).unwrap_or("");
 
         if target.is_empty() {
             let reply = server_reply(
@@ -354,7 +352,7 @@ impl Handler for WhowasHandler {
             Response::ERR_WASNOSUCHNICK,
             vec![
                 nick.clone(),
-                target.clone(),
+                target.to_string(),
                 "There was no such nickname".to_string(),
             ],
         );
@@ -364,7 +362,7 @@ impl Handler for WhowasHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_ENDOFWHOWAS,
-            vec![nick.clone(), target, "End of WHOWAS".to_string()],
+            vec![nick.clone(), target.to_string(), "End of WHOWAS".to_string()],
         );
         ctx.sender.send(reply).await?;
 
