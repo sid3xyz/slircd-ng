@@ -408,9 +408,6 @@ impl Handler for SamodeHandler {
             }
         };
 
-        // Collect remaining args as params
-        let params: Vec<&str> = msg.args().iter().skip(2).copied().collect();
-
         let channel_lower = irc_to_lower(channel_name);
 
         // Get channel
@@ -424,10 +421,9 @@ impl Handler for SamodeHandler {
             }
         };
 
-        // Parse mode string into typed modes using slirc-proto
-        // Build the pieces array: ["+ov", "nick1", "nick2"] etc.
+        // Build the pieces array: [modes_str, ...remaining args] - avoid intermediate allocation
         let mut pieces: Vec<&str> = vec![modes_str];
-        pieces.extend(params.iter());
+        pieces.extend(msg.args().iter().skip(2).copied());
 
         let typed_modes = match Mode::as_channel_modes(&pieces) {
             Ok(modes) => modes,

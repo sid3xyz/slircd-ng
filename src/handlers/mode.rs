@@ -28,6 +28,8 @@ impl Handler for ModeHandler {
 
         // MODE <target> [modes [params]]
         let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let server_name = &ctx.matrix.server_info.name;
         
         // Determine if this is a user or channel mode based on target
         if is_channel_target(target) {
@@ -36,7 +38,20 @@ impl Handler for ModeHandler {
             let modes = if mode_args.is_empty() {
                 vec![]
             } else {
-                Mode::as_channel_modes(&mode_args).unwrap_or_default()
+                match Mode::as_channel_modes(&mode_args) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        debug!(error = ?e, "Failed to parse channel modes");
+                        // Send ERR_UNKNOWNMODE for malformed modes
+                        let reply = server_reply(
+                            server_name,
+                            Response::ERR_UNKNOWNMODE,
+                            vec![nick.clone(), mode_args.first().copied().unwrap_or("").to_string(), "is unknown mode char to me".to_string()],
+                        );
+                        ctx.sender.send(reply).await?;
+                        return Ok(());
+                    }
+                }
             };
             handle_channel_mode(ctx, target, &modes).await
         } else {
@@ -45,7 +60,20 @@ impl Handler for ModeHandler {
             let modes = if mode_args.is_empty() {
                 vec![]
             } else {
-                Mode::as_user_modes(&mode_args).unwrap_or_default()
+                match Mode::as_user_modes(&mode_args) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        debug!(error = ?e, "Failed to parse user modes");
+                        // Send ERR_UMODEUNKNOWNFLAG for malformed user modes
+                        let reply = server_reply(
+                            server_name,
+                            Response::ERR_UMODEUNKNOWNFLAG,
+                            vec![nick.clone(), "Unknown MODE flag".to_string()],
+                        );
+                        ctx.sender.send(reply).await?;
+                        return Ok(());
+                    }
+                }
             };
             handle_user_mode(ctx, target, &modes).await
         }
