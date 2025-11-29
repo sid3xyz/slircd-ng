@@ -168,24 +168,24 @@ This document tracks all features present in `slircd` that need to be implemente
 
 | Command | slircd | slircd-ng | Notes |
 |---------|--------|-----------|-------|
-| REGISTER | ✅ | ❌ | Register channel |
-| DROP | ✅ | ❌ | Drop channel registration |
-| ACCESS ADD | ✅ | ❌ | Add user to access list |
-| ACCESS DEL | ✅ | ❌ | Remove from access list |
-| ACCESS LIST | ✅ | ❌ | List access entries |
+| REGISTER | ✅ | ✅ | **Implemented: Register channel with founder access** |
+| DROP | ✅ | ✅ | **Implemented: Unregister channel** |
+| ACCESS ADD | ✅ | ✅ | **Implemented: Add account to channel access list** |
+| ACCESS DEL | ✅ | ✅ | **Implemented: Remove account from access list** |
+| ACCESS LIST | ✅ | ✅ | **Implemented: List all channel access entries** |
 | OP | ✅ | ✅ | **Implemented: Grant op via ChanServ mode handling** |
 | DEOP | ✅ | ✅ | **Implemented: Remove op via ChanServ mode handling** |
 | VOICE | ✅ | ✅ | **Implemented: Grant voice via ChanServ mode handling** |
 | DEVOICE | ✅ | ✅ | **Implemented: Remove voice via ChanServ mode handling** |
-| INFO | ✅ | ❌ | Channel information |
-| SET | ✅ | ❌ | Channel settings (MLOCK, TOPICLOCK, etc.) |
-| AKICK | ✅ | ❌ | Auto-kick list management |
+| INFO | ✅ | ✅ | **Implemented: Display channel registration info** |
+| SET | ✅ | ✅ | **Implemented: DESCRIPTION, MLOCK, KEEPTOPIC settings** |
+| AKICK | ✅ | ✅ | **Implemented: ADD/DEL/LIST auto-kick management** |
 | CLEAR | ✅ | ❌ | Clear modes/bans/ops |
 
 ### 3.3 Services Infrastructure
 
-- [ ] Service message routing (PRIVMSG NickServ)
-- [x] Service aliases (NS, CS shortcuts) - **NS implemented**
+- [x] Service message routing (PRIVMSG NickServ/ChanServ) - **Implemented**
+- [x] Service aliases (NS, CS shortcuts) - **NS and CS commands active**
 - [x] Account state in Matrix (identified users) - **+r mode set on identified users**
 - [ ] Auto-op/voice on join for identified users
 - [ ] Nick enforcement (timer + Guest rename)

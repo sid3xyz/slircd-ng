@@ -189,7 +189,9 @@ impl Registry {
 
         // Service aliases
         handlers.insert("NICKSERV", Box::new(NsHandler));
+        handlers.insert("NS", Box::new(NsHandler));  // Shortcut for NickServ
         handlers.insert("CHANSERV", Box::new(CsHandler));
+        handlers.insert("CS", Box::new(CsHandler));  // Shortcut for ChanServ
 
         // Operator handlers
         handlers.insert("OPER", Box::new(OperHandler));
