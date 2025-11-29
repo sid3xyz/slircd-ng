@@ -50,7 +50,7 @@ pub struct OperHandler;
 #[async_trait]
 impl Handler for OperHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         // OPER <name> <password>
         let name = match msg.arg(0) {
@@ -127,7 +127,7 @@ pub struct KillHandler;
 #[async_trait]
 impl Handler for KillHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         // KILL <target> <reason>
         let target_nick = match msg.arg(0) {
@@ -228,7 +228,7 @@ pub struct WallopsHandler;
 #[async_trait]
 impl Handler for WallopsHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         // WALLOPS <message>
         let wallops_text = match msg.arg(0) {
@@ -281,7 +281,7 @@ pub struct DieHandler;
 #[async_trait]
 impl Handler for DieHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());
@@ -315,7 +315,7 @@ pub struct RehashHandler;
 #[async_trait]
 impl Handler for RehashHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());

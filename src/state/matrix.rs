@@ -55,8 +55,6 @@ pub struct Matrix {
 /// Configuration accessible to handlers via Matrix.
 #[derive(Debug, Clone)]
 pub struct MatrixConfig {
-    /// Server name for replies.
-    pub server_name: String,
     /// Network name.
     #[allow(dead_code)] // Used in INFO replies
     pub network_name: String,
@@ -309,7 +307,6 @@ impl Matrix {
             },
             uid_gen: UidGenerator::new(config.server.sid.clone()),
             config: MatrixConfig {
-                server_name: config.server.name.clone(),
                 network_name: config.server.network.clone(),
                 oper_blocks: config.oper.clone(),
             },

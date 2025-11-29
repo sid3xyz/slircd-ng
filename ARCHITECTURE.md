@@ -23,23 +23,10 @@ Client → Gateway → Connection (tokio::select!) → Handler → Matrix (DashM
 
 ## Refactoring Checklist
 
-### P0: Critical (DRY Violations)
+### P0: Critical (DRY Violations) ✅ COMPLETE
 
-- [ ] **Extract `user_prefix` to mod.rs**
-  - Files: `channel.rs:12`, `messaging.rs:13`, `mode.rs:15`
-  - Same 3-line function duplicated 3 times
-  - Action: Move to `handlers/mod.rs`, export publicly
-
-- [ ] **Create `err_notregistered()` helper**
-  - Pattern repeated 20+ times across handlers:
-    ```rust
-    if !ctx.handshake.registered {
-        let reply = server_reply(...ERR_NOTREGISTERED...);
-        ctx.sender.send(reply).await?;
-        return Ok(());
-    }
-    ```
-  - Action: Add to `handlers/mod.rs` error helpers section
+- [x] **Extract `user_prefix` to mod.rs** (b0d568c)
+- [x] **Create `err_notregistered()` helper** (b0d568c)
 
 ### P1: Coupling Issues
 
