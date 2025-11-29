@@ -8,7 +8,7 @@
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::state::{ListEntry, UserModes};
 use async_trait::async_trait;
-use slirc_proto::{irc_eq, irc_to_lower, ChannelMode, Command, Message, Mode, Prefix, Response, UserMode};
+use slirc_proto::{irc_eq, irc_to_lower, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, UserMode};
 use tracing::{debug, info};
 
 /// Helper to create a user prefix.
@@ -21,22 +21,40 @@ pub struct ModeHandler;
 
 #[async_trait]
 impl Handler for ModeHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
         }
 
-        // slirc-proto parses MODE into typed variants
-        match &msg.command {
-            Command::UserMODE(target, modes) => {
-                handle_user_mode(ctx, target, modes).await
-            }
-            Command::ChannelMODE(target, modes) => {
-                handle_channel_mode(ctx, target, modes).await
-            }
-            _ => Ok(()),
+        // MODE <target> [modes [params]]
+        let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        
+        // Determine if this is a user or channel mode based on target
+        if is_channel_target(target) {
+            // Parse channel modes from args
+            let mode_args: Vec<&str> = msg.args().iter().skip(1).copied().collect();
+            let modes = if mode_args.is_empty() {
+                vec![]
+            } else {
+                Mode::as_channel_modes(&mode_args).unwrap_or_default()
+            };
+            handle_channel_mode(ctx, target, &modes).await
+        } else {
+            // Parse user modes from args
+            let mode_args: Vec<&str> = msg.args().iter().skip(1).copied().collect();
+            let modes = if mode_args.is_empty() {
+                vec![]
+            } else {
+                Mode::as_user_modes(&mode_args).unwrap_or_default()
+            };
+            handle_user_mode(ctx, target, &modes).await
         }
     }
+}
+
+/// Check if target is a channel (starts with #, &, +, or !)
+fn is_channel_target(target: &str) -> bool {
+    matches!(target.chars().next(), Some('#' | '&' | '+' | '!'))
 }
 
 /// Handle user mode query/change.

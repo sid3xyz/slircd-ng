@@ -5,21 +5,31 @@
 //! ```text
 //! Phase 1: Handshake (Transport - owned Messages, sequential)
 //!    ↓
-//! Phase 2: Upgrade & Split
-//!    ↓
-//! Phase 3: Streaming (concurrent tasks)
-//!    ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-//!    │ Reader Task │────▶│ Actor Loop  │────▶│ Writer Task │
-//!    │ (ZeroCopy)  │     │ (Handlers)  │     │ (Framed)    │
-//!    └─────────────┘     └─────────────┘     └─────────────┘
+//! Phase 2: Unified Zero-Copy Loop (tokio::select!)
+//!    ┌─────────────────────────────────────────────────────┐
+//!    │              Unified Connection Task                │
+//!    │                                                     │
+//!    │  ┌─────────────────┐       ┌──────────────────┐    │
+//!    │  │ ZeroCopyReader  │       │   FramedWrite    │    │
+//!    │  └────────┬────────┘       └────────▲─────────┘    │
+//!    │           │ (Borrow)                │              │
+//!    │           ▼                         │              │
+//!    │    tokio::select! ◄─────────────────┼──────────────┐
+//!    │    │      │                         │              │
+//!    │    │      ▼                         │              │
+//!    │    │  [Handlers] ─────────▶ [Outgoing Queue]       │
+//!    │    │  (Zero Alloc)                                 │
+//!    │    └───────────────────────────────────────────────┘
+//!    └─────────────────────────────────────────────────────┘
 //! ```
 
 use crate::db::Database;
 use crate::handlers::{Context, HandshakeState, Registry};
+use crate::network::limit::RateLimiter;
 use crate::state::Matrix;
 use futures_util::SinkExt;
 use slirc_proto::transport::ZeroCopyTransport;
-use slirc_proto::{irc_to_lower, Message, Transport};
+use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Transport};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -66,6 +76,7 @@ impl Connection {
         );
 
         // Phase 1: Handshake using Transport (owned Message reads/writes)
+        // Per design: Keep as-is since network latency dominates this cold path.
         let mut transport = Transport::tcp(self.stream)?;
 
         // Channel for outgoing messages during handshake (drained synchronously)
@@ -80,6 +91,17 @@ impl Connection {
                 Ok(Some(msg)) => {
                     debug!(raw = %msg, "Received message");
 
+                    // Parse the owned message's raw string into a MessageRef for the handler
+                    // This allows handlers to use zero-copy API during handshake too
+                    let raw_str = msg.to_string();
+                    let msg_ref = match MessageRef::parse(&raw_str) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            debug!(error = ?e, "Failed to parse message for handler");
+                            continue;
+                        }
+                    };
+
                     let mut ctx = Context {
                         uid: &self.uid,
                         matrix: &self.matrix,
@@ -89,7 +111,7 @@ impl Connection {
                         remote_addr: self.addr,
                     };
 
-                    if let Err(e) = self.registry.dispatch(&mut ctx, &msg).await {
+                    if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
                         debug!(error = ?e, "Handler error");
                         if matches!(e, crate::handlers::HandlerError::NotRegistered) {
                             break;
@@ -120,7 +142,8 @@ impl Connection {
             }
         }
 
-        // Phase 2: Upgrade & Split for concurrent read/write
+        // Phase 2: Unified Zero-Copy Loop
+        // Split transport for concurrent read/write
         let parts = match transport.into_parts() {
             Ok(p) => p,
             Err(e) => {
@@ -130,77 +153,74 @@ impl Connection {
         };
         let (read_half, write_half) = parts.split();
 
-        // Phase 3: Concurrent Reader/Writer/Actor architecture
-        //
-        // Channels:
-        //   incoming_tx (Reader) → incoming_rx (Actor): parsed messages from client
-        //   outgoing_tx (Actor) → outgoing_rx (Writer): messages to send to client
-        //
-        // Ownership:
-        //   - Reader task SOLELY owns incoming_tx (EOF detection relies on this!)
-        //   - Writer task owns outgoing_rx
-        //   - Actor loop owns incoming_rx and outgoing_tx
+        // Setup reader and writer
+        let mut reader = ZeroCopyTransport::with_buffer(read_half.half, read_half.read_buf);
+        let mut writer = FramedWrite::new(write_half.half, write_half.codec);
 
-        let (incoming_tx, mut incoming_rx) = mpsc::channel::<Message>(32);
-        let (outgoing_tx, outgoing_rx) = mpsc::channel::<Message>(32);
+        // Rate limiter for flood protection
+        let mut rate_limiter = RateLimiter::new(10.0, 20.0); // 10 msg/sec, burst of 20
+
+        // Channel for outgoing messages (handlers queue responses here)
+        // Also used for routing messages from other users (PRIVMSG, etc.)
+        let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<Message>(32);
 
         // Register sender with Matrix for message routing
         self.matrix.register_sender(&self.uid, outgoing_tx.clone());
 
-        // --- WRITER TASK ---
-        let write_handle = tokio::spawn(async move {
-            let mut writer = FramedWrite::new(write_half.half, write_half.codec);
-            let mut rx = outgoing_rx;
+        info!("Entering Unified Zero-Copy Loop");
 
-            while let Some(msg) = rx.recv().await {
-                if let Err(e) = writer.send(msg).await {
-                    warn!(error = ?e, "Write error");
-                    break;
-                }
-            }
-        });
+        // Unified event loop using tokio::select!
+        loop {
+            tokio::select! {
+                // BRANCH A: Network Input (Zero-Copy)
+                // 'msg_ref' is borrowed from 'reader'. It exists ONLY inside this match block.
+                result = reader.next() => {
+                    match result {
+                        Some(Ok(msg_ref)) => {
+                            // Flood protection
+                            if !rate_limiter.check() {
+                                warn!(uid = %self.uid, "Rate limit exceeded");
+                                let _ = writer.send(Message::from(Command::ERROR("Excess Flood".into()))).await;
+                                break;
+                            }
 
-        // --- READER TASK ---
-        // Reader task is the SOLE owner of incoming_tx.
-        // When client disconnects, reader ends, incoming_tx drops,
-        // and incoming_rx.recv() returns None → actor loop exits cleanly.
-        let read_handle = tokio::spawn(async move {
-            let mut reader = ZeroCopyTransport::with_buffer(read_half.half, read_half.read_buf);
+                            debug!(raw = ?msg_ref, "Received message (zero-copy)");
 
-            while let Some(result) = reader.next().await {
-                match result {
-                    Ok(msg_ref) => {
-                        debug!(raw = ?msg_ref, "Received message (zero-copy)");
-                        // Convert to owned for sending across channel
-                        if incoming_tx.send(msg_ref.to_owned()).await.is_err() {
-                            break; // Actor died, stop reading
+                            // Dispatch to handler
+                            let mut ctx = Context {
+                                uid: &self.uid,
+                                matrix: &self.matrix,
+                                sender: &outgoing_tx,
+                                handshake: &mut handshake,
+                                db: &self.db,
+                                remote_addr: self.addr,
+                            };
+
+                            if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
+                                debug!(error = ?e, "Handler error");
+                                if matches!(e, crate::handlers::HandlerError::NotRegistered) {
+                                    break;
+                                }
+                            }
+                        }
+                        Some(Err(e)) => {
+                            warn!(error = ?e, "Read error");
+                            break;
+                        }
+                        None => {
+                            info!("Client disconnected");
+                            break;
                         }
                     }
-                    Err(e) => {
-                        warn!(error = ?e, "Read error");
+                }
+
+                // BRANCH B: Outgoing Messages
+                // Handles responses queued by handlers AND messages routed from other users
+                Some(msg) = outgoing_rx.recv() => {
+                    if let Err(e) = writer.send(msg).await {
+                        warn!(error = ?e, "Write error");
                         break;
                     }
-                }
-            }
-            // incoming_tx drops here → signals actor that connection closed
-        });
-
-        // --- ACTOR LOOP ---
-        // Process incoming messages and dispatch to handlers
-        while let Some(msg) = incoming_rx.recv().await {
-            let mut ctx = Context {
-                uid: &self.uid,
-                matrix: &self.matrix,
-                sender: &outgoing_tx,
-                handshake: &mut handshake,
-                db: &self.db,
-                remote_addr: self.addr,
-            };
-
-            if let Err(e) = self.registry.dispatch(&mut ctx, &msg).await {
-                debug!(error = ?e, "Handler error");
-                if matches!(e, crate::handlers::HandlerError::NotRegistered) {
-                    break;
                 }
             }
         }
@@ -232,11 +252,6 @@ impl Connection {
         self.matrix.unregister_sender(&self.uid);
 
         info!("Client disconnected");
-
-        // Shutdown: drop outgoing_tx to signal writer, wait for tasks
-        drop(outgoing_tx);
-        let _ = read_handle.await;
-        let _ = write_handle.await;
 
         Ok(())
     }
