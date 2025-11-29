@@ -98,17 +98,19 @@ impl HandshakeState {
 
 /// Errors that can occur during command handling.
 #[derive(Debug, Error)]
-#[allow(dead_code)] // Variants will be used as error handling improves
 #[allow(clippy::large_enum_variant)] // Send variant is large but rarely constructed
 pub enum HandlerError {
     #[error("not enough parameters")]
     NeedMoreParams,
+    #[allow(dead_code)] // TODO: Return from NickHandler instead of sending reply directly
     #[error("nickname in use: {0}")]
     NicknameInUse(String),
+    #[allow(dead_code)] // TODO: Return from NickHandler for invalid nicks
     #[error("erroneous nickname: {0}")]
     ErroneousNickname(String),
     #[error("not registered")]
     NotRegistered,
+    #[allow(dead_code)] // TODO: Return from USER handler for re-registration attempts
     #[error("already registered")]
     AlreadyRegistered,
     #[error("internal error: nick or user missing after registration")]

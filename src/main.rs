@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
     let matrix = Arc::new(Matrix::new(&config));
 
     // Start nick enforcement background task
-    spawn_enforcement_task(Arc::clone(&matrix), db.clone());
+    spawn_enforcement_task(Arc::clone(&matrix));
     info!("Nick enforcement task started");
 
     // Start the Gateway

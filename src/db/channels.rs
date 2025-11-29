@@ -31,7 +31,7 @@ pub struct ChannelAccess {
 
 /// A channel AKICK entry.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Fields populated from DB, read access pending
+#[allow(dead_code)] // TODO: Use for AKICK LIST command
 pub struct ChannelAkick {
     pub id: i64,
     pub channel_id: i64,
@@ -135,7 +135,7 @@ impl<'a> ChannelRepository<'a> {
     }
 
     /// Find channel by ID.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // TODO: Use for channel ownership transfer
     pub async fn find_by_id(&self, id: i64) -> Result<Option<ChannelRecord>, DbError> {
         let row = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool)>(
             r#"
@@ -163,7 +163,7 @@ impl<'a> ChannelRepository<'a> {
     }
 
     /// Get all channels registered by an account.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // TODO: Use for NickServ INFO (show registered channels)
     pub async fn find_by_founder(&self, founder_account_id: i64) -> Result<Vec<ChannelRecord>, DbError> {
         let rows = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool)>(
             r#"
@@ -328,7 +328,7 @@ impl<'a> ChannelRepository<'a> {
     }
 
     /// Update last used timestamp.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // TODO: Call on channel activity for expiration tracking
     pub async fn touch(&self, channel_id: i64) -> Result<(), DbError> {
         let now = chrono::Utc::now().timestamp();
         sqlx::query("UPDATE channels SET last_used_at = ? WHERE id = ?")
