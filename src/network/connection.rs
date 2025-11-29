@@ -33,8 +33,10 @@ use slirc_proto::transport::ZeroCopyTransport;
 use slirc_proto::{irc_to_lower, Command, Message};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tokio_rustls::server::TlsStream;
 use tokio_util::codec::FramedWrite;
 use tracing::{debug, info, instrument, warn};
 
@@ -45,19 +47,26 @@ const RATE_LIMIT_BURST: f32 = 5.0;     // Allow 5 message burst
 /// IRC message encoding (UTF-8 is standard for modern IRC)
 const IRC_ENCODING: &str = "utf-8";
 
+/// Stream type enum to handle both plaintext and TLS connections.
+enum ConnectionStream {
+    Plaintext(TcpStream),
+    Tls(TlsStream<TcpStream>),
+}
+
 /// A client connection handler.
 pub struct Connection {
     uid: String,
     addr: SocketAddr,
     matrix: Arc<Matrix>,
     registry: Arc<Registry>,
-    stream: TcpStream,
+    stream: ConnectionStream,
     db: Database,
+    is_tls: bool,
 }
 
 impl Connection {
-    /// Create a new connection handler.
-    pub fn new(
+    /// Create a new plaintext connection handler.
+    pub fn new_plaintext(
         uid: String,
         stream: TcpStream,
         addr: SocketAddr,
@@ -70,22 +79,63 @@ impl Connection {
             addr,
             matrix,
             registry,
-            stream,
+            stream: ConnectionStream::Plaintext(stream),
             db,
+            is_tls: false,
+        }
+    }
+
+    /// Create a new TLS connection handler.
+    pub fn new_tls(
+        uid: String,
+        stream: TlsStream<TcpStream>,
+        addr: SocketAddr,
+        matrix: Arc<Matrix>,
+        registry: Arc<Registry>,
+        db: Database,
+    ) -> Self {
+        Self {
+            uid,
+            addr,
+            matrix,
+            registry,
+            stream: ConnectionStream::Tls(stream),
+            db,
+            is_tls: true,
+        }
+    }
+
+    /// Helper to split the stream into read and write halves.
+    fn split_stream(
+        stream: ConnectionStream,
+    ) -> (
+        Box<dyn AsyncRead + Unpin + Send>,
+        Box<dyn AsyncWrite + Unpin + Send>,
+    ) {
+        match stream {
+            ConnectionStream::Plaintext(tcp) => {
+                let (read, write) = tokio::io::split(tcp);
+                (Box::new(read), Box::new(write))
+            }
+            ConnectionStream::Tls(tls) => {
+                let (read, write) = tokio::io::split(tls);
+                (Box::new(read), Box::new(write))
+            }
         }
     }
 
     /// Run the connection read loop.
-    #[instrument(skip(self), fields(uid = %self.uid, addr = %self.addr), name = "connection")]
+    #[instrument(skip(self), fields(uid = %self.uid, addr = %self.addr, tls = %self.is_tls), name = "connection")]
     pub async fn run(self) -> anyhow::Result<()> {
         info!(
             server = %self.matrix.server_info.name,
+            tls = %self.is_tls,
             "Client connected"
         );
 
-        // Split TCP stream for concurrent read/write from the start.
+        // Split stream for concurrent read/write.
         // This enables true zero-copy reading during both handshake and main loop.
-        let (read_half, write_half) = self.stream.into_split();
+        let (read_half, write_half) = Self::split_stream(self.stream);
         let codec = IrcCodec::new(IRC_ENCODING)?;
         let mut reader = ZeroCopyTransport::new(read_half);
         let mut writer = FramedWrite::new(write_half, codec);
@@ -95,6 +145,11 @@ impl Connection {
 
         // Handshake state for this connection
         let mut handshake = HandshakeState::default();
+
+        // Set +Z mode if TLS connection
+        if self.is_tls {
+            handshake.is_tls = true;
+        }
 
         // Phase 1: Handshake using zero-copy reading
         // Read messages directly as MessageRef without intermediate allocations

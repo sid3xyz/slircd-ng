@@ -58,8 +58,13 @@ async fn main() -> anyhow::Result<()> {
     spawn_enforcement_task(Arc::clone(&matrix));
     info!("Nick enforcement task started");
 
-    // Start the Gateway
-    let gateway = Gateway::bind(config.listen.address, matrix, db).await?;
+    // Start the Gateway (with optional TLS)
+    let gateway = Gateway::bind(
+        config.listen.address,
+        config.tls,
+        matrix,
+        db,
+    ).await?;
     gateway.run().await?;
 
     Ok(())

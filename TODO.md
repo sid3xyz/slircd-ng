@@ -268,10 +268,10 @@ CREATE TABLE klines (
 
 | Feature | slircd | slircd-ng | Notes |
 |---------|--------|-----------|-------|
-| Implicit TLS (6697) | ✅ | ❌ | TLS from connection start |
+| Implicit TLS (6697) | ✅ | ✅ | **Implemented: TLS listener with tokio-rustls** |
 | STARTTLS upgrade | ✅ | ❌ | Upgrade plaintext to TLS |
 | Client cert auth | ✅ | ❌ | TLS fingerprint for SASL EXTERNAL |
-| rustls integration | ✅ | ❌ | TLS without OpenSSL |
+| rustls integration | ✅ | ✅ | **Implemented: TLS without OpenSSL** |
 
 ### 5.2 WebSocket Support
 
