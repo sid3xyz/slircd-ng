@@ -46,7 +46,7 @@ pub struct SajoinHandler;
 #[async_trait]
 impl Handler for SajoinHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());
@@ -158,7 +158,7 @@ pub struct SapartHandler;
 #[async_trait]
 impl Handler for SapartHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());
@@ -259,7 +259,7 @@ pub struct SanickHandler;
 #[async_trait]
 impl Handler for SanickHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());
@@ -377,7 +377,7 @@ pub struct SamodeHandler;
 #[async_trait]
 impl Handler for SamodeHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((oper_nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());

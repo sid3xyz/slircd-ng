@@ -315,7 +315,7 @@ impl Handler for KnockHandler {
             Some(c) if !c.is_empty() => c,
             _ => {
                 // ERR_NEEDMOREPARAMS (461)
-                let server_name = &ctx.matrix.config.server_name;
+                let server_name = &ctx.matrix.server_info.name;
                 let nick = {
                     if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
                         let user = user_ref.read().await;
@@ -336,7 +336,7 @@ impl Handler for KnockHandler {
         };
         let knock_msg = msg.arg(1);
 
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
         let channel_lower = irc_to_lower(channel_name);
 
         // Get user info

@@ -27,7 +27,7 @@ pub struct KlineHandler;
 #[async_trait]
 impl Handler for KlineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());
@@ -78,7 +78,7 @@ pub struct DlineHandler;
 #[async_trait]
 impl Handler for DlineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());
@@ -128,7 +128,7 @@ pub struct UnklineHandler;
 #[async_trait]
 impl Handler for UnklineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());
@@ -176,7 +176,7 @@ pub struct UndlineHandler;
 #[async_trait]
 impl Handler for UndlineHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.config.server_name;
+        let server_name = &ctx.matrix.server_info.name;
 
         let Some((nick, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());
