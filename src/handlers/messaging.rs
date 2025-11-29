@@ -1,13 +1,165 @@
 //! Messaging handlers.
 //!
-//! Handles PRIVMSG and NOTICE commands for both users and channels.
+//! Handles PRIVMSG, NOTICE, and TAGMSG commands for both users and channels.
+//! Uses a unified routing system to enforce channel modes (+n, +m).
 
 use super::{server_reply, user_prefix, Context, Handler, HandlerError, HandlerResult};
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Response};
+use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Response, Tag};
+use std::borrow::Cow;
 use tracing::debug;
+
+// ============================================================================
+// Unified Message Routing
+// ============================================================================
+
+/// Result of attempting to route a message to a channel.
+enum ChannelRouteResult {
+    /// Message was successfully broadcast to channel members.
+    Sent,
+    /// Channel does not exist.
+    NoSuchChannel,
+    /// Sender is blocked by +n (no external messages).
+    BlockedExternal,
+    /// Sender is blocked by +m (moderated).
+    BlockedModerated,
+}
+
+/// Options for message routing behavior.
+struct RouteOptions {
+    /// Whether to check +m moderated mode (PRIVMSG/NOTICE do, TAGMSG doesn't).
+    check_moderated: bool,
+    /// Whether to send RPL_AWAY for user targets (only PRIVMSG).
+    send_away_reply: bool,
+}
+
+/// Check if sender can speak in a channel, and broadcast if allowed.
+/// 
+/// Returns the result of the routing attempt for the caller to handle errors.
+async fn route_to_channel(
+    ctx: &Context<'_>,
+    channel_lower: &str,
+    msg: Message,
+    opts: &RouteOptions,
+) -> ChannelRouteResult {
+    let Some(channel_ref) = ctx.matrix.channels.get(channel_lower) else {
+        return ChannelRouteResult::NoSuchChannel;
+    };
+
+    let channel = channel_ref.read().await;
+    let is_member = channel.is_member(ctx.uid);
+
+    // Check +n (no external messages)
+    if channel.modes.no_external && !is_member {
+        return ChannelRouteResult::BlockedExternal;
+    }
+
+    // Check +m (moderated) - only if option enabled
+    if opts.check_moderated && channel.modes.moderated {
+        let can_speak = channel.members.get(ctx.uid).is_some_and(|m| m.op || m.voice);
+        if !can_speak {
+            return ChannelRouteResult::BlockedModerated;
+        }
+    }
+
+    // Broadcast to all channel members except sender
+    for uid in channel.members.keys() {
+        if uid.as_str() == ctx.uid {
+            continue;
+        }
+        if let Some(sender) = ctx.matrix.senders.get(uid) {
+            let _ = sender.send(msg.clone()).await;
+        }
+    }
+
+    ChannelRouteResult::Sent
+}
+
+/// Route a message to a user target, optionally sending RPL_AWAY.
+/// 
+/// Returns true if the user was found and message sent, false otherwise.
+async fn route_to_user(
+    ctx: &Context<'_>,
+    target_lower: &str,
+    msg: Message,
+    opts: &RouteOptions,
+    sender_nick: &str,
+) -> bool {
+    let Some(target_uid) = ctx.matrix.nicks.get(target_lower) else {
+        return false;
+    };
+
+    // Check away status and notify sender if requested
+    if opts.send_away_reply {
+        if let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value()) {
+            let target_user = target_user_ref.read().await;
+            if let Some(away_msg) = &target_user.away {
+                let reply = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_AWAY,
+                    vec![
+                        sender_nick.to_string(),
+                        target_user.nick.clone(),
+                        away_msg.clone(),
+                    ],
+                );
+                let _ = ctx.sender.send(reply).await;
+            }
+        }
+    }
+
+    // Send to target user
+    if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
+        let _ = sender.send(msg).await;
+        true
+    } else {
+        false
+    }
+}
+
+/// Send ERR_CANNOTSENDTOCHAN with the given reason.
+async fn send_cannot_send(ctx: &Context<'_>, nick: &str, target: &str, reason: &str) -> HandlerResult {
+    let reply = server_reply(
+        &ctx.matrix.server_info.name,
+        Response::ERR_CANNOTSENDTOCHAN,
+        vec![nick.to_string(), target.to_string(), reason.to_string()],
+    );
+    ctx.sender.send(reply).await?;
+    Ok(())
+}
+
+/// Send ERR_NOSUCHCHANNEL.
+async fn send_no_such_channel(ctx: &Context<'_>, nick: &str, target: &str) -> HandlerResult {
+    let reply = server_reply(
+        &ctx.matrix.server_info.name,
+        Response::ERR_NOSUCHCHANNEL,
+        vec![nick.to_string(), target.to_string(), "No such channel".to_string()],
+    );
+    ctx.sender.send(reply).await?;
+    Ok(())
+}
+
+/// Send ERR_NOSUCHNICK.
+async fn send_no_such_nick(ctx: &Context<'_>, nick: &str, target: &str) -> HandlerResult {
+    let reply = server_reply(
+        &ctx.matrix.server_info.name,
+        Response::ERR_NOSUCHNICK,
+        vec![nick.to_string(), target.to_string(), "No such nick/channel".to_string()],
+    );
+    ctx.sender.send(reply).await?;
+    Ok(())
+}
+
+/// Check if target is a channel name.
+fn is_channel(target: &str) -> bool {
+    matches!(target.chars().next(), Some('#' | '&' | '+' | '!'))
+}
+
+// ============================================================================
+// PRIVMSG Handler
+// ============================================================================
 
 /// Handler for PRIVMSG command.
 pub struct PrivmsgHandler;
@@ -33,149 +185,49 @@ impl Handler for PrivmsgHandler {
         // Check if this is a service message (NickServ, ChanServ, etc.)
         let target_lower = irc_to_lower(target);
         if target_lower == "nickserv" || target_lower == "ns" {
-            // Route to NickServ
-            if route_service_message(
-                ctx.matrix,
-                ctx.db,
-                ctx.uid,
-                nick,
-                target,
-                text,
-                ctx.sender,
-            ).await {
+            if route_service_message(ctx.matrix, ctx.db, ctx.uid, nick, target, text, ctx.sender).await {
                 return Ok(());
             }
         }
-
         if target_lower == "chanserv" || target_lower == "cs" {
-            // Route to ChanServ
-            if route_chanserv_message(
-                ctx.matrix,
-                ctx.db,
-                ctx.uid,
-                nick,
-                target,
-                text,
-                ctx.sender,
-            ).await {
+            if route_chanserv_message(ctx.matrix, ctx.db, ctx.uid, nick, target, text, ctx.sender).await {
                 return Ok(());
             }
         }
 
-        // Build the outgoing message with user prefix
+        // Build the outgoing message
         let out_msg = Message {
             tags: None,
             prefix: Some(user_prefix(nick, user_name, "localhost")),
             command: Command::PRIVMSG(target.to_string(), text.to_string()),
         };
 
-        // Is it a channel or a user?
-        if matches!(target.chars().next(), Some('#' | '&' | '+' | '!')) {
-            // Channel message
+        let opts = RouteOptions {
+            check_moderated: true,
+            send_away_reply: true,
+        };
+
+        if is_channel(target) {
             let channel_lower = irc_to_lower(target);
-
-            // Check if channel exists
-            if let Some(channel) = ctx.matrix.channels.get(&channel_lower) {
-                let channel = channel.read().await;
-                let is_member = channel.is_member(ctx.uid);
-
-                // Check +n (no external messages) - non-members cannot send
-                if channel.modes.no_external && !is_member {
-                    let reply = server_reply(
-                        &ctx.matrix.server_info.name,
-                        Response::ERR_CANNOTSENDTOCHAN,
-                        vec![
-                            nick.to_string(),
-                            target.to_string(),
-                            "Cannot send to channel (+n)".to_string(),
-                        ],
-                    );
-                    ctx.sender.send(reply).await?;
-                    return Ok(());
+            match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
+                ChannelRouteResult::Sent => {
+                    debug!(from = %nick, to = %target, "PRIVMSG to channel");
                 }
-
-                // Check +m (moderated) - only ops/voice can speak
-                if channel.modes.moderated {
-                    let member_modes = channel.members.get(ctx.uid);
-                    let can_speak = member_modes.is_some_and(|m| m.op || m.voice);
-                    if !can_speak {
-                        let reply = server_reply(
-                            &ctx.matrix.server_info.name,
-                            Response::ERR_CANNOTSENDTOCHAN,
-                            vec![
-                                nick.to_string(),
-                                target.to_string(),
-                                "Cannot send to channel (+m)".to_string(),
-                            ],
-                        );
-                        ctx.sender.send(reply).await?;
-                        return Ok(());
-                    }
+                ChannelRouteResult::NoSuchChannel => {
+                    send_no_such_channel(ctx, nick, target).await?;
                 }
-
-                // Broadcast to all channel members except sender
-                for uid in channel.members.keys() {
-                    if uid.as_str() == ctx.uid {
-                        continue; // Don't echo back to sender
-                    }
-                    if let Some(sender) = ctx.matrix.senders.get(uid) {
-                        let _ = sender.send(out_msg.clone()).await;
-                    }
+                ChannelRouteResult::BlockedExternal => {
+                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+n)").await?;
                 }
-
-                debug!(from = %nick, to = %target, "PRIVMSG to channel");
-            } else {
-                // Channel doesn't exist
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_NOSUCHCHANNEL,
-                    vec![
-                        nick.to_string(),
-                        target.to_string(),
-                        "No such channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                ChannelRouteResult::BlockedModerated => {
+                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+m)").await?;
+                }
             }
         } else {
-            // User message
-            let target_lower = irc_to_lower(target);
-
-            if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
-                // Check if target is away and notify sender
-                if let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value()) {
-                    let target_user = target_user_ref.read().await;
-                    if let Some(away_msg) = &target_user.away {
-                        let reply = server_reply(
-                            &ctx.matrix.server_info.name,
-                            Response::RPL_AWAY,
-                            vec![
-                                nick.to_string(),
-                                target_user.nick.clone(),
-                                away_msg.clone(),
-                            ],
-                        );
-                        ctx.sender.send(reply).await?;
-                    }
-                }
-
-                // Send to target user
-                if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
-                    let _ = sender.send(out_msg).await;
-                    debug!(from = %nick, to = %target, "PRIVMSG to user");
-                }
+            if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {
+                debug!(from = %nick, to = %target, "PRIVMSG to user");
             } else {
-                // User not found
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_NOSUCHNICK,
-                    vec![
-                        nick.to_string(),
-                        target.to_string(),
-                        "No such nick/channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                send_no_such_nick(ctx, nick, target).await?;
             }
         }
 
@@ -183,7 +235,13 @@ impl Handler for PrivmsgHandler {
     }
 }
 
+// ============================================================================
+// NOTICE Handler
+// ============================================================================
+
 /// Handler for NOTICE command.
+/// 
+/// Per RFC 2812, NOTICE errors are silently ignored (no error replies).
 pub struct NoticeHandler;
 
 #[async_trait]
@@ -205,65 +263,40 @@ impl Handler for NoticeHandler {
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
         let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Build the outgoing message with user prefix
+        // Build the outgoing message
         let out_msg = Message {
             tags: None,
             prefix: Some(user_prefix(nick, user_name, "localhost")),
             command: Command::NOTICE(target.to_string(), text.to_string()),
         };
 
-        // Is it a channel or a user?
-        if matches!(target.chars().next(), Some('#' | '&' | '+' | '!')) {
-            // Channel notice
+        // NOTICE: silently drop on errors, check moderated, no away reply
+        let opts = RouteOptions {
+            check_moderated: true,
+            send_away_reply: false,
+        };
+
+        if is_channel(target) {
             let channel_lower = irc_to_lower(target);
-
-            if let Some(channel) = ctx.matrix.channels.get(&channel_lower) {
-                let channel = channel.read().await;
-                let is_member = channel.is_member(ctx.uid);
-
-                // Check +n (no external messages) - silently drop per NOTICE semantics
-                if channel.modes.no_external && !is_member {
-                    return Ok(());
-                }
-
-                // Check +m (moderated) - silently drop per NOTICE semantics
-                if channel.modes.moderated {
-                    let member_modes = channel.members.get(ctx.uid);
-                    let can_speak = member_modes.is_some_and(|m| m.op || m.voice);
-                    if !can_speak {
-                        return Ok(());
-                    }
-                }
-
-                // Broadcast to all channel members except sender
-                for uid in channel.members.keys() {
-                    if uid.as_str() == ctx.uid {
-                        continue;
-                    }
-                    if let Some(sender) = ctx.matrix.senders.get(uid) {
-                        let _ = sender.send(out_msg.clone()).await;
-                    }
-                }
-
+            if let ChannelRouteResult::Sent = route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
                 debug!(from = %nick, to = %target, "NOTICE to channel");
             }
-            // No error for non-existent channel (per NOTICE semantics)
+            // All errors silently ignored for NOTICE
         } else {
-            // User notice
             let target_lower = irc_to_lower(target);
-
-            if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower)
-                && let Some(sender) = ctx.matrix.senders.get(target_uid.value())
-            {
-                let _ = sender.send(out_msg).await;
+            if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {
                 debug!(from = %nick, to = %target, "NOTICE to user");
             }
-            // No error for non-existent user (per NOTICE semantics)
+            // User not found: silently ignored for NOTICE
         }
 
         Ok(())
     }
 }
+
+// ============================================================================
+// TAGMSG Handler
+// ============================================================================
 
 /// Handler for TAGMSG command.
 ///
@@ -280,7 +313,6 @@ impl Handler for TagmsgHandler {
 
         // Check if client has message-tags capability
         if !ctx.handshake.capabilities.contains("message-tags") {
-            // Silently ignore TAGMSG from clients without the capability
             debug!("TAGMSG ignored: client lacks message-tags capability");
             return Ok(());
         }
@@ -296,13 +328,12 @@ impl Handler for TagmsgHandler {
         let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // Convert tags from MessageRef to owned Tag structs
-        // tags_iter() yields (key, value) pairs
-        let tags: Option<Vec<slirc_proto::Tag>> = if msg.tags.is_some() {
+        let tags: Option<Vec<Tag>> = if msg.tags.is_some() {
             Some(
                 msg.tags_iter()
                     .map(|(k, v)| {
                         let value = if v.is_empty() { None } else { Some(v.to_string()) };
-                        slirc_proto::Tag(std::borrow::Cow::Owned(k.to_string()), value)
+                        Tag(Cow::Owned(k.to_string()), value)
                     })
                     .collect()
             )
@@ -310,86 +341,42 @@ impl Handler for TagmsgHandler {
             None
         };
 
-        // Build the outgoing TAGMSG with user prefix
+        // Build the outgoing TAGMSG
         let out_msg = Message {
             tags,
             prefix: Some(user_prefix(nick, user_name, "localhost")),
             command: Command::TAGMSG(target.to_string()),
         };
 
-        // Is it a channel or a user?
-        if matches!(target.chars().next(), Some('#' | '&' | '+' | '!')) {
-            // Channel TAGMSG
+        // TAGMSG: send errors, but don't check +m (only +n), no away reply
+        let opts = RouteOptions {
+            check_moderated: false,
+            send_away_reply: false,
+        };
+
+        if is_channel(target) {
             let channel_lower = irc_to_lower(target);
-
-            if let Some(channel) = ctx.matrix.channels.get(&channel_lower) {
-                let channel = channel.read().await;
-                let is_member = channel.is_member(ctx.uid);
-
-                // Check +n (no external messages) - non-members cannot send
-                if channel.modes.no_external && !is_member {
-                    let reply = server_reply(
-                        &ctx.matrix.server_info.name,
-                        Response::ERR_CANNOTSENDTOCHAN,
-                        vec![
-                            nick.to_string(),
-                            target.to_string(),
-                            "Cannot send to channel (+n)".to_string(),
-                        ],
-                    );
-                    ctx.sender.send(reply).await?;
-                    return Ok(());
+            match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
+                ChannelRouteResult::Sent => {
+                    debug!(from = %nick, to = %target, "TAGMSG to channel");
                 }
-
-                // Broadcast to all channel members with message-tags capability, except sender
-                for uid in channel.members.keys() {
-                    if uid.as_str() == ctx.uid {
-                        continue; // Don't echo back to sender
-                    }
-                    // Only send to clients with message-tags capability
-                    // Note: In a full implementation, we'd track caps per-user
-                    // For now, we send to all members (they'll parse it correctly)
-                    if let Some(sender) = ctx.matrix.senders.get(uid) {
-                        let _ = sender.send(out_msg.clone()).await;
-                    }
+                ChannelRouteResult::NoSuchChannel => {
+                    send_no_such_channel(ctx, nick, target).await?;
                 }
-
-                debug!(from = %nick, to = %target, "TAGMSG to channel");
-            } else {
-                // Channel doesn't exist
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_NOSUCHCHANNEL,
-                    vec![
-                        nick.to_string(),
-                        target.to_string(),
-                        "No such channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                ChannelRouteResult::BlockedExternal => {
+                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+n)").await?;
+                }
+                ChannelRouteResult::BlockedModerated => {
+                    // TAGMSG doesn't check +m, so this shouldn't happen
+                    unreachable!("TAGMSG should not check moderated mode");
+                }
             }
         } else {
-            // User TAGMSG
             let target_lower = irc_to_lower(target);
-
-            if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
-                // Send to target user
-                if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
-                    let _ = sender.send(out_msg).await;
-                    debug!(from = %nick, to = %target, "TAGMSG to user");
-                }
+            if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {
+                debug!(from = %nick, to = %target, "TAGMSG to user");
             } else {
-                // User not found
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_NOSUCHNICK,
-                    vec![
-                        nick.to_string(),
-                        target.to_string(),
-                        "No such nick/channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                send_no_such_nick(ctx, nick, target).await?;
             }
         }
 

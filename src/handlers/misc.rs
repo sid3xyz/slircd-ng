@@ -121,9 +121,9 @@ impl Handler for UserhostHandler {
             if let Some(user_ref) = user_ref {
                 let user = user_ref.read().await;
                 // Format: nick[*]=+/-hostname
-                // * if oper, + if away, - if not away
+                // * if oper, - if away, + if available (RFC 2812)
                 let oper_flag = if user.modes.oper { "*" } else { "" };
-                let away_flag = if user.away.is_some() { "+" } else { "-" };
+                let away_flag = if user.away.is_some() { "-" } else { "+" };
                 replies.push(format!(
                     "{}{}={}{}@{}",
                     user.nick, oper_flag, away_flag, user.user, user.host
