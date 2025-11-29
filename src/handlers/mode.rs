@@ -121,19 +121,14 @@ async fn handle_user_mode(
         let (applied, rejected) = apply_user_modes_typed(&mut user.modes, modes);
 
         if !applied.is_empty() {
-            // Echo the change back
-            // NOTE: Using Command::Raw here because apply_user_modes_typed returns a
-            // collapsed mode string (+iw-o) rather than Vec<Mode<UserMode>>. The collapsed
-            // format is bandwidth-efficient and matches traditional IRC servers. To use
-            // Command::UserMODE would require refactoring mode application to return
-            // the original Mode structs.
+            // Echo the change back using typed Command::UserMODE
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(user_prefix(nick, ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?, "localhost")),
-                command: Command::Raw("MODE".to_string(), vec![nick.clone(), applied.clone()]),
+                command: Command::UserMODE(nick.clone(), applied.clone()),
             };
             ctx.sender.send(mode_msg).await?;
-            debug!(nick = %nick, modes = %applied, "User modes changed");
+            debug!(nick = %nick, modes = ?applied, "User modes changed");
         }
 
         // Report any rejected modes (like +o which only server can set)
@@ -150,23 +145,10 @@ async fn handle_user_mode(
     Ok(())
 }
 
-/// Helper to push a mode change to the applied string (user modes only).
-/// User modes still use string-based format for simplicity since they don't need
-/// the same level of type safety as channel modes.
-fn push_user_mode(applied: &mut String, current_dir: &mut char, adding: bool, mode: char) {
-    let dir = if adding { '+' } else { '-' };
-    if *current_dir != dir {
-        applied.push(dir);
-        *current_dir = dir;
-    }
-    applied.push(mode);
-}
-
-/// Apply user mode changes from typed modes, returns (applied_string, rejected_modes).
-fn apply_user_modes_typed(user_modes: &mut UserModes, modes: &[Mode<UserMode>]) -> (String, Vec<UserMode>) {
-    let mut applied = String::new();
+/// Apply user mode changes from typed modes, returns (applied_modes, rejected_modes).
+fn apply_user_modes_typed(user_modes: &mut UserModes, modes: &[Mode<UserMode>]) -> (Vec<Mode<UserMode>>, Vec<UserMode>) {
+    let mut applied = Vec::new();
     let mut rejected = Vec::new();
-    let mut current_dir = ' ';
 
     for mode in modes {
         let adding = mode.is_plus();
@@ -175,18 +157,26 @@ fn apply_user_modes_typed(user_modes: &mut UserModes, modes: &[Mode<UserMode>]) 
         match mode_type {
             UserMode::Invisible => {
                 user_modes.invisible = adding;
-                push_user_mode(&mut applied, &mut current_dir, adding, 'i');
+                applied.push(mode.clone());
             }
             UserMode::Wallops => {
                 user_modes.wallops = adding;
-                push_user_mode(&mut applied, &mut current_dir, adding, 'w');
+                applied.push(mode.clone());
+            }
+            UserMode::Registered => {
+                // +r can only be set by server (via NickServ)
+                if !adding {
+                    user_modes.registered = false;
+                    applied.push(mode.clone());
+                } else {
+                    rejected.push(mode_type.clone());
+                }
             }
             UserMode::Oper | UserMode::LocalOper => {
                 // Oper modes can only be removed, not added by user
                 if !adding {
                     user_modes.oper = false;
-                    let c = if *mode_type == UserMode::Oper { 'o' } else { 'O' };
-                    push_user_mode(&mut applied, &mut current_dir, adding, c);
+                    applied.push(mode.clone());
                 } else {
                     rejected.push(mode_type.clone());
                 }
