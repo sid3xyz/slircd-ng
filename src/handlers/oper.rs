@@ -157,7 +157,7 @@ impl Handler for KillHandler {
             return Ok(());
         };
 
-        // Build KILL message
+        // Build KILL message for confirmation
         let kill_msg = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(killer_nick.clone(), killer_user, killer_host)),
@@ -166,50 +166,9 @@ impl Handler for KillHandler {
 
         tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
 
-        // Remove target from all channels and broadcast QUIT
-        let target_channels: Vec<String> = {
-            if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-                let user = user_ref.read().await;
-                user.channels.iter().cloned().collect()
-            } else {
-                vec![]
-            }
-        };
-
+        // Use centralized disconnect logic
         let quit_reason = format!("Killed by {killer_nick} ({reason})");
-
-        // Build QUIT message for target
-        let quit_msg = Message {
-            tags: None,
-            prefix: Some(Prefix::Nickname(target_nick.to_string(), "user".to_string(), "host".to_string())),
-            command: Command::QUIT(Some(quit_reason)),
-        };
-
-        // Remove from channels and broadcast QUIT
-        for channel_name in target_channels {
-            if let Some(channel_ref) = ctx.matrix.channels.get(&channel_name) {
-                let mut channel = channel_ref.write().await;
-                channel.members.remove(&target_uid);
-
-                // Broadcast QUIT to remaining channel members
-                for member_uid in channel.members.keys() {
-                    if let Some(member_ref) = ctx.matrix.users.get(member_uid) {
-                        let member = member_ref.read().await;
-                        if let Some(sender) = ctx.matrix.senders.get(&member.uid) {
-                            let _ = sender.send(quit_msg.clone()).await;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Remove user from matrix state
-        if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-            let user = user_ref.read().await;
-            let nick_lower = irc_to_lower(&user.nick);
-            ctx.matrix.nicks.remove(&nick_lower);
-        }
-        ctx.matrix.users.remove(&target_uid);
+        ctx.matrix.disconnect_user(&target_uid, &quit_reason).await;
 
         // Send confirmation to killer
         let _ = ctx.sender.send(kill_msg).await;
