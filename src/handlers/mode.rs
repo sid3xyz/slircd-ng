@@ -5,7 +5,7 @@
 //! - User modes: `MODE nick [+/-modes]`
 //! - Channel modes: `MODE channel [+/-modes [args...]]`
 
-use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{err_chanoprivsneeded, server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::state::{ListEntry, UserModes};
 use async_trait::async_trait;
 use slirc_proto::{irc_eq, irc_to_lower, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, UserMode};
@@ -249,12 +249,7 @@ async fn handle_channel_mode(
 
         // Must be op to change modes
         if !is_op {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_CHANOPRIVSNEEDED,
-                vec![nick.clone(), canonical_name, "You're not channel operator".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_chanoprivsneeded(&ctx.matrix.server_info.name, nick, &canonical_name)).await?;
             return Ok(());
         }
 

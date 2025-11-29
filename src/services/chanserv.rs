@@ -1123,15 +1123,15 @@ pub async fn route_chanserv_message(
                 
                 // Find target UID
                 let target_lower = irc_to_lower(&mode_change.target);
-                if let Some(target_uid) = matrix.nicks.get(&target_lower) {
-                    if let Some(member_modes) = channel.members.get_mut(&*target_uid) {
-                        match mode_change.mode.as_str() {
-                            "+o" => member_modes.op = true,
-                            "-o" => member_modes.op = false,
-                            "+v" => member_modes.voice = true,
-                            "-v" => member_modes.voice = false,
-                            _ => {}
-                        }
+                if let Some(target_uid) = matrix.nicks.get(&target_lower)
+                    && let Some(member_modes) = channel.members.get_mut(&*target_uid)
+                {
+                    match mode_change.mode.as_str() {
+                        "+o" => member_modes.op = true,
+                        "-o" => member_modes.op = false,
+                        "+v" => member_modes.voice = true,
+                        "-v" => member_modes.voice = false,
+                        _ => {}
                     }
                 }
 

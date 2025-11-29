@@ -2,7 +2,7 @@
 //!
 //! RFC 2812 - Miscellaneous and optional commands
 
-use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{err_chanoprivsneeded, err_notonchannel, server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
@@ -262,16 +262,7 @@ impl Handler for InviteHandler {
 
             // Check if user is on channel
             if !channel.is_member(ctx.uid) {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NOTONCHANNEL,
-                    vec![
-                        nick.clone(),
-                        channel_name.to_string(),
-                        "You're not on that channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender.send(err_notonchannel(server_name, nick, channel_name)).await?;
                 return Ok(());
             }
 
@@ -293,16 +284,7 @@ impl Handler for InviteHandler {
 
             // If channel is +i, check if user is op
             if channel.modes.invite_only && !channel.is_op(ctx.uid) {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_CHANOPRIVSNEEDED,
-                    vec![
-                        nick.clone(),
-                        channel_name.to_string(),
-                        "You're not channel operator".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender.send(err_chanoprivsneeded(server_name, nick, channel_name)).await?;
                 return Ok(());
             }
         } else {
