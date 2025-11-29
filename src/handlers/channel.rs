@@ -6,7 +6,7 @@ use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::db::ChannelRepository;
 use crate::state::{Channel, MemberModes, Topic, User};
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, ChannelExt, Command, Message, Prefix, Response};
+use slirc_proto::{irc_to_lower, ChannelExt, Command, Message, MessageRef, Prefix, Response};
 
 /// Helper to create a user prefix.
 fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
@@ -21,15 +21,13 @@ pub struct JoinHandler;
 
 #[async_trait]
 impl Handler for JoinHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
         }
 
-        let channels_str = match &msg.command {
-            Command::JOIN(c, _, _) => c.clone(),
-            _ => return Ok(()),
-        };
+        // JOIN <channels> [keys]
+        let channels_str = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
 
         // Handle "JOIN 0" - leave all channels
         if channels_str == "0" {
@@ -321,15 +319,14 @@ pub struct PartHandler;
 
 #[async_trait]
 impl Handler for PartHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
         }
 
-        let (channels_str, reason) = match &msg.command {
-            Command::PART(c, r) => (c.clone(), r.clone()),
-            _ => return Ok(()),
-        };
+        // PART <channels> [reason]
+        let channels_str = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let reason = msg.arg(1);
 
         let nick = ctx.handshake.nick.clone().ok_or(HandlerError::NickOrUserMissing)?;
         let user_name = ctx.handshake.user.clone().ok_or(HandlerError::NickOrUserMissing)?;
@@ -341,7 +338,7 @@ impl Handler for PartHandler {
             }
 
             let channel_lower = irc_to_lower(channel_name);
-            leave_channel_internal(ctx, &channel_lower, &nick, &user_name, reason.as_deref()).await?;
+            leave_channel_internal(ctx, &channel_lower, &nick, &user_name, reason).await?;
         }
 
         Ok(())
@@ -435,19 +432,18 @@ pub struct TopicHandler;
 
 #[async_trait]
 impl Handler for TopicHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
         }
 
-        let (channel_name, new_topic) = match &msg.command {
-            Command::TOPIC(c, t) => (c.clone(), t.clone()),
-            _ => return Ok(()),
-        };
+        // TOPIC <channel> [new_topic]
+        let channel_name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let new_topic = msg.arg(1);
 
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
         let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-        let channel_lower = irc_to_lower(&channel_name);
+        let channel_lower = irc_to_lower(channel_name);
 
         // Get channel
         let channel = match ctx.matrix.channels.get(&channel_lower) {
@@ -458,7 +454,7 @@ impl Handler for TopicHandler {
                     Response::ERR_NOSUCHCHANNEL,
                     vec![
                         nick.to_string(),
-                        channel_name,
+                        channel_name.to_string(),
                         "No such channel".to_string(),
                     ],
                 );
@@ -527,7 +523,7 @@ impl Handler for TopicHandler {
             Some(topic_text) => {
                 // Set topic (for now, anyone can set - add mode checks later)
                 let new_topic = Topic {
-                    text: topic_text.clone(),
+                    text: topic_text.to_string(),
                     set_by: format!("{}!{}@localhost", nick, user_name),
                     set_at: chrono::Utc::now().timestamp(),
                 };
@@ -537,7 +533,7 @@ impl Handler for TopicHandler {
                 let topic_msg = Message {
                     tags: None,
                     prefix: Some(user_prefix(nick, user_name, "localhost")),
-                    command: Command::TOPIC(canonical_name.clone(), Some(topic_text)),
+                    command: Command::TOPIC(canonical_name.clone(), Some(topic_text.to_string())),
                 };
 
                 for uid in channel_guard.members.keys() {
@@ -559,17 +555,13 @@ pub struct NamesHandler;
 
 #[async_trait]
 impl Handler for NamesHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
         }
 
-        // Extract channel name from NAMES command
-        let channel_name = match &msg.command {
-            Command::NAMES(Some(channels), _) => channels.clone(),
-            Command::NAMES(None, _) => String::new(),
-            _ => return Ok(()),
-        };
+        // NAMES [channel [target]]
+        let channel_name = msg.arg(0).unwrap_or("");
 
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
@@ -584,7 +576,7 @@ impl Handler for NamesHandler {
             return Ok(());
         }
 
-        let channel_lower = irc_to_lower(&channel_name);
+        let channel_lower = irc_to_lower(channel_name);
 
         if let Some(channel) = ctx.matrix.channels.get(&channel_lower) {
             let channel = channel.read().await;
@@ -630,7 +622,7 @@ impl Handler for NamesHandler {
                 Response::RPL_ENDOFNAMES,
                 vec![
                     nick.to_string(),
-                    channel_name,
+                    channel_name.to_string(),
                     "End of /NAMES list".to_string(),
                 ],
             );
@@ -646,15 +638,15 @@ pub struct KickHandler;
 
 #[async_trait]
 impl Handler for KickHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
         }
 
-        let (channel_name, target_nick, reason) = match &msg.command {
-            Command::KICK(c, t, r) => (c.clone(), t.clone(), r.clone()),
-            _ => return Ok(()),
-        };
+        // KICK <channel> <nick> [reason]
+        let channel_name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let target_nick = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
+        let reason = msg.arg(2);
 
         if channel_name.is_empty() || target_nick.is_empty() {
             return Err(HandlerError::NeedMoreParams);
@@ -662,7 +654,7 @@ impl Handler for KickHandler {
 
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
         let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-        let channel_lower = irc_to_lower(&channel_name);
+        let channel_lower = irc_to_lower(channel_name);
 
         // Get channel
         let channel = match ctx.matrix.channels.get(&channel_lower) {
@@ -671,7 +663,7 @@ impl Handler for KickHandler {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHCHANNEL,
-                    vec![nick.clone(), channel_name, "No such channel".to_string()],
+                    vec![nick.clone(), channel_name.to_string(), "No such channel".to_string()],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());
@@ -696,14 +688,14 @@ impl Handler for KickHandler {
         }
 
         // Find target user
-        let target_lower = irc_to_lower(&target_nick);
+        let target_lower = irc_to_lower(target_nick);
         let target_uid = match ctx.matrix.nicks.get(&target_lower) {
             Some(uid) => uid.value().clone(),
             None => {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHNICK,
-                    vec![nick.clone(), target_nick, "No such nick".to_string()],
+                    vec![nick.clone(), target_nick.to_string(), "No such nick".to_string()],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());
@@ -717,7 +709,7 @@ impl Handler for KickHandler {
                 Response::ERR_USERNOTINCHANNEL,
                 vec![
                     nick.clone(),
-                    target_nick,
+                    target_nick.to_string(),
                     channel_guard.name.clone(),
                     "They aren't on that channel".to_string(),
                 ],
@@ -727,13 +719,13 @@ impl Handler for KickHandler {
         }
 
         let canonical_name = channel_guard.name.clone();
-        let kick_reason = reason.unwrap_or_else(|| nick.clone());
+        let kick_reason = reason.map(|s| s.to_string()).unwrap_or_else(|| nick.clone());
 
         // Broadcast KICK to channel (before removing)
         let kick_msg = Message {
             tags: None,
             prefix: Some(user_prefix(nick, user_name, "localhost")),
-            command: Command::KICK(canonical_name.clone(), target_nick.clone(), Some(kick_reason)),
+            command: Command::KICK(canonical_name.clone(), target_nick.to_string(), Some(kick_reason)),
         };
 
         for uid in channel_guard.members.keys() {

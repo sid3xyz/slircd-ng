@@ -4,7 +4,7 @@
 
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, Response};
+use slirc_proto::{MessageRef, Response};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Server version string.
@@ -19,7 +19,7 @@ pub struct VersionHandler;
 
 #[async_trait]
 impl Handler for VersionHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -64,7 +64,7 @@ pub struct TimeHandler;
 
 #[async_trait]
 impl Handler for TimeHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -102,7 +102,7 @@ pub struct AdminHandler;
 
 #[async_trait]
 impl Handler for AdminHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -165,7 +165,7 @@ pub struct InfoHandler;
 
 #[async_trait]
 impl Handler for InfoHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -222,7 +222,7 @@ pub struct LusersHandler;
 
 #[async_trait]
 impl Handler for LusersHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -354,7 +354,7 @@ pub struct StatsHandler;
 
 #[async_trait]
 impl Handler for StatsHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -368,11 +368,8 @@ impl Handler for StatsHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Extract query character
-        let query = match &msg.command {
-            Command::STATS(q, _) => q.as_ref().and_then(|s| s.chars().next()),
-            _ => None,
-        };
+        // STATS [query]
+        let query = msg.arg(0).and_then(|s| s.chars().next());
 
         let query_char = query.unwrap_or('?');
 
@@ -450,7 +447,7 @@ pub struct MotdHandler;
 
 #[async_trait]
 impl Handler for MotdHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -514,7 +511,7 @@ pub struct ListHandler;
 
 #[async_trait]
 impl Handler for ListHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &Message) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -528,11 +525,8 @@ impl Handler for ListHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Extract optional channel filter
-        let filter = match &msg.command {
-            Command::LIST(channels, _) => channels.clone(),
-            _ => None,
-        };
+        // LIST [channels]
+        let filter = msg.arg(0);
 
         // RPL_LISTSTART (321): Channel :Users Name (optional, some clients don't expect it)
 
@@ -546,7 +540,7 @@ impl Handler for ListHandler {
             }
 
             // Apply filter if provided
-            if let Some(ref f) = filter
+            if let Some(f) = filter
                 && !channel.name.eq_ignore_ascii_case(f)
             {
                 continue;
