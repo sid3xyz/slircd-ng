@@ -54,6 +54,9 @@ impl NickServ {
         match command.as_str() {
             "REGISTER" => self.handle_register(nick, args).await,
             "IDENTIFY" => self.handle_identify(nick, args).await,
+            "DROP" => self.handle_drop(matrix, uid, nick, args).await,
+            "GROUP" => self.handle_group(matrix, uid, nick, args).await,
+            "UNGROUP" => self.handle_ungroup(matrix, uid, args).await,
             "GHOST" => self.handle_ghost(matrix, uid, nick, args).await,
             "INFO" => self.handle_info(args).await,
             "SET" => self.handle_set(matrix, uid, args).await,
@@ -125,6 +128,178 @@ impl NickServ {
             Err(e) => {
                 warn!(nick = %nick, error = ?e, "Identification failed");
                 self.error_reply("Identification failed. Please try again later.")
+            }
+        }
+    }
+
+    /// Handle DROP command.
+    async fn handle_drop(
+        &self,
+        matrix: &Arc<Matrix>,
+        uid: &str,
+        nick: &str,
+        args: &[&str],
+    ) -> NickServResult {
+        if args.is_empty() {
+            return self.error_reply("Syntax: DROP <password>");
+        }
+
+        let password = args[0];
+
+        // Verify the user owns the account for their current nick
+        match self.db.accounts().drop_account(nick, password).await {
+            Ok(()) => {
+                info!(nick = %nick, "Account dropped");
+
+                // Clear identification state on the user
+                if let Some(user) = matrix.users.get(uid) {
+                    let mut user = user.write().await;
+                    user.modes.registered = false;
+                    user.account = None;
+                }
+
+                NickServResult {
+                    replies: vec![
+                        self.notice_msg(&format!("Your account \x02{}\x02 has been dropped.", nick)),
+                        self.notice_msg("All associated nicknames have been released."),
+                    ],
+                    account: None,
+                    kill_uid: None,
+                }
+            }
+            Err(crate::db::DbError::AccountNotFound(_)) => {
+                self.error_reply("Your nickname is not registered.")
+            }
+            Err(crate::db::DbError::InvalidPassword) => {
+                self.error_reply("Invalid password.")
+            }
+            Err(e) => {
+                warn!(nick = %nick, error = ?e, "DROP failed");
+                self.error_reply("Failed to drop account. Please try again later.")
+            }
+        }
+    }
+
+    /// Handle GROUP command - link current nick to an existing account.
+    async fn handle_group(
+        &self,
+        matrix: &Arc<Matrix>,
+        uid: &str,
+        nick: &str,
+        args: &[&str],
+    ) -> NickServResult {
+        if args.len() < 2 {
+            return self.error_reply("Syntax: GROUP <account> <password>");
+        }
+
+        let account_name = args[0];
+        let password = args[1];
+
+        match self.db.accounts().link_nickname(nick, account_name, password).await {
+            Ok(()) => {
+                info!(nick = %nick, account = %account_name, "Nickname grouped");
+
+                // Auto-identify the user to the account
+                if let Some(user) = matrix.users.get(uid) {
+                    let mut user = user.write().await;
+                    user.modes.registered = true;
+                    user.account = Some(account_name.to_string());
+                }
+
+                NickServResult {
+                    replies: vec![
+                        self.notice_msg(&format!(
+                            "Your nickname \x02{}\x02 is now linked to account \x02{}\x02.",
+                            nick, account_name
+                        )),
+                        self.notice_msg("You are now identified to your account."),
+                    ],
+                    account: Some(account_name.to_string()),
+                    kill_uid: None,
+                }
+            }
+            Err(crate::db::DbError::AccountNotFound(_)) => {
+                self.error_reply(&format!("Account \x02{}\x02 does not exist.", account_name))
+            }
+            Err(crate::db::DbError::InvalidPassword) => {
+                self.error_reply("Invalid password.")
+            }
+            Err(crate::db::DbError::NicknameRegistered(_)) => {
+                self.error_reply(&format!(
+                    "Nickname \x02{}\x02 is already registered to another account.",
+                    nick
+                ))
+            }
+            Err(e) => {
+                warn!(nick = %nick, account = %account_name, error = ?e, "GROUP failed");
+                self.error_reply("Failed to group nickname. Please try again later.")
+            }
+        }
+    }
+
+    /// Handle UNGROUP command - unlink a nick from the current account.
+    async fn handle_ungroup(
+        &self,
+        matrix: &Arc<Matrix>,
+        uid: &str,
+        args: &[&str],
+    ) -> NickServResult {
+        if args.is_empty() {
+            return self.error_reply("Syntax: UNGROUP <nick>");
+        }
+
+        let target_nick = args[0];
+
+        // Must be identified first
+        let (account_name, account_id) = if let Some(user) = matrix.users.get(uid) {
+            let user = user.read().await;
+            if !user.modes.registered {
+                return self.error_reply("You must be identified to use this command.");
+            }
+            match &user.account {
+                Some(name) => {
+                    // Look up the account ID
+                    match self.db.accounts().find_by_name(name).await {
+                        Ok(Some(acc)) => (name.clone(), acc.id),
+                        _ => return self.error_reply("Account not found."),
+                    }
+                }
+                None => return self.error_reply("You are not identified to any account."),
+            }
+        } else {
+            return self.error_reply("Internal error.");
+        };
+
+        match self.db.accounts().unlink_nickname(target_nick, account_id).await {
+            Ok(()) => {
+                info!(nick = %target_nick, account = %account_name, "Nickname ungrouped");
+                NickServResult {
+                    replies: vec![self.notice_msg(&format!(
+                        "Nickname \x02{}\x02 has been removed from your account.",
+                        target_nick
+                    ))],
+                    account: None,
+                    kill_uid: None,
+                }
+            }
+            Err(crate::db::DbError::NicknameNotFound(_)) => {
+                self.error_reply(&format!(
+                    "Nickname \x02{}\x02 is not linked to your account.",
+                    target_nick
+                ))
+            }
+            Err(crate::db::DbError::InsufficientAccess) => {
+                self.error_reply(&format!(
+                    "Nickname \x02{}\x02 does not belong to your account.",
+                    target_nick
+                ))
+            }
+            Err(crate::db::DbError::UnknownOption(msg)) => {
+                self.error_reply(&msg)
+            }
+            Err(e) => {
+                warn!(nick = %target_nick, error = ?e, "UNGROUP failed");
+                self.error_reply("Failed to ungroup nickname. Please try again later.")
             }
         }
     }
@@ -337,6 +512,9 @@ impl NickServ {
                 self.notice_msg("Commands:"),
                 self.notice_msg("  \x02REGISTER\x02 <password> [email] - Register your nickname"),
                 self.notice_msg("  \x02IDENTIFY\x02 <password>         - Identify to your account"),
+                self.notice_msg("  \x02DROP\x02 <password>             - Delete your account"),
+                self.notice_msg("  \x02GROUP\x02 <account> <password>  - Link nick to account"),
+                self.notice_msg("  \x02UNGROUP\x02 <nick>              - Remove nick from account"),
                 self.notice_msg("  \x02GHOST\x02 <nick> [password]     - Kill session using your nick"),
                 self.notice_msg("  \x02INFO\x02 <nick>                 - Show account information"),
                 self.notice_msg("  \x02SET\x02 <option> <value>        - Configure account settings"),
@@ -410,6 +588,9 @@ pub async fn route_service_message(
                 user.account = Some(account_name.clone());
                 info!(uid = %uid, account = %account_name, "User identified to account");
             }
+            
+            // Clear any nick enforcement timer
+            matrix.enforce_timers.remove(uid);
         }
 
         // Handle GHOST kill

@@ -289,6 +289,107 @@ impl<'a> AccountRepository<'a> {
         }
         Ok(())
     }
+
+    /// Delete an account and all associated nicknames.
+    /// Requires password verification for security.
+    pub async fn drop_account(&self, name: &str, password: &str) -> Result<(), DbError> {
+        // First verify the password (this also confirms the account exists)
+        let account = self.identify(name, password).await?;
+
+        // Delete all nicknames linked to this account
+        sqlx::query("DELETE FROM nicknames WHERE account_id = ?")
+            .bind(account.id)
+            .execute(self.pool)
+            .await?;
+
+        // Delete the account
+        sqlx::query("DELETE FROM accounts WHERE id = ?")
+            .bind(account.id)
+            .execute(self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Link a nickname to an existing account (GROUP).
+    /// The account must be verified with password first.
+    pub async fn link_nickname(
+        &self,
+        nick: &str,
+        account_name: &str,
+        password: &str,
+    ) -> Result<(), DbError> {
+        // Verify the account password
+        let account = self.identify(account_name, password).await?;
+
+        // Check if nickname is already registered
+        if self.find_by_nickname(nick).await?.is_some() {
+            return Err(DbError::NicknameRegistered(nick.to_string()));
+        }
+
+        // Link the nickname to the account
+        sqlx::query(
+            r#"
+            INSERT INTO nicknames (name, account_id)
+            VALUES (?, ?)
+            "#,
+        )
+        .bind(nick)
+        .bind(account.id)
+        .execute(self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Unlink a nickname from the current account (UNGROUP).
+    /// Cannot unlink the primary account name.
+    pub async fn unlink_nickname(&self, nick: &str, account_id: i64) -> Result<(), DbError> {
+        // First verify the nick belongs to this account
+        let nick_account_id = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT account_id FROM nicknames
+            WHERE name = ? COLLATE NOCASE
+            "#,
+        )
+        .bind(nick)
+        .fetch_optional(self.pool)
+        .await?
+        .ok_or_else(|| DbError::NicknameNotFound(nick.to_string()))?;
+
+        if nick_account_id != account_id {
+            return Err(DbError::InsufficientAccess);
+        }
+
+        // Check if this is the primary account name (cannot unlink)
+        let account = self.find_by_id(account_id).await?
+            .ok_or_else(|| DbError::AccountNotFound(account_id.to_string()))?;
+
+        if account.name.eq_ignore_ascii_case(nick) {
+            return Err(DbError::UnknownOption("Cannot ungroup primary account nickname".to_string()));
+        }
+
+        // Count remaining nicknames - must have at least 2 to ungroup one
+        let nick_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM nicknames WHERE account_id = ?",
+        )
+        .bind(account_id)
+        .fetch_one(self.pool)
+        .await?;
+
+        if nick_count < 2 {
+            return Err(DbError::UnknownOption("Account must have at least one nickname".to_string()));
+        }
+
+        // Delete the nickname link
+        sqlx::query("DELETE FROM nicknames WHERE name = ? COLLATE NOCASE AND account_id = ?")
+            .bind(nick)
+            .bind(account_id)
+            .execute(self.pool)
+            .await?;
+
+        Ok(())
+    }
 }
 
 /// Hash a password using Argon2.

@@ -69,3 +69,17 @@ CREATE TABLE channel_access (
 
 -- Create index for account access lookups
 CREATE INDEX idx_channel_access_account ON channel_access(account_id);
+
+-- Channel AKICK list
+CREATE TABLE channel_akick (
+    id INTEGER PRIMARY KEY,
+    channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    mask TEXT NOT NULL,
+    reason TEXT,
+    set_by TEXT NOT NULL,
+    set_at INTEGER NOT NULL,
+    UNIQUE(channel_id, mask)
+);
+
+-- Create index for channel akick lookups
+CREATE INDEX idx_channel_akick_channel ON channel_akick(channel_id);

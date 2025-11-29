@@ -12,6 +12,7 @@ mod state;
 use crate::config::Config;
 use crate::db::Database;
 use crate::network::Gateway;
+use crate::services::enforce::spawn_enforcement_task;
 use crate::state::Matrix;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -52,6 +53,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the Matrix (shared state)
     let matrix = Arc::new(Matrix::new(&config));
+
+    // Start nick enforcement background task
+    spawn_enforcement_task(Arc::clone(&matrix), db.clone());
+    info!("Nick enforcement task started");
 
     // Start the Gateway
     let gateway = Gateway::bind(config.listen.address, matrix, db).await?;

@@ -8,6 +8,7 @@ use crate::state::UidGenerator;
 use dashmap::DashMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::{mpsc, RwLock};
 use slirc_proto::Message;
 
@@ -33,6 +34,9 @@ pub struct Matrix {
 
     /// UID to message sender mapping for routing.
     pub senders: DashMap<Uid, mpsc::Sender<Message>>,
+
+    /// Nick enforcement timers: UID -> deadline when they will be renamed.
+    pub enforce_timers: DashMap<Uid, Instant>,
 
     /// Connected servers (for future linking support).
     #[allow(dead_code)] // Phase 4+: Server linking
@@ -294,6 +298,7 @@ impl Matrix {
             channels: DashMap::new(),
             nicks: DashMap::new(),
             senders: DashMap::new(),
+            enforce_timers: DashMap::new(),
             servers: DashMap::new(),
             server_info: ServerInfo {
                 sid: config.server.sid.clone(),

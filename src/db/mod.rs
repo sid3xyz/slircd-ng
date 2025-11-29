@@ -9,7 +9,7 @@ mod accounts;
 mod channels;
 
 pub use accounts::AccountRepository;
-pub use channels::{ChannelRecord, ChannelRepository};
+pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
@@ -104,8 +104,15 @@ impl Database {
         .await
         .unwrap_or(false);
 
+        let akick_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='channel_akick')"
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+
         // Run migrations if any tables are missing
-        if !accounts_exists || !channels_exists {
+        if !accounts_exists || !channels_exists || !akick_exists {
             // Run the full migration
             let migration = include_str!("../../migrations/001_init.sql");
             

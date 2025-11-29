@@ -3,6 +3,7 @@
 //! Handles JOIN, PART, TOPIC, NAMES, KICK commands.
 
 use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use crate::db::ChannelRepository;
 use crate::state::{Channel, MemberModes, Topic, User};
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, ChannelExt, Command, Message, Prefix, Response};
@@ -70,6 +71,27 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
     let realname = ctx.handshake.realname.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
+    // Check AKICK before joining
+    if let Some(akick) = check_akick(ctx, &channel_lower, nick, user_name).await {
+        // User is on the AKICK list - send a notice and refuse join
+        let reason = akick.reason.as_deref().unwrap_or("You are banned from this channel");
+        let notice = Message {
+            tags: None,
+            prefix: Some(Prefix::Nickname(
+                "ChanServ".to_string(),
+                "ChanServ".to_string(),
+                "services.".to_string(),
+            )),
+            command: Command::NOTICE(
+                nick.clone(),
+                format!("You are not permitted to be on \x02{}\x02: {}", channel_name, reason),
+            ),
+        };
+        ctx.sender.send(notice).await?;
+        info!(nick = %nick, channel = %channel_name, mask = %akick.mask, "AKICK triggered");
+        return Ok(());
+    }
+
     // Get or create channel
     let channel = ctx.matrix.channels.entry(channel_lower.clone()).or_insert_with(|| {
         Arc::new(RwLock::new(Channel::new(channel_name.to_string())))
@@ -82,15 +104,19 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         return Ok(());
     }
 
-    // First user gets ops
+    // Determine member modes:
+    // 1. First user gets ops
+    // 2. If channel is registered, check access list for auto-op/voice
     let modes = if channel_guard.members.is_empty() {
         MemberModes { op: true, voice: false }
     } else {
-        MemberModes::default()
+        // Check for auto-op/voice on registered channels
+        let auto_modes = check_auto_modes(ctx, &channel_lower).await;
+        auto_modes.unwrap_or_default()
     };
 
     // Add user to channel
-    channel_guard.add_member(ctx.uid.to_string(), modes);
+    channel_guard.add_member(ctx.uid.to_string(), modes.clone());
     let member_count = channel_guard.members.len();
     let topic = channel_guard.topic.clone();
     let canonical_name = channel_guard.name.clone();
@@ -124,6 +150,37 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     };
 
     ctx.matrix.broadcast_to_channel(&channel_lower, join_msg, None).await;
+
+    // If auto-op/voice was applied, broadcast the MODE change
+    if modes.op || modes.voice {
+        let mode_str = if modes.op && modes.voice {
+            "+ov"
+        } else if modes.op {
+            "+o"
+        } else {
+            "+v"
+        };
+
+        let mode_msg = Message {
+            tags: None,
+            prefix: Some(Prefix::Nickname(
+                "ChanServ".to_string(),
+                "ChanServ".to_string(),
+                "services.".to_string(),
+            )),
+            command: Command::Raw(
+                "MODE".to_string(),
+                if modes.op && modes.voice {
+                    vec![canonical_name.clone(), mode_str.to_string(), nick.clone(), nick.clone()]
+                } else {
+                    vec![canonical_name.clone(), mode_str.to_string(), nick.clone()]
+                },
+            ),
+        };
+
+        ctx.matrix.broadcast_to_channel(&channel_lower, mode_msg, None).await;
+        info!(nick = %nick, channel = %canonical_name, modes = %mode_str, "Auto-modes applied");
+    }
 
     info!(nick = %nick, channel = %canonical_name, members = member_count, "User joined channel");
 
@@ -179,6 +236,63 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     ctx.sender.send(end_names).await?;
 
     Ok(())
+}
+
+/// Check if user should receive auto-op or auto-voice on a registered channel.
+/// Returns Some(MemberModes) if the user has access, None otherwise.
+async fn check_auto_modes(ctx: &Context<'_>, channel_lower: &str) -> Option<MemberModes> {
+    // Get user's account name if identified
+    let account_name = {
+        let user = ctx.matrix.users.get(ctx.uid)?;
+        let user = user.read().await;
+        
+        if !user.modes.registered {
+            return None;
+        }
+        
+        user.account.clone()?
+    };
+    
+    // Look up account ID
+    let account = ctx.db.accounts().find_by_name(&account_name).await.ok()??;
+    
+    // Look up channel record
+    let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
+    
+    // Check if user is founder
+    if account.id == channel_record.founder_account_id {
+        return Some(MemberModes { op: true, voice: false });
+    }
+    
+    // Check access list
+    let access = ctx.db.channels().get_access(channel_record.id, account.id).await.ok()??;
+    
+    let op = ChannelRepository::has_op_access(&access.flags);
+    let voice = ChannelRepository::has_voice_access(&access.flags);
+    
+    if op || voice {
+        Some(MemberModes { op, voice })
+    } else {
+        None
+    }
+}
+
+/// Check if user is on the AKICK list for a channel.
+/// Returns the matching AKICK entry if found.
+async fn check_akick(
+    ctx: &Context<'_>,
+    channel_lower: &str,
+    nick: &str,
+    user: &str,
+) -> Option<crate::db::ChannelAkick> {
+    // Look up channel record
+    let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
+    
+    // Get host - for now use "localhost" but this should be the actual host
+    let host = "localhost";
+    
+    // Check AKICK list
+    ctx.db.channels().check_akick(channel_record.id, nick, user, host).await.ok()?
 }
 
 /// Leave all channels (JOIN 0).
