@@ -99,7 +99,7 @@ impl Handler for UserhostHandler {
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // USERHOST <nick> [<nick> ...]
-        let nicks: Vec<&str> = msg.args().to_vec();
+        let nicks = msg.args();
 
         if nicks.is_empty() {
             let reply = server_reply(
@@ -170,7 +170,7 @@ impl Handler for IsonHandler {
         let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
         // ISON <nick> [<nick> ...]
-        let nicks: Vec<&str> = msg.args().to_vec();
+        let nicks = msg.args();
 
         if nicks.is_empty() {
             let reply = server_reply(
@@ -188,7 +188,7 @@ impl Handler for IsonHandler {
 
         // Find which nicks are online
         let mut online = Vec::new();
-        for target_nick in &nicks {
+        for target_nick in nicks {
             let target_lower = irc_to_lower(target_nick);
             if ctx.matrix.nicks.contains_key(&target_lower) {
                 // Return the nick as the user typed it (case preserved)
