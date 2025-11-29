@@ -28,18 +28,16 @@ Client → Gateway → Connection (tokio::select!) → Handler → Matrix (DashM
 - [x] **Extract `user_prefix` to mod.rs** (b0d568c)
 - [x] **Create `err_notregistered()` helper** (b0d568c)
 
-### P1: Coupling Issues
+### P1: Coupling Issues ✅ COMPLETE
 
-- [ ] **Remove `MatrixConfig.server_name` duplicate**
-  - `ctx.matrix.server_info.name` is canonical source
-  - `ctx.matrix.config.server_name` duplicates it
-  - Action: Remove from `MatrixConfig`, update all references
+- [x] **Remove `MatrixConfig.server_name` duplicate** (031c772)
+  - Canonical: `ctx.matrix.server_info.name`
+  - Updated: bans.rs, admin.rs, misc.rs, oper.rs
 
-- [ ] **Complete error helper migration**
-  - Many handlers still inline `server_reply()` for errors
-  - Existing helpers: `err_noprivileges`, `err_needmoreparams`, `err_nosuchnick`, 
-    `err_nosuchchannel`, `err_notonchannel`, `err_chanoprivsneeded`, `err_usernotinchannel`
-  - Action: Audit all handlers, replace inline patterns with helpers
+- [x] **Complete error helper migration** (b0d568c)
+  - Helpers: `err_noprivileges`, `err_needmoreparams`, `err_nosuchnick`, 
+    `err_nosuchchannel`, `err_notonchannel`, `err_chanoprivsneeded`, 
+    `err_usernotinchannel`, `err_notregistered`, `user_prefix`
 
 ### P2: Service Layer Decoupling
 
