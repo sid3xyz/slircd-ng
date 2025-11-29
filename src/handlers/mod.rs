@@ -298,7 +298,6 @@ pub fn err_nosuchchannel(server_name: &str, nick: &str, channel: &str) -> Messag
 }
 
 /// Create ERR_NOTONCHANNEL reply (442) - you're not on that channel.
-#[allow(dead_code)] // Will be used in future channel.rs refactoring
 pub fn err_notonchannel(server_name: &str, nick: &str, channel: &str) -> Message {
     server_reply(
         server_name,
@@ -312,7 +311,6 @@ pub fn err_notonchannel(server_name: &str, nick: &str, channel: &str) -> Message
 }
 
 /// Create ERR_CHANOPRIVSNEEDED reply (482) - you're not channel operator.
-#[allow(dead_code)] // Will be used in future channel.rs/mode.rs refactoring
 pub fn err_chanoprivsneeded(server_name: &str, nick: &str, channel: &str) -> Message {
     server_reply(
         server_name,
@@ -326,7 +324,6 @@ pub fn err_chanoprivsneeded(server_name: &str, nick: &str, channel: &str) -> Mes
 }
 
 /// Create ERR_USERNOTINCHANNEL reply (441) - they aren't on that channel.
-#[allow(dead_code)] // Will be used in future channel.rs refactoring
 pub fn err_usernotinchannel(server_name: &str, nick: &str, target: &str, channel: &str) -> Message {
     server_reply(
         server_name,

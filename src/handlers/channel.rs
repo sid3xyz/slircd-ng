@@ -2,7 +2,7 @@
 //!
 //! Handles JOIN, PART, TOPIC, NAMES, KICK commands.
 
-use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{err_chanoprivsneeded, err_notonchannel, err_usernotinchannel, server_reply, Context, Handler, HandlerError, HandlerResult};
 use crate::db::ChannelRepository;
 use crate::state::{Channel, MemberModes, Topic, User};
 use async_trait::async_trait;
@@ -375,16 +375,7 @@ async fn leave_channel_internal(
 
     // Check if user is in channel
     if !channel_guard.is_member(ctx.uid) {
-        let reply = server_reply(
-            &ctx.matrix.server_info.name,
-            Response::ERR_NOTONCHANNEL,
-            vec![
-                nick.to_string(),
-                channel_guard.name.clone(),
-                "You're not on that channel".to_string(),
-            ],
-        );
-        ctx.sender.send(reply).await?;
+        ctx.sender.send(err_notonchannel(&ctx.matrix.server_info.name, nick, &channel_guard.name)).await?;
         return Ok(());
     }
 
@@ -467,16 +458,7 @@ impl Handler for TopicHandler {
 
         // Check if user is in channel
         if !channel_guard.is_member(ctx.uid) {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTONCHANNEL,
-                vec![
-                    nick.to_string(),
-                    channel_guard.name.clone(),
-                    "You're not on that channel".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notonchannel(&ctx.matrix.server_info.name, nick, &channel_guard.name)).await?;
             return Ok(());
         }
 
@@ -674,16 +656,7 @@ impl Handler for KickHandler {
 
         // Check if kicker is op
         if !channel_guard.is_op(ctx.uid) {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_CHANOPRIVSNEEDED,
-                vec![
-                    nick.clone(),
-                    channel_guard.name.clone(),
-                    "You're not channel operator".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_chanoprivsneeded(&ctx.matrix.server_info.name, nick, &channel_guard.name)).await?;
             return Ok(());
         }
 
@@ -704,17 +677,7 @@ impl Handler for KickHandler {
 
         // Check if target is in channel
         if !channel_guard.is_member(&target_uid) {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_USERNOTINCHANNEL,
-                vec![
-                    nick.clone(),
-                    target_nick.to_string(),
-                    channel_guard.name.clone(),
-                    "They aren't on that channel".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_usernotinchannel(&ctx.matrix.server_info.name, nick, target_nick, &channel_guard.name)).await?;
             return Ok(());
         }
 

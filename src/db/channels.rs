@@ -31,6 +31,7 @@ pub struct ChannelAccess {
 
 /// A channel AKICK entry.
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields populated from DB, read access pending
 pub struct ChannelAkick {
     pub id: i64,
     pub channel_id: i64,
@@ -483,8 +484,8 @@ impl<'a> ChannelRepository<'a> {
                 star_idx = Some(pattern_idx);
                 match_idx = hostmask_idx;
                 pattern_idx += 1;
-            } else if star_idx.is_some() {
-                pattern_idx = star_idx.unwrap() + 1;
+            } else if let Some(idx) = star_idx {
+                pattern_idx = idx + 1;
                 match_idx += 1;
                 hostmask_idx = match_idx;
             } else {
