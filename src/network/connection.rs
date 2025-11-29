@@ -37,6 +37,10 @@ use tokio::sync::mpsc;
 use tokio_util::codec::FramedWrite;
 use tracing::{debug, error, info, instrument, warn};
 
+// Rate limiter configuration constants
+const RATE_LIMIT_RATE: f32 = 10.0;     // Messages per second
+const RATE_LIMIT_BURST: f32 = 20.0;    // Burst capacity
+
 /// A client connection handler.
 pub struct Connection {
     uid: String,
@@ -91,8 +95,11 @@ impl Connection {
                 Ok(Some(msg)) => {
                     debug!(raw = %msg, "Received message");
 
-                    // Parse the owned message's raw string into a MessageRef for the handler
-                    // This allows handlers to use zero-copy API during handshake too
+                    // Design decision: Handshake uses owned Message but we convert to MessageRef
+                    // for handlers. This is acceptable because:
+                    // 1. Handshake is a cold path (network latency dominates)
+                    // 2. Only ~3-5 messages during handshake (CAP, NICK, USER)
+                    // 3. Keeps handler API uniform across handshake and main loop
                     let raw_str = msg.to_string();
                     let msg_ref = match MessageRef::parse(&raw_str) {
                         Ok(r) => r,
@@ -158,7 +165,7 @@ impl Connection {
         let mut writer = FramedWrite::new(write_half.half, write_half.codec);
 
         // Rate limiter for flood protection
-        let mut rate_limiter = RateLimiter::new(10.0, 20.0); // 10 msg/sec, burst of 20
+        let mut rate_limiter = RateLimiter::new(RATE_LIMIT_RATE, RATE_LIMIT_BURST);
 
         // Channel for outgoing messages (handlers queue responses here)
         // Also used for routing messages from other users (PRIVMSG, etc.)
