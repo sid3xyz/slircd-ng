@@ -42,6 +42,9 @@ use tracing::{debug, info, instrument, warn};
 const RATE_LIMIT_RATE: f32 = 2.5;      // Messages per second (5 msg/2s)
 const RATE_LIMIT_BURST: f32 = 5.0;     // Allow 5 message burst
 
+/// IRC message encoding (UTF-8 is standard for modern IRC)
+const IRC_ENCODING: &str = "utf-8";
+
 /// A client connection handler.
 pub struct Connection {
     uid: String,
@@ -80,12 +83,10 @@ impl Connection {
             "Client connected"
         );
 
-        // Split TCP stream for concurrent read/write from the start
-        // This enables true zero-copy reading during both handshake and main loop
+        // Split TCP stream for concurrent read/write from the start.
+        // This enables true zero-copy reading during both handshake and main loop.
         let (read_half, write_half) = self.stream.into_split();
-        
-        // Setup zero-copy reader and framed writer
-        let codec = IrcCodec::new("utf-8")?;
+        let codec = IrcCodec::new(IRC_ENCODING)?;
         let mut reader = ZeroCopyTransport::new(read_half);
         let mut writer = FramedWrite::new(write_half, codec);
 
