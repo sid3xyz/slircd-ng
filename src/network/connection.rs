@@ -37,9 +37,9 @@ use tokio::sync::mpsc;
 use tokio_util::codec::FramedWrite;
 use tracing::{debug, error, info, instrument, warn};
 
-// Rate limiter configuration constants
-const RATE_LIMIT_RATE: f32 = 10.0;     // Messages per second
-const RATE_LIMIT_BURST: f32 = 20.0;    // Burst capacity
+// Rate limiter configuration constants (aligned with IRC standard: 5 messages per 2 seconds)
+const RATE_LIMIT_RATE: f32 = 2.5;      // Messages per second (5 msg/2s)
+const RATE_LIMIT_BURST: f32 = 5.0;     // Allow 5 message burst
 
 /// A client connection handler.
 pub struct Connection {

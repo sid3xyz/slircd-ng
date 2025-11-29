@@ -36,15 +36,10 @@ impl Handler for CapHandler {
             .clone()
             .unwrap_or_else(|| "*".to_string());
 
-        // Parse subcommand
-        let subcommand = match subcommand_str.to_ascii_uppercase().as_str() {
-            "LS" => CapSubCommand::LS,
-            "LIST" => CapSubCommand::LIST,
-            "REQ" => CapSubCommand::REQ,
-            "END" => CapSubCommand::END,
-            "ACK" => CapSubCommand::ACK,
-            "NAK" => CapSubCommand::NAK,
-            _ => {
+        // Parse subcommand using slirc-proto's FromStr implementation
+        let subcommand: CapSubCommand = match subcommand_str.parse() {
+            Ok(cmd) => cmd,
+            Err(_) => {
                 debug!(subcommand = subcommand_str, "Unknown CAP subcommand");
                 return Ok(());
             }
