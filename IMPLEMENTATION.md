@@ -490,6 +490,53 @@ CREATE TABLE channel_akick (
 | `+A` | Admin (can modify access) |
 | `+F` | Founder (full control) |
 
+### 5.4 Service Architecture
+
+**Pattern:** Services (NickServ/ChanServ) are pure functions that return `Vec<ServiceEffect>`. They do not mutate state directly. The Router applies these effects to the Matrix.
+
+**Design Rationale:**
+- Services remain pure decision-making functions with no direct Matrix access
+- All state mutations flow through the central Router layer
+- Effects can be logged, audited, or replayed for debugging
+- Future multi-server environments can replicate effects across network
+
+**ServiceEffect Enum:**
+```rust
+pub enum ServiceEffect {
+    /// Send a reply to the requesting user
+    Reply { target_uid: Uid, message: Message },
+    
+    /// Terminate a user's connection (GHOST, enforcement)
+    Kill { target_uid: Uid, reason: String },
+    
+    /// Apply mode changes (auto-op, +r on identify)
+    Mode { target: ModeTarget, modes: Vec<Mode> },
+    
+    /// Broadcast account identification (account-notify)
+    AccountIdentify { target_uid: Uid, account: String },
+    
+    /// Broadcast account logout (account-notify)
+    AccountClear { target_uid: Uid },
+}
+```
+
+**Service Handler Flow:**
+1. User sends: `PRIVMSG NickServ :IDENTIFY password`
+2. NickServ handler receives message, validates credentials
+3. Returns `Vec<ServiceEffect>` with Reply + AccountIdentify + Mode(+r)
+4. Router applies effects:
+   - Updates `user.account` in Matrix
+   - Sets `user.modes.registered = true`
+   - Broadcasts `ACCOUNT accountname` to shared channels (account-notify)
+   - Sends `MODE nick +r` to all channel members
+5. User sees confirmation message
+
+**Benefits:**
+- Zero direct coupling between services and Matrix
+- Testable: Mock effects, verify logic without database
+- Auditable: Log all service actions for security analysis
+- Network-ready: Effects can be serialized for server-to-server sync
+
 ---
 
 ## 6. Network Protocol (Router)
