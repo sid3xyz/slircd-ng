@@ -2,16 +2,11 @@
 //!
 //! Handles JOIN, PART, TOPIC, NAMES, KICK commands.
 
-use super::{err_chanoprivsneeded, err_notonchannel, err_usernotinchannel, server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{err_chanoprivsneeded, err_notonchannel, err_usernotinchannel, server_reply, user_prefix, Context, Handler, HandlerError, HandlerResult};
 use crate::db::ChannelRepository;
 use crate::state::{Channel, MemberModes, Topic, User};
 use async_trait::async_trait;
 use slirc_proto::{irc_to_lower, ChannelExt, Command, Message, MessageRef, Prefix, Response};
-
-/// Helper to create a user prefix.
-fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
-    Prefix::Nickname(nick.to_string(), user.to_string(), host.to_string())
-}
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};

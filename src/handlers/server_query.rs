@@ -2,7 +2,7 @@
 //!
 //! RFC 2812 §3.4 - Server queries and commands
 
-use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{err_notregistered, server_reply, Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,12 +21,7 @@ pub struct VersionHandler;
 impl Handler for VersionHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -66,12 +61,7 @@ pub struct TimeHandler;
 impl Handler for TimeHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -104,12 +94,7 @@ pub struct AdminHandler;
 impl Handler for AdminHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -167,12 +152,7 @@ pub struct InfoHandler;
 impl Handler for InfoHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -224,12 +204,7 @@ pub struct LusersHandler;
 impl Handler for LusersHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -356,12 +331,7 @@ pub struct StatsHandler;
 impl Handler for StatsHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -449,12 +419,7 @@ pub struct MotdHandler;
 impl Handler for MotdHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 
@@ -513,12 +478,7 @@ pub struct ListHandler;
 impl Handler for ListHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
             return Ok(());
         }
 

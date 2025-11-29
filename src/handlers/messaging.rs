@@ -2,17 +2,12 @@
 //!
 //! Handles PRIVMSG and NOTICE commands for both users and channels.
 
-use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{server_reply, user_prefix, Context, Handler, HandlerError, HandlerResult};
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Response};
 use tracing::debug;
-
-/// Helper to create a user prefix.
-fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
-    Prefix::Nickname(nick.to_string(), user.to_string(), host.to_string())
-}
 
 /// Handler for PRIVMSG command.
 pub struct PrivmsgHandler;
