@@ -189,6 +189,28 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     let network = &ctx.matrix.server_info.network;
     let host = ctx.remote_addr.ip().to_string();
 
+    // Check for K-lines and D-lines before completing registration
+    if let Ok(Some(ban_reason)) = ctx.db.bans().check_ban(&host, user, &host).await {
+        // ERR_YOUREBANNEDCREEP (465)
+        let reply = server_reply(
+            server_name,
+            Response::ERR_YOUREBANNEDCREEP,
+            vec![
+                nick.clone(),
+                format!("You are banned from this server: {}", ban_reason),
+            ],
+        );
+        ctx.sender.send(reply).await?;
+
+        // Send ERROR and close connection
+        let error = Message::from(Command::ERROR(format!("Closing Link: {} ({})", host, ban_reason)));
+        ctx.sender.send(error).await?;
+
+        // Return an error to cause the connection to close
+        // The connection cleanup will handle removing the nick from the index
+        return Err(HandlerError::NotRegistered);
+    }
+
     ctx.handshake.registered = true;
 
     // Create user in Matrix

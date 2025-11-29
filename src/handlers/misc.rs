@@ -13,7 +13,9 @@ use tracing::debug;
 ///
 /// `AWAY [message]`
 ///
-/// Sets or clears away status.
+/// Sets or clears away status per RFC 2812.
+/// - With a message: Sets the user as away with that reason.
+/// - Without a message (or empty): Clears the away status.
 pub struct AwayHandler;
 
 #[async_trait]
@@ -30,16 +32,15 @@ impl Handler for AwayHandler {
         // AWAY [message]
         let away_msg = msg.arg(0);
 
-        // Update user's away status
-        if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let _user = user_ref.write().await;
-            // Store away status in user (need to add field to User struct)
-            // For now, we just send the appropriate response
-        }
-
         if let Some(away_text) = away_msg
             && !away_text.is_empty()
         {
+            // Set away status
+            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let mut user = user_ref.write().await;
+                user.away = Some(away_text.to_string());
+            }
+
             // RPL_NOWAWAY (306)
             debug!(nick = %nick, away = %away_text, "User marked as away");
             let reply = server_reply(
@@ -52,6 +53,12 @@ impl Handler for AwayHandler {
             );
             ctx.sender.send(reply).await?;
             return Ok(());
+        }
+
+        // Clear away status
+        if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let mut user = user_ref.write().await;
+            user.away = None;
         }
 
         // RPL_UNAWAY (305)
@@ -116,7 +123,7 @@ impl Handler for UserhostHandler {
                 // Format: nick[*]=+/-hostname
                 // * if oper, + if away, - if not away
                 let oper_flag = if user.modes.oper { "*" } else { "" };
-                let away_flag = "-"; // TODO: track away status
+                let away_flag = if user.away.is_some() { "+" } else { "-" };
                 replies.push(format!(
                     "{}{}={}{}@{}",
                     user.nick, oper_flag, away_flag, user.user, user.host

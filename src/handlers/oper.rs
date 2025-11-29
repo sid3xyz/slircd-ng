@@ -7,37 +7,18 @@
 //! - DIE: Shutdown the server (stub)
 //! - REHASH: Reload server configuration (stub)
 
-use super::{err_needmoreparams, err_noprivileges, err_nosuchnick, server_reply, Context, Handler, HandlerResult};
+use super::{
+    err_needmoreparams, err_noprivileges, err_nosuchnick, get_nick_or_star, require_oper,
+    resolve_nick_to_uid, server_reply, Context, Handler, HandlerResult,
+};
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Prefix, Response};
-
-/// Get user's nick, falling back to "*" if not found.
-async fn get_nick_or_star(ctx: &Context<'_>) -> String {
-    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        user_ref.read().await.nick.clone()
-    } else {
-        "*".to_string()
-    }
-}
-
-/// Get user's nick and oper status. Returns None if user not found.
-async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
-    let user_ref = ctx.matrix.users.get(ctx.uid)?;
-    let user = user_ref.read().await;
-    Some((user.nick.clone(), user.modes.oper))
-}
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
 /// Get full user info for message construction.
 async fn get_user_full_info(ctx: &Context<'_>) -> Option<(String, String, String, bool)> {
     let user_ref = ctx.matrix.users.get(ctx.uid)?;
     let user = user_ref.read().await;
     Some((user.nick.clone(), user.user.clone(), user.host.clone(), user.modes.oper))
-}
-
-/// Resolve a nick to UID. Returns None if not found.
-fn resolve_nick(ctx: &Context<'_>, nick: &str) -> Option<String> {
-    let lower = irc_to_lower(nick);
-    ctx.matrix.nicks.get(&lower).map(|r| r.value().clone())
 }
 
 /// Handler for OPER command.
@@ -152,7 +133,7 @@ impl Handler for KillHandler {
         }
 
         // Find target user
-        let Some(target_uid) = resolve_nick(ctx, target_nick) else {
+        let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             ctx.sender.send(err_nosuchnick(server_name, &killer_nick, target_nick)).await?;
             return Ok(());
         };
@@ -242,14 +223,9 @@ impl Handler for DieHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
-            return Ok(());
-        }
 
         // TODO: Implement actual shutdown
         let notice = Message {
@@ -276,14 +252,9 @@ impl Handler for RehashHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Some((nick, is_oper)) = get_oper_info(ctx).await else {
+        let Ok(nick) = require_oper(ctx).await else {
             return Ok(());
         };
-
-        if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &nick)).await?;
-            return Ok(());
-        }
 
         let reply = server_reply(
             server_name,

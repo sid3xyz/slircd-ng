@@ -105,7 +105,6 @@ impl<'a> BanRepository<'a> {
     }
 
     /// Check if a user@host matches any active K-line.
-    #[allow(dead_code)] // TODO: Use for connection-time ban checks
     pub async fn matches_kline(&self, user_host: &str) -> Result<Option<Kline>, DbError> {
         let klines = self.get_active_klines().await?;
 
@@ -187,7 +186,6 @@ impl<'a> BanRepository<'a> {
     }
 
     /// Check if an IP matches any active D-line.
-    #[allow(dead_code)] // TODO: Use for connection-time ban checks
     pub async fn matches_dline(&self, ip: &str) -> Result<Option<Dline>, DbError> {
         let dlines = self.get_active_dlines().await?;
 
@@ -195,6 +193,27 @@ impl<'a> BanRepository<'a> {
             if wildcard_match(&dline.mask, ip) || cidr_match(&dline.mask, ip) {
                 return Ok(Some(dline));
             }
+        }
+
+        Ok(None)
+    }
+
+    /// Check if a connection should be banned.
+    /// 
+    /// Checks both K-lines (user@host bans) and D-lines (IP bans).
+    /// Returns the ban reason if banned, None if allowed.
+    pub async fn check_ban(&self, ip: &str, user: &str, host: &str) -> Result<Option<String>, DbError> {
+        // Check D-lines first (IP ban takes precedence)
+        if let Some(dline) = self.matches_dline(ip).await? {
+            let reason = dline.reason.unwrap_or_else(|| "Banned".to_string());
+            return Ok(Some(format!("D-lined: {}", reason)));
+        }
+
+        // Check K-lines (user@host)
+        let user_host = format!("{}@{}", user, host);
+        if let Some(kline) = self.matches_kline(&user_host).await? {
+            let reason = kline.reason.unwrap_or_else(|| "Banned".to_string());
+            return Ok(Some(format!("K-lined: {}", reason)));
         }
 
         Ok(None)

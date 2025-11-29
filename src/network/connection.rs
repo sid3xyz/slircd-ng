@@ -214,10 +214,14 @@ impl Connection {
             }
         }
 
-        // Cleanup: remove user from all channels
-        if let Some(user) = self.matrix.users.get(&self.uid) {
-            let user = user.read().await;
+        // Cleanup: record WHOWAS and remove user from all channels
+        if let Some(user_ref) = self.matrix.users.get(&self.uid) {
+            let user = user_ref.read().await;
             let channels: Vec<String> = user.channels.iter().cloned().collect();
+            
+            // Record WHOWAS entry before cleanup
+            self.matrix.record_whowas(&user.nick, &user.user, &user.host, &user.realname);
+            
             drop(user);
 
             for channel_lower in channels {
@@ -245,3 +249,4 @@ impl Connection {
         Ok(())
     }
 }
+
