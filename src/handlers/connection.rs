@@ -228,6 +228,11 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         user_obj.account = Some(account_name.clone());
     }
 
+    // Set +Z if TLS connection
+    if ctx.handshake.is_tls {
+        user_obj.modes.secure = true;
+    }
+
     ctx.matrix.users.insert(
         ctx.uid.to_string(),
         Arc::new(RwLock::new(user_obj)),

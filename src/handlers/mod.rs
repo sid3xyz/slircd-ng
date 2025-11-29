@@ -83,6 +83,8 @@ pub struct HandshakeState {
     pub sasl_state: SaslState,
     /// Account name if SASL authenticated.
     pub account: Option<String>,
+    /// Whether this is a TLS connection.
+    pub is_tls: bool,
 }
 
 impl HandshakeState {

@@ -21,6 +21,8 @@ pub struct Config {
     pub server: ServerConfig,
     /// Network listen configuration.
     pub listen: ListenConfig,
+    /// Optional TLS listen configuration.
+    pub tls: Option<TlsConfig>,
     /// Operator blocks.
     #[serde(default)]
     pub oper: Vec<OperBlock>,
@@ -65,6 +67,17 @@ pub struct ServerConfig {
 pub struct ListenConfig {
     /// Address to bind to (e.g., "0.0.0.0:6667").
     pub address: SocketAddr,
+}
+
+/// TLS listener configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TlsConfig {
+    /// Address to bind to for TLS (e.g., "0.0.0.0:6697").
+    pub address: SocketAddr,
+    /// Path to certificate file (PEM format).
+    pub cert_path: String,
+    /// Path to private key file (PEM format).
+    pub key_path: String,
 }
 
 impl Config {
