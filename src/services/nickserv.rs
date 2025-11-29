@@ -532,7 +532,7 @@ pub async fn route_service_message(
 }
 
 /// Apply a single service effect.
-async fn apply_effect(
+pub async fn apply_effect(
     matrix: &Arc<Matrix>,
     nick: &str,
     sender: &mpsc::Sender<Message>,
