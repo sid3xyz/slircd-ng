@@ -349,4 +349,70 @@ impl Matrix {
             }
         }
     }
+
+    /// Disconnect a user from the server.
+    ///
+    /// This is the canonical kill logic, used by KILL, GHOST, and enforcement.
+    /// It:
+    /// 1. Removes user from all channels and broadcasts QUIT
+    /// 2. Removes from nicks mapping
+    /// 3. Removes from users collection
+    /// 4. Drops the sender (terminates connection task)
+    ///
+    /// Returns the list of channels the user was in (for logging).
+    pub async fn disconnect_user(&self, target_uid: &str, quit_reason: &str) -> Vec<String> {
+        use slirc_proto::{Command, Prefix};
+
+        // Get user info before removal
+        let (nick, user, host, user_channels) = {
+            if let Some(user_ref) = self.users.get(target_uid) {
+                let user = user_ref.read().await;
+                (
+                    user.nick.clone(),
+                    user.user.clone(),
+                    user.host.clone(),
+                    user.channels.iter().cloned().collect::<Vec<_>>(),
+                )
+            } else {
+                return vec![];
+            }
+        };
+
+        // Build QUIT message
+        let quit_msg = Message {
+            tags: None,
+            prefix: Some(Prefix::Nickname(nick.clone(), user, host)),
+            command: Command::QUIT(Some(quit_reason.to_string())),
+        };
+
+        // Remove from channels and broadcast QUIT
+        for channel_name in &user_channels {
+            if let Some(channel_ref) = self.channels.get(channel_name) {
+                let mut channel = channel_ref.write().await;
+                channel.members.remove(target_uid);
+
+                // Broadcast QUIT to remaining members
+                for member_uid in channel.members.keys() {
+                    if let Some(sender) = self.senders.get(member_uid) {
+                        let _ = sender.send(quit_msg.clone()).await;
+                    }
+                }
+            }
+        }
+
+        // Remove from nick mapping
+        let nick_lower = slirc_proto::irc_to_lower(&nick);
+        self.nicks.remove(&nick_lower);
+
+        // Remove user from matrix
+        self.users.remove(target_uid);
+
+        // Remove enforcement timer if any
+        self.enforce_timers.remove(target_uid);
+
+        // Drop sender - this will cause the connection task to terminate
+        self.senders.remove(target_uid);
+
+        user_channels
+    }
 }
