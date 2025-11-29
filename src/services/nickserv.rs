@@ -549,11 +549,13 @@ pub async fn apply_effect(
 
         ServiceEffect::AccountIdentify { target_uid, account } => {
             // Get user info for MODE broadcast before we modify the user
-            let (nick, channels) = {
+            let (nick, user_str, host, channels) = {
                 if let Some(user_ref) = matrix.users.get(&target_uid) {
                     let user = user_ref.read().await;
                     (
                         user.nick.clone(),
+                        user.user.clone(),
+                        user.host.clone(),
                         user.channels.iter().cloned().collect::<Vec<_>>(),
                     )
                 } else {
@@ -572,37 +574,76 @@ pub async fn apply_effect(
             matrix.enforce_timers.remove(&target_uid);
 
             // Broadcast MODE +r to all channels the user is in
-            // NOTE: Using Command::Raw for single user mode change. Could use
-            // Command::UserMODE but this is a simple constant string.
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
-                command: Command::Raw(
-                    "MODE".to_string(),
-                    vec![nick.clone(), "+r".to_string()],
+                command: Command::UserMODE(
+                    nick.clone(),
+                    vec![slirc_proto::Mode::Plus(slirc_proto::UserMode::Registered, None)],
                 ),
+            };
+
+            // Broadcast ACCOUNT message for account-notify capability (IRCv3.1)
+            let account_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::new(&nick, &user_str, &host)),
+                command: Command::ACCOUNT(account.clone()),
             };
 
             for channel_name in &channels {
                 matrix.broadcast_to_channel(channel_name, mode_msg.clone(), None).await;
+                matrix.broadcast_to_channel(channel_name, account_msg.clone(), None).await;
             }
 
-            // Also send MODE to the user themselves
+            // Also send MODE and ACCOUNT to the user themselves
             if let Some(sender) = matrix.senders.get(&target_uid) {
                 let _ = sender.send(mode_msg).await;
+                let _ = sender.send(account_msg).await;
             }
 
             info!(uid = %target_uid, nick = %nick, account = %account, "User identified to account");
         }
 
         ServiceEffect::AccountClear { target_uid } => {
+            // Get user info for ACCOUNT broadcast before we modify the user
+            let (nick, user_str, host, channels) = {
+                if let Some(user_ref) = matrix.users.get(&target_uid) {
+                    let user = user_ref.read().await;
+                    (
+                        user.nick.clone(),
+                        user.user.clone(),
+                        user.host.clone(),
+                        user.channels.iter().cloned().collect::<Vec<_>>(),
+                    )
+                } else {
+                    return;
+                }
+            };
+
             // Clear +r mode and account
             if let Some(user) = matrix.users.get(&target_uid) {
                 let mut user = user.write().await;
                 user.modes.registered = false;
                 user.account = None;
-                info!(uid = %target_uid, "User account cleared");
             }
+
+            // Broadcast ACCOUNT * for logout (account-notify capability)
+            let account_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::new(&nick, &user_str, &host)),
+                command: Command::ACCOUNT("*".to_string()),
+            };
+
+            for channel_name in &channels {
+                matrix.broadcast_to_channel(channel_name, account_msg.clone(), None).await;
+            }
+
+            // Also send ACCOUNT * to the user themselves
+            if let Some(sender) = matrix.senders.get(&target_uid) {
+                let _ = sender.send(account_msg).await;
+            }
+
+            info!(uid = %target_uid, "User account cleared");
         }
 
         ServiceEffect::ClearEnforceTimer { target_uid } => {
