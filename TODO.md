@@ -44,7 +44,7 @@ This document tracks all features present in `slircd` that need to be implemente
 |---------|--------|-----------|-------|
 | PRIVMSG | ✅ | ✅ | Implemented |
 | NOTICE | ✅ | ✅ | Implemented |
-| TAGMSG | ✅ | ❌ | **Missing: IRCv3 tags-only message** |
+| TAGMSG | ✅ | ✅ | **Implemented: IRCv3 tags-only message** |
 
 ### 1.4 User Query Commands
 
@@ -125,13 +125,13 @@ This document tracks all features present in `slircd` that need to be implemente
 | userhost-in-names | ✅ | ✅ | P1 | Advertised in CAP LS |
 | echo-message | ✅ | ✅ | P1 | Advertised in CAP LS |
 | server-time | ✅ | ✅ | P1 | Advertised in CAP LS |
-| message-tags | ✅ | ❌ | P1 | Parse/forward client tags |
+| message-tags | ✅ | ✅ | P1 | **Implemented: Parse/forward client tags** |
 | labeled-response | ✅ | ❌ | P1 | Label tag for request correlation |
 | batch | ✅ | ❌ | P2 | Multi-line response batching |
 | setname | ✅ | ❌ | P2 | SETNAME command support |
-| away-notify | ✅ | ❌ | P2 | Broadcast AWAY status to channels |
-| account-notify | ✅ | ❌ | P2 | Account changes broadcast |
-| extended-join | ✅ | ❌ | P2 | JOIN with account + realname |
+| away-notify | ✅ | ✅ | P2 | **Implemented: Broadcast AWAY to shared channels** |
+| account-notify | ✅ | ✅ | P2 | **Implemented: ACCOUNT message broadcasts** |
+| extended-join | ✅ | ✅ | P2 | **Implemented: JOIN with account + realname** |
 | cap-notify | ✅ | ❌ | P2 | CAP NEW/DEL notifications |
 | sasl | ✅ | ✅ | P1 | **Implemented: SASL PLAIN with database** |
 | account-tag | ✅ | ❌ | P2 | Account tag on messages |
@@ -173,10 +173,10 @@ This document tracks all features present in `slircd` that need to be implemente
 | ACCESS ADD | ✅ | ❌ | Add user to access list |
 | ACCESS DEL | ✅ | ❌ | Remove from access list |
 | ACCESS LIST | ✅ | ❌ | List access entries |
-| OP | ✅ | ❌ | Grant op status |
-| DEOP | ✅ | ❌ | Remove op status |
-| VOICE | ✅ | ❌ | Grant voice |
-| DEVOICE | ✅ | ❌ | Remove voice |
+| OP | ✅ | ✅ | **Implemented: Grant op via ChanServ mode handling** |
+| DEOP | ✅ | ✅ | **Implemented: Remove op via ChanServ mode handling** |
+| VOICE | ✅ | ✅ | **Implemented: Grant voice via ChanServ mode handling** |
+| DEVOICE | ✅ | ✅ | **Implemented: Remove voice via ChanServ mode handling** |
 | INFO | ✅ | ❌ | Channel information |
 | SET | ✅ | ❌ | Channel settings (MLOCK, TOPICLOCK, etc.) |
 | AKICK | ✅ | ❌ | Auto-kick list management |
@@ -347,13 +347,13 @@ CREATE TABLE klines (
 ## 8. Implementation Priority
 
 ### Phase 1: Core Protocol Completeness (P0)
-1. [ ] CAP handler (IRCv3 negotiation)
-2. [ ] AUTHENTICATE (SASL PLAIN)
-3. [ ] server-time capability
-4. [ ] multi-prefix capability
-5. [ ] userhost-in-names capability
-6. [ ] echo-message capability
-7. [ ] TAGMSG command
+1. [x] CAP handler (IRCv3 negotiation)
+2. [x] AUTHENTICATE (SASL PLAIN)
+3. [x] server-time capability
+4. [x] multi-prefix capability
+5. [x] userhost-in-names capability
+6. [x] echo-message capability
+7. [x] TAGMSG command
 8. [ ] ERR_UNKNOWNCOMMAND for unknown commands
 
 ### Phase 2: Services Foundation (P1)
@@ -395,12 +395,12 @@ CREATE TABLE klines (
 ### Phase 6: Advanced IRCv3 (P3)
 1. [ ] labeled-response
 2. [ ] batch
-3. [ ] away-notify
-4. [ ] account-notify
-5. [ ] extended-join
+3. [x] away-notify
+4. [x] account-notify
+5. [x] extended-join
 6. [ ] cap-notify
 7. [ ] account-tag
-8. [ ] message-tags forwarding
+8. [x] message-tags forwarding
 
 ### Phase 7: Transport Expansion (P3)
 1. [ ] WebSocket support
