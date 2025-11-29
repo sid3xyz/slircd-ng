@@ -17,14 +17,14 @@
 * **RFC Compliance:** Full support for RFC 1459 and RFC 2812 protocols.
 
 ### Modern IRCv3 Support
-* **Capabilities:** `account-notify`, `away-notify`, `extended-join`, `multi-prefix`, `server-time`.
+* **Capabilities:** `multi-prefix`, `userhost-in-names`, `server-time`, `echo-message`.
 * **Tags:** Full support for IRCv3 message tags and `TAGMSG`.
-* **Authentication:** SASL PLAIN and EXTERNAL mechanisms active.
+* **Authentication:** SASL PLAIN mechanism for account authentication.
 
 ### Integrated Services
 Built-in service bots with SQLite persistence:
-* **NickServ:** Account registration, grouping, enforcement, and certfp.
-* **ChanServ:** Channel registration, access lists (flags system), and auto-kicks (AKICK).
+* **NickServ:** REGISTER, IDENTIFY, GROUP, UNGROUP, GHOST, INFO, SET, DROP commands with enforcement timers.
+* **ChanServ:** REGISTER, ACCESS (ADD/DEL/LIST), AKICK (ADD/DEL/LIST), INFO, SET, DROP, OP/DEOP/VOICE/DEVOICE.
 * **Architecture:** Services operate as pure functions returning `ServiceEffect` vectors, ensuring state isolation.
 
 ### Security
