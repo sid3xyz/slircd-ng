@@ -9,7 +9,7 @@
 
 use super::{
     Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, err_nosuchnick,
-    get_nick_or_star, require_oper, resolve_nick_to_uid, server_reply,
+    get_nick_or_star, matches_hostmask, require_oper, resolve_nick_to_uid, server_reply,
 };
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
@@ -151,8 +151,39 @@ impl Handler for OperHandler {
             return Ok(());
         }
 
-        // TODO: Check hostmask if specified in oper block
-        // For now, grant operator status
+        // Check hostmask if specified in oper block
+        if let Some(ref required_mask) = oper_block.hostmask {
+            // Build user's actual hostmask (nick!user@host)
+            let (user_nick, user_user, user_host) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let user = user_ref.read().await;
+                (user.nick.clone(), user.user.clone(), user.host.clone())
+            } else {
+                // Fallback to handshake data for pre-registration
+                let hs_nick = ctx.handshake.nick.clone().unwrap_or_else(|| nick.clone());
+                let hs_user = ctx.handshake.user.clone().unwrap_or_else(|| "unknown".to_string());
+                (hs_nick, hs_user, ctx.remote_addr.ip().to_string())
+            };
+            let user_mask = format!("{}!{}@{}", user_nick, user_user, user_host);
+
+            if !matches_hostmask(required_mask, &user_mask) {
+                ctx.handshake.failed_oper_attempts += 1;
+                tracing::warn!(
+                    nick = %nick,
+                    oper_name = %name,
+                    user_mask = %user_mask,
+                    required_mask = %required_mask,
+                    attempts = ctx.handshake.failed_oper_attempts,
+                    "OPER failed: hostmask mismatch"
+                );
+                let reply = server_reply(
+                    server_name,
+                    Response::ERR_NOOPERHOST,
+                    vec![nick, "No O-lines for your host".to_string()],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+        }
 
         // Success - reset attempt counter
         ctx.handshake.failed_oper_attempts = 0;

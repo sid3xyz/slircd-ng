@@ -67,8 +67,7 @@ pub struct OperBlock {
     pub name: String,
     /// Password (plaintext for now, TODO: bcrypt support).
     pub password: String,
-    /// Optional hostmask restriction.
-    #[allow(dead_code)] // TODO: Implement hostmask checking
+    /// Optional hostmask restriction (e.g., "*!*@trusted.host").
     pub hostmask: Option<String>,
 }
 
@@ -109,9 +108,8 @@ pub struct WebSocketConfig {
     /// Address to bind to for WebSocket (e.g., "0.0.0.0:8080").
     pub address: SocketAddr,
     /// Allowed origins for CORS (e.g., ["https://example.com"]).
-    /// TODO: Implement CORS origin validation in WebSocket gateway
+    /// Empty list allows all origins.
     #[serde(default)]
-    #[allow(dead_code)]
     pub allow_origins: Vec<String>,
 }
 

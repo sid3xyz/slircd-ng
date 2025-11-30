@@ -42,6 +42,14 @@ pub enum ServiceEffect {
         reason: String,
     },
 
+    /// Kick a user from a channel (ChanServ CLEAR, AKICK enforcement).
+    Kick {
+        channel: String,
+        target_uid: String,
+        kicker: String,
+        reason: String,
+    },
+
     /// Apply channel mode change (ChanServ OP/DEOP/VOICE).
     ChannelMode {
         channel: String,
