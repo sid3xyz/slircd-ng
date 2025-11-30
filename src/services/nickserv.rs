@@ -10,7 +10,7 @@
 use crate::db::Database;
 use crate::services::ServiceEffect;
 use crate::state::Matrix;
-use slirc_proto::{irc_to_lower, Command, Message, Prefix};
+use slirc_proto::{Command, Message, Prefix, irc_to_lower};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
@@ -73,7 +73,10 @@ impl NickServ {
             Ok(account) => {
                 info!(nick = %nick, account = %account.name, "Account registered");
                 vec![
-                    self.reply_effect(uid, &format!("Your nickname \x02{}\x02 has been registered.", nick)),
+                    self.reply_effect(
+                        uid,
+                        &format!("Your nickname \x02{}\x02 has been registered.", nick),
+                    ),
                     self.reply_effect(uid, "You are now identified to your account."),
                     ServiceEffect::AccountIdentify {
                         target_uid: uid.to_string(),
@@ -81,12 +84,20 @@ impl NickServ {
                     },
                 ]
             }
-            Err(crate::db::DbError::AccountExists(name)) => {
-                self.reply_effects(uid, vec![&format!("An account named \x02{}\x02 already exists.", name)])
-            }
-            Err(crate::db::DbError::NicknameRegistered(name)) => {
-                self.reply_effects(uid, vec![&format!("The nickname \x02{}\x02 is already registered.", name)])
-            }
+            Err(crate::db::DbError::AccountExists(name)) => self.reply_effects(
+                uid,
+                vec![&format!(
+                    "An account named \x02{}\x02 already exists.",
+                    name
+                )],
+            ),
+            Err(crate::db::DbError::NicknameRegistered(name)) => self.reply_effects(
+                uid,
+                vec![&format!(
+                    "The nickname \x02{}\x02 is already registered.",
+                    name
+                )],
+            ),
             Err(e) => {
                 warn!(nick = %nick, error = ?e, "Registration failed");
                 self.reply_effects(uid, vec!["Registration failed. Please try again later."])
@@ -106,7 +117,10 @@ impl NickServ {
             Ok(account) => {
                 info!(nick = %nick, account = %account.name, "User identified");
                 vec![
-                    self.reply_effect(uid, &format!("You are now identified for \x02{}\x02.", account.name)),
+                    self.reply_effect(
+                        uid,
+                        &format!("You are now identified for \x02{}\x02.", account.name),
+                    ),
                     ServiceEffect::AccountIdentify {
                         target_uid: uid.to_string(),
                         account: account.name,
@@ -127,12 +141,7 @@ impl NickServ {
     }
 
     /// Handle DROP command.
-    async fn handle_drop(
-        &self,
-        uid: &str,
-        nick: &str,
-        args: &[&str],
-    ) -> NickServResult {
+    async fn handle_drop(&self, uid: &str, nick: &str, args: &[&str]) -> NickServResult {
         if args.is_empty() {
             return self.reply_effects(uid, vec!["Syntax: DROP <password>"]);
         }
@@ -144,7 +153,10 @@ impl NickServ {
             Ok(()) => {
                 info!(nick = %nick, "Account dropped");
                 vec![
-                    self.reply_effect(uid, &format!("Your account \x02{}\x02 has been dropped.", nick)),
+                    self.reply_effect(
+                        uid,
+                        &format!("Your account \x02{}\x02 has been dropped.", nick),
+                    ),
                     self.reply_effect(uid, "All associated nicknames have been released."),
                     ServiceEffect::AccountClear {
                         target_uid: uid.to_string(),
@@ -165,12 +177,7 @@ impl NickServ {
     }
 
     /// Handle GROUP command - link current nick to an existing account.
-    async fn handle_group(
-        &self,
-        uid: &str,
-        nick: &str,
-        args: &[&str],
-    ) -> NickServResult {
+    async fn handle_group(&self, uid: &str, nick: &str, args: &[&str]) -> NickServResult {
         if args.len() < 2 {
             return self.reply_effects(uid, vec!["Syntax: GROUP <account> <password>"]);
         }
@@ -178,14 +185,22 @@ impl NickServ {
         let account_name = args[0];
         let password = args[1];
 
-        match self.db.accounts().link_nickname(nick, account_name, password).await {
+        match self
+            .db
+            .accounts()
+            .link_nickname(nick, account_name, password)
+            .await
+        {
             Ok(()) => {
                 info!(nick = %nick, account = %account_name, "Nickname grouped");
                 vec![
-                    self.reply_effect(uid, &format!(
-                        "Your nickname \x02{}\x02 is now linked to account \x02{}\x02.",
-                        nick, account_name
-                    )),
+                    self.reply_effect(
+                        uid,
+                        &format!(
+                            "Your nickname \x02{}\x02 is now linked to account \x02{}\x02.",
+                            nick, account_name
+                        ),
+                    ),
                     self.reply_effect(uid, "You are now identified to your account."),
                     ServiceEffect::AccountIdentify {
                         target_uid: uid.to_string(),
@@ -193,21 +208,26 @@ impl NickServ {
                     },
                 ]
             }
-            Err(crate::db::DbError::AccountNotFound(_)) => {
-                self.reply_effects(uid, vec![&format!("Account \x02{}\x02 does not exist.", account_name)])
-            }
+            Err(crate::db::DbError::AccountNotFound(_)) => self.reply_effects(
+                uid,
+                vec![&format!("Account \x02{}\x02 does not exist.", account_name)],
+            ),
             Err(crate::db::DbError::InvalidPassword) => {
                 self.reply_effects(uid, vec!["Invalid password."])
             }
-            Err(crate::db::DbError::NicknameRegistered(_)) => {
-                self.reply_effects(uid, vec![&format!(
+            Err(crate::db::DbError::NicknameRegistered(_)) => self.reply_effects(
+                uid,
+                vec![&format!(
                     "Nickname \x02{}\x02 is already registered to another account.",
                     nick
-                )])
-            }
+                )],
+            ),
             Err(e) => {
                 warn!(nick = %nick, account = %account_name, error = ?e, "GROUP failed");
-                self.reply_effects(uid, vec!["Failed to group nickname. Please try again later."])
+                self.reply_effects(
+                    uid,
+                    vec!["Failed to group nickname. Please try again later."],
+                )
             }
         }
     }
@@ -229,7 +249,8 @@ impl NickServ {
         let (account_name, account_id) = if let Some(user) = matrix.users.get(uid) {
             let user = user.read().await;
             if !user.modes.registered {
-                return self.reply_effects(uid, vec!["You must be identified to use this command."]);
+                return self
+                    .reply_effects(uid, vec!["You must be identified to use this command."]);
             }
             match &user.account {
                 Some(name) => {
@@ -239,38 +260,51 @@ impl NickServ {
                         _ => return self.reply_effects(uid, vec!["Account not found."]),
                     }
                 }
-                None => return self.reply_effects(uid, vec!["You are not identified to any account."]),
+                None => {
+                    return self.reply_effects(uid, vec!["You are not identified to any account."]);
+                }
             }
         } else {
             return self.reply_effects(uid, vec!["Internal error."]);
         };
 
-        match self.db.accounts().unlink_nickname(target_nick, account_id).await {
+        match self
+            .db
+            .accounts()
+            .unlink_nickname(target_nick, account_id)
+            .await
+        {
             Ok(()) => {
                 info!(nick = %target_nick, account = %account_name, "Nickname ungrouped");
-                self.reply_effects(uid, vec![&format!(
-                    "Nickname \x02{}\x02 has been removed from your account.",
-                    target_nick
-                )])
+                self.reply_effects(
+                    uid,
+                    vec![&format!(
+                        "Nickname \x02{}\x02 has been removed from your account.",
+                        target_nick
+                    )],
+                )
             }
-            Err(crate::db::DbError::NicknameNotFound(_)) => {
-                self.reply_effects(uid, vec![&format!(
+            Err(crate::db::DbError::NicknameNotFound(_)) => self.reply_effects(
+                uid,
+                vec![&format!(
                     "Nickname \x02{}\x02 is not linked to your account.",
                     target_nick
-                )])
-            }
-            Err(crate::db::DbError::InsufficientAccess) => {
-                self.reply_effects(uid, vec![&format!(
+                )],
+            ),
+            Err(crate::db::DbError::InsufficientAccess) => self.reply_effects(
+                uid,
+                vec![&format!(
                     "Nickname \x02{}\x02 does not belong to your account.",
                     target_nick
-                )])
-            }
-            Err(crate::db::DbError::UnknownOption(msg)) => {
-                self.reply_effects(uid, vec![&msg])
-            }
+                )],
+            ),
+            Err(crate::db::DbError::UnknownOption(msg)) => self.reply_effects(uid, vec![&msg]),
             Err(e) => {
                 warn!(nick = %target_nick, error = ?e, "UNGROUP failed");
-                self.reply_effects(uid, vec!["Failed to ungroup nickname. Please try again later."])
+                self.reply_effects(
+                    uid,
+                    vec!["Failed to ungroup nickname. Please try again later."],
+                )
             }
         }
     }
@@ -305,7 +339,14 @@ impl NickServ {
         // Verify authorization
         let authorized = if let Some(ref account_name) = user_account {
             // User is identified, check if target nick belongs to their account
-            if let Some(target_account) = self.db.accounts().find_by_nickname(target_nick).await.ok().flatten() {
+            if let Some(target_account) = self
+                .db
+                .accounts()
+                .find_by_nickname(target_nick)
+                .await
+                .ok()
+                .flatten()
+            {
                 // Check if target belongs to the same account
                 target_account.name.eq_ignore_ascii_case(account_name)
             } else {
@@ -319,7 +360,10 @@ impl NickServ {
         };
 
         if !authorized {
-            return self.reply_effects(uid, vec!["Access denied. You must be identified or provide the correct password."]);
+            return self.reply_effects(
+                uid,
+                vec!["Access denied. You must be identified or provide the correct password."],
+            );
         }
 
         // Find the target user
@@ -339,7 +383,10 @@ impl NickServ {
                 },
             ]
         } else {
-            self.reply_effects(uid, vec![&format!("\x02{}\x02 is not online.", target_nick)])
+            self.reply_effects(
+                uid,
+                vec![&format!("\x02{}\x02 is not online.", target_nick)],
+            )
         }
     }
 
@@ -381,10 +428,9 @@ impl NickServ {
                 if let Ok(nicks) = self.db.accounts().get_nicknames(account.id).await
                     && !nicks.is_empty()
                 {
-                    effects.push(self.reply_effect(uid, &format!(
-                        "  Nicknames:  {}",
-                        nicks.join(", ")
-                    )));
+                    effects.push(
+                        self.reply_effect(uid, &format!("  Nicknames:  {}", nicks.join(", "))),
+                    );
                 }
 
                 effects
@@ -406,7 +452,10 @@ impl NickServ {
                 self.reply_effect(uid, "Syntax: SET <option> <value>"),
                 self.reply_effect(uid, "Options:"),
                 self.reply_effect(uid, "  EMAIL <address> - Set email address"),
-                self.reply_effect(uid, "  ENFORCE ON|OFF  - Enable/disable nickname enforcement"),
+                self.reply_effect(
+                    uid,
+                    "  ENFORCE ON|OFF  - Enable/disable nickname enforcement",
+                ),
                 self.reply_effect(uid, "  HIDEMAIL ON|OFF - Hide/show email in INFO"),
                 self.reply_effect(uid, "  PASSWORD <pass> - Change password"),
             ];
@@ -420,7 +469,9 @@ impl NickServ {
             }
             match &user.account {
                 Some(name) => name.clone(),
-                None => return self.reply_effects(uid, vec!["You are not identified to any account."]),
+                None => {
+                    return self.reply_effects(uid, vec!["You are not identified to any account."]);
+                }
             }
         } else {
             return self.reply_effects(uid, vec!["Internal error."]);
@@ -435,18 +486,30 @@ impl NickServ {
         let option = args[0];
         let value = args[1];
 
-        match self.db.accounts().set_option(account.id, option, value).await {
+        match self
+            .db
+            .accounts()
+            .set_option(account.id, option, value)
+            .await
+        {
             Ok(()) => {
                 info!(account = %account.name, option = %option, "Account setting changed");
-                self.reply_effects(uid, vec![&format!(
-                    "\x02{}\x02 has been set to \x02{}\x02.",
-                    option.to_uppercase(),
-                    value
-                )])
+                self.reply_effects(
+                    uid,
+                    vec![&format!(
+                        "\x02{}\x02 has been set to \x02{}\x02.",
+                        option.to_uppercase(),
+                        value
+                    )],
+                )
             }
-            Err(crate::db::DbError::UnknownOption(opt)) => {
-                self.reply_effects(uid, vec![&format!("Unknown option: \x02{}\x02. Valid options: EMAIL, ENFORCE, HIDEMAIL, PASSWORD", opt)])
-            }
+            Err(crate::db::DbError::UnknownOption(opt)) => self.reply_effects(
+                uid,
+                vec![&format!(
+                    "Unknown option: \x02{}\x02. Valid options: EMAIL, ENFORCE, HIDEMAIL, PASSWORD",
+                    opt
+                )],
+            ),
             Err(e) => {
                 warn!(account = %account.name, option = %option, error = ?e, "SET failed");
                 self.reply_effects(uid, vec!["Failed to update setting."])
@@ -472,7 +535,8 @@ impl NickServ {
 
     /// Create multiple reply effects.
     fn reply_effects(&self, target_uid: &str, texts: Vec<&str>) -> NickServResult {
-        texts.into_iter()
+        texts
+            .into_iter()
             .map(|t| self.reply_effect(target_uid, t))
             .collect()
     }
@@ -480,26 +544,59 @@ impl NickServ {
     /// Create a help reply.
     fn help_reply(&self, uid: &str) -> NickServResult {
         vec![
-            self.reply_effect(uid, "NickServ allows you to register and protect your nickname."),
+            self.reply_effect(
+                uid,
+                "NickServ allows you to register and protect your nickname.",
+            ),
             self.reply_effect(uid, "Commands:"),
-            self.reply_effect(uid, "  \x02REGISTER\x02 <password> [email] - Register your nickname"),
-            self.reply_effect(uid, "  \x02IDENTIFY\x02 <password>         - Identify to your account"),
-            self.reply_effect(uid, "  \x02DROP\x02 <password>             - Delete your account"),
-            self.reply_effect(uid, "  \x02GROUP\x02 <account> <password>  - Link nick to account"),
-            self.reply_effect(uid, "  \x02UNGROUP\x02 <nick>              - Remove nick from account"),
-            self.reply_effect(uid, "  \x02GHOST\x02 <nick> [password]     - Kill session using your nick"),
-            self.reply_effect(uid, "  \x02INFO\x02 <nick>                 - Show account information"),
-            self.reply_effect(uid, "  \x02SET\x02 <option> <value>        - Configure account settings"),
-            self.reply_effect(uid, "  \x02HELP\x02                        - Show this help"),
+            self.reply_effect(
+                uid,
+                "  \x02REGISTER\x02 <password> [email] - Register your nickname",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02IDENTIFY\x02 <password>         - Identify to your account",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02DROP\x02 <password>             - Delete your account",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02GROUP\x02 <account> <password>  - Link nick to account",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02UNGROUP\x02 <nick>              - Remove nick from account",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02GHOST\x02 <nick> [password]     - Kill session using your nick",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02INFO\x02 <nick>                 - Show account information",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02SET\x02 <option> <value>        - Configure account settings",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02HELP\x02                        - Show this help",
+            ),
         ]
     }
 
     /// Create an unknown command reply.
     fn unknown_command(&self, uid: &str, cmd: &str) -> NickServResult {
-        self.reply_effects(uid, vec![&format!(
-            "Unknown command \x02{}\x02. Type \x02HELP\x02 for a list of commands.",
-            cmd
-        )])
+        self.reply_effects(
+            uid,
+            vec![&format!(
+                "Unknown command \x02{}\x02. Type \x02HELP\x02 for a list of commands.",
+                cmd
+            )],
+        )
     }
 }
 
@@ -539,7 +636,10 @@ pub async fn apply_effect(
     effect: ServiceEffect,
 ) {
     match effect {
-        ServiceEffect::Reply { target_uid: _, mut msg } => {
+        ServiceEffect::Reply {
+            target_uid: _,
+            mut msg,
+        } => {
             // Set the target nick for the NOTICE
             if let Command::NOTICE(_, text) = &msg.command {
                 msg.command = Command::NOTICE(nick.to_string(), text.clone());
@@ -547,7 +647,10 @@ pub async fn apply_effect(
             let _ = sender.send(msg).await;
         }
 
-        ServiceEffect::AccountIdentify { target_uid, account } => {
+        ServiceEffect::AccountIdentify {
+            target_uid,
+            account,
+        } => {
             // Get user info for MODE broadcast before we modify the user
             let (nick, user_str, host, channels) = {
                 if let Some(user_ref) = matrix.users.get(&target_uid) {
@@ -579,7 +682,10 @@ pub async fn apply_effect(
                 prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
                 command: Command::UserMODE(
                     nick.clone(),
-                    vec![slirc_proto::Mode::Plus(slirc_proto::UserMode::Registered, None)],
+                    vec![slirc_proto::Mode::Plus(
+                        slirc_proto::UserMode::Registered,
+                        None,
+                    )],
                 ),
             };
 
@@ -591,8 +697,12 @@ pub async fn apply_effect(
             };
 
             for channel_name in &channels {
-                matrix.broadcast_to_channel(channel_name, mode_msg.clone(), None).await;
-                matrix.broadcast_to_channel(channel_name, account_msg.clone(), None).await;
+                matrix
+                    .broadcast_to_channel(channel_name, mode_msg.clone(), None)
+                    .await;
+                matrix
+                    .broadcast_to_channel(channel_name, account_msg.clone(), None)
+                    .await;
             }
 
             // Also send MODE and ACCOUNT to the user themselves
@@ -635,7 +745,9 @@ pub async fn apply_effect(
             };
 
             for channel_name in &channels {
-                matrix.broadcast_to_channel(channel_name, account_msg.clone(), None).await;
+                matrix
+                    .broadcast_to_channel(channel_name, account_msg.clone(), None)
+                    .await;
             }
 
             // Also send ACCOUNT * to the user themselves
@@ -650,14 +762,23 @@ pub async fn apply_effect(
             matrix.enforce_timers.remove(&target_uid);
         }
 
-        ServiceEffect::Kill { target_uid, killer, reason } => {
+        ServiceEffect::Kill {
+            target_uid,
+            killer,
+            reason,
+        } => {
             // Use centralized disconnect logic
             let quit_reason = format!("Killed by {} ({})", killer, reason);
             matrix.disconnect_user(&target_uid, &quit_reason).await;
             info!(target = %target_uid, killer = %killer, reason = %reason, "User killed by service");
         }
 
-        ServiceEffect::ChannelMode { channel, target_uid, mode_char, adding } => {
+        ServiceEffect::ChannelMode {
+            channel,
+            target_uid,
+            mode_char,
+            adding,
+        } => {
             // Get target nick for MODE message
             let target_nick = if let Some(user_ref) = matrix.users.get(&target_uid) {
                 user_ref.read().await.nick.clone()
@@ -702,7 +823,11 @@ pub async fn apply_effect(
                 )),
                 command: Command::Raw(
                     "MODE".to_string(),
-                    vec![canonical_name.clone(), mode_str.clone(), target_nick.clone()],
+                    vec![
+                        canonical_name.clone(),
+                        mode_str.clone(),
+                        target_nick.clone(),
+                    ],
                 ),
             };
 
@@ -712,7 +837,11 @@ pub async fn apply_effect(
             info!(channel = %canonical_name, target = %target_nick, mode = %mode_str, "ChanServ mode change");
         }
 
-        ServiceEffect::ForceNick { target_uid, old_nick, new_nick } => {
+        ServiceEffect::ForceNick {
+            target_uid,
+            old_nick,
+            new_nick,
+        } => {
             // Get user info for NICK message before we modify
             let (username, hostname, channels) = {
                 if let Some(user_ref) = matrix.users.get(&target_uid) {
@@ -730,15 +859,15 @@ pub async fn apply_effect(
             // Update nick mappings
             let old_nick_lower = irc_to_lower(&old_nick);
             let new_nick_lower = irc_to_lower(&new_nick);
-            
+
             matrix.nicks.remove(&old_nick_lower);
             matrix.nicks.insert(new_nick_lower, target_uid.clone());
-            
+
             if let Some(user_ref) = matrix.users.get(&target_uid) {
                 let mut user = user_ref.write().await;
                 user.nick = new_nick.clone();
             }
-            
+
             // Build NICK message
             let nick_msg = Message {
                 tags: None,
@@ -748,7 +877,9 @@ pub async fn apply_effect(
 
             // Broadcast NICK change to all shared channels
             for channel_name in &channels {
-                matrix.broadcast_to_channel(channel_name, nick_msg.clone(), None).await;
+                matrix
+                    .broadcast_to_channel(channel_name, nick_msg.clone(), None)
+                    .await;
             }
 
             // Also send to the user themselves

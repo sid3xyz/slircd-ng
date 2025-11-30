@@ -2,11 +2,14 @@
 //!
 //! Handles JOIN, PART, TOPIC, NAMES, KICK commands.
 
-use super::{err_chanoprivsneeded, err_notonchannel, err_usernotinchannel, server_reply, user_prefix, Context, Handler, HandlerError, HandlerResult};
+use super::{
+    Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
+    err_usernotinchannel, server_reply, user_prefix,
+};
 use crate::db::ChannelRepository;
 use crate::state::{Channel, MemberModes, Topic, User};
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, ChannelExt, Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{ChannelExt, Command, Message, MessageRef, Prefix, Response, irc_to_lower};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
@@ -41,7 +44,10 @@ impl Handler for JoinHandler {
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHCHANNEL,
                     vec![
-                        ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
+                        ctx.handshake
+                            .nick
+                            .clone()
+                            .unwrap_or_else(|| "*".to_string()),
                         channel_name.to_string(),
                         "Invalid channel name".to_string(),
                     ],
@@ -60,9 +66,21 @@ impl Handler for JoinHandler {
 /// Join a single channel.
 async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResult {
     let channel_lower = irc_to_lower(channel_name);
-    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-    let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-    let realname = ctx.handshake.realname.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx
+        .handshake
+        .nick
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
+    let user_name = ctx
+        .handshake
+        .user
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
+    let realname = ctx
+        .handshake
+        .realname
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
 
     // Build user's full mask for ban/invite checks (nick!user@host)
     let user_mask = format!("{}!{}@localhost", nick, user_name);
@@ -70,7 +88,10 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     // Check AKICK before joining
     if let Some(akick) = check_akick(ctx, &channel_lower, nick, user_name).await {
         // User is on the AKICK list - send a notice and refuse join
-        let reason = akick.reason.as_deref().unwrap_or("You are banned from this channel");
+        let reason = akick
+            .reason
+            .as_deref()
+            .unwrap_or("You are banned from this channel");
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(
@@ -80,7 +101,10 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             )),
             command: Command::NOTICE(
                 nick.clone(),
-                format!("You are not permitted to be on \x02{}\x02: {}", channel_name, reason),
+                format!(
+                    "You are not permitted to be on \x02{}\x02: {}",
+                    channel_name, reason
+                ),
             ),
         };
         ctx.sender.send(notice).await?;
@@ -89,9 +113,12 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     }
 
     // Get or create channel
-    let channel = ctx.matrix.channels.entry(channel_lower.clone()).or_insert_with(|| {
-        Arc::new(RwLock::new(Channel::new(channel_name.to_string())))
-    }).clone();
+    let channel = ctx
+        .matrix
+        .channels
+        .entry(channel_lower.clone())
+        .or_insert_with(|| Arc::new(RwLock::new(Channel::new(channel_name.to_string()))))
+        .clone();
 
     let mut channel_guard = channel.write().await;
 
@@ -101,21 +128,27 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     }
 
     // Enforce channel access controls:
-    
+
     // 1. Check Invite-Only (+i) mode
     if channel_guard.modes.invite_only {
         // Check invite exception list (+I)
-        let has_invex = channel_guard.invex.iter()
+        let has_invex = channel_guard
+            .invex
+            .iter()
             .any(|entry| matches_hostmask(&entry.mask, &user_mask));
-        
+
         // TODO: Check if user is in temporary invite list (from INVITE command)
         // For now, only check invex
-        
+
         if !has_invex {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_INVITEONLYCHAN,
-                vec![nick.clone(), channel_name.to_string(), "Cannot join channel (+i)".to_string()],
+                vec![
+                    nick.clone(),
+                    channel_name.to_string(),
+                    "Cannot join channel (+i)".to_string(),
+                ],
             );
             ctx.sender.send(reply).await?;
             drop(channel_guard);
@@ -125,19 +158,27 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     }
 
     // 2. Check ban list (+b) and ban exceptions (+e)
-    let is_banned = channel_guard.bans.iter()
+    let is_banned = channel_guard
+        .bans
+        .iter()
         .any(|entry| matches_hostmask(&entry.mask, &user_mask));
-    
+
     if is_banned {
         // Check if user has ban exception (+e)
-        let has_exception = channel_guard.excepts.iter()
+        let has_exception = channel_guard
+            .excepts
+            .iter()
             .any(|entry| matches_hostmask(&entry.mask, &user_mask));
-        
+
         if !has_exception {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_BANNEDFROMCHAN,
-                vec![nick.clone(), channel_name.to_string(), "Cannot join channel (+b)".to_string()],
+                vec![
+                    nick.clone(),
+                    channel_name.to_string(),
+                    "Cannot join channel (+b)".to_string(),
+                ],
             );
             ctx.sender.send(reply).await?;
             drop(channel_guard);
@@ -152,7 +193,10 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     // 1. First user gets ops
     // 2. If channel is registered, check access list for auto-op/voice
     let modes = if channel_guard.members.is_empty() {
-        MemberModes { op: true, voice: false }
+        MemberModes {
+            op: true,
+            voice: false,
+        }
     } else {
         // Check for auto-op/voice on registered channels
         let auto_modes = check_auto_modes(ctx, &channel_lower).await;
@@ -197,11 +241,15 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             None
         };
         let account_name = account.as_deref().unwrap_or("*");
-        
+
         Message {
             tags: None,
             prefix: Some(user_prefix(nick, user_name, "localhost")),
-            command: Command::JOIN(canonical_name.clone(), Some(account_name.to_string()), Some(realname.clone())),
+            command: Command::JOIN(
+                canonical_name.clone(),
+                Some(account_name.to_string()),
+                Some(realname.clone()),
+            ),
         }
     } else {
         Message {
@@ -211,7 +259,9 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         }
     };
 
-    ctx.matrix.broadcast_to_channel(&channel_lower, join_msg, None).await;
+    ctx.matrix
+        .broadcast_to_channel(&channel_lower, join_msg, None)
+        .await;
 
     // If auto-op/voice was applied, broadcast the MODE change
     if modes.op || modes.voice {
@@ -233,14 +283,21 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             command: Command::Raw(
                 "MODE".to_string(),
                 if modes.op && modes.voice {
-                    vec![canonical_name.clone(), mode_str.to_string(), nick.clone(), nick.clone()]
+                    vec![
+                        canonical_name.clone(),
+                        mode_str.to_string(),
+                        nick.clone(),
+                        nick.clone(),
+                    ]
                 } else {
                     vec![canonical_name.clone(), mode_str.to_string(), nick.clone()]
                 },
             ),
         };
 
-        ctx.matrix.broadcast_to_channel(&channel_lower, mode_msg, None).await;
+        ctx.matrix
+            .broadcast_to_channel(&channel_lower, mode_msg, None)
+            .await;
         info!(nick = %nick, channel = %canonical_name, modes = %mode_str, "Auto-modes applied");
     }
 
@@ -307,31 +364,39 @@ async fn check_auto_modes(ctx: &Context<'_>, channel_lower: &str) -> Option<Memb
     let account_name = {
         let user = ctx.matrix.users.get(ctx.uid)?;
         let user = user.read().await;
-        
+
         if !user.modes.registered {
             return None;
         }
-        
+
         user.account.clone()?
     };
-    
+
     // Look up account ID
     let account = ctx.db.accounts().find_by_name(&account_name).await.ok()??;
-    
+
     // Look up channel record
     let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
-    
+
     // Check if user is founder
     if account.id == channel_record.founder_account_id {
-        return Some(MemberModes { op: true, voice: false });
+        return Some(MemberModes {
+            op: true,
+            voice: false,
+        });
     }
-    
+
     // Check access list
-    let access = ctx.db.channels().get_access(channel_record.id, account.id).await.ok()??;
-    
+    let access = ctx
+        .db
+        .channels()
+        .get_access(channel_record.id, account.id)
+        .await
+        .ok()??;
+
     let op = ChannelRepository::has_op_access(&access.flags);
     let voice = ChannelRepository::has_voice_access(&access.flags);
-    
+
     if op || voice {
         Some(MemberModes { op, voice })
     } else {
@@ -349,18 +414,30 @@ async fn check_akick(
 ) -> Option<crate::db::ChannelAkick> {
     // Look up channel record
     let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
-    
+
     // Get host - for now use "localhost" but this should be the actual host
     let host = "localhost";
-    
+
     // Check AKICK list
-    ctx.db.channels().check_akick(channel_record.id, nick, user, host).await.ok()?
+    ctx.db
+        .channels()
+        .check_akick(channel_record.id, nick, user, host)
+        .await
+        .ok()?
 }
 
 /// Leave all channels (JOIN 0).
 async fn leave_all_channels(ctx: &mut Context<'_>) -> HandlerResult {
-    let nick = ctx.handshake.nick.clone().ok_or(HandlerError::NickOrUserMissing)?;
-    let user_name = ctx.handshake.user.clone().ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx
+        .handshake
+        .nick
+        .clone()
+        .ok_or(HandlerError::NickOrUserMissing)?;
+    let user_name = ctx
+        .handshake
+        .user
+        .clone()
+        .ok_or(HandlerError::NickOrUserMissing)?;
 
     // Get list of channels user is in
     let channels: Vec<String> = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
@@ -392,8 +469,16 @@ impl Handler for PartHandler {
         let channels_str = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let reason = msg.arg(1);
 
-        let nick = ctx.handshake.nick.clone().ok_or(HandlerError::NickOrUserMissing)?;
-        let user_name = ctx.handshake.user.clone().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .clone()
+            .ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx
+            .handshake
+            .user
+            .clone()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         for channel_name in channels_str.split(',') {
             let channel_name = channel_name.trim();
@@ -439,7 +524,13 @@ async fn leave_channel_internal(
 
     // Check if user is in channel
     if !channel_guard.is_member(ctx.uid) {
-        ctx.sender.send(err_notonchannel(&ctx.matrix.server_info.name, nick, &channel_guard.name)).await?;
+        ctx.sender
+            .send(err_notonchannel(
+                &ctx.matrix.server_info.name,
+                nick,
+                &channel_guard.name,
+            ))
+            .await?;
         return Ok(());
     }
 
@@ -496,8 +587,16 @@ impl Handler for TopicHandler {
         let channel_name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let new_topic = msg.arg(1);
 
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-        let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx
+            .handshake
+            .user
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
         let channel_lower = irc_to_lower(channel_name);
 
         // Get channel
@@ -522,7 +621,13 @@ impl Handler for TopicHandler {
 
         // Check if user is in channel
         if !channel_guard.is_member(ctx.uid) {
-            ctx.sender.send(err_notonchannel(&ctx.matrix.server_info.name, nick, &channel_guard.name)).await?;
+            ctx.sender
+                .send(err_notonchannel(
+                    &ctx.matrix.server_info.name,
+                    nick,
+                    &channel_guard.name,
+                ))
+                .await?;
             return Ok(());
         }
 
@@ -609,14 +714,22 @@ impl Handler for NamesHandler {
         // NAMES [channel [target]]
         let channel_name = msg.arg(0).unwrap_or("");
 
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         if channel_name.is_empty() {
             // NAMES without channel - not implemented
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::RPL_ENDOFNAMES,
-                vec![nick.to_string(), "*".to_string(), "End of /NAMES list".to_string()],
+                vec![
+                    nick.to_string(),
+                    "*".to_string(),
+                    "End of /NAMES list".to_string(),
+                ],
             );
             ctx.sender.send(reply).await?;
             return Ok(());
@@ -698,8 +811,16 @@ impl Handler for KickHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-        let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx
+            .handshake
+            .user
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
         let channel_lower = irc_to_lower(channel_name);
 
         // Get channel
@@ -709,7 +830,11 @@ impl Handler for KickHandler {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHCHANNEL,
-                    vec![nick.clone(), channel_name.to_string(), "No such channel".to_string()],
+                    vec![
+                        nick.clone(),
+                        channel_name.to_string(),
+                        "No such channel".to_string(),
+                    ],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());
@@ -720,7 +845,13 @@ impl Handler for KickHandler {
 
         // Check if kicker is op
         if !channel_guard.is_op(ctx.uid) {
-            ctx.sender.send(err_chanoprivsneeded(&ctx.matrix.server_info.name, nick, &channel_guard.name)).await?;
+            ctx.sender
+                .send(err_chanoprivsneeded(
+                    &ctx.matrix.server_info.name,
+                    nick,
+                    &channel_guard.name,
+                ))
+                .await?;
             return Ok(());
         }
 
@@ -732,7 +863,11 @@ impl Handler for KickHandler {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHNICK,
-                    vec![nick.clone(), target_nick.to_string(), "No such nick".to_string()],
+                    vec![
+                        nick.clone(),
+                        target_nick.to_string(),
+                        "No such nick".to_string(),
+                    ],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());
@@ -741,18 +876,31 @@ impl Handler for KickHandler {
 
         // Check if target is in channel
         if !channel_guard.is_member(&target_uid) {
-            ctx.sender.send(err_usernotinchannel(&ctx.matrix.server_info.name, nick, target_nick, &channel_guard.name)).await?;
+            ctx.sender
+                .send(err_usernotinchannel(
+                    &ctx.matrix.server_info.name,
+                    nick,
+                    target_nick,
+                    &channel_guard.name,
+                ))
+                .await?;
             return Ok(());
         }
 
         let canonical_name = channel_guard.name.clone();
-        let kick_reason = reason.map(|s| s.to_string()).unwrap_or_else(|| nick.clone());
+        let kick_reason = reason
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| nick.clone());
 
         // Broadcast KICK to channel (before removing)
         let kick_msg = Message {
             tags: None,
             prefix: Some(user_prefix(nick, user_name, "localhost")),
-            command: Command::KICK(canonical_name.clone(), target_nick.to_string(), Some(kick_reason)),
+            command: Command::KICK(
+                canonical_name.clone(),
+                target_nick.to_string(),
+                Some(kick_reason),
+            ),
         };
 
         for uid in channel_guard.members.keys() {

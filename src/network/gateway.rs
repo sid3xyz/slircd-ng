@@ -3,7 +3,7 @@
 //! The Gateway binds to sockets and spawns Connection tasks for each
 //! incoming client. Supports both plaintext and TLS connections.
 
-use crate::config::TlsConfig;
+use crate::config::{TlsConfig, WebSocketConfig};
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::network::Connection;
@@ -13,15 +13,17 @@ use std::io::{BufReader, Cursor};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use tokio_tungstenite::accept_async;
 use tracing::{error, info, instrument, warn};
 
 /// The Gateway accepts incoming TCP/TLS connections and spawns handlers.
 pub struct Gateway {
     plaintext_listener: TcpListener,
     tls_listener: Option<(TcpListener, TlsAcceptor)>,
+    websocket_listener: Option<(TcpListener, WebSocketConfig)>,
     matrix: Arc<Matrix>,
     registry: Arc<Registry>,
     db: Database,
@@ -32,6 +34,7 @@ impl Gateway {
     pub async fn bind(
         addr: SocketAddr,
         tls_config: Option<TlsConfig>,
+        websocket_config: Option<WebSocketConfig>,
         matrix: Arc<Matrix>,
         db: Database,
     ) -> anyhow::Result<Self> {
@@ -48,9 +51,18 @@ impl Gateway {
             None
         };
 
+        let websocket_listener = if let Some(ws_cfg) = websocket_config {
+            let listener = TcpListener::bind(ws_cfg.address).await?;
+            info!(address = %ws_cfg.address, "WebSocket listener bound");
+            Some((listener, ws_cfg))
+        } else {
+            None
+        };
+
         Ok(Self {
             plaintext_listener,
             tls_listener,
+            websocket_listener,
             matrix,
             registry,
             db,
@@ -62,8 +74,7 @@ impl Gateway {
         // Load certificates
         let cert_file = std::fs::read(&config.cert_path)?;
         let cert_reader = &mut BufReader::new(Cursor::new(cert_file));
-        let certs: Vec<CertificateDer> = certs(cert_reader)
-            .collect::<Result<Vec<_>, _>>()?;
+        let certs: Vec<CertificateDer> = certs(cert_reader).collect::<Result<Vec<_>, _>>()?;
 
         if certs.is_empty() {
             anyhow::bail!("No certificates found in {}", config.cert_path);
@@ -142,6 +153,56 @@ impl Gateway {
                         }
                         Err(e) => {
                             error!(error = %e, "Failed to accept TLS connection");
+                        }
+                    }
+                }
+            });
+        }
+
+        // If WebSocket is configured, spawn a separate task for the WebSocket listener
+        if let Some((ws_listener, _ws_config)) = self.websocket_listener {
+            let matrix_ws = Arc::clone(&matrix);
+            let registry_ws = Arc::clone(&registry);
+            let db_ws = db.clone();
+
+            tokio::spawn(async move {
+                loop {
+                    match ws_listener.accept().await {
+                        Ok((stream, addr)) => {
+                            info!(%addr, "WebSocket connection attempt");
+
+                            let matrix = Arc::clone(&matrix_ws);
+                            let registry = Arc::clone(&registry_ws);
+                            let db = db_ws.clone();
+                            let uid = matrix.uid_gen.next();
+
+                            tokio::spawn(async move {
+                                // Perform WebSocket handshake
+                                match accept_async(stream).await {
+                                    Ok(ws_stream) => {
+                                        info!(%addr, "WebSocket handshake successful");
+                                        let connection = Connection::new_websocket(
+                                            uid.clone(),
+                                            ws_stream,
+                                            addr,
+                                            matrix,
+                                            registry,
+                                            db,
+                                        );
+                                        // Note: This will panic until WebSocket adapter is implemented
+                                        if let Err(e) = connection.run().await {
+                                            error!(%uid, %addr, error = %e, "WebSocket connection error");
+                                        }
+                                        info!(%uid, %addr, "WebSocket connection closed");
+                                    }
+                                    Err(e) => {
+                                        warn!(%addr, error = %e, "WebSocket handshake failed");
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Failed to accept WebSocket connection");
                         }
                     }
                 }

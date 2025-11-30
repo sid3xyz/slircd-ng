@@ -3,7 +3,7 @@
 //! Implements CAP LS, LIST, REQ, ACK, NAK, END subcommands.
 //! Reference: <https://ircv3.net/specs/extensions/capability-negotiation>
 
-use super::{server_reply, Context, Handler, HandlerResult};
+use super::{Context, Handler, HandlerResult, server_reply};
 use async_trait::async_trait;
 use slirc_proto::{CapSubCommand, Command, Message, MessageRef, Prefix, Response};
 use tracing::{debug, info, warn};
@@ -60,15 +60,9 @@ impl Handler for CapHandler {
 }
 
 /// Handle CAP LS [version] - list available capabilities.
-async fn handle_ls(
-    ctx: &mut Context<'_>,
-    nick: &str,
-    version_arg: Option<&str>,
-) -> HandlerResult {
+async fn handle_ls(ctx: &mut Context<'_>, nick: &str, version_arg: Option<&str>) -> HandlerResult {
     // Parse version (301 default, 302 if specified)
-    let version: u32 = version_arg
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(301);
+    let version: u32 = version_arg.and_then(|v| v.parse().ok()).unwrap_or(301);
 
     // Set CAP negotiation flag
     ctx.handshake.cap_negotiating = true;
@@ -123,11 +117,7 @@ async fn handle_list(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
 }
 
 /// Handle CAP REQ :<capabilities> - request capabilities.
-async fn handle_req(
-    ctx: &mut Context<'_>,
-    nick: &str,
-    caps_arg: Option<&str>,
-) -> HandlerResult {
+async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -> HandlerResult {
     let requested = caps_arg.unwrap_or("");
 
     let mut accepted = Vec::new();
@@ -281,7 +271,11 @@ impl Handler for AuthenticateHandler {
                     match validate_sasl_plain(data) {
                         Ok((authzid, authcid, password)) => {
                             // Validate against database
-                            let account_name = if authzid.is_empty() { &authcid } else { &authzid };
+                            let account_name = if authzid.is_empty() {
+                                &authcid
+                            } else {
+                                &authzid
+                            };
                             match ctx.db.accounts().identify(account_name, &password).await {
                                 Ok(account) => {
                                     info!(
@@ -291,7 +285,11 @@ impl Handler for AuthenticateHandler {
                                     );
 
                                     // Send success
-                                    let user = ctx.handshake.user.clone().unwrap_or_else(|| "*".to_string());
+                                    let user = ctx
+                                        .handshake
+                                        .user
+                                        .clone()
+                                        .unwrap_or_else(|| "*".to_string());
                                     send_sasl_success(ctx, &nick, &user, &account.name).await?;
                                     ctx.handshake.sasl_state = SaslState::Authenticated;
                                     ctx.handshake.account = Some(account.name);
@@ -334,8 +332,7 @@ pub enum SaslState {
 /// Format: base64(authzid \0 authcid \0 password)
 fn validate_sasl_plain(data: &str) -> Result<(String, String, String), &'static str> {
     // Use slirc_proto's decode_base64 helper
-    let decoded = slirc_proto::sasl::decode_base64(data)
-        .map_err(|_| "Invalid base64")?;
+    let decoded = slirc_proto::sasl::decode_base64(data).map_err(|_| "Invalid base64")?;
 
     let parts: Vec<&[u8]> = decoded.split(|&b| b == 0).collect();
     if parts.len() != 3 {
@@ -377,7 +374,10 @@ async fn send_sasl_success(
     let reply = server_reply(
         &ctx.matrix.server_info.name,
         Response::RPL_SASLSUCCESS,
-        vec![nick.to_string(), "SASL authentication successful".to_string()],
+        vec![
+            nick.to_string(),
+            "SASL authentication successful".to_string(),
+        ],
     );
     ctx.sender.send(reply).await?;
 
@@ -385,11 +385,7 @@ async fn send_sasl_success(
 }
 
 /// Send SASL failure numerics.
-async fn send_sasl_fail(
-    ctx: &mut Context<'_>,
-    nick: &str,
-    reason: &str,
-) -> HandlerResult {
+async fn send_sasl_fail(ctx: &mut Context<'_>, nick: &str, reason: &str) -> HandlerResult {
     // ERR_SASLFAIL (904)
     let reply = server_reply(
         &ctx.matrix.server_info.name,

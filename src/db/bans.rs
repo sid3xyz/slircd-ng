@@ -199,10 +199,15 @@ impl<'a> BanRepository<'a> {
     }
 
     /// Check if a connection should be banned.
-    /// 
+    ///
     /// Checks both K-lines (user@host bans) and D-lines (IP bans).
     /// Returns the ban reason if banned, None if allowed.
-    pub async fn check_ban(&self, ip: &str, user: &str, host: &str) -> Result<Option<String>, DbError> {
+    pub async fn check_ban(
+        &self,
+        ip: &str,
+        user: &str,
+        host: &str,
+    ) -> Result<Option<String>, DbError> {
         // Check D-lines first (IP ban takes precedence)
         if let Some(dline) = self.matches_dline(ip).await? {
             let reason = dline.reason.unwrap_or_else(|| "Banned".to_string());
@@ -242,9 +247,8 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
                 }
                 // Try matching from each position
                 while t_chars.peek().is_some() {
-                    let remaining_pattern: String = std::iter::once(p_chars.clone())
-                        .flatten()
-                        .collect();
+                    let remaining_pattern: String =
+                        std::iter::once(p_chars.clone()).flatten().collect();
                     let remaining_text: String = t_chars.clone().collect();
                     if wildcard_match(&remaining_pattern, &remaining_text) {
                         return true;
@@ -285,10 +289,7 @@ fn cidr_match(cidr: &str, ip: &str) -> bool {
     };
 
     // Parse network IP
-    let network_parts: Vec<u8> = network
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
+    let network_parts: Vec<u8> = network.split('.').filter_map(|s| s.parse().ok()).collect();
     if network_parts.len() != 4 {
         return false;
     }

@@ -10,10 +10,10 @@
 //! - DROP #channel - Unregister a channel
 
 use crate::db::{ChannelRepository, Database};
-use crate::services::nickserv::apply_effect;
 use crate::services::ServiceEffect;
+use crate::services::nickserv::apply_effect;
 use crate::state::Matrix;
-use slirc_proto::{irc_to_lower, Command, Message, Prefix};
+use slirc_proto::{Command, Message, Prefix, irc_to_lower};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
@@ -81,7 +81,8 @@ impl ChanServ {
 
     /// Create multiple reply effects.
     fn reply_effects(&self, target_uid: &str, texts: Vec<&str>) -> ChanServResult {
-        texts.into_iter()
+        texts
+            .into_iter()
             .map(|t| self.reply_effect(target_uid, t))
             .collect()
     }
@@ -93,10 +94,13 @@ impl ChanServ {
 
     /// Create an unknown command reply.
     fn unknown_command(&self, uid: &str, cmd: &str) -> ChanServResult {
-        self.error_reply(uid, &format!(
-            "Unknown command: \x02{}\x02. Use \x02HELP\x02 for a list of commands.",
-            cmd
-        ))
+        self.error_reply(
+            uid,
+            &format!(
+                "Unknown command: \x02{}\x02. Use \x02HELP\x02 for a list of commands.",
+                cmd
+            ),
+        )
     }
 
     /// Handle REGISTER command.
@@ -126,7 +130,12 @@ impl ChanServ {
         // Check if user is identified
         let account_id = match self.get_user_account_id(matrix, uid).await {
             Some(id) => id,
-            None => return self.error_reply(uid, "You must be identified to an account to register a channel."),
+            None => {
+                return self.error_reply(
+                    uid,
+                    "You must be identified to an account to register a channel.",
+                );
+            }
         };
 
         // Check if user is op in the channel
@@ -135,28 +144,43 @@ impl ChanServ {
             let channel = channel_ref.read().await;
             channel.is_op(uid)
         } else {
-            return self.error_reply(uid, &format!("Channel \x02{}\x02 does not exist.", channel_name));
+            return self.error_reply(
+                uid,
+                &format!("Channel \x02{}\x02 does not exist.", channel_name),
+            );
         };
 
         if !is_op {
-            return self.error_reply(uid, &format!(
-                "You must be a channel operator in \x02{}\x02 to register it.",
-                channel_name
-            ));
+            return self.error_reply(
+                uid,
+                &format!(
+                    "You must be a channel operator in \x02{}\x02 to register it.",
+                    channel_name
+                ),
+            );
         }
 
         // Register the channel
-        match self.db.channels().register(channel_name, account_id, description.as_deref()).await {
+        match self
+            .db
+            .channels()
+            .register(channel_name, account_id, description.as_deref())
+            .await
+        {
             Ok(record) => {
                 info!(channel = %channel_name, founder = %nick, "Channel registered");
-                self.reply_effects(uid, vec![&format!(
-                    "Channel \x02{}\x02 has been registered under your account.",
-                    record.name
-                )])
+                self.reply_effects(
+                    uid,
+                    vec![&format!(
+                        "Channel \x02{}\x02 has been registered under your account.",
+                        record.name
+                    )],
+                )
             }
-            Err(crate::db::DbError::ChannelExists(name)) => {
-                self.error_reply(uid, &format!("Channel \x02{}\x02 is already registered.", name))
-            }
+            Err(crate::db::DbError::ChannelExists(name)) => self.error_reply(
+                uid,
+                &format!("Channel \x02{}\x02 is already registered.", name),
+            ),
             Err(e) => {
                 warn!(channel = %channel_name, error = ?e, "Channel registration failed");
                 self.error_reply(uid, "Registration failed. Please try again later.")
@@ -173,7 +197,10 @@ impl ChanServ {
         args: &[&str],
     ) -> ChanServResult {
         if args.len() < 2 {
-            return self.error_reply(uid, "Syntax: ACCESS #channel <LIST|ADD|DEL> [account] [flags]");
+            return self.error_reply(
+                uid,
+                "Syntax: ACCESS #channel <LIST|ADD|DEL> [account] [flags]",
+            );
         }
 
         let channel_name = args[0];
@@ -188,10 +215,10 @@ impl ChanServ {
         let channel_record = match self.db.channels().find_by_name(channel_name).await {
             Ok(Some(record)) => record,
             Ok(None) => {
-                return self.error_reply(uid, &format!(
-                    "Channel \x02{}\x02 is not registered.",
-                    channel_name
-                ));
+                return self.error_reply(
+                    uid,
+                    &format!("Channel \x02{}\x02 is not registered.", channel_name),
+                );
             }
             Err(e) => {
                 warn!(channel = %channel_name, error = ?e, "Failed to lookup channel");
@@ -202,12 +229,17 @@ impl ChanServ {
         match subcommand.as_str() {
             "LIST" => self.handle_access_list(uid, &channel_record).await,
             "ADD" => {
-                self.handle_access_add(matrix, uid, nick, &channel_record, &args[2..]).await
+                self.handle_access_add(matrix, uid, nick, &channel_record, &args[2..])
+                    .await
             }
             "DEL" => {
-                self.handle_access_del(matrix, uid, nick, &channel_record, &args[2..]).await
+                self.handle_access_del(matrix, uid, nick, &channel_record, &args[2..])
+                    .await
             }
-            _ => self.error_reply(uid, "Syntax: ACCESS #channel <LIST|ADD|DEL> [account] [flags]"),
+            _ => self.error_reply(
+                uid,
+                "Syntax: ACCESS #channel <LIST|ADD|DEL> [account] [flags]",
+            ),
         }
     }
 
@@ -226,26 +258,25 @@ impl ChanServ {
         };
 
         if access_list.is_empty() {
-            return self.reply_effects(uid, vec![&format!(
-                "Access list for \x02{}\x02 is empty.",
-                channel_record.name
-            )]);
+            return self.reply_effects(
+                uid,
+                vec![&format!(
+                    "Access list for \x02{}\x02 is empty.",
+                    channel_record.name
+                )],
+            );
         }
 
-        let mut texts = vec![format!(
-            "Access list for \x02{}\x02:",
-            channel_record.name
-        )];
+        let mut texts = vec![format!("Access list for \x02{}\x02:", channel_record.name)];
 
         for (i, entry) in access_list.iter().enumerate() {
             // Look up account name
-            let account_name = if let Ok(Some(account)) =
-                self.db.accounts().find_by_id(entry.account_id).await
-            {
-                account.name
-            } else {
-                format!("(ID:{})", entry.account_id)
-            };
+            let account_name =
+                if let Ok(Some(account)) = self.db.accounts().find_by_id(entry.account_id).await {
+                    account.name
+                } else {
+                    format!("(ID:{})", entry.account_id)
+                };
 
             texts.push(format!(
                 "  {:>3}. {} ({}) - added by {} on {}",
@@ -290,10 +321,10 @@ impl ChanServ {
         let target_account = match self.db.accounts().find_by_name(target_account_name).await {
             Ok(Some(account)) => account,
             Ok(None) => {
-                return self.error_reply(uid, &format!(
-                    "Account \x02{}\x02 does not exist.",
-                    target_account_name
-                ));
+                return self.error_reply(
+                    uid,
+                    &format!("Account \x02{}\x02 does not exist.", target_account_name),
+                );
             }
             Err(e) => {
                 warn!(account = %target_account_name, error = ?e, "Failed to find account");
@@ -303,7 +334,10 @@ impl ChanServ {
 
         // Validate flags
         if !self.validate_flags(flags) {
-            return self.error_reply(uid, "Invalid flags. Valid flags: +F (founder), +o (op), +v (voice)");
+            return self.error_reply(
+                uid,
+                "Invalid flags. Valid flags: +F (founder), +o (op), +v (voice)",
+            );
         }
 
         // Add access
@@ -325,10 +359,13 @@ impl ChanServ {
             "Access added"
         );
 
-        self.reply_effects(uid, vec![&format!(
-            "Access for \x02{}\x02 on \x02{}\x02 set to \x02{}\x02.",
-            target_account_name, channel_record.name, flags
-        )])
+        self.reply_effects(
+            uid,
+            vec![&format!(
+                "Access for \x02{}\x02 on \x02{}\x02 set to \x02{}\x02.",
+                target_account_name, channel_record.name, flags
+            )],
+        )
     }
 
     /// Handle ACCESS DEL subcommand.
@@ -355,10 +392,10 @@ impl ChanServ {
         let target_account = match self.db.accounts().find_by_name(target_account_name).await {
             Ok(Some(account)) => account,
             Ok(None) => {
-                return self.error_reply(uid, &format!(
-                    "Account \x02{}\x02 does not exist.",
-                    target_account_name
-                ));
+                return self.error_reply(
+                    uid,
+                    &format!("Account \x02{}\x02 does not exist.", target_account_name),
+                );
             }
             Err(e) => {
                 warn!(account = %target_account_name, error = ?e, "Failed to find account");
@@ -385,15 +422,21 @@ impl ChanServ {
                     by = %nick,
                     "Access removed"
                 );
-                self.reply_effects(uid, vec![&format!(
-                    "Access for \x02{}\x02 on \x02{}\x02 has been removed.",
-                    target_account_name, channel_record.name
-                )])
+                self.reply_effects(
+                    uid,
+                    vec![&format!(
+                        "Access for \x02{}\x02 on \x02{}\x02 has been removed.",
+                        target_account_name, channel_record.name
+                    )],
+                )
             }
-            Ok(false) => self.error_reply(uid, &format!(
-                "\x02{}\x02 does not have access on \x02{}\x02.",
-                target_account_name, channel_record.name
-            )),
+            Ok(false) => self.error_reply(
+                uid,
+                &format!(
+                    "\x02{}\x02 does not have access on \x02{}\x02.",
+                    target_account_name, channel_record.name
+                ),
+            ),
             Err(e) => {
                 warn!(channel = %channel_record.name, account = %target_account_name, error = ?e, "Failed to remove access");
                 self.error_reply(uid, "Failed to remove access. Please try again later.")
@@ -418,10 +461,10 @@ impl ChanServ {
         let channel_record = match self.db.channels().find_by_name(channel_name).await {
             Ok(Some(record)) => record,
             Ok(None) => {
-                return self.error_reply(uid, &format!(
-                    "Channel \x02{}\x02 is not registered.",
-                    channel_name
-                ));
+                return self.error_reply(
+                    uid,
+                    &format!("Channel \x02{}\x02 is not registered.", channel_name),
+                );
             }
             Err(e) => {
                 warn!(channel = %channel_name, error = ?e, "Failed to lookup channel");
@@ -464,13 +507,14 @@ impl ChanServ {
 
         texts.push(format!(
             "  Keep topic : {}",
-            if channel_record.keeptopic { "ON" } else { "OFF" }
+            if channel_record.keeptopic {
+                "ON"
+            } else {
+                "OFF"
+            }
         ));
 
-        texts.push(format!(
-            "End of info for \x02{}\x02.",
-            channel_record.name
-        ));
+        texts.push(format!("End of info for \x02{}\x02.", channel_record.name));
 
         texts.iter().map(|t| self.reply_effect(uid, t)).collect()
     }
@@ -500,10 +544,10 @@ impl ChanServ {
         let channel_record = match self.db.channels().find_by_name(channel_name).await {
             Ok(Some(record)) => record,
             Ok(None) => {
-                return self.error_reply(uid, &format!(
-                    "Channel \x02{}\x02 is not registered.",
-                    channel_name
-                ));
+                return self.error_reply(
+                    uid,
+                    &format!("Channel \x02{}\x02 is not registered.", channel_name),
+                );
             }
             Err(e) => {
                 warn!(channel = %channel_name, error = ?e, "Failed to lookup channel");
@@ -512,7 +556,10 @@ impl ChanServ {
         };
 
         // Check if user has founder access
-        if !self.check_founder_access(matrix, uid, &channel_record).await {
+        if !self
+            .check_founder_access(matrix, uid, &channel_record)
+            .await
+        {
             return self.error_reply(uid, "You must be the channel founder to change settings.");
         }
 
@@ -531,14 +578,21 @@ impl ChanServ {
                     by = %nick,
                     "Channel setting updated"
                 );
-                self.reply_effects(uid, vec![&format!(
-                    "Setting \x02{}\x02 for \x02{}\x02 has been set to \x02{}\x02.",
-                    option, channel_name, value
-                )])
+                self.reply_effects(
+                    uid,
+                    vec![&format!(
+                        "Setting \x02{}\x02 for \x02{}\x02 has been set to \x02{}\x02.",
+                        option, channel_name, value
+                    )],
+                )
             }
-            Err(crate::db::DbError::UnknownOption(opt)) => {
-                self.error_reply(uid, &format!("Unknown option: \x02{}\x02. Valid options: description, mlock, keeptopic", opt))
-            }
+            Err(crate::db::DbError::UnknownOption(opt)) => self.error_reply(
+                uid,
+                &format!(
+                    "Unknown option: \x02{}\x02. Valid options: description, mlock, keeptopic",
+                    opt
+                ),
+            ),
             Err(e) => {
                 warn!(channel = %channel_name, option = %option, error = ?e, "Failed to set option");
                 self.error_reply(uid, "Failed to update setting. Please try again later.")
@@ -569,10 +623,10 @@ impl ChanServ {
         let channel_record = match self.db.channels().find_by_name(channel_name).await {
             Ok(Some(record)) => record,
             Ok(None) => {
-                return self.error_reply(uid, &format!(
-                    "Channel \x02{}\x02 is not registered.",
-                    channel_name
-                ));
+                return self.error_reply(
+                    uid,
+                    &format!("Channel \x02{}\x02 is not registered.", channel_name),
+                );
             }
             Err(e) => {
                 warn!(channel = %channel_name, error = ?e, "Failed to lookup channel");
@@ -594,10 +648,13 @@ impl ChanServ {
         match self.db.channels().drop_channel(channel_record.id).await {
             Ok(true) => {
                 info!(channel = %channel_name, by = %nick, "Channel dropped");
-                self.reply_effects(uid, vec![&format!(
-                    "Channel \x02{}\x02 has been dropped.",
-                    channel_name
-                )])
+                self.reply_effects(
+                    uid,
+                    vec![&format!(
+                        "Channel \x02{}\x02 has been dropped.",
+                        channel_name
+                    )],
+                )
             }
             Ok(false) => self.error_reply(uid, "Failed to drop channel."),
             Err(e) => {
@@ -690,10 +747,10 @@ impl ChanServ {
         let channel_record = match self.db.channels().find_by_name(channel_name).await {
             Ok(Some(record)) => record,
             Ok(None) => {
-                return self.error_reply(uid, &format!(
-                    "Channel \x02{}\x02 is not registered.",
-                    channel_name
-                ));
+                return self.error_reply(
+                    uid,
+                    &format!("Channel \x02{}\x02 is not registered.", channel_name),
+                );
             }
             Err(e) => {
                 warn!(channel = %channel_name, error = ?e, "Database error");
@@ -702,8 +759,14 @@ impl ChanServ {
         };
 
         match subcommand.as_str() {
-            "ADD" => self.handle_akick_add(matrix, uid, nick, &channel_record, &args[2..]).await,
-            "DEL" => self.handle_akick_del(matrix, uid, nick, &channel_record, &args[2..]).await,
+            "ADD" => {
+                self.handle_akick_add(matrix, uid, nick, &channel_record, &args[2..])
+                    .await
+            }
+            "DEL" => {
+                self.handle_akick_del(matrix, uid, nick, &channel_record, &args[2..])
+                    .await
+            }
             "LIST" => self.handle_akick_list(uid, &channel_record).await,
             _ => self.error_reply(uid, "Unknown subcommand. Valid: ADD, DEL, LIST"),
         }
@@ -766,10 +829,13 @@ impl ChanServ {
                     by = %nick,
                     "AKICK added"
                 );
-                self.reply_effects(uid, vec![&format!(
-                    "AKICK for \x02{}\x02 added to \x02{}\x02.",
-                    mask, channel_record.name
-                )])
+                self.reply_effects(
+                    uid,
+                    vec![&format!(
+                        "AKICK for \x02{}\x02 added to \x02{}\x02.",
+                        mask, channel_record.name
+                    )],
+                )
             }
             Err(e) => {
                 warn!(channel = %channel_record.name, mask = %mask, error = ?e, "Failed to add AKICK");
@@ -817,7 +883,12 @@ impl ChanServ {
         }
 
         // Remove the AKICK
-        match self.db.channels().remove_akick(channel_record.id, mask).await {
+        match self
+            .db
+            .channels()
+            .remove_akick(channel_record.id, mask)
+            .await
+        {
             Ok(true) => {
                 info!(
                     channel = %channel_record.name,
@@ -825,15 +896,18 @@ impl ChanServ {
                     by = %nick,
                     "AKICK removed"
                 );
-                self.reply_effects(uid, vec![&format!(
-                    "AKICK for \x02{}\x02 removed from \x02{}\x02.",
-                    mask, channel_record.name
-                )])
+                self.reply_effects(
+                    uid,
+                    vec![&format!(
+                        "AKICK for \x02{}\x02 removed from \x02{}\x02.",
+                        mask, channel_record.name
+                    )],
+                )
             }
-            Ok(false) => self.error_reply(uid, &format!(
-                "No AKICK entry matching \x02{}\x02 found.",
-                mask
-            )),
+            Ok(false) => self.error_reply(
+                uid,
+                &format!("No AKICK entry matching \x02{}\x02 found.", mask),
+            ),
             Err(e) => {
                 warn!(channel = %channel_record.name, mask = %mask, error = ?e, "Failed to remove AKICK");
                 self.error_reply(uid, "Failed to remove AKICK. Please try again later.")
@@ -842,7 +916,11 @@ impl ChanServ {
     }
 
     /// Handle AKICK LIST subcommand.
-    async fn handle_akick_list(&self, uid: &str, channel_record: &crate::db::ChannelRecord) -> ChanServResult {
+    async fn handle_akick_list(
+        &self,
+        uid: &str,
+        channel_record: &crate::db::ChannelRecord,
+    ) -> ChanServResult {
         let akicks = match self.db.channels().list_akicks(channel_record.id).await {
             Ok(list) => list,
             Err(e) => {
@@ -852,16 +930,16 @@ impl ChanServ {
         };
 
         if akicks.is_empty() {
-            return self.reply_effects(uid, vec![&format!(
-                "AKICK list for \x02{}\x02 is empty.",
-                channel_record.name
-            )]);
+            return self.reply_effects(
+                uid,
+                vec![&format!(
+                    "AKICK list for \x02{}\x02 is empty.",
+                    channel_record.name
+                )],
+            );
         }
 
-        let mut texts = vec![format!(
-            "AKICK list for \x02{}\x02:",
-            channel_record.name
-        )];
+        let mut texts = vec![format!("AKICK list for \x02{}\x02:", channel_record.name)];
 
         for (i, akick) in akicks.iter().enumerate() {
             let reason = akick.reason.as_deref().unwrap_or("(no reason)");
@@ -919,10 +997,10 @@ impl ChanServ {
         let channel_record = match self.db.channels().find_by_name(channel_name).await {
             Ok(Some(record)) => record,
             Ok(None) => {
-                return self.error_reply(uid, &format!(
-                    "Channel \x02{}\x02 is not registered.",
-                    channel_name
-                ));
+                return self.error_reply(
+                    uid,
+                    &format!("Channel \x02{}\x02 is not registered.", channel_name),
+                );
             }
             Err(e) => {
                 warn!(channel = %channel_name, error = ?e, "Database error");
@@ -951,10 +1029,13 @@ impl ChanServ {
         };
 
         if !has_access {
-            return self.error_reply(uid, &format!(
-                "You do not have access to use {} on \x02{}\x02.",
-                cmd_name, channel_name
-            ));
+            return self.error_reply(
+                uid,
+                &format!(
+                    "You do not have access to use {} on \x02{}\x02.",
+                    cmd_name, channel_name
+                ),
+            );
         }
 
         // Verify target is in the channel
@@ -971,17 +1052,20 @@ impl ChanServ {
             let channel = channel_ref.read().await;
             channel.is_member(&target_uid)
         } else {
-            return self.error_reply(uid, &format!(
-                "Channel \x02{}\x02 does not exist.",
-                channel_name
-            ));
+            return self.error_reply(
+                uid,
+                &format!("Channel \x02{}\x02 does not exist.", channel_name),
+            );
         };
 
         if !in_channel {
-            return self.error_reply(uid, &format!(
-                "\x02{}\x02 is not in \x02{}\x02.",
-                target_nick, channel_name
-            ));
+            return self.error_reply(
+                uid,
+                &format!(
+                    "\x02{}\x02 is not in \x02{}\x02.",
+                    target_nick, channel_name
+                ),
+            );
         }
 
         // Extract mode_char and adding from mode string (e.g., "+o" -> 'o', true)
@@ -997,10 +1081,10 @@ impl ChanServ {
         );
 
         vec![
-            self.reply_effect(uid, &format!(
-                "Mode {} {} on \x02{}\x02.",
-                mode, target_nick, channel_name
-            )),
+            self.reply_effect(
+                uid,
+                &format!("Mode {} {} on \x02{}\x02.", mode, target_nick, channel_name),
+            ),
             ServiceEffect::ChannelMode {
                 channel: channel_lower,
                 target_uid,
@@ -1017,8 +1101,14 @@ impl ChanServ {
             self.reply_effect(uid, "ChanServ allows you to register and manage channels."),
             self.reply_effect(uid, " "),
             self.reply_effect(uid, "Available commands:"),
-            self.reply_effect(uid, "  REGISTER #channel [description] - Register a channel"),
-            self.reply_effect(uid, "  ACCESS #channel LIST            - List access entries"),
+            self.reply_effect(
+                uid,
+                "  REGISTER #channel [description] - Register a channel",
+            ),
+            self.reply_effect(
+                uid,
+                "  ACCESS #channel LIST            - List access entries",
+            ),
             self.reply_effect(uid, "  ACCESS #channel ADD <acct> <flags> - Add access"),
             self.reply_effect(uid, "  ACCESS #channel DEL <account>   - Remove access"),
             self.reply_effect(uid, "  AKICK #channel ADD <mask> [reason] - Add auto-kick"),
@@ -1026,13 +1116,22 @@ impl ChanServ {
             self.reply_effect(uid, "  AKICK #channel LIST             - List auto-kicks"),
             self.reply_effect(uid, "  INFO #channel                   - Show channel info"),
             self.reply_effect(uid, "  SET #channel <opt> <value>      - Change settings"),
-            self.reply_effect(uid, "  DROP #channel                   - Unregister channel"),
+            self.reply_effect(
+                uid,
+                "  DROP #channel                   - Unregister channel",
+            ),
             self.reply_effect(uid, "  OP #channel [nick]              - Give channel ops"),
-            self.reply_effect(uid, "  DEOP #channel [nick]            - Remove channel ops"),
+            self.reply_effect(
+                uid,
+                "  DEOP #channel [nick]            - Remove channel ops",
+            ),
             self.reply_effect(uid, "  VOICE #channel [nick]           - Give voice"),
             self.reply_effect(uid, "  DEVOICE #channel [nick]         - Remove voice"),
             self.reply_effect(uid, " "),
-            self.reply_effect(uid, "Access flags: +F (founder), +o (auto-op), +v (auto-voice)"),
+            self.reply_effect(
+                uid,
+                "Access flags: +F (founder), +o (auto-op), +v (auto-voice)",
+            ),
             self.reply_effect(uid, "***** End of Help *****"),
         ]
     }

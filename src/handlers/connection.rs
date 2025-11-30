@@ -2,10 +2,10 @@
 //!
 //! Handles NICK, USER, PING, PONG, QUIT commands.
 
-use super::{server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{Context, Handler, HandlerError, HandlerResult, server_reply};
 use crate::state::User;
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response, irc_to_lower};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -23,7 +23,7 @@ fn is_valid_nick(nick: &str) -> bool {
 
     let mut chars = nick.chars();
     let first = chars.next().unwrap();
-    
+
     // First char: letter or special
     if !first.is_ascii_alphabetic() && !is_special(first) {
         return false;
@@ -51,7 +51,10 @@ impl Handler for NickHandler {
                 &ctx.matrix.server_info.name,
                 Response::ERR_ERRONEOUSNICKNAME,
                 vec![
-                    ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
+                    ctx.handshake
+                        .nick
+                        .clone()
+                        .unwrap_or_else(|| "*".to_string()),
                     nick.to_string(),
                     "Erroneous nickname".to_string(),
                 ],
@@ -70,7 +73,10 @@ impl Handler for NickHandler {
                 &ctx.matrix.server_info.name,
                 Response::ERR_NICKNAMEINUSE,
                 vec![
-                    ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
+                    ctx.handshake
+                        .nick
+                        .clone()
+                        .unwrap_or_else(|| "*".to_string()),
                     nick.to_string(),
                     "Nickname is already in use".to_string(),
                 ],
@@ -88,7 +94,9 @@ impl Handler for NickHandler {
         }
 
         // Register new nick
-        ctx.matrix.nicks.insert(nick_lower.clone(), ctx.uid.to_string());
+        ctx.matrix
+            .nicks
+            .insert(nick_lower.clone(), ctx.uid.to_string());
         ctx.handshake.nick = Some(nick.to_string());
 
         debug!(nick = %nick, uid = %ctx.uid, "Nick set");
@@ -109,8 +117,10 @@ impl Handler for NickHandler {
             {
                 // Start 60 second timer
                 let deadline = Instant::now() + Duration::from_secs(60);
-                ctx.matrix.enforce_timers.insert(ctx.uid.to_string(), deadline);
-                
+                ctx.matrix
+                    .enforce_timers
+                    .insert(ctx.uid.to_string(), deadline);
+
                 // Notify user
                 let notice = Message {
                     tags: None,
@@ -149,7 +159,10 @@ impl Handler for UserHandler {
                 &ctx.matrix.server_info.name,
                 Response::ERR_ALREADYREGISTERED,
                 vec![
-                    ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
+                    ctx.handshake
+                        .nick
+                        .clone()
+                        .unwrap_or_else(|| "*".to_string()),
                     "You may not reregister".to_string(),
                 ],
             );
@@ -182,8 +195,16 @@ impl Handler for UserHandler {
 
 /// Send the welcome burst (001-005 + MOTD) after successful registration.
 async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
-    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-    let user = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx
+        .handshake
+        .nick
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
+    let user = ctx
+        .handshake
+        .user
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
     let realname = ctx.handshake.realname.as_ref().cloned().unwrap_or_default();
     let server_name = &ctx.matrix.server_info.name;
     let network = &ctx.matrix.server_info.network;
@@ -203,7 +224,10 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         ctx.sender.send(reply).await?;
 
         // Send ERROR and close connection
-        let error = Message::from(Command::ERROR(format!("Closing Link: {} ({})", host, ban_reason)));
+        let error = Message::from(Command::ERROR(format!(
+            "Closing Link: {} ({})",
+            host, ban_reason
+        )));
         ctx.sender.send(error).await?;
 
         // Return an error to cause the connection to close
@@ -233,14 +257,17 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         user_obj.modes.secure = true;
     }
 
-    ctx.matrix.users.insert(
-        ctx.uid.to_string(),
-        Arc::new(RwLock::new(user_obj)),
-    );
+    // Store the cloaked hostname for RPL_HOSTHIDDEN
+    let cloaked_host = user_obj.visible_host.clone();
+
+    ctx.matrix
+        .users
+        .insert(ctx.uid.to_string(), Arc::new(RwLock::new(user_obj)));
 
     info!(nick = %nick, user = %user, uid = %ctx.uid, account = ?ctx.handshake.account, "Client registered");
 
     // 001 RPL_WELCOME
+    // Use cloaked hostname in welcome message
     let welcome = server_reply(
         server_name,
         Response::RPL_WELCOME,
@@ -248,7 +275,7 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             nick.clone(),
             format!(
                 "Welcome to the {} IRC Network {}!{}@{}",
-                network, nick, user, host
+                network, nick, user, cloaked_host
             ),
         ],
     );
@@ -260,7 +287,10 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         Response::RPL_YOURHOST,
         vec![
             nick.clone(),
-            format!("Your host is {}, running version slircd-ng-0.1.0", server_name),
+            format!(
+                "Your host is {}, running version slircd-ng-0.1.0",
+                server_name
+            ),
         ],
     );
     ctx.sender.send(yourhost).await?;
@@ -269,10 +299,7 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     let created = server_reply(
         server_name,
         Response::RPL_CREATED,
-        vec![
-            nick.clone(),
-            format!("This server was created at startup"),
-        ],
+        vec![nick.clone(), format!("This server was created at startup")],
     );
     ctx.sender.send(created).await?;
 
@@ -285,7 +312,7 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             nick.clone(),
             server_name.clone(),
             "slircd-ng-0.1.0".to_string(),
-            "iowrZ".to_string(),       // user modes: invisible, wallops, oper, registered, secure
+            "iowrZ".to_string(), // user modes: invisible, wallops, oper, registered, secure
             "beIiklmnopqrstv".to_string(), // channel modes
         ],
     );
@@ -325,6 +352,18 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         ],
     );
     ctx.sender.send(isupport2).await?;
+
+    // 396 RPL_HOSTHIDDEN - Notify user that their IP has been cloaked
+    let hosthidden = server_reply(
+        server_name,
+        Response::RPL_HOSTHIDDEN,
+        vec![
+            nick.clone(),
+            cloaked_host.clone(),
+            "is now your displayed host".to_string(),
+        ],
+    );
+    ctx.sender.send(hosthidden).await?;
 
     // 375 RPL_MOTDSTART
     let motdstart = server_reply(
@@ -438,7 +477,11 @@ impl Handler for PassHandler {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NEEDMOREPARAMS,
-                    vec!["*".to_string(), "PASS".to_string(), "Not enough parameters".to_string()],
+                    vec![
+                        "*".to_string(),
+                        "PASS".to_string(),
+                        "Not enough parameters".to_string(),
+                    ],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());
@@ -447,7 +490,7 @@ impl Handler for PassHandler {
 
         // TODO: Store password in handshake state for later validation
         // For now, we accept any password (no server password configured)
-        
+
         debug!("PASS received (not validated - server password not implemented)");
 
         Ok(())

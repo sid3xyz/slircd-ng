@@ -46,7 +46,9 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Initialize database
-    let db_path = config.database.as_ref()
+    let db_path = config
+        .database
+        .as_ref()
         .map(|d| d.path.as_str())
         .unwrap_or("slircd.db");
     let db = Database::new(db_path).await?;
@@ -58,13 +60,15 @@ async fn main() -> anyhow::Result<()> {
     spawn_enforcement_task(Arc::clone(&matrix));
     info!("Nick enforcement task started");
 
-    // Start the Gateway (with optional TLS)
+    // Start the Gateway (with optional TLS and WebSocket)
     let gateway = Gateway::bind(
         config.listen.address,
         config.tls,
+        config.websocket,
         matrix,
         db,
-    ).await?;
+    )
+    .await?;
     gateway.run().await?;
 
     Ok(())

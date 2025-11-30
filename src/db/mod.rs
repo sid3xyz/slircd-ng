@@ -13,8 +13,8 @@ pub use accounts::AccountRepository;
 pub use bans::BanRepository;
 pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
 
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::Path;
 use thiserror::Error;
 use tracing::info;
@@ -91,14 +91,14 @@ impl Database {
     async fn run_migrations(pool: &SqlitePool) -> Result<(), DbError> {
         // Check if the required tables exist
         let accounts_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts')"
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts')",
         )
         .fetch_one(pool)
         .await
         .unwrap_or(false);
 
         let channels_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='channels')"
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='channels')",
         )
         .fetch_one(pool)
         .await
@@ -115,7 +115,7 @@ impl Database {
         if !accounts_exists || !channels_exists || !akick_exists {
             // Run the full migration
             let migration = include_str!("../../migrations/001_init.sql");
-            
+
             for statement in migration.split(';') {
                 // Remove leading comments and whitespace to get actual SQL
                 let mut sql_lines: Vec<&str> = Vec::new();
@@ -127,19 +127,16 @@ impl Database {
                     }
                     sql_lines.push(line);
                 }
-                
+
                 if sql_lines.is_empty() {
                     continue;
                 }
-                
+
                 // Rejoin the SQL statement
                 let sql = sql_lines.join("\n");
-                
+
                 // Execute each statement, logging errors
-                if let Err(e) = sqlx::query(&sql)
-                    .execute(pool)
-                    .await
-                {
+                if let Err(e) = sqlx::query(&sql).execute(pool).await {
                     // Only log if it's not a "table already exists" error
                     let err_str = e.to_string();
                     if !err_str.contains("already exists") {

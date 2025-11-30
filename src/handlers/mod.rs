@@ -25,14 +25,18 @@ pub use admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler};
 pub use bans::{DlineHandler, KlineHandler, UndlineHandler, UnklineHandler};
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
-pub use connection::{NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler};
+pub use connection::{
+    NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler,
+};
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
-pub use misc::{AwayHandler, CsHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, UserhostHandler};
-pub use mode::{apply_channel_modes_typed, format_modes_for_log, ModeHandler};
+pub use misc::{
+    AwayHandler, CsHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, UserhostHandler,
+};
+pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
 pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
 pub use server_query::{
-    AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler,
-    TimeHandler, VersionHandler,
+    AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler, TimeHandler,
+    VersionHandler,
 };
 pub use user_query::{WhoHandler, WhoisHandler, WhowasHandler};
 
@@ -95,10 +99,7 @@ impl HandshakeState {
     /// Check if we have both NICK and USER and can complete registration.
     /// Also requires CAP negotiation to be finished if it was started.
     pub fn can_register(&self) -> bool {
-        self.nick.is_some() 
-            && self.user.is_some() 
-            && !self.registered
-            && !self.cap_negotiating
+        self.nick.is_some() && self.user.is_some() && !self.registered && !self.cap_negotiating
     }
 }
 
@@ -195,9 +196,9 @@ impl Registry {
 
         // Service aliases
         handlers.insert("NICKSERV", Box::new(NsHandler));
-        handlers.insert("NS", Box::new(NsHandler));  // Shortcut for NickServ
+        handlers.insert("NS", Box::new(NsHandler)); // Shortcut for NickServ
         handlers.insert("CHANSERV", Box::new(CsHandler));
-        handlers.insert("CS", Box::new(CsHandler));  // Shortcut for ChanServ
+        handlers.insert("CS", Box::new(CsHandler)); // Shortcut for ChanServ
 
         // Operator handlers
         handlers.insert("OPER", Box::new(OperHandler));
@@ -367,7 +368,7 @@ pub fn err_notregistered(server_name: &str) -> Message {
 // ============================================================================
 
 /// Resolve a nickname to UID. Returns None if not found.
-/// 
+///
 /// Uses IRC case-folding for comparison.
 pub fn resolve_nick_to_uid(ctx: &Context<'_>, nick: &str) -> Option<String> {
     let lower = slirc_proto::irc_to_lower(nick);
@@ -391,20 +392,19 @@ pub async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
 }
 
 /// Check if the current user is an IRC operator.
-/// 
+///
 /// Returns `Ok(nick)` if they are an oper, or sends `ERR_NOPRIVILEGES` and returns `Err(())`.
 pub async fn require_oper(ctx: &mut Context<'_>) -> Result<String, ()> {
     let server_name = &ctx.matrix.server_info.name;
-    
+
     let Some((nick, is_oper)) = get_oper_info(ctx).await else {
         return Err(());
     };
-    
+
     if !is_oper {
         let _ = ctx.sender.send(err_noprivileges(server_name, &nick)).await;
         return Err(());
     }
-    
+
     Ok(nick)
 }
-

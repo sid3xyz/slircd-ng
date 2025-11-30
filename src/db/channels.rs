@@ -120,8 +120,8 @@ impl<'a> ChannelRepository<'a> {
         .fetch_optional(self.pool)
         .await?;
 
-        Ok(row.map(|(id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic)| {
-            ChannelRecord {
+        Ok(row.map(
+            |(
                 id,
                 name,
                 founder_account_id,
@@ -130,8 +130,19 @@ impl<'a> ChannelRepository<'a> {
                 description,
                 mlock,
                 keeptopic,
-            }
-        }))
+            )| {
+                ChannelRecord {
+                    id,
+                    name,
+                    founder_account_id,
+                    registered_at,
+                    last_used_at,
+                    description,
+                    mlock,
+                    keeptopic,
+                }
+            },
+        ))
     }
 
     /// Find channel by ID.
@@ -148,8 +159,8 @@ impl<'a> ChannelRepository<'a> {
         .fetch_optional(self.pool)
         .await?;
 
-        Ok(row.map(|(id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic)| {
-            ChannelRecord {
+        Ok(row.map(
+            |(
                 id,
                 name,
                 founder_account_id,
@@ -158,13 +169,27 @@ impl<'a> ChannelRepository<'a> {
                 description,
                 mlock,
                 keeptopic,
-            }
-        }))
+            )| {
+                ChannelRecord {
+                    id,
+                    name,
+                    founder_account_id,
+                    registered_at,
+                    last_used_at,
+                    description,
+                    mlock,
+                    keeptopic,
+                }
+            },
+        ))
     }
 
     /// Get all channels registered by an account.
     #[allow(dead_code)] // TODO: Use for NickServ INFO (show registered channels)
-    pub async fn find_by_founder(&self, founder_account_id: i64) -> Result<Vec<ChannelRecord>, DbError> {
+    pub async fn find_by_founder(
+        &self,
+        founder_account_id: i64,
+    ) -> Result<Vec<ChannelRecord>, DbError> {
         let rows = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool)>(
             r#"
             SELECT id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic
@@ -176,18 +201,32 @@ impl<'a> ChannelRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|(id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic)| {
-            ChannelRecord {
-                id,
-                name,
-                founder_account_id,
-                registered_at,
-                last_used_at,
-                description,
-                mlock,
-                keeptopic,
-            }
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |(
+                    id,
+                    name,
+                    founder_account_id,
+                    registered_at,
+                    last_used_at,
+                    description,
+                    mlock,
+                    keeptopic,
+                )| {
+                    ChannelRecord {
+                        id,
+                        name,
+                        founder_account_id,
+                        registered_at,
+                        last_used_at,
+                        description,
+                        mlock,
+                        keeptopic,
+                    }
+                },
+            )
+            .collect())
     }
 
     /// Get access flags for an account on a channel.
@@ -208,13 +247,15 @@ impl<'a> ChannelRepository<'a> {
         .fetch_optional(self.pool)
         .await?;
 
-        Ok(row.map(|(channel_id, account_id, flags, added_by, added_at)| ChannelAccess {
-            channel_id,
-            account_id,
-            flags,
-            added_by,
-            added_at,
-        }))
+        Ok(row.map(
+            |(channel_id, account_id, flags, added_by, added_at)| ChannelAccess {
+                channel_id,
+                account_id,
+                flags,
+                added_by,
+                added_at,
+            },
+        ))
     }
 
     /// Get all access entries for a channel.
@@ -231,15 +272,18 @@ impl<'a> ChannelRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|(channel_id, account_id, flags, added_by, added_at)| {
-            ChannelAccess {
-                channel_id,
-                account_id,
-                flags,
-                added_by,
-                added_at,
-            }
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |(channel_id, account_id, flags, added_by, added_at)| ChannelAccess {
+                    channel_id,
+                    account_id,
+                    flags,
+                    added_by,
+                    added_at,
+                },
+            )
+            .collect())
     }
 
     /// Set access flags for an account on a channel.
@@ -271,11 +315,7 @@ impl<'a> ChannelRepository<'a> {
     }
 
     /// Remove access for an account on a channel.
-    pub async fn remove_access(
-        &self,
-        channel_id: i64,
-        account_id: i64,
-    ) -> Result<bool, DbError> {
+    pub async fn remove_access(&self, channel_id: i64, account_id: i64) -> Result<bool, DbError> {
         let result = sqlx::query(
             r#"
             DELETE FROM channel_access
@@ -427,16 +467,19 @@ impl<'a> ChannelRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|(id, channel_id, mask, reason, set_by, set_at)| {
-            ChannelAkick {
-                id,
-                channel_id,
-                mask,
-                reason,
-                set_by,
-                set_at,
-            }
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, channel_id, mask, reason, set_by, set_at)| ChannelAkick {
+                    id,
+                    channel_id,
+                    mask,
+                    reason,
+                    set_by,
+                    set_at,
+                },
+            )
+            .collect())
     }
 
     /// Check if a hostmask matches any AKICK entry.
@@ -476,8 +519,10 @@ impl<'a> ChannelRepository<'a> {
         let mut match_idx = 0;
 
         while hostmask_idx < hostmask_chars.len() {
-            if pattern_idx < pattern_chars.len() && 
-               (pattern_chars[pattern_idx] == '?' || pattern_chars[pattern_idx] == hostmask_chars[hostmask_idx]) {
+            if pattern_idx < pattern_chars.len()
+                && (pattern_chars[pattern_idx] == '?'
+                    || pattern_chars[pattern_idx] == hostmask_chars[hostmask_idx])
+            {
                 pattern_idx += 1;
                 hostmask_idx += 1;
             } else if pattern_idx < pattern_chars.len() && pattern_chars[pattern_idx] == '*' {

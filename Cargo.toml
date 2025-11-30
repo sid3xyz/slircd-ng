@@ -49,3 +49,7 @@ rustls-pemfile = "2.1"
 # Crypto (password hashing)
 argon2 = "0.5"
 rand = "0.8"
+
+# WebSocket support
+tokio-tungstenite = "0.21"
+sha2 = "0.10"

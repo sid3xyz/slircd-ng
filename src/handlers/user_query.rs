@@ -2,9 +2,9 @@
 //!
 //! RFC 2812 §3.6 - User based queries
 
-use super::{err_notregistered, server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, MessageRef, Response};
+use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tracing::debug;
 
 /// Handler for WHO command.
@@ -19,16 +19,25 @@ pub struct WhoHandler;
 impl Handler for WhoHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         // WHO [mask] [o]
         let mask = msg.arg(0);
-        let operators_only = msg.arg(1).map(|s| s.eq_ignore_ascii_case("o")).unwrap_or(false);
+        let operators_only = msg
+            .arg(1)
+            .map(|s| s.eq_ignore_ascii_case("o"))
+            .unwrap_or(false);
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Determine query type
         if let Some(mask_str) = mask {
@@ -37,18 +46,22 @@ impl Handler for WhoHandler {
                 let channel_lower = irc_to_lower(mask_str);
                 if let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) {
                     let channel = channel_ref.read().await;
-                    
+
                     for (member_uid, member_modes) in &channel.members {
                         if let Some(user_ref) = ctx.matrix.users.get(member_uid) {
                             let user = user_ref.read().await;
-                            
+
                             // Skip if operators_only and not an operator
                             if operators_only && !user.modes.oper {
                                 continue;
                             }
 
                             // Build flags: H=here, G=gone (away), *=ircop, @=chanop, +=voice
-                            let mut flags = if user.away.is_some() { "G".to_string() } else { "H".to_string() };
+                            let mut flags = if user.away.is_some() {
+                                "G".to_string()
+                            } else {
+                                "H".to_string()
+                            };
                             if user.modes.oper {
                                 flags.push('*');
                             }
@@ -67,7 +80,7 @@ impl Handler for WhoHandler {
                                     nick.clone(),
                                     channel.name.clone(),
                                     user.user.clone(),
-                                    user.host.clone(),
+                                    user.visible_host.clone(),
                                     server_name.clone(),
                                     user.nick.clone(),
                                     flags,
@@ -81,10 +94,10 @@ impl Handler for WhoHandler {
             } else {
                 // Mask-based WHO - search all users
                 let mask_lower = irc_to_lower(mask_str);
-                
+
                 for user_ref in ctx.matrix.users.iter() {
                     let user = user_ref.read().await;
-                    
+
                     // Skip if operators_only and not an operator
                     if operators_only && !user.modes.oper {
                         continue;
@@ -93,7 +106,11 @@ impl Handler for WhoHandler {
                     // Match against nick (simple case-insensitive match or wildcard)
                     let nick_lower = irc_to_lower(&user.nick);
                     if matches_mask(&nick_lower, &mask_lower) {
-                        let mut flags = if user.away.is_some() { "G".to_string() } else { "H".to_string() };
+                        let mut flags = if user.away.is_some() {
+                            "G".to_string()
+                        } else {
+                            "H".to_string()
+                        };
                         if user.modes.oper {
                             flags.push('*');
                         }
@@ -105,7 +122,7 @@ impl Handler for WhoHandler {
                                 nick.clone(),
                                 "*".to_string(), // No specific channel
                                 user.user.clone(),
-                                user.host.clone(),
+                                user.visible_host.clone(),
                                 server_name.clone(),
                                 user.nick.clone(),
                                 flags,
@@ -120,7 +137,9 @@ impl Handler for WhoHandler {
         // No mask = return all visible users (typically empty for privacy)
 
         // RPL_ENDOFWHO (315)
-        let end_mask = mask.map(|s| s.to_string()).unwrap_or_else(|| "*".to_string());
+        let end_mask = mask
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "*".to_string());
         let reply = server_reply(
             server_name,
             Response::RPL_ENDOFWHO,
@@ -143,7 +162,9 @@ pub struct WhoisHandler;
 impl Handler for WhoisHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
@@ -161,7 +182,10 @@ impl Handler for WhoisHandler {
                 &ctx.matrix.server_info.name,
                 Response::ERR_NONICKNAMEGIVEN,
                 vec![
-                    ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
+                    ctx.handshake
+                        .nick
+                        .clone()
+                        .unwrap_or_else(|| "*".to_string()),
                     "No nickname given".to_string(),
                 ],
             );
@@ -170,7 +194,11 @@ impl Handler for WhoisHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
         let target_lower = irc_to_lower(target);
 
         // Look up target user
@@ -186,7 +214,7 @@ impl Handler for WhoisHandler {
                         nick.clone(),
                         target_user.nick.clone(),
                         target_user.user.clone(),
-                        target_user.host.clone(),
+                        target_user.visible_host.clone(),
                         "*".to_string(),
                         target_user.realname.clone(),
                     ],
@@ -212,21 +240,28 @@ impl Handler for WhoisHandler {
                     for channel_name in &target_user.channels {
                         if let Some(channel_ref) = ctx.matrix.channels.get(channel_name) {
                             let channel = channel_ref.read().await;
-                            
+
                             // Skip secret channels unless requester is a member
                             if channel.modes.secret && !channel.is_member(ctx.uid) {
                                 continue;
                             }
 
-                            let prefix = if let Some(member) = channel.members.get(&target_user.uid) {
-                                if member.op { "@" } else if member.voice { "+" } else { "" }
+                            let prefix = if let Some(member) = channel.members.get(&target_user.uid)
+                            {
+                                if member.op {
+                                    "@"
+                                } else if member.voice {
+                                    "+"
+                                } else {
+                                    ""
+                                }
                             } else {
                                 ""
                             };
                             channel_list.push(format!("{}{}", prefix, channel.name));
                         }
                     }
-                    
+
                     if !channel_list.is_empty() {
                         let reply = server_reply(
                             server_name,
@@ -274,11 +309,7 @@ impl Handler for WhoisHandler {
                     let reply = server_reply(
                         server_name,
                         Response::RPL_AWAY,
-                        vec![
-                            nick.clone(),
-                            target_user.nick.clone(),
-                            away_msg.clone(),
-                        ],
+                        vec![nick.clone(), target_user.nick.clone(), away_msg.clone()],
                     );
                     ctx.sender.send(reply).await?;
                 }
@@ -319,23 +350,29 @@ pub struct WhowasHandler;
 impl Handler for WhowasHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         // WHOWAS <nick> [count [server]]
         let target = msg.arg(0).unwrap_or("");
-        let count: usize = msg.arg(1)
+        let count: usize = msg
+            .arg(1)
             .and_then(|s| s.parse().ok())
-            .unwrap_or(10)  // Default to 10 entries
-            .min(10);        // Cap at 10
+            .unwrap_or(10) // Default to 10 entries
+            .min(10); // Cap at 10
 
         if target.is_empty() {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_NONICKNAMEGIVEN,
                 vec![
-                    ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
+                    ctx.handshake
+                        .nick
+                        .clone()
+                        .unwrap_or_else(|| "*".to_string()),
                     "No nickname given".to_string(),
                 ],
             );
@@ -344,14 +381,18 @@ impl Handler for WhowasHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Look up WHOWAS history
         let target_lower = irc_to_lower(target);
-        
+
         if let Some(entries) = ctx.matrix.whowas.get(&target_lower) {
             let entries_to_show: Vec<_> = entries.iter().take(count).cloned().collect();
-            
+
             if entries_to_show.is_empty() {
                 // No entries found
                 let reply = server_reply(
@@ -415,7 +456,11 @@ impl Handler for WhowasHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_ENDOFWHOWAS,
-            vec![nick.clone(), target.to_string(), "End of WHOWAS".to_string()],
+            vec![
+                nick.clone(),
+                target.to_string(),
+                "End of WHOWAS".to_string(),
+            ],
         );
         ctx.sender.send(reply).await?;
 
@@ -489,12 +534,20 @@ fn matches_mask(value: &str, mask: &str) -> bool {
 /// Send ERR_NOSUCHNICK for a target.
 async fn send_no_such_nick(ctx: &mut Context<'_>, target: &str) -> HandlerResult {
     let server_name = &ctx.matrix.server_info.name;
-    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx
+        .handshake
+        .nick
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
 
     let reply = server_reply(
         server_name,
         Response::ERR_NOSUCHNICK,
-        vec![nick.clone(), target.to_string(), "No such nick/channel".to_string()],
+        vec![
+            nick.clone(),
+            target.to_string(),
+            "No such nick/channel".to_string(),
+        ],
     );
     ctx.sender.send(reply).await?;
 
@@ -502,7 +555,11 @@ async fn send_no_such_nick(ctx: &mut Context<'_>, target: &str) -> HandlerResult
     let reply = server_reply(
         server_name,
         Response::RPL_ENDOFWHOIS,
-        vec![nick.clone(), target.to_string(), "End of WHOIS list".to_string()],
+        vec![
+            nick.clone(),
+            target.to_string(),
+            "End of WHOIS list".to_string(),
+        ],
     );
     ctx.sender.send(reply).await?;
 
@@ -522,7 +579,7 @@ mod tests {
         assert!(matches_mask("test", "t*t"));
         assert!(matches_mask("test", "te?t"));
         assert!(matches_mask("test", "????"));
-        assert!(!matches_mask("test", "?????")); 
+        assert!(!matches_mask("test", "?????"));
         assert!(!matches_mask("test", "best"));
         assert!(matches_mask("testing", "test*"));
         assert!(matches_mask("testing", "*ing"));
