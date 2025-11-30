@@ -15,6 +15,37 @@ use std::borrow::Cow;
 use tracing::debug;
 
 // ============================================================================
+// Shun Checking
+// ============================================================================
+
+/// Check if a user is shunned (silently blocked from messaging).
+///
+/// Returns true if the user is shunned and their command should be silently ignored.
+async fn is_shunned(ctx: &Context<'_>) -> bool {
+    // Get user's hostmask
+    let user_host = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+        let user = user_ref.read().await;
+        format!("{}@{}", user.user, user.host)
+    } else {
+        return false;
+    };
+
+    // Check database for shuns
+    match ctx.db.bans().matches_shun(&user_host).await {
+        Ok(Some(shun)) => {
+            debug!(
+                uid = %ctx.uid,
+                mask = %shun.mask,
+                reason = ?shun.reason,
+                "Shunned user attempted to send message"
+            );
+            true
+        }
+        _ => false,
+    }
+}
+
+// ============================================================================
 // Unified Message Routing
 // ============================================================================
 
@@ -339,6 +370,11 @@ impl Handler for PrivmsgHandler {
             return Err(HandlerError::NotRegistered);
         }
 
+        // Check shun first - silently ignore if shunned
+        if is_shunned(ctx).await {
+            return Ok(());
+        }
+
         // PRIVMSG <target> <text>
         let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
@@ -436,6 +472,11 @@ impl Handler for NoticeHandler {
             return Err(HandlerError::NotRegistered);
         }
 
+        // Check shun first - silently ignore if shunned
+        if is_shunned(ctx).await {
+            return Ok(());
+        }
+
         // NOTICE <target> <text>
         let target = msg.arg(0).unwrap_or("");
         let text = msg.arg(1).unwrap_or("");
@@ -504,6 +545,11 @@ impl Handler for TagmsgHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
             return Err(HandlerError::NotRegistered);
+        }
+
+        // Check shun first - silently ignore if shunned
+        if is_shunned(ctx).await {
+            return Ok(());
         }
 
         // Check if client has message-tags capability

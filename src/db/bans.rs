@@ -500,4 +500,109 @@ impl<'a> BanRepository<'a> {
 
         Ok(None)
     }
+
+    // ========== Shun operations ==========
+
+    /// Add a shun.
+    pub async fn add_shun(
+        &self,
+        mask: &str,
+        reason: Option<&str>,
+        set_by: &str,
+        duration: Option<i64>,
+    ) -> Result<(), DbError> {
+        let now = chrono::Utc::now().timestamp();
+        let expires_at = duration.map(|d| now + d);
+
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO shuns (mask, reason, set_by, set_at, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(mask)
+        .bind(reason)
+        .bind(set_by)
+        .bind(now)
+        .bind(expires_at)
+        .execute(self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Remove a shun.
+    pub async fn remove_shun(&self, mask: &str) -> Result<bool, DbError> {
+        let result = sqlx::query("DELETE FROM shuns WHERE mask = ?")
+            .bind(mask)
+            .execute(self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Get all active shuns (not expired).
+    pub async fn get_active_shuns(&self) -> Result<Vec<Shun>, DbError> {
+        let now = chrono::Utc::now().timestamp();
+
+        let rows = sqlx::query_as::<_, (String, Option<String>, String, i64, Option<i64>)>(
+            r#"
+            SELECT mask, reason, set_by, set_at, expires_at
+            FROM shuns
+            WHERE expires_at IS NULL OR expires_at > ?
+            "#,
+        )
+        .bind(now)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(mask, reason, set_by, set_at, expires_at)| Shun {
+                mask,
+                reason,
+                set_by,
+                set_at,
+                expires_at,
+            })
+            .collect())
+    }
+
+    /// Check if a user@host matches any active shun.
+    pub async fn matches_shun(&self, user_host: &str) -> Result<Option<Shun>, DbError> {
+        let shuns = self.get_active_shuns().await?;
+
+        for shun in shuns {
+            if wildcard_match(&shun.mask, user_host) {
+                return Ok(Some(shun));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Check if an IP matches any active shun.
+    #[allow(dead_code)] // Will be used for connection-time shun checks
+    pub async fn matches_shun_ip(&self, ip: &str) -> Result<Option<Shun>, DbError> {
+        let shuns = self.get_active_shuns().await?;
+
+        for shun in shuns {
+            if wildcard_match(&shun.mask, ip) || cidr_match(&shun.mask, ip) {
+                return Ok(Some(shun));
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+/// A shun (silent ban - user stays connected but commands are ignored).
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields used by admin for stats/inspection
+pub struct Shun {
+    pub mask: String,
+    pub reason: Option<String>,
+    pub set_by: String,
+    pub set_at: i64,
+    pub expires_at: Option<i64>,
 }
