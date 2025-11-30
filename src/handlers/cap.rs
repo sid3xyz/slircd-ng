@@ -15,6 +15,9 @@ const SUPPORTED_CAPS: &[&str] = &[
     "server-time",
     "echo-message",
     "sasl",
+    "batch",
+    "message-tags",
+    "labeled-response",
     // Phase 3: "away-notify", "account-notify", "extended-join",
 ];
 
