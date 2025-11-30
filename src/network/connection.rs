@@ -203,6 +203,10 @@ impl Connection {
 
         // Rate limiter for flood protection
         let mut rate_limiter = RateLimiter::new(RATE_LIMIT_RATE, RATE_LIMIT_BURST);
+        
+        // Penalty box: Track consecutive rate limit violations
+        let mut flood_violations = 0u8;
+        const MAX_FLOOD_VIOLATIONS: u8 = 3;  // Strike limit before disconnect
 
         // Channel for outgoing messages (handlers queue responses here)
         // Also used for routing messages from other users (PRIVMSG, etc.)
@@ -221,11 +225,32 @@ impl Connection {
                 result = reader.next() => {
                     match result {
                         Some(Ok(msg_ref)) => {
-                            // Flood protection
+                            // Flood protection with penalty box
                             if !rate_limiter.check() {
-                                warn!(uid = %self.uid, "Rate limit exceeded");
-                                let _ = writer.send(Message::from(Command::ERROR("Excess Flood".into()))).await;
-                                break;
+                                flood_violations += 1;
+                                warn!(uid = %self.uid, violations = flood_violations, "Rate limit exceeded");
+                                
+                                if flood_violations >= MAX_FLOOD_VIOLATIONS {
+                                    // Strike limit reached - disconnect immediately
+                                    warn!(uid = %self.uid, "Maximum flood violations reached - disconnecting");
+                                    let _ = writer.send(Message::from(Command::ERROR("Excess Flood (Strike limit reached)".into()))).await;
+                                    break;
+                                } else {
+                                    // Warning strike - throttle but don't disconnect yet
+                                    let _ = writer.send(Message::from(Command::NOTICE(
+                                        "*".to_string(),
+                                        format!("*** Warning: Flooding detected ({}/{} strikes). Slow down or you will be disconnected.", 
+                                                flood_violations, MAX_FLOOD_VIOLATIONS)
+                                    ))).await;
+                                    
+                                    // Apply penalty delay (exponential backoff)
+                                    let penalty_ms = 500 * (flood_violations as u64);
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(penalty_ms)).await;
+                                    continue;  // Skip processing this command
+                                }
+                            } else {
+                                // Rate limit passed - reset violation counter
+                                flood_violations = 0;
                             }
 
                             debug!(raw = ?msg_ref, "Received message (zero-copy)");
