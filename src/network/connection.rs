@@ -181,6 +181,15 @@ impl Connection {
                 Some(Ok(msg_ref)) => {
                     debug!(raw = %msg_ref.raw.trim(), "Received message");
 
+                    // Extract label tag for labeled-response (IRCv3)
+                    let label = if handshake.capabilities.contains("labeled-response") {
+                        msg_ref.tags_iter()
+                            .find(|(k, _)| *k == "label")
+                            .map(|(_, v)| v.to_string())
+                    } else {
+                        None
+                    };
+
                     let mut ctx = Context {
                         uid: &self.uid,
                         matrix: &self.matrix,
@@ -188,6 +197,7 @@ impl Connection {
                         handshake: &mut handshake,
                         db: &self.db,
                         remote_addr: self.addr,
+                        label,
                     };
 
                     if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
@@ -291,6 +301,15 @@ impl Connection {
 
                             debug!(raw = ?msg_ref, "Received message (zero-copy)");
 
+                            // Extract label tag for labeled-response (IRCv3)
+                            let label = if handshake.capabilities.contains("labeled-response") {
+                                msg_ref.tags_iter()
+                                    .find(|(k, _)| *k == "label")
+                                    .map(|(_, v)| v.to_string())
+                            } else {
+                                None
+                            };
+
                             // Dispatch to handler
                             let mut ctx = Context {
                                 uid: &self.uid,
@@ -299,6 +318,7 @@ impl Connection {
                                 handshake: &mut handshake,
                                 db: &self.db,
                                 remote_addr: self.addr,
+                                label,
                             };
 
                             if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {

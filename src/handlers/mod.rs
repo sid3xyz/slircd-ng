@@ -46,7 +46,7 @@ pub use user_query::{WhoHandler, WhoisHandler, WhowasHandler};
 use crate::db::Database;
 use crate::state::Matrix;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response, Tag};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -67,6 +67,9 @@ pub struct Context<'a> {
     pub db: &'a Database,
     /// Remote address of the client.
     pub remote_addr: SocketAddr,
+    /// Label from incoming message for labeled-response (IRCv3).
+    /// If present, should be echoed back on all responses.
+    pub label: Option<String>,
 }
 
 /// State tracked during client registration handshake.
@@ -260,6 +263,38 @@ pub fn server_reply(server_name: &str, response: Response, params: Vec<String>) 
         tags: None,
         prefix: Some(Prefix::ServerName(server_name.to_string())),
         command: Command::Response(response, params),
+    }
+}
+
+// ============================================================================
+// Labeled Response Helpers (IRCv3)
+// ============================================================================
+
+/// Attach a label tag to a message if one was provided.
+///
+/// Used for IRCv3 labeled-response capability to echo the client's label.
+#[allow(dead_code)] // Will be used in Phase 4 for full labeled-response support
+pub fn with_label(mut msg: Message, label: Option<&str>) -> Message {
+    if let Some(label_value) = label {
+        let tag = Tag(std::borrow::Cow::Borrowed("label"), Some(label_value.to_string()));
+        if let Some(ref mut tags) = msg.tags {
+            tags.push(tag);
+        } else {
+            msg.tags = Some(vec![tag]);
+        }
+    }
+    msg
+}
+
+/// Create a labeled ACK response for commands that normally produce no output.
+///
+/// Per IRCv3 labeled-response spec, servers MUST respond with ACK when a labeled
+/// command would normally produce no response (e.g., PONG).
+pub fn labeled_ack(server_name: &str, label: &str) -> Message {
+    Message {
+        tags: Some(vec![Tag(std::borrow::Cow::Borrowed("label"), Some(label.to_string()))]),
+        prefix: Some(Prefix::ServerName(server_name.to_string())),
+        command: Command::ACK,
     }
 }
 

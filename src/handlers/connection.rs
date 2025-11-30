@@ -460,7 +460,13 @@ pub struct PongHandler;
 
 #[async_trait]
 impl Handler for PongHandler {
-    async fn handle(&self, _ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+        // PONG normally produces no output, but with labeled-response we send ACK
+        if let Some(label) = &ctx.label {
+            let ack = super::labeled_ack(&ctx.matrix.server_info.name, label);
+            ctx.sender.send(ack).await?;
+        }
+
         // Just acknowledge PONG - resets idle timer (handled in connection loop)
         Ok(())
     }
