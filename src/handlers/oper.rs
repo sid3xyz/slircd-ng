@@ -53,10 +53,59 @@ impl Handler for OperHandler {
 
         let nick = get_nick_or_star(ctx).await;
 
+        // Brute-force protection: Check rate limiting and attempt counter
+        const MAX_OPER_ATTEMPTS: u8 = 3;
+        const OPER_DELAY_MS: u64 = 2000;  // 2 seconds between attempts
+        const LOCKOUT_DELAY_MS: u64 = 30000;  // 30 second lockout after max attempts
+
+        let now = std::time::Instant::now();
+
+        // Check if user is in lockout period
+        if ctx.handshake.failed_oper_attempts >= MAX_OPER_ATTEMPTS {
+            if let Some(last_attempt) = ctx.handshake.last_oper_attempt {
+                let elapsed = now.duration_since(last_attempt).as_millis() as u64;
+                if elapsed < LOCKOUT_DELAY_MS {
+                    let remaining_sec = (LOCKOUT_DELAY_MS - elapsed) / 1000;
+                    let reply = server_reply(
+                        server_name,
+                        Response::ERR_PASSWDMISMATCH,
+                        vec![
+                            nick.clone(),
+                            format!("Too many failed attempts. Try again in {} seconds.", remaining_sec)
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                    tracing::warn!(nick = %nick, attempts = ctx.handshake.failed_oper_attempts, "OPER brute-force lockout active");
+                    return Ok(());
+                } else {
+                    // Lockout period expired, reset counter
+                    ctx.handshake.failed_oper_attempts = 0;
+                }
+            }
+        }
+
+        // Enforce delay between attempts
+        if let Some(last_attempt) = ctx.handshake.last_oper_attempt {
+            let elapsed = now.duration_since(last_attempt).as_millis() as u64;
+            if elapsed < OPER_DELAY_MS {
+                let remaining_ms = OPER_DELAY_MS - elapsed;
+                tokio::time::sleep(tokio::time::Duration::from_millis(remaining_ms)).await;
+            }
+        }
+
+        ctx.handshake.last_oper_attempt = Some(now);
+
         // Check oper blocks in config
         let oper_block = ctx.matrix.config.oper_blocks.iter().find(|block| block.name == name);
 
         let Some(oper_block) = oper_block else {
+            ctx.handshake.failed_oper_attempts += 1;
+            tracing::warn!(
+                nick = %nick, 
+                oper_name = %name, 
+                attempts = ctx.handshake.failed_oper_attempts,
+                "OPER failed: unknown oper name"
+            );
             let reply = server_reply(
                 server_name,
                 Response::ERR_PASSWDMISMATCH,
@@ -69,6 +118,13 @@ impl Handler for OperHandler {
         // Validate password
         // TODO: Support bcrypt hashes for production
         if oper_block.password != password {
+            ctx.handshake.failed_oper_attempts += 1;
+            tracing::warn!(
+                nick = %nick,
+                oper_name = %name,
+                attempts = ctx.handshake.failed_oper_attempts,
+                "OPER failed: incorrect password"
+            );
             let reply = server_reply(
                 server_name,
                 Response::ERR_PASSWDMISMATCH,
@@ -81,11 +137,16 @@ impl Handler for OperHandler {
         // TODO: Check hostmask if specified in oper block
         // For now, grant operator status
 
+        // Success - reset attempt counter
+        ctx.handshake.failed_oper_attempts = 0;
+
         // Set +o mode on user
         if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
             let mut user = user_ref.write().await;
             user.modes.oper = true;
         }
+
+        tracing::info!(nick = %nick, oper_name = %name, "OPER successful");
 
         let reply = server_reply(
             server_name,

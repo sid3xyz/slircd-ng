@@ -85,6 +85,10 @@ pub struct HandshakeState {
     pub account: Option<String>,
     /// Whether this is a TLS connection.
     pub is_tls: bool,
+    /// Failed OPER attempts counter (brute-force protection).
+    pub failed_oper_attempts: u8,
+    /// Timestamp of last OPER attempt (for rate limiting).
+    pub last_oper_attempt: Option<std::time::Instant>,
 }
 
 impl HandshakeState {
