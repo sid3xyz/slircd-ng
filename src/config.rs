@@ -109,7 +109,9 @@ pub struct WebSocketConfig {
     /// Address to bind to for WebSocket (e.g., "0.0.0.0:8080").
     pub address: SocketAddr,
     /// Allowed origins for CORS (e.g., ["https://example.com"]).
+    /// TODO: Implement CORS origin validation in WebSocket gateway
     #[serde(default)]
+    #[allow(dead_code)]
     pub allow_origins: Vec<String>,
 }
 
