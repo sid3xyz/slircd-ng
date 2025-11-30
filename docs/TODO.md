@@ -286,10 +286,10 @@ CREATE TABLE klines (
 | Feature | slircd | slircd-ng | Notes |
 |---------|--------|-----------|-------|
 | DNS reverse lookup | ✅ | ❌ | Resolve hostnames |
-| IP cloaking | ✅ | ❌ | HMAC-based host cloaking |
-| Flood protection | ✅ | ❌ | Rate limiting per user |
-| Per-command rate limits | ✅ | ❌ | WHO, LIST, etc. limits |
-| Max connections per IP | ✅ | ❌ | Anti-abuse limit |
+| IP cloaking | ✅ | ✅ | **Implemented: HMAC-SHA256 in security/cloaking.rs** |
+| Flood protection | ✅ | ✅ | **Implemented: Governor token bucket rate limiting** |
+| Per-command rate limits | ✅ | Partial | Message + join rate limits (not per-command) |
+| Max connections per IP | ✅ | ✅ | **Implemented: connection_burst_per_ip in gateway.rs** |
 | Registration timeout | ✅ | ❌ | Kick unregistered clients |
 | Ping timeout | ✅ | ❌ | Disconnect idle clients |
 
@@ -305,13 +305,13 @@ CREATE TABLE klines (
 | TLS cert/key paths | ✅ | ❌ | TLS configuration |
 | WebSocket listeners | ✅ | ❌ | WS/WSS bind addresses |
 | Oper hostmask check | ✅ | Partial | Has field, not enforced |
-| Per-command limits | ✅ | ❌ | Rate limit config |
-| Anti-spam config | ✅ | ❌ | Burst/sustained rates |
+| Per-command limits | ✅ | Partial | RateLimitConfig (msg, conn, join) |
+| Anti-spam config | ✅ | ✅ | **Implemented: RateLimitConfig in config.rs** |
 | WebIRC blocks | ✅ | ❌ | Gateway config |
 | NickServ config | ✅ | ❌ | Service settings |
 | ChanServ config | ✅ | ❌ | Service settings |
 | MOTD file path | ✅ | ❌ | External MOTD file |
-| Cloak secret | ✅ | ❌ | Host cloaking key |
+| Cloak secret | ✅ | ✅ | **Implemented: cloak_secret in config.rs** |
 
 ---
 
@@ -374,12 +374,15 @@ CREATE TABLE klines (
 
 ### Phase 4: Security Features (P2)
 1. [ ] TLS support (rustls)
-2. [ ] IP cloaking
-3. [ ] Flood protection (burst/sustained)
-4. [ ] Per-command rate limits
-5. [ ] Max connections per IP
-6. [ ] SHUN/UNSHUN commands
-7. [ ] Oper hostmask enforcement
+2. [x] IP cloaking (security/cloaking.rs - HMAC-SHA256)
+3. [x] Flood protection (security/rate_limit.rs - Governor)
+4. [x] Per-client rate limits (msg/conn/join bursts)
+5. [x] Max connections per IP (gateway.rs)
+6. [x] GLINE/ZLINE commands (G-lines, Z-lines in bans.rs)
+7. [ ] SHUN/UNSHUN commands
+8. [ ] Oper hostmask enforcement
+9. [x] X-line infrastructure (security/xlines.rs)
+10. [x] Extended bans ($a:, $r:, $U, etc.)
 
 ### Phase 5: Extended Commands (P2)
 1. [ ] MONITOR command
