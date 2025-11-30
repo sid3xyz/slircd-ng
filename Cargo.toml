@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Protocol core
-slirc-proto = { path = "../slirc-proto", features = ["tokio"] }
+slirc-proto = { git = "https://github.com/sid3xyz/slirc-proto", features = ["tokio"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
