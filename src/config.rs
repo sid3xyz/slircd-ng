@@ -33,6 +33,9 @@ pub struct Config {
     /// Rate limiting configuration.
     #[serde(default)]
     pub limits: LimitsConfig,
+    /// Security configuration (cloaking, rate limiting, anti-abuse).
+    #[serde(default)]
+    pub security: SecurityConfig,
 }
 
 /// Database configuration.
@@ -42,7 +45,8 @@ pub struct DatabaseConfig {
     pub path: String,
 }
 
-/// Rate limiting configuration.
+/// Rate limiting configuration (legacy - will be replaced by RateLimitConfig).
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct LimitsConfig {
     /// Messages per second allowed (default: 2.5).
@@ -111,6 +115,75 @@ pub struct WebSocketConfig {
     /// Empty list allows all origins.
     #[serde(default)]
     pub allow_origins: Vec<String>,
+}
+
+/// Security configuration for cloaking, rate limiting, and anti-abuse.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SecurityConfig {
+    /// Secret key for HMAC-based host cloaking.
+    /// MUST be kept private and should be at least 32 characters.
+    #[serde(default = "default_cloak_secret")]
+    pub cloak_secret: String,
+    /// Suffix for cloaked IP addresses (default: "ip").
+    #[serde(default = "default_cloak_suffix")]
+    pub cloak_suffix: String,
+    /// Rate limiting configuration.
+    #[serde(default)]
+    pub rate_limits: RateLimitConfig,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            cloak_secret: default_cloak_secret(),
+            cloak_suffix: default_cloak_suffix(),
+            rate_limits: RateLimitConfig::default(),
+        }
+    }
+}
+
+fn default_cloak_secret() -> String {
+    "slircd-default-secret-CHANGE-ME-IN-PRODUCTION".to_string()
+}
+
+fn default_cloak_suffix() -> String {
+    "ip".to_string()
+}
+
+/// Rate limiting configuration for anti-flood protection.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RateLimitConfig {
+    /// Messages allowed per client per second (default: 2).
+    #[serde(default = "default_message_rate")]
+    pub message_rate_per_second: u32,
+    /// Connection burst allowed per IP in 10 seconds (default: 3).
+    #[serde(default = "default_connection_burst")]
+    pub connection_burst_per_ip: u32,
+    /// Channel join burst allowed per client in 10 seconds (default: 5).
+    #[serde(default = "default_join_burst")]
+    pub join_burst_per_client: u32,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            message_rate_per_second: default_message_rate(),
+            connection_burst_per_ip: default_connection_burst(),
+            join_burst_per_client: default_join_burst(),
+        }
+    }
+}
+
+fn default_message_rate() -> u32 {
+    2
+}
+
+fn default_connection_burst() -> u32 {
+    3
+}
+
+fn default_join_burst() -> u32 {
+    5
 }
 
 impl Config {

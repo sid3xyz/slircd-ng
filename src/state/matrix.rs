@@ -3,10 +3,10 @@
 //! The Matrix holds all users, channels, and server state in concurrent
 //! data structures accessible from any async task.
 
-use crate::config::{Config, LimitsConfig, OperBlock};
+use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
+use crate::security::{RateLimitManager, XLine};
 use crate::state::UidGenerator;
 use dashmap::DashMap;
-use sha2::{Digest, Sha256};
 use slirc_proto::Message;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -58,6 +58,13 @@ pub struct Matrix {
 
     /// Server configuration (for handlers to access).
     pub config: MatrixConfig,
+
+    /// Global rate limiter for flood protection.
+    pub rate_limiter: RateLimitManager,
+
+    /// Active X-lines (K/G/Z/R/S-lines) for server-level bans.
+    /// Key is the pattern/mask, value is the XLine.
+    pub xlines: DashMap<String, XLine>,
 }
 
 /// An entry in the WHOWAS history for a disconnected user.
@@ -82,8 +89,11 @@ pub struct WhowasEntry {
 pub struct MatrixConfig {
     /// Operator blocks.
     pub oper_blocks: Vec<OperBlock>,
-    /// Rate limits.
+    /// Rate limits (legacy - being replaced by security.rate_limits).
+    #[allow(dead_code)]
     pub limits: LimitsConfig,
+    /// Security configuration (cloaking, rate limiting).
+    pub security: SecurityConfig,
 }
 
 /// This server's identity information.
@@ -152,8 +162,23 @@ impl UserModes {
 
 impl User {
     /// Create a new user.
-    pub fn new(uid: Uid, nick: String, user: String, realname: String, host: String) -> Self {
-        let visible_host = cloak_host(&host);
+    ///
+    /// The `host` is cloaked using HMAC-SHA256 with the provided secret.
+    pub fn new(
+        uid: Uid,
+        nick: String,
+        user: String,
+        realname: String,
+        host: String,
+        cloak_secret: &str,
+        cloak_suffix: &str,
+    ) -> Self {
+        // Try to parse as IP for proper cloaking, fall back to hostname cloaking
+        let visible_host = if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+            crate::security::cloaking::cloak_ip_hmac_with_suffix(&ip, cloak_secret, cloak_suffix)
+        } else {
+            crate::security::cloaking::cloak_hostname(&host, cloak_secret)
+        };
         Self {
             uid,
             nick,
@@ -167,35 +192,12 @@ impl User {
             away: None,
         }
     }
-}
 
-/// Cloak a hostname for user privacy.
-///
-/// Uses SHA256(IP + SALT) to create a deterministic but unpredictable cloaked hostname.
-/// This prevents exposing user IP addresses to other users while maintaining uniqueness.
-///
-/// Format: `<prefix>-<hash>.cloak`
-///
-/// # Arguments
-/// * `host` - The real IP address or hostname to cloak
-///
-/// # Returns
-/// A cloaked hostname string
-pub fn cloak_host(host: &str) -> String {
-    // Salt for cloaking (in production, this should be configurable and secret)
-    const CLOAK_SALT: &str = "slircd-ng-cloak-salt-change-me";
-
-    // Create SHA256 hash of IP + salt
-    let mut hasher = Sha256::new();
-    hasher.update(host.as_bytes());
-    hasher.update(CLOAK_SALT.as_bytes());
-    let result = hasher.finalize();
-
-    // Take first 8 bytes of hash and convert to hex
-    let hash_hex = format!("{:x}", u64::from_be_bytes(result[0..8].try_into().unwrap()));
-
-    // Format: user-<hash>.cloak
-    format!("user-{}.cloak", &hash_hex[0..8])
+    /// Create a new user with default cloaking (for testing).
+    #[cfg(test)]
+    pub fn new_test(uid: Uid, nick: String, user: String, realname: String, host: String) -> Self {
+        Self::new(uid, nick, user, realname, host, "test-secret", "ip")
+    }
 }
 
 /// An IRC channel.
@@ -381,7 +383,10 @@ impl Matrix {
             config: MatrixConfig {
                 oper_blocks: config.oper.clone(),
                 limits: config.limits.clone(),
+                security: config.security.clone(),
             },
+            rate_limiter: RateLimitManager::new(config.security.rate_limits.clone()),
+            xlines: DashMap::new(),
         }
     }
 

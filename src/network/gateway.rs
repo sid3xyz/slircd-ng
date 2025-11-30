@@ -120,6 +120,13 @@ impl Gateway {
                 loop {
                     match tls_listener.accept().await {
                         Ok((stream, addr)) => {
+                            // Check connection rate limit before accepting
+                            if !matrix_tls.rate_limiter.check_connection_rate(addr.ip()) {
+                                warn!(%addr, "TLS connection rate limit exceeded - rejecting");
+                                drop(stream);
+                                continue;
+                            }
+
                             info!(%addr, "TLS connection accepted");
 
                             let matrix = Arc::clone(&matrix_tls);
@@ -170,6 +177,13 @@ impl Gateway {
                 loop {
                     match ws_listener.accept().await {
                         Ok((stream, addr)) => {
+                            // Check connection rate limit before accepting
+                            if !matrix_ws.rate_limiter.check_connection_rate(addr.ip()) {
+                                warn!(%addr, "WebSocket connection rate limit exceeded - rejecting");
+                                drop(stream);
+                                continue;
+                            }
+
                             info!(%addr, "WebSocket connection attempt");
 
                             let matrix = Arc::clone(&matrix_ws);
@@ -238,6 +252,13 @@ impl Gateway {
         loop {
             match self.plaintext_listener.accept().await {
                 Ok((stream, addr)) => {
+                    // Check connection rate limit before accepting
+                    if !matrix.rate_limiter.check_connection_rate(addr.ip()) {
+                        warn!(%addr, "Plaintext connection rate limit exceeded - rejecting");
+                        drop(stream);
+                        continue;
+                    }
+
                     info!(%addr, "Plaintext connection accepted");
 
                     let matrix = Arc::clone(&matrix);

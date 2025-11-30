@@ -1,6 +1,11 @@
 //! Rate limiting for flood protection.
 //!
 //! Implements a token bucket algorithm for rate limiting client messages.
+//!
+//! **Note**: This module is deprecated in favor of `security::rate_limit::RateLimitManager`
+//! which provides a global, concurrent rate limiter. Kept for tests and potential fallback.
+
+#![allow(dead_code)]
 
 use std::time::Instant;
 

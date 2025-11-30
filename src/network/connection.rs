@@ -25,7 +25,6 @@
 
 use crate::db::Database;
 use crate::handlers::{Context, HandshakeState, Registry};
-use crate::network::limit::RateLimiter;
 use crate::state::Matrix;
 use slirc_proto::error::ProtocolError;
 use slirc_proto::transport::{TransportReadError, ZeroCopyTransportEnum};
@@ -239,10 +238,6 @@ impl Connection {
         // Phase 2: Unified Zero-Copy Loop
         // Transport handles both reading and writing with unified API
 
-        // Rate limiter for flood protection (configurable from config.toml)
-        let limits = &self.matrix.config.limits;
-        let mut rate_limiter = RateLimiter::new(limits.rate, limits.burst);
-
         // Penalty box: Track consecutive rate limit violations
         let mut flood_violations = 0u8;
         const MAX_FLOOD_VIOLATIONS: u8 = 3; // Strike limit before disconnect
@@ -264,8 +259,8 @@ impl Connection {
                 result = self.transport.next() => {
                     match result {
                         Some(Ok(msg_ref)) => {
-                            // Flood protection with penalty box
-                            if !rate_limiter.check() {
+                            // Flood protection using global rate limiter
+                            if !self.matrix.rate_limiter.check_message_rate(&self.uid) {
                                 flood_violations += 1;
                                 warn!(uid = %self.uid, violations = flood_violations, "Rate limit exceeded");
 
@@ -379,6 +374,9 @@ impl Connection {
 
         // Unregister sender from Matrix
         self.matrix.unregister_sender(&self.uid);
+
+        // Remove from rate limiter
+        self.matrix.rate_limiter.remove_client(&self.uid);
 
         info!("Client disconnected");
 

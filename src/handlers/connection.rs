@@ -210,8 +210,8 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     let network = &ctx.matrix.server_info.network;
     let host = ctx.remote_addr.ip().to_string();
 
-    // Check for K-lines and D-lines before completing registration
-    if let Ok(Some(ban_reason)) = ctx.db.bans().check_ban(&host, user, &host).await {
+    // Check for database bans (K-lines, D-lines, G-lines, Z-lines)
+    if let Ok(Some(ban_reason)) = ctx.db.bans().check_all_bans(&host, user, &host).await {
         // ERR_YOUREBANNEDCREEP (465)
         let reply = server_reply(
             server_name,
@@ -230,20 +230,57 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         )));
         ctx.sender.send(error).await?;
 
-        // Return an error to cause the connection to close
-        // The connection cleanup will handle removing the nick from the index
         return Err(HandlerError::NotRegistered);
+    }
+
+    // Check in-memory X-lines (for real-time updates without DB query)
+    let user_context = crate::security::UserContext::for_registration(
+        ctx.remote_addr.ip(),
+        host.clone(),
+        nick.clone(),
+        user.clone(),
+        realname.clone(),
+        server_name.clone(),
+        ctx.handshake.account.clone(),
+    );
+
+    for xline_entry in ctx.matrix.xlines.iter() {
+        if crate::security::matches_xline(xline_entry.value(), &user_context) {
+            let xline = xline_entry.value();
+            let ban_reason = format!("{}: {}", xline.type_name(), xline.reason());
+
+            let reply = server_reply(
+                server_name,
+                Response::ERR_YOUREBANNEDCREEP,
+                vec![
+                    nick.clone(),
+                    format!("You are banned from this server: {}", ban_reason),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+
+            let error = Message::from(Command::ERROR(format!(
+                "Closing Link: {} ({})",
+                host, ban_reason
+            )));
+            ctx.sender.send(error).await?;
+
+            return Err(HandlerError::NotRegistered);
+        }
     }
 
     ctx.handshake.registered = true;
 
-    // Create user in Matrix
+    // Create user in Matrix with cloaking from security config
+    let security_config = &ctx.matrix.config.security;
     let mut user_obj = User::new(
         ctx.uid.to_string(),
         nick.clone(),
         user.clone(),
         realname,
         host.clone(),
+        &security_config.cloak_secret,
+        &security_config.cloak_suffix,
     );
 
     // Set account and +r if authenticated via SASL

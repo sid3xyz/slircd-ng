@@ -312,6 +312,307 @@ impl Handler for UndlineHandler {
     }
 }
 
+/// Handler for GLINE command.
+///
+/// `GLINE [time] user@host :reason`
+///
+/// Global ban by nick!user@host mask (network-wide).
+pub struct GlineHandler;
+
+#[async_trait]
+impl Handler for GlineHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        let server_name = &ctx.matrix.server_info.name;
+
+        let Ok(nick) = require_oper(ctx).await else {
+            return Ok(());
+        };
+
+        // GLINE [time] <user@host> <reason>
+        let mask = match msg.arg(0) {
+            Some(m) if !m.is_empty() => m,
+            _ => {
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "GLINE"))
+                    .await?;
+                return Ok(());
+            }
+        };
+        let reason = msg.arg(1).unwrap_or("No reason given");
+
+        // Store G-line in database
+        if let Err(e) = ctx
+            .db
+            .bans()
+            .add_gline(mask, Some(reason), &nick, None)
+            .await
+        {
+            tracing::error!(error = %e, "Failed to add G-line to database");
+        }
+
+        // Disconnect any matching users
+        let disconnected = disconnect_matching_gline(ctx, mask, reason).await;
+
+        tracing::info!(
+            oper = %nick,
+            mask = %mask,
+            reason = %reason,
+            disconnected = disconnected,
+            "GLINE added"
+        );
+
+        // Send confirmation
+        let notice = Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.clone())),
+            command: Command::NOTICE(
+                nick,
+                if disconnected > 0 {
+                    format!("G-line added: {mask} ({reason}) - {disconnected} user(s) disconnected")
+                } else {
+                    format!("G-line added: {mask} ({reason})")
+                },
+            ),
+        };
+        ctx.sender.send(notice).await?;
+
+        Ok(())
+    }
+}
+
+/// Disconnect all users matching a G-line mask.
+async fn disconnect_matching_gline(ctx: &Context<'_>, mask: &str, reason: &str) -> usize {
+    let mut disconnected = 0;
+    let mut to_disconnect = Vec::new();
+
+    // Find matching users
+    for entry in ctx.matrix.users.iter() {
+        let uid = entry.key().clone();
+        let user = entry.value().read().await;
+        let user_host = format!("{}@{}", user.user, user.host);
+
+        if wildcard_match(mask, &user_host) {
+            to_disconnect.push(uid);
+        }
+    }
+
+    // Disconnect them
+    for uid in to_disconnect {
+        let quit_reason = format!("G-lined: {}", reason);
+        ctx.matrix.disconnect_user(&uid, &quit_reason).await;
+        disconnected += 1;
+    }
+
+    disconnected
+}
+
+/// Handler for UNGLINE command.
+///
+/// `UNGLINE user@host`
+///
+/// Removes a G-line.
+pub struct UnglineHandler;
+
+#[async_trait]
+impl Handler for UnglineHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        let server_name = &ctx.matrix.server_info.name;
+
+        let Ok(nick) = require_oper(ctx).await else {
+            return Ok(());
+        };
+
+        // UNGLINE <mask>
+        let mask = match msg.arg(0) {
+            Some(m) if !m.is_empty() => m,
+            _ => {
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "UNGLINE"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Remove G-line from database
+        let removed = match ctx.db.bans().remove_gline(mask).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to remove G-line from database");
+                false
+            }
+        };
+
+        if removed {
+            tracing::info!(oper = %nick, mask = %mask, "UNGLINE removed");
+        }
+
+        // Send confirmation
+        let notice = Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.clone())),
+            command: Command::NOTICE(
+                nick,
+                if removed {
+                    format!("G-line removed: {mask}")
+                } else {
+                    format!("No G-line found for: {mask}")
+                },
+            ),
+        };
+        ctx.sender.send(notice).await?;
+
+        Ok(())
+    }
+}
+
+/// Handler for ZLINE command.
+///
+/// `ZLINE [time] ip :reason`
+///
+/// IP ban that skips DNS lookup (faster for abuse mitigation).
+pub struct ZlineHandler;
+
+#[async_trait]
+impl Handler for ZlineHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        let server_name = &ctx.matrix.server_info.name;
+
+        let Ok(nick) = require_oper(ctx).await else {
+            return Ok(());
+        };
+
+        // ZLINE [time] <ip> <reason>
+        let ip = match msg.arg(0) {
+            Some(i) if !i.is_empty() => i,
+            _ => {
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "ZLINE"))
+                    .await?;
+                return Ok(());
+            }
+        };
+        let reason = msg.arg(1).unwrap_or("No reason given");
+
+        // Store Z-line in database
+        if let Err(e) = ctx.db.bans().add_zline(ip, Some(reason), &nick, None).await {
+            tracing::error!(error = %e, "Failed to add Z-line to database");
+        }
+
+        // Disconnect any matching users
+        let disconnected = disconnect_matching_zline(ctx, ip, reason).await;
+
+        tracing::info!(
+            oper = %nick,
+            ip = %ip,
+            reason = %reason,
+            disconnected = disconnected,
+            "ZLINE added"
+        );
+
+        // Send confirmation
+        let notice = Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.clone())),
+            command: Command::NOTICE(
+                nick,
+                if disconnected > 0 {
+                    format!("Z-line added: {ip} ({reason}) - {disconnected} user(s) disconnected")
+                } else {
+                    format!("Z-line added: {ip} ({reason})")
+                },
+            ),
+        };
+        ctx.sender.send(notice).await?;
+
+        Ok(())
+    }
+}
+
+/// Disconnect all users matching a Z-line (IP ban).
+async fn disconnect_matching_zline(ctx: &Context<'_>, mask: &str, reason: &str) -> usize {
+    let mut disconnected = 0;
+    let mut to_disconnect = Vec::new();
+
+    // Find matching users by IP (stored in host field for now)
+    for entry in ctx.matrix.users.iter() {
+        let uid = entry.key().clone();
+        let user = entry.value().read().await;
+
+        // Check if user's host/IP matches the Z-line
+        if wildcard_match(mask, &user.host) || cidr_match(mask, &user.host) {
+            to_disconnect.push(uid);
+        }
+    }
+
+    // Disconnect them
+    for uid in to_disconnect {
+        let quit_reason = format!("Z-lined: {}", reason);
+        ctx.matrix.disconnect_user(&uid, &quit_reason).await;
+        disconnected += 1;
+    }
+
+    disconnected
+}
+
+/// Handler for UNZLINE command.
+///
+/// `UNZLINE ip`
+///
+/// Removes a Z-line.
+pub struct UnzlineHandler;
+
+#[async_trait]
+impl Handler for UnzlineHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        let server_name = &ctx.matrix.server_info.name;
+
+        let Ok(nick) = require_oper(ctx).await else {
+            return Ok(());
+        };
+
+        // UNZLINE <ip>
+        let ip = match msg.arg(0) {
+            Some(i) if !i.is_empty() => i,
+            _ => {
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "UNZLINE"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Remove Z-line from database
+        let removed = match ctx.db.bans().remove_zline(ip).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to remove Z-line from database");
+                false
+            }
+        };
+
+        if removed {
+            tracing::info!(oper = %nick, ip = %ip, "UNZLINE removed");
+        }
+
+        // Send confirmation
+        let notice = Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.clone())),
+            command: Command::NOTICE(
+                nick,
+                if removed {
+                    format!("Z-line removed: {ip}")
+                } else {
+                    format!("No Z-line found for: {ip}")
+                },
+            ),
+        };
+        ctx.sender.send(notice).await?;
+
+        Ok(())
+    }
+}
+
 /// Simple wildcard matching (* and ?).
 fn wildcard_match(pattern: &str, text: &str) -> bool {
     let pattern = pattern.to_lowercase();

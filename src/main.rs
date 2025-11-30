@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod handlers;
 mod network;
+mod security;
 mod services;
 mod state;
 
@@ -44,6 +45,13 @@ async fn main() -> anyhow::Result<()> {
         sid = %config.server.sid,
         "Starting slircd-ng"
     );
+
+    // Warn if using default cloak secret
+    if crate::security::cloaking::is_default_secret(&config.security.cloak_secret) {
+        tracing::warn!(
+            "Using default cloak_secret! Set [security].cloak_secret in config.toml for production."
+        );
+    }
 
     // Initialize database
     let db_path = config
