@@ -16,7 +16,7 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use tokio_tungstenite::accept_async;
+use tokio_tungstenite::accept_hdr_async;
 use tracing::{error, info, instrument, warn};
 
 /// The Gateway accepts incoming TCP/TLS connections and spawns handlers.
@@ -160,10 +160,11 @@ impl Gateway {
         }
 
         // If WebSocket is configured, spawn a separate task for the WebSocket listener
-        if let Some((ws_listener, _ws_config)) = self.websocket_listener {
+        if let Some((ws_listener, ws_config)) = self.websocket_listener {
             let matrix_ws = Arc::clone(&matrix);
             let registry_ws = Arc::clone(&registry);
             let db_ws = db.clone();
+            let allow_origins = ws_config.allow_origins.clone();
 
             tokio::spawn(async move {
                 loop {
@@ -175,10 +176,35 @@ impl Gateway {
                             let registry = Arc::clone(&registry_ws);
                             let db = db_ws.clone();
                             let uid = matrix.uid_gen.next();
+                            let allowed = allow_origins.clone();
 
                             tokio::spawn(async move {
-                                // Perform WebSocket handshake
-                                match accept_async(stream).await {
+                                // CORS validation callback for WebSocket handshake
+                                let cors_callback = |req: &http::Request<()>, response: http::Response<()>| {
+                                    // If allow_origins is empty, allow all origins
+                                    if allowed.is_empty() {
+                                        return Ok(response);
+                                    }
+
+                                    // Check Origin header against allowed origins
+                                    if let Some(origin) = req.headers().get("Origin")
+                                        .and_then(|o| o.to_str().ok())
+                                    {
+                                        if allowed.iter().any(|a| a == origin || a == "*") {
+                                            return Ok(response);
+                                        }
+                                        warn!(%addr, origin = %origin, "WebSocket CORS rejected");
+                                    }
+
+                                    // Reject with 403 Forbidden
+                                    Err(http::Response::builder()
+                                        .status(http::StatusCode::FORBIDDEN)
+                                        .body(Some("CORS origin not allowed".to_string()))
+                                        .unwrap())
+                                };
+
+                                // Perform WebSocket handshake with CORS validation
+                                match accept_hdr_async(stream, cors_callback).await {
                                     Ok(ws_stream) => {
                                         info!(%addr, "WebSocket handshake successful");
                                         let connection = Connection::new_websocket(
@@ -189,7 +215,6 @@ impl Gateway {
                                             registry,
                                             db,
                                         );
-                                        // Note: This will panic until WebSocket adapter is implemented
                                         if let Err(e) = connection.run().await {
                                             error!(%uid, %addr, error = %e, "WebSocket connection error");
                                         }

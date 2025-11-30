@@ -4,7 +4,7 @@
 //! Uses a unified routing system to enforce channel modes (+n, +m).
 //! Includes CTCP (Client-to-Client Protocol) handling for VERSION, PING, etc.
 
-use super::{Context, Handler, HandlerError, HandlerResult, server_reply, user_prefix};
+use super::{Context, Handler, HandlerError, HandlerResult, matches_hostmask, server_reply, user_prefix};
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
@@ -591,49 +591,96 @@ impl Handler for TagmsgHandler {
     }
 }
 
-/// Check if a hostmask (nick!user@host) matches a ban/invite pattern.
-/// Supports wildcards (* and ?).
-fn matches_hostmask(pattern: &str, hostmask: &str) -> bool {
-    let pattern = pattern.to_lowercase();
-    let hostmask = hostmask.to_lowercase();
+// ============================================================================
+// Tests
+// ============================================================================
 
-    let mut p_chars = pattern.chars().peekable();
-    let mut h_chars = hostmask.chars().peekable();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::ctcp::{Ctcp, CtcpKind};
 
-    while let Some(p) = p_chars.next() {
-        match p {
-            '*' => {
-                // Consume consecutive *
-                while p_chars.peek() == Some(&'*') {
-                    p_chars.next();
-                }
-                // If * is at end, match rest
-                if p_chars.peek().is_none() {
-                    return true;
-                }
-                // Try matching from each position
-                while h_chars.peek().is_some() {
-                    let remaining_pattern: String = p_chars.clone().collect();
-                    let remaining_hostmask: String = h_chars.clone().collect();
-                    if matches_hostmask(&remaining_pattern, &remaining_hostmask) {
-                        return true;
-                    }
-                    h_chars.next();
-                }
-                return matches_hostmask(&p_chars.collect::<String>(), "");
-            }
-            '?' => {
-                if h_chars.next().is_none() {
-                    return false;
-                }
-            }
-            c => {
-                if h_chars.next() != Some(c) {
-                    return false;
-                }
-            }
-        }
+    #[test]
+    fn test_is_channel() {
+        assert!(is_channel("#rust"));
+        assert!(is_channel("&local"));
+        assert!(is_channel("+modeless"));
+        assert!(is_channel("!safe"));
+        assert!(!is_channel("nickname"));
+        assert!(!is_channel("NickServ"));
     }
 
-    h_chars.peek().is_none()
+    #[test]
+    fn test_matches_hostmask_exact() {
+        assert!(matches_hostmask("nick!user@host", "nick!user@host"));
+        assert!(!matches_hostmask("nick!user@host", "other!user@host"));
+    }
+
+    #[test]
+    fn test_matches_hostmask_wildcard_star() {
+        assert!(matches_hostmask("*!*@*", "nick!user@host"));
+        assert!(matches_hostmask("nick!*@*", "nick!user@host"));
+        assert!(matches_hostmask("*!user@*", "nick!user@host"));
+        assert!(matches_hostmask("*!*@host", "nick!user@host"));
+        assert!(matches_hostmask("*!*@*.example.com", "nick!user@sub.example.com"));
+    }
+
+    #[test]
+    fn test_matches_hostmask_wildcard_question() {
+        assert!(matches_hostmask("nic?!user@host", "nick!user@host"));
+        assert!(matches_hostmask("????!user@host", "nick!user@host"));
+        assert!(!matches_hostmask("???!user@host", "nick!user@host"));
+    }
+
+    #[test]
+    fn test_matches_hostmask_case_insensitive() {
+        assert!(matches_hostmask("NICK!USER@HOST", "nick!user@host"));
+        assert!(matches_hostmask("Nick!User@Host", "NICK!USER@HOST"));
+    }
+
+    #[test]
+    fn test_ctcp_parsing() {
+        // Verify slirc_proto's CTCP parsing works as expected
+        let version = Ctcp::parse("\x01VERSION\x01");
+        assert!(version.is_some());
+        assert!(matches!(version.unwrap().kind, CtcpKind::Version));
+
+        let ping = Ctcp::parse("\x01PING 1234567890\x01");
+        assert!(ping.is_some());
+        let ping = ping.unwrap();
+        assert!(matches!(ping.kind, CtcpKind::Ping));
+        assert_eq!(ping.params, Some("1234567890"));
+
+        let time = Ctcp::parse("\x01TIME\x01");
+        assert!(time.is_some());
+        assert!(matches!(time.unwrap().kind, CtcpKind::Time));
+
+        let clientinfo = Ctcp::parse("\x01CLIENTINFO\x01");
+        assert!(clientinfo.is_some());
+        assert!(matches!(clientinfo.unwrap().kind, CtcpKind::Clientinfo));
+
+        let action = Ctcp::parse("\x01ACTION waves\x01");
+        assert!(action.is_some());
+        let action = action.unwrap();
+        assert!(matches!(action.kind, CtcpKind::Action));
+        assert_eq!(action.params, Some("waves"));
+    }
+
+    #[test]
+    fn test_ctcp_is_ctcp() {
+        assert!(Ctcp::is_ctcp("\x01VERSION\x01"));
+        assert!(Ctcp::is_ctcp("\x01ACTION test\x01"));
+        assert!(!Ctcp::is_ctcp("regular message"));
+        // slirc_proto is lenient: strings starting with \x01 are considered CTCP
+        // and parse() accepts messages without trailing \x01 (real-world tolerance)
+        assert!(Ctcp::is_ctcp("\x01incomplete"));
+        assert!(Ctcp::parse("\x01incomplete").is_some()); // Lenient parsing
+    }
+
+    #[test]
+    fn test_server_version_constant() {
+        // Ensure SERVER_VERSION is set correctly
+        assert!(SERVER_VERSION.starts_with("slircd-ng "));
+        assert!(SERVER_VERSION.contains(env!("CARGO_PKG_VERSION")));
+    }
 }

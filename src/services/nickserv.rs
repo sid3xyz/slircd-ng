@@ -837,6 +837,58 @@ pub async fn apply_effect(
             info!(channel = %canonical_name, target = %target_nick, mode = %mode_str, "ChanServ mode change");
         }
 
+        ServiceEffect::Kick {
+            channel,
+            target_uid,
+            kicker,
+            reason,
+        } => {
+            // Get target nick for KICK message
+            let target_nick = if let Some(user_ref) = matrix.users.get(&target_uid) {
+                user_ref.read().await.nick.clone()
+            } else {
+                return;
+            };
+
+            // Get canonical channel name
+            let channel_lower = irc_to_lower(&channel);
+            let canonical_name = if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
+                channel_ref.read().await.name.clone()
+            } else {
+                return;
+            };
+
+            // Build KICK message from ChanServ
+            let kick_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::Nickname(
+                    kicker.clone(),
+                    kicker.clone(),
+                    "services.".to_string(),
+                )),
+                command: Command::KICK(canonical_name.clone(), target_nick.clone(), Some(reason.clone())),
+            };
+
+            // Broadcast KICK to channel members
+            matrix
+                .broadcast_to_channel(&channel_lower, kick_msg, None)
+                .await;
+
+            // Remove user from channel state
+            if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
+                let mut channel_guard = channel_ref.write().await;
+                channel_guard.members.remove(&target_uid);
+            }
+
+            // Remove channel from user's channel list
+            if let Some(user_ref) = matrix.users.get(&target_uid) {
+                let mut user_guard = user_ref.write().await;
+                user_guard.channels.remove(&channel_lower);
+            }
+
+            info!(channel = %canonical_name, target = %target_nick, kicker = %kicker, reason = %reason, "User kicked by service");
+        }
+
         ServiceEffect::ForceNick {
             target_uid,
             old_nick,

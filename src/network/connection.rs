@@ -385,3 +385,86 @@ impl Connection {
         Ok(())
     }
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::error::{MessageParseError, ProtocolError};
+    use slirc_proto::transport::TransportReadError;
+
+    #[test]
+    fn test_classify_message_too_long() {
+        let err = TransportReadError::Protocol(ProtocolError::MessageTooLong {
+            actual: 1024,
+            limit: 512,
+        });
+        let action = classify_read_error(&err);
+        match action {
+            ReadErrorAction::ProtocolViolation { error_msg } => {
+                assert!(error_msg.contains("1024"));
+                assert!(error_msg.contains("512"));
+                assert!(error_msg.contains("too long"));
+            }
+            ReadErrorAction::IoError => panic!("Expected ProtocolViolation"),
+        }
+    }
+
+    #[test]
+    fn test_classify_tags_too_long() {
+        let err = TransportReadError::Protocol(ProtocolError::TagsTooLong {
+            actual: 8192,
+            limit: 4096,
+        });
+        let action = classify_read_error(&err);
+        match action {
+            ReadErrorAction::ProtocolViolation { error_msg } => {
+                assert!(error_msg.contains("8192"));
+                assert!(error_msg.contains("4096"));
+                assert!(error_msg.contains("tags"));
+            }
+            ReadErrorAction::IoError => panic!("Expected ProtocolViolation"),
+        }
+    }
+
+    #[test]
+    fn test_classify_illegal_control_char() {
+        let err = TransportReadError::Protocol(ProtocolError::IllegalControlChar('\0'));
+        let action = classify_read_error(&err);
+        match action {
+            ReadErrorAction::ProtocolViolation { error_msg } => {
+                assert!(error_msg.contains("control character"));
+            }
+            ReadErrorAction::IoError => panic!("Expected ProtocolViolation"),
+        }
+    }
+
+    #[test]
+    fn test_classify_invalid_message() {
+        let err = TransportReadError::Protocol(ProtocolError::InvalidMessage {
+            string: "garbage".to_string(),
+            cause: MessageParseError::InvalidCommand,
+        });
+        let action = classify_read_error(&err);
+        match action {
+            ReadErrorAction::ProtocolViolation { error_msg } => {
+                assert!(error_msg.contains("Malformed"));
+                assert!(error_msg.contains("garbage"));
+            }
+            ReadErrorAction::IoError => panic!("Expected ProtocolViolation"),
+        }
+    }
+
+    #[test]
+    fn test_classify_io_error() {
+        let err = TransportReadError::Io(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "connection reset",
+        ));
+        let action = classify_read_error(&err);
+        assert!(matches!(action, ReadErrorAction::IoError));
+    }
+}
