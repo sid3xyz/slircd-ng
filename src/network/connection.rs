@@ -40,10 +40,6 @@ use tokio_rustls::server::TlsStream;
 use tokio_util::codec::FramedWrite;
 use tracing::{debug, info, instrument, warn};
 
-// Rate limiter configuration constants (aligned with IRC standard: 5 messages per 2 seconds)
-const RATE_LIMIT_RATE: f32 = 2.5;      // Messages per second (5 msg/2s)
-const RATE_LIMIT_BURST: f32 = 5.0;     // Allow 5 message burst
-
 /// IRC message encoding (UTF-8 is standard for modern IRC)
 const IRC_ENCODING: &str = "utf-8";
 
@@ -201,8 +197,9 @@ impl Connection {
         // Phase 2: Unified Zero-Copy Loop
         // Reader and writer are already set up from handshake phase
 
-        // Rate limiter for flood protection
-        let mut rate_limiter = RateLimiter::new(RATE_LIMIT_RATE, RATE_LIMIT_BURST);
+        // Rate limiter for flood protection (configurable from config.toml)
+        let limits = &self.matrix.config.limits;
+        let mut rate_limiter = RateLimiter::new(limits.rate, limits.burst);
         
         // Penalty box: Track consecutive rate limit violations
         let mut flood_violations = 0u8;

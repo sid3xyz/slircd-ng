@@ -3,7 +3,7 @@
 //! The Matrix holds all users, channels, and server state in concurrent
 //! data structures accessible from any async task.
 
-use crate::config::{Config, OperBlock};
+use crate::config::{Config, LimitsConfig, OperBlock};
 use crate::state::UidGenerator;
 use dashmap::DashMap;
 use std::collections::{HashMap, HashSet};
@@ -81,6 +81,8 @@ pub struct WhowasEntry {
 pub struct MatrixConfig {
     /// Operator blocks.
     pub oper_blocks: Vec<OperBlock>,
+    /// Rate limits.
+    pub limits: LimitsConfig,
 }
 
 /// This server's identity information.
@@ -326,6 +328,7 @@ impl Matrix {
             uid_gen: UidGenerator::new(config.server.sid.clone()),
             config: MatrixConfig {
                 oper_blocks: config.oper.clone(),
+                limits: config.limits.clone(),
             },
         }
     }

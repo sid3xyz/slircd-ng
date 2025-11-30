@@ -28,6 +28,9 @@ pub struct Config {
     pub oper: Vec<OperBlock>,
     /// Database configuration.
     pub database: Option<DatabaseConfig>,
+    /// Rate limiting configuration.
+    #[serde(default)]
+    pub limits: LimitsConfig,
 }
 
 /// Database configuration.
@@ -35,6 +38,24 @@ pub struct Config {
 pub struct DatabaseConfig {
     /// Path to SQLite database file.
     pub path: String,
+}
+
+/// Rate limiting configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LimitsConfig {
+    /// Messages per second allowed (default: 2.5).
+    pub rate: f32,
+    /// Maximum burst of messages allowed (default: 5.0).
+    pub burst: f32,
+}
+
+impl Default for LimitsConfig {
+    fn default() -> Self {
+        Self {
+            rate: 2.5,
+            burst: 5.0,
+        }
+    }
 }
 
 /// Operator block configuration.
