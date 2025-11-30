@@ -28,6 +28,7 @@
 //! | `$U` | Unregistered users |
 
 use regex::Regex;
+use slirc_proto::wildcard_match;
 use std::net::IpAddr;
 use std::time::SystemTime;
 
@@ -380,34 +381,6 @@ pub fn matches_xline(xline: &XLine, context: &UserContext) -> bool {
         }
         XLine::SLine { mask, .. } => wildcard_match(mask, &context.server),
     }
-}
-
-/// Simple wildcard matching with `*` and `?` support.
-///
-/// - `*` matches zero or more characters
-/// - `?` matches exactly one character
-///
-/// Case-insensitive matching for IRC compatibility.
-pub fn wildcard_match(pattern: &str, text: &str) -> bool {
-    // Convert wildcard pattern to regex
-    let mut regex_pattern = String::from("(?i)^");
-    for c in pattern.chars() {
-        match c {
-            '*' => regex_pattern.push_str(".*"),
-            '?' => regex_pattern.push('.'),
-            // Escape regex special characters
-            '.' | '+' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '^' | '$' | '\\' => {
-                regex_pattern.push('\\');
-                regex_pattern.push(c);
-            }
-            _ => regex_pattern.push(c),
-        }
-    }
-    regex_pattern.push('$');
-
-    Regex::new(&regex_pattern)
-        .map(|re| re.is_match(text))
-        .unwrap_or(false)
 }
 
 #[cfg(test)]
