@@ -64,6 +64,9 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
     let realname = ctx.handshake.realname.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
 
+    // Build user's full mask for ban/invite checks (nick!user@host)
+    let user_mask = format!("{}!{}@localhost", nick, user_name);
+
     // Check AKICK before joining
     if let Some(akick) = check_akick(ctx, &channel_lower, nick, user_name).await {
         // User is on the AKICK list - send a notice and refuse join
@@ -96,6 +99,54 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     if channel_guard.is_member(ctx.uid) {
         return Ok(());
     }
+
+    // Enforce channel access controls:
+    
+    // 1. Check Invite-Only (+i) mode
+    if channel_guard.modes.invite_only {
+        // Check invite exception list (+I)
+        let has_invex = channel_guard.invex.iter()
+            .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+        
+        // TODO: Check if user is in temporary invite list (from INVITE command)
+        // For now, only check invex
+        
+        if !has_invex {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_INVITEONLYCHAN,
+                vec![nick.clone(), channel_name.to_string(), "Cannot join channel (+i)".to_string()],
+            );
+            ctx.sender.send(reply).await?;
+            drop(channel_guard);
+            info!(nick = %nick, channel = %channel_name, "JOIN denied: invite-only");
+            return Ok(());
+        }
+    }
+
+    // 2. Check ban list (+b) and ban exceptions (+e)
+    let is_banned = channel_guard.bans.iter()
+        .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+    
+    if is_banned {
+        // Check if user has ban exception (+e)
+        let has_exception = channel_guard.excepts.iter()
+            .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+        
+        if !has_exception {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_BANNEDFROMCHAN,
+                vec![nick.clone(), channel_name.to_string(), "Cannot join channel (+b)".to_string()],
+            );
+            ctx.sender.send(reply).await?;
+            drop(channel_guard);
+            info!(nick = %nick, channel = %channel_name, "JOIN denied: banned");
+            return Ok(());
+        }
+    }
+
+    // Access checks passed, proceed with join
 
     // Determine member modes:
     // 1. First user gets ops
@@ -730,4 +781,51 @@ impl Handler for KickHandler {
 
         Ok(())
     }
+}
+
+/// Check if a hostmask (nick!user@host) matches a ban/invite pattern.
+/// Supports wildcards (* and ?).
+fn matches_hostmask(pattern: &str, hostmask: &str) -> bool {
+    let pattern = pattern.to_lowercase();
+    let hostmask = hostmask.to_lowercase();
+
+    let mut p_chars = pattern.chars().peekable();
+    let mut h_chars = hostmask.chars().peekable();
+
+    while let Some(p) = p_chars.next() {
+        match p {
+            '*' => {
+                // Consume consecutive *
+                while p_chars.peek() == Some(&'*') {
+                    p_chars.next();
+                }
+                // If * is at end, match rest
+                if p_chars.peek().is_none() {
+                    return true;
+                }
+                // Try matching from each position
+                while h_chars.peek().is_some() {
+                    let remaining_pattern: String = p_chars.clone().collect();
+                    let remaining_hostmask: String = h_chars.clone().collect();
+                    if matches_hostmask(&remaining_pattern, &remaining_hostmask) {
+                        return true;
+                    }
+                    h_chars.next();
+                }
+                return matches_hostmask(&p_chars.collect::<String>(), "");
+            }
+            '?' => {
+                if h_chars.next().is_none() {
+                    return false;
+                }
+            }
+            c => {
+                if h_chars.next() != Some(c) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    h_chars.peek().is_none()
 }

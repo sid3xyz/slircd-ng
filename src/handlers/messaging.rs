@@ -56,6 +56,43 @@ async fn route_to_channel(
         return ChannelRouteResult::BlockedExternal;
     }
 
+    // Build user's hostmask for ban/quiet checks (nick!user@host)
+    let user_mask = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+        let user = user_ref.read().await;
+        format!("{}!{}@{}", user.nick, user.user, user.host)
+    } else {
+        // Shouldn't happen for registered users, but provide fallback
+        "unknown!unknown@unknown".to_string()
+    };
+
+    // Check +b (bans) - banned users cannot speak even if in channel
+    let is_banned = channel.bans.iter()
+        .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+    
+    if is_banned {
+        // Check if user has ban exception (+e)
+        let has_exception = channel.excepts.iter()
+            .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+        
+        if !has_exception {
+            return ChannelRouteResult::BlockedExternal; // Reuse for ban
+        }
+    }
+
+    // Check +q (quiet) - quieted users cannot speak
+    let is_quieted = channel.quiets.iter()
+        .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+    
+    if is_quieted {
+        // Check if user has ban exception (+e) - some IRCds allow +e to bypass +q
+        let has_exception = channel.excepts.iter()
+            .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+        
+        if !has_exception {
+            return ChannelRouteResult::BlockedModerated; // Reuse for quiet
+        }
+    }
+
     // Check +m (moderated) - only if option enabled
     if opts.check_moderated && channel.modes.moderated {
         let can_speak = channel.members.get(ctx.uid).is_some_and(|m| m.op || m.voice);
@@ -382,4 +419,51 @@ impl Handler for TagmsgHandler {
 
         Ok(())
     }
+}
+
+/// Check if a hostmask (nick!user@host) matches a ban/invite pattern.
+/// Supports wildcards (* and ?).
+fn matches_hostmask(pattern: &str, hostmask: &str) -> bool {
+    let pattern = pattern.to_lowercase();
+    let hostmask = hostmask.to_lowercase();
+
+    let mut p_chars = pattern.chars().peekable();
+    let mut h_chars = hostmask.chars().peekable();
+
+    while let Some(p) = p_chars.next() {
+        match p {
+            '*' => {
+                // Consume consecutive *
+                while p_chars.peek() == Some(&'*') {
+                    p_chars.next();
+                }
+                // If * is at end, match rest
+                if p_chars.peek().is_none() {
+                    return true;
+                }
+                // Try matching from each position
+                while h_chars.peek().is_some() {
+                    let remaining_pattern: String = p_chars.clone().collect();
+                    let remaining_hostmask: String = h_chars.clone().collect();
+                    if matches_hostmask(&remaining_pattern, &remaining_hostmask) {
+                        return true;
+                    }
+                    h_chars.next();
+                }
+                return matches_hostmask(&p_chars.collect::<String>(), "");
+            }
+            '?' => {
+                if h_chars.next().is_none() {
+                    return false;
+                }
+            }
+            c => {
+                if h_chars.next() != Some(c) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    h_chars.peek().is_none()
 }
