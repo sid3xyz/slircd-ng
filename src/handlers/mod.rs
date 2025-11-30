@@ -22,7 +22,10 @@ mod server_query;
 mod user_query;
 
 pub use admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler};
-pub use bans::{DlineHandler, KlineHandler, UndlineHandler, UnklineHandler};
+pub use bans::{
+    DlineHandler, GlineHandler, KlineHandler, UndlineHandler, UnglineHandler, UnklineHandler,
+    UnzlineHandler, ZlineHandler,
+};
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{
@@ -210,8 +213,12 @@ impl Registry {
         // Ban handlers
         handlers.insert("KLINE", Box::new(KlineHandler));
         handlers.insert("DLINE", Box::new(DlineHandler));
+        handlers.insert("GLINE", Box::new(GlineHandler));
+        handlers.insert("ZLINE", Box::new(ZlineHandler));
         handlers.insert("UNKLINE", Box::new(UnklineHandler));
         handlers.insert("UNDLINE", Box::new(UndlineHandler));
+        handlers.insert("UNGLINE", Box::new(UnglineHandler));
+        handlers.insert("UNZLINE", Box::new(UnzlineHandler));
 
         // Admin SA* handlers
         handlers.insert("SAJOIN", Box::new(SajoinHandler));

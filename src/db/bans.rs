@@ -202,6 +202,8 @@ impl<'a> BanRepository<'a> {
     ///
     /// Checks both K-lines (user@host bans) and D-lines (IP bans).
     /// Returns the ban reason if banned, None if allowed.
+    /// Deprecated: Use check_all_bans() for full X-line support.
+    #[allow(dead_code)]
     pub async fn check_ban(
         &self,
         ip: &str,
@@ -317,4 +319,232 @@ fn cidr_match(cidr: &str, ip: &str) -> bool {
     };
 
     (network_u32 & mask) == (ip_u32 & mask)
+}
+
+// ========== G-Line Types and Operations ==========
+
+/// A G-line (global hostmask ban).
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields used by admin commands in Phase 3b
+pub struct Gline {
+    pub mask: String,
+    pub reason: Option<String>,
+    pub set_by: String,
+    pub set_at: i64,
+    pub expires_at: Option<i64>,
+}
+
+/// A Z-line (IP ban that skips DNS lookup).
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields used by admin commands in Phase 3b
+pub struct Zline {
+    pub mask: String,
+    pub reason: Option<String>,
+    pub set_by: String,
+    pub set_at: i64,
+    pub expires_at: Option<i64>,
+}
+
+impl<'a> BanRepository<'a> {
+    // ========== G-line operations ==========
+
+    /// Add a G-line.
+    #[allow(dead_code)] // Phase 3b: Admin commands
+    pub async fn add_gline(
+        &self,
+        mask: &str,
+        reason: Option<&str>,
+        set_by: &str,
+        duration: Option<i64>,
+    ) -> Result<(), DbError> {
+        let now = chrono::Utc::now().timestamp();
+        let expires_at = duration.map(|d| now + d);
+
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO glines (mask, reason, set_by, set_at, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(mask)
+        .bind(reason)
+        .bind(set_by)
+        .bind(now)
+        .bind(expires_at)
+        .execute(self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Remove a G-line.
+    #[allow(dead_code)] // Phase 3b: Admin commands
+    pub async fn remove_gline(&self, mask: &str) -> Result<bool, DbError> {
+        let result = sqlx::query("DELETE FROM glines WHERE mask = ?")
+            .bind(mask)
+            .execute(self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Get all active G-lines (not expired).
+    pub async fn get_active_glines(&self) -> Result<Vec<Gline>, DbError> {
+        let now = chrono::Utc::now().timestamp();
+
+        let rows = sqlx::query_as::<_, (String, Option<String>, String, i64, Option<i64>)>(
+            r#"
+            SELECT mask, reason, set_by, set_at, expires_at
+            FROM glines
+            WHERE expires_at IS NULL OR expires_at > ?
+            "#,
+        )
+        .bind(now)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(mask, reason, set_by, set_at, expires_at)| Gline {
+                mask,
+                reason,
+                set_by,
+                set_at,
+                expires_at,
+            })
+            .collect())
+    }
+
+    /// Check if a user@host matches any active G-line.
+    pub async fn matches_gline(&self, user_host: &str) -> Result<Option<Gline>, DbError> {
+        let glines = self.get_active_glines().await?;
+
+        for gline in glines {
+            if wildcard_match(&gline.mask, user_host) {
+                return Ok(Some(gline));
+            }
+        }
+
+        Ok(None)
+    }
+
+    // ========== Z-line operations ==========
+
+    /// Add a Z-line.
+    #[allow(dead_code)] // Phase 3b: Admin commands
+    pub async fn add_zline(
+        &self,
+        mask: &str,
+        reason: Option<&str>,
+        set_by: &str,
+        duration: Option<i64>,
+    ) -> Result<(), DbError> {
+        let now = chrono::Utc::now().timestamp();
+        let expires_at = duration.map(|d| now + d);
+
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO zlines (mask, reason, set_by, set_at, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(mask)
+        .bind(reason)
+        .bind(set_by)
+        .bind(now)
+        .bind(expires_at)
+        .execute(self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Remove a Z-line.
+    #[allow(dead_code)] // Phase 3b: Admin commands
+    pub async fn remove_zline(&self, mask: &str) -> Result<bool, DbError> {
+        let result = sqlx::query("DELETE FROM zlines WHERE mask = ?")
+            .bind(mask)
+            .execute(self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Get all active Z-lines (not expired).
+    pub async fn get_active_zlines(&self) -> Result<Vec<Zline>, DbError> {
+        let now = chrono::Utc::now().timestamp();
+
+        let rows = sqlx::query_as::<_, (String, Option<String>, String, i64, Option<i64>)>(
+            r#"
+            SELECT mask, reason, set_by, set_at, expires_at
+            FROM zlines
+            WHERE expires_at IS NULL OR expires_at > ?
+            "#,
+        )
+        .bind(now)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(mask, reason, set_by, set_at, expires_at)| Zline {
+                mask,
+                reason,
+                set_by,
+                set_at,
+                expires_at,
+            })
+            .collect())
+    }
+
+    /// Check if an IP matches any active Z-line.
+    pub async fn matches_zline(&self, ip: &str) -> Result<Option<Zline>, DbError> {
+        let zlines = self.get_active_zlines().await?;
+
+        for zline in zlines {
+            if wildcard_match(&zline.mask, ip) || cidr_match(&zline.mask, ip) {
+                return Ok(Some(zline));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Check if a connection should be banned (extended to include G-lines and Z-lines).
+    ///
+    /// Checks in order: Z-line (IP), D-line (IP), G-line (user@host), K-line (user@host).
+    /// Returns the ban reason if banned, None if allowed.
+    pub async fn check_all_bans(
+        &self,
+        ip: &str,
+        user: &str,
+        host: &str,
+    ) -> Result<Option<String>, DbError> {
+        // Check Z-lines first (IP ban, skips DNS)
+        if let Some(zline) = self.matches_zline(ip).await? {
+            let reason = zline.reason.unwrap_or_else(|| "Banned".to_string());
+            return Ok(Some(format!("Z-lined: {}", reason)));
+        }
+
+        // Check D-lines (IP ban)
+        if let Some(dline) = self.matches_dline(ip).await? {
+            let reason = dline.reason.unwrap_or_else(|| "Banned".to_string());
+            return Ok(Some(format!("D-lined: {}", reason)));
+        }
+
+        // Check G-lines (global user@host)
+        let user_host = format!("{}@{}", user, host);
+        if let Some(gline) = self.matches_gline(&user_host).await? {
+            let reason = gline.reason.unwrap_or_else(|| "Banned".to_string());
+            return Ok(Some(format!("G-lined: {}", reason)));
+        }
+
+        // Check K-lines (local user@host)
+        if let Some(kline) = self.matches_kline(&user_host).await? {
+            let reason = kline.reason.unwrap_or_else(|| "Banned".to_string());
+            return Ok(Some(format!("K-lined: {}", reason)));
+        }
+
+        Ok(None)
+    }
 }

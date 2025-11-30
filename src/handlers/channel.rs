@@ -7,7 +7,8 @@ use super::{
     err_usernotinchannel, matches_hostmask, server_reply, user_prefix,
 };
 use crate::db::ChannelRepository;
-use crate::state::{Channel, MemberModes, Topic, User};
+use crate::security::{ExtendedBan, UserContext, matches_extended_ban};
+use crate::state::{Channel, ListEntry, MemberModes, Topic, User};
 use async_trait::async_trait;
 use slirc_proto::{
     ChannelExt, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower,
@@ -15,6 +16,21 @@ use slirc_proto::{
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
+
+/// Check if a ban entry matches a user, supporting both hostmask and extended bans.
+fn matches_ban(entry: &ListEntry, user_mask: &str, user_context: &UserContext) -> bool {
+    if entry.mask.starts_with('$') {
+        // Extended ban format ($a:account, $r:realname, etc.)
+        if let Some(extban) = ExtendedBan::parse(&entry.mask) {
+            matches_extended_ban(&extban, user_context)
+        } else {
+            false
+        }
+    } else {
+        // Traditional nick!user@host ban
+        matches_hostmask(&entry.mask, user_mask)
+    }
+}
 
 /// Handler for JOIN command.
 pub struct JoinHandler;
@@ -32,6 +48,23 @@ impl Handler for JoinHandler {
         // Handle "JOIN 0" - leave all channels
         if channels_str == "0" {
             return leave_all_channels(ctx).await;
+        }
+
+        // Check join rate limit before processing any channels
+        let uid_string = ctx.uid.to_string();
+        if !ctx.matrix.rate_limiter.check_join_rate(&uid_string) {
+            let nick = ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string());
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_TOOMANYCHANNELS,
+                vec![
+                    nick,
+                    channels_str.to_string(),
+                    "You are joining channels too quickly. Please wait.".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
         }
 
         // Parse channel list (comma-separated)
@@ -85,7 +118,19 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         .ok_or(HandlerError::NickOrUserMissing)?;
 
     // Build user's full mask for ban/invite checks (nick!user@host)
-    let user_mask = format!("{}!{}@localhost", nick, user_name);
+    let host = ctx.remote_addr.ip().to_string();
+    let user_mask = format!("{}!{}@{}", nick, user_name, host);
+
+    // Build UserContext for extended ban checks
+    let user_context = UserContext::for_registration(
+        ctx.remote_addr.ip(),
+        host.clone(),
+        nick.clone(),
+        user_name.clone(),
+        realname.clone(),
+        ctx.matrix.server_info.name.clone(),
+        ctx.handshake.account.clone(),
+    );
 
     // Check AKICK before joining
     if let Some(akick) = check_akick(ctx, &channel_lower, nick, user_name).await {
@@ -133,11 +178,11 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
 
     // 1. Check Invite-Only (+i) mode
     if channel_guard.modes.invite_only {
-        // Check invite exception list (+I)
+        // Check invite exception list (+I) - supports extended bans
         let has_invex = channel_guard
             .invex
             .iter()
-            .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+            .any(|entry| matches_ban(entry, &user_mask, &user_context));
 
         // TODO: Check if user is in temporary invite list (from INVITE command)
         // For now, only check invex
@@ -159,18 +204,18 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         }
     }
 
-    // 2. Check ban list (+b) and ban exceptions (+e)
+    // 2. Check ban list (+b) and ban exceptions (+e) - supports extended bans
     let is_banned = channel_guard
         .bans
         .iter()
-        .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+        .any(|entry| matches_ban(entry, &user_mask, &user_context));
 
     if is_banned {
-        // Check if user has ban exception (+e)
+        // Check if user has ban exception (+e) - supports extended bans
         let has_exception = channel_guard
             .excepts
             .iter()
-            .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+            .any(|entry| matches_ban(entry, &user_mask, &user_context));
 
         if !has_exception {
             let reply = server_reply(
@@ -219,12 +264,15 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         user.channels.insert(channel_lower.clone());
     } else {
         // User doesn't exist in matrix yet, create them
+        let security_config = &ctx.matrix.config.security;
         let user = User::new(
             ctx.uid.to_string(),
             nick.clone(),
             user_name.clone(),
             realname.clone(),
             "localhost".to_string(),
+            &security_config.cloak_secret,
+            &security_config.cloak_suffix,
         );
         let user = Arc::new(RwLock::new(user));
         ctx.matrix.users.insert(ctx.uid.to_string(), user.clone());

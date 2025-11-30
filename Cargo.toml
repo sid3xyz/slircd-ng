@@ -50,6 +50,11 @@ rustls-pemfile = "2.1"
 argon2 = "0.5"
 rand = "0.8"
 
+# Security (cloaking, rate limiting)
+hmac = "0.12"
+governor = "0.6"
+regex = "1.10"
+
 # WebSocket support
 tokio-tungstenite = "0.21"
 sha2 = "0.10"
