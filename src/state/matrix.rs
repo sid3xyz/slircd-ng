@@ -192,12 +192,6 @@ impl User {
             away: None,
         }
     }
-
-    /// Create a new user with default cloaking (for testing).
-    #[cfg(test)]
-    pub fn new_test(uid: Uid, nick: String, user: String, realname: String, host: String) -> Self {
-        Self::new(uid, nick, user, realname, host, "test-secret", "ip")
-    }
 }
 
 /// An IRC channel.
