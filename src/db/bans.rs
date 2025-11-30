@@ -1,6 +1,7 @@
 //! Repository for K-line and D-line bans.
 
 use super::DbError;
+use slirc_proto::wildcard_match;
 use sqlx::SqlitePool;
 
 /// A K-line (user@host ban).
@@ -225,54 +226,6 @@ impl<'a> BanRepository<'a> {
 
         Ok(None)
     }
-}
-
-/// Simple wildcard matching (* and ?).
-#[allow(dead_code)] // Used by matches_kline/matches_dline
-fn wildcard_match(pattern: &str, text: &str) -> bool {
-    let pattern = pattern.to_lowercase();
-    let text = text.to_lowercase();
-
-    let mut p_chars = pattern.chars().peekable();
-    let mut t_chars = text.chars().peekable();
-
-    while let Some(p) = p_chars.next() {
-        match p {
-            '*' => {
-                // Consume consecutive *
-                while p_chars.peek() == Some(&'*') {
-                    p_chars.next();
-                }
-                // If * is at end, match rest
-                if p_chars.peek().is_none() {
-                    return true;
-                }
-                // Try matching from each position
-                while t_chars.peek().is_some() {
-                    let remaining_pattern: String =
-                        std::iter::once(p_chars.clone()).flatten().collect();
-                    let remaining_text: String = t_chars.clone().collect();
-                    if wildcard_match(&remaining_pattern, &remaining_text) {
-                        return true;
-                    }
-                    t_chars.next();
-                }
-                return wildcard_match(&p_chars.collect::<String>(), "");
-            }
-            '?' => {
-                if t_chars.next().is_none() {
-                    return false;
-                }
-            }
-            c => {
-                if t_chars.next() != Some(c) {
-                    return false;
-                }
-            }
-        }
-    }
-
-    t_chars.next().is_none()
 }
 
 /// Basic CIDR matching for IP addresses.
