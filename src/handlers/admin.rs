@@ -7,12 +7,13 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    apply_channel_modes_typed, err_needmoreparams, err_nosuchchannel,
-    err_nosuchnick, format_modes_for_log, require_oper, resolve_nick_to_uid, server_reply, Context, Handler, HandlerResult,
+    Context, Handler, HandlerResult, apply_channel_modes_typed, err_needmoreparams,
+    err_nosuchchannel, err_nosuchnick, format_modes_for_log, require_oper, resolve_nick_to_uid,
+    server_reply,
 };
 use crate::state::MemberModes;
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, Command, Message, MessageRef, Mode, Prefix, Response};
+use slirc_proto::{Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -43,27 +44,35 @@ impl Handler for SajoinHandler {
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SAJOIN")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "SAJOIN"))
+                    .await?;
                 return Ok(());
             }
         };
         let channel_name = match msg.arg(1) {
             Some(c) if !c.is_empty() => c,
             _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SAJOIN")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "SAJOIN"))
+                    .await?;
                 return Ok(());
             }
         };
 
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            ctx.sender.send(err_nosuchnick(server_name, &oper_nick, target_nick)).await?;
+            ctx.sender
+                .send(err_nosuchnick(server_name, &oper_nick, target_nick))
+                .await?;
             return Ok(());
         };
 
         // Validate channel name
         if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
-            ctx.sender.send(err_nosuchchannel(server_name, &oper_nick, channel_name)).await?;
+            ctx.sender
+                .send(err_nosuchchannel(server_name, &oper_nick, channel_name))
+                .await?;
             return Ok(());
         }
 
@@ -75,7 +84,9 @@ impl Handler for SajoinHandler {
             .channels
             .entry(channel_lower.clone())
             .or_insert_with(|| {
-                Arc::new(RwLock::new(crate::state::Channel::new(channel_name.to_string())))
+                Arc::new(RwLock::new(crate::state::Channel::new(
+                    channel_name.to_string(),
+                )))
             })
             .clone();
 
@@ -106,7 +117,9 @@ impl Handler for SajoinHandler {
             prefix: Some(Prefix::Nickname(target_realname, target_user, target_host)),
             command: Command::JOIN(channel_name.to_string(), None, None),
         };
-        ctx.matrix.broadcast_to_channel(&channel_lower, join_msg, None).await;
+        ctx.matrix
+            .broadcast_to_channel(&channel_lower, join_msg, None)
+            .await;
 
         tracing::info!(
             oper = %oper_nick,
@@ -150,21 +163,27 @@ impl Handler for SapartHandler {
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SAPART")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "SAPART"))
+                    .await?;
                 return Ok(());
             }
         };
         let channel_name = match msg.arg(1) {
             Some(c) if !c.is_empty() => c,
             _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SAPART")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "SAPART"))
+                    .await?;
                 return Ok(());
             }
         };
 
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            ctx.sender.send(err_nosuchnick(server_name, &oper_nick, target_nick)).await?;
+            ctx.sender
+                .send(err_nosuchnick(server_name, &oper_nick, target_nick))
+                .await?;
             return Ok(());
         };
 
@@ -172,7 +191,9 @@ impl Handler for SapartHandler {
 
         // Check if channel exists
         let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) else {
-            ctx.sender.send(err_nosuchchannel(server_name, &oper_nick, channel_name)).await?;
+            ctx.sender
+                .send(err_nosuchchannel(server_name, &oper_nick, channel_name))
+                .await?;
             return Ok(());
         };
 
@@ -189,7 +210,9 @@ impl Handler for SapartHandler {
             prefix: Some(Prefix::Nickname(target_realname, target_user, target_host)),
             command: Command::PART(channel_name.to_string(), None),
         };
-        ctx.matrix.broadcast_to_channel(&channel_lower, part_msg, None).await;
+        ctx.matrix
+            .broadcast_to_channel(&channel_lower, part_msg, None)
+            .await;
 
         // Remove from channel
         {
@@ -246,14 +269,18 @@ impl Handler for SanickHandler {
         let old_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SANICK")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "SANICK"))
+                    .await?;
                 return Ok(());
             }
         };
         let new_nick = match msg.arg(1) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender.send(err_needmoreparams(server_name, &oper_nick, "SANICK")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "SANICK"))
+                    .await?;
                 return Ok(());
             }
         };
@@ -261,7 +288,9 @@ impl Handler for SanickHandler {
         // Find target user
         let old_lower = irc_to_lower(old_nick);
         let Some(target_uid) = resolve_nick_to_uid(ctx, old_nick) else {
-            ctx.sender.send(err_nosuchnick(server_name, &oper_nick, old_nick)).await?;
+            ctx.sender
+                .send(err_nosuchnick(server_name, &oper_nick, old_nick))
+                .await?;
             return Ok(());
         };
 
@@ -271,7 +300,11 @@ impl Handler for SanickHandler {
             let reply = server_reply(
                 server_name,
                 Response::ERR_NICKNAMEINUSE,
-                vec![oper_nick.clone(), new_nick.to_string(), "Nickname is already in use".to_string()],
+                vec![
+                    oper_nick.clone(),
+                    new_nick.to_string(),
+                    "Nickname is already in use".to_string(),
+                ],
             );
             ctx.sender.send(reply).await?;
             return Ok(());
@@ -290,7 +323,11 @@ impl Handler for SanickHandler {
         // Build NICK message
         let nick_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(old_nick.to_string(), target_user, target_host)),
+            prefix: Some(Prefix::Nickname(
+                old_nick.to_string(),
+                target_user,
+                target_host,
+            )),
             command: Command::NICK(new_nick.to_string()),
         };
 
@@ -308,7 +345,9 @@ impl Handler for SanickHandler {
         if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
             let user = user_ref.read().await;
             for channel_name in &user.channels {
-                ctx.matrix.broadcast_to_channel(channel_name, nick_msg.clone(), None).await;
+                ctx.matrix
+                    .broadcast_to_channel(channel_name, nick_msg.clone(), None)
+                    .await;
             }
         }
 
@@ -399,10 +438,7 @@ impl Handler for SamodeHandler {
                 let notice = Message {
                     tags: None,
                     prefix: Some(Prefix::ServerName(server_name.clone())),
-                    command: Command::NOTICE(
-                        oper_nick.clone(),
-                        format!("SAMODE error: {e}"),
-                    ),
+                    command: Command::NOTICE(oper_nick.clone(), format!("SAMODE error: {e}")),
                 };
                 ctx.sender.send(notice).await?;
                 return Ok(());

@@ -23,6 +23,8 @@ pub struct Config {
     pub listen: ListenConfig,
     /// Optional TLS listen configuration.
     pub tls: Option<TlsConfig>,
+    /// Optional WebSocket listen configuration.
+    pub websocket: Option<WebSocketConfig>,
     /// Operator blocks.
     #[serde(default)]
     pub oper: Vec<OperBlock>,
@@ -99,6 +101,16 @@ pub struct TlsConfig {
     pub cert_path: String,
     /// Path to private key file (PEM format).
     pub key_path: String,
+}
+
+/// WebSocket listener configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WebSocketConfig {
+    /// Address to bind to for WebSocket (e.g., "0.0.0.0:8080").
+    pub address: SocketAddr,
+    /// Allowed origins for CORS (e.g., ["https://example.com"]).
+    #[serde(default)]
+    pub allow_origins: Vec<String>,
 }
 
 impl Config {

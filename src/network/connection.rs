@@ -27,27 +27,15 @@ use crate::db::Database;
 use crate::handlers::{Context, HandshakeState, Registry};
 use crate::network::limit::RateLimiter;
 use crate::state::Matrix;
-use futures_util::SinkExt;
-use slirc_proto::irc::IrcCodec;
-use slirc_proto::transport::ZeroCopyTransport;
-use slirc_proto::{irc_to_lower, Command, Message};
+use slirc_proto::transport::ZeroCopyTransportEnum;
+use slirc_proto::{Command, Message, irc_to_lower};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_rustls::server::TlsStream;
-use tokio_util::codec::FramedWrite;
+use tokio_tungstenite::WebSocketStream;
 use tracing::{debug, info, instrument, warn};
-
-/// IRC message encoding (UTF-8 is standard for modern IRC)
-const IRC_ENCODING: &str = "utf-8";
-
-/// Stream type enum to handle both plaintext and TLS connections.
-enum ConnectionStream {
-    Plaintext(TcpStream),
-    Tls(TlsStream<TcpStream>),
-}
 
 /// A client connection handler.
 pub struct Connection {
@@ -55,9 +43,8 @@ pub struct Connection {
     addr: SocketAddr,
     matrix: Arc<Matrix>,
     registry: Arc<Registry>,
-    stream: ConnectionStream,
+    transport: ZeroCopyTransportEnum,
     db: Database,
-    is_tls: bool,
 }
 
 impl Connection {
@@ -75,9 +62,8 @@ impl Connection {
             addr,
             matrix,
             registry,
-            stream: ConnectionStream::Plaintext(stream),
+            transport: ZeroCopyTransportEnum::tcp(stream),
             db,
-            is_tls: false,
         }
     }
 
@@ -95,46 +81,51 @@ impl Connection {
             addr,
             matrix,
             registry,
-            stream: ConnectionStream::Tls(stream),
+            transport: ZeroCopyTransportEnum::tls(stream),
             db,
-            is_tls: true,
         }
     }
 
-    /// Helper to split the stream into read and write halves.
-    fn split_stream(
-        stream: ConnectionStream,
-    ) -> (
-        Box<dyn AsyncRead + Unpin + Send>,
-        Box<dyn AsyncWrite + Unpin + Send>,
-    ) {
-        match stream {
-            ConnectionStream::Plaintext(tcp) => {
-                let (read, write) = tokio::io::split(tcp);
-                (Box::new(read), Box::new(write))
-            }
-            ConnectionStream::Tls(tls) => {
-                let (read, write) = tokio::io::split(tls);
-                (Box::new(read), Box::new(write))
-            }
+    /// Create a new WebSocket connection handler.
+    pub fn new_websocket(
+        uid: String,
+        stream: WebSocketStream<TcpStream>,
+        addr: SocketAddr,
+        matrix: Arc<Matrix>,
+        registry: Arc<Registry>,
+        db: Database,
+    ) -> Self {
+        Self {
+            uid,
+            addr,
+            matrix,
+            registry,
+            transport: ZeroCopyTransportEnum::websocket(stream),
+            db,
         }
     }
 
     /// Run the connection read loop.
-    #[instrument(skip(self), fields(uid = %self.uid, addr = %self.addr, tls = %self.is_tls), name = "connection")]
-    pub async fn run(self) -> anyhow::Result<()> {
-        info!(
-            server = %self.matrix.server_info.name,
-            tls = %self.is_tls,
-            "Client connected"
+    #[instrument(skip(self), fields(uid = %self.uid, addr = %self.addr), name = "connection")]
+    pub async fn run(mut self) -> anyhow::Result<()> {
+        // Detect connection type for logging
+        let is_tls = matches!(
+            self.transport,
+            ZeroCopyTransportEnum::Tls(_)
+                | ZeroCopyTransportEnum::ClientTls(_)
+                | ZeroCopyTransportEnum::WebSocketTls(_)
+        );
+        let is_websocket = matches!(
+            self.transport,
+            ZeroCopyTransportEnum::WebSocket(_) | ZeroCopyTransportEnum::WebSocketTls(_)
         );
 
-        // Split stream for concurrent read/write.
-        // This enables true zero-copy reading during both handshake and main loop.
-        let (read_half, write_half) = Self::split_stream(self.stream);
-        let codec = IrcCodec::new(IRC_ENCODING)?;
-        let mut reader = ZeroCopyTransport::new(read_half);
-        let mut writer = FramedWrite::new(write_half, codec);
+        info!(
+            server = %self.matrix.server_info.name,
+            tls = %is_tls,
+            websocket = %is_websocket,
+            "Client connected"
+        );
 
         // Channel for outgoing messages during handshake (drained synchronously)
         let (handshake_tx, mut handshake_rx) = mpsc::channel::<Message>(64);
@@ -143,14 +134,14 @@ impl Connection {
         let mut handshake = HandshakeState::default();
 
         // Set +Z mode if TLS connection
-        if self.is_tls {
+        if is_tls {
             handshake.is_tls = true;
         }
 
         // Phase 1: Handshake using zero-copy reading
         // Read messages directly as MessageRef without intermediate allocations
         loop {
-            match reader.next().await {
+            match self.transport.next().await {
                 Some(Ok(msg_ref)) => {
                     debug!(raw = %msg_ref.raw.trim(), "Received message");
 
@@ -172,7 +163,7 @@ impl Connection {
 
                     // Drain and write queued responses synchronously
                     while let Ok(response) = handshake_rx.try_recv() {
-                        if let Err(e) = writer.send(response).await {
+                        if let Err(e) = self.transport.write_message(&response).await {
                             warn!(error = ?e, "Write error during handshake");
                             return Ok(());
                         }
@@ -195,15 +186,15 @@ impl Connection {
         }
 
         // Phase 2: Unified Zero-Copy Loop
-        // Reader and writer are already set up from handshake phase
+        // Transport handles both reading and writing with unified API
 
         // Rate limiter for flood protection (configurable from config.toml)
         let limits = &self.matrix.config.limits;
         let mut rate_limiter = RateLimiter::new(limits.rate, limits.burst);
-        
+
         // Penalty box: Track consecutive rate limit violations
         let mut flood_violations = 0u8;
-        const MAX_FLOOD_VIOLATIONS: u8 = 3;  // Strike limit before disconnect
+        const MAX_FLOOD_VIOLATIONS: u8 = 3; // Strike limit before disconnect
 
         // Channel for outgoing messages (handlers queue responses here)
         // Also used for routing messages from other users (PRIVMSG, etc.)
@@ -218,28 +209,30 @@ impl Connection {
         loop {
             tokio::select! {
                 // BRANCH A: Network Input (Zero-Copy)
-                // 'msg_ref' is borrowed from 'reader'. It exists ONLY inside this match block.
-                result = reader.next() => {
+                // 'msg_ref' is borrowed from transport. It exists ONLY inside this match block.
+                result = self.transport.next() => {
                     match result {
                         Some(Ok(msg_ref)) => {
                             // Flood protection with penalty box
                             if !rate_limiter.check() {
                                 flood_violations += 1;
                                 warn!(uid = %self.uid, violations = flood_violations, "Rate limit exceeded");
-                                
+
                                 if flood_violations >= MAX_FLOOD_VIOLATIONS {
                                     // Strike limit reached - disconnect immediately
                                     warn!(uid = %self.uid, "Maximum flood violations reached - disconnecting");
-                                    let _ = writer.send(Message::from(Command::ERROR("Excess Flood (Strike limit reached)".into()))).await;
+                                    let error_msg = Message::from(Command::ERROR("Excess Flood (Strike limit reached)".into()));
+                                    let _ = self.transport.write_message(&error_msg).await;
                                     break;
                                 } else {
                                     // Warning strike - throttle but don't disconnect yet
-                                    let _ = writer.send(Message::from(Command::NOTICE(
+                                    let notice = Message::from(Command::NOTICE(
                                         "*".to_string(),
-                                        format!("*** Warning: Flooding detected ({}/{} strikes). Slow down or you will be disconnected.", 
+                                        format!("*** Warning: Flooding detected ({}/{} strikes). Slow down or you will be disconnected.",
                                                 flood_violations, MAX_FLOOD_VIOLATIONS)
-                                    ))).await;
-                                    
+                                    ));
+                                    let _ = self.transport.write_message(&notice).await;
+
                                     // Apply penalty delay (exponential backoff)
                                     let penalty_ms = 500 * (flood_violations as u64);
                                     tokio::time::sleep(tokio::time::Duration::from_millis(penalty_ms)).await;
@@ -283,7 +276,7 @@ impl Connection {
                 // BRANCH B: Outgoing Messages
                 // Handles responses queued by handlers AND messages routed from other users
                 Some(msg) = outgoing_rx.recv() => {
-                    if let Err(e) = writer.send(msg).await {
+                    if let Err(e) = self.transport.write_message(&msg).await {
                         warn!(error = ?e, "Write error");
                         break;
                     }
@@ -295,10 +288,11 @@ impl Connection {
         if let Some(user_ref) = self.matrix.users.get(&self.uid) {
             let user = user_ref.read().await;
             let channels: Vec<String> = user.channels.iter().cloned().collect();
-            
+
             // Record WHOWAS entry before cleanup
-            self.matrix.record_whowas(&user.nick, &user.user, &user.host, &user.realname);
-            
+            self.matrix
+                .record_whowas(&user.nick, &user.user, &user.host, &user.realname);
+
             drop(user);
 
             for channel_lower in channels {
@@ -326,4 +320,3 @@ impl Connection {
         Ok(())
     }
 }
-

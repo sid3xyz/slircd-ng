@@ -8,8 +8,8 @@
 //! - REHASH: Reload server configuration (stub)
 
 use super::{
-    err_needmoreparams, err_noprivileges, err_nosuchnick, get_nick_or_star, require_oper,
-    resolve_nick_to_uid, server_reply, Context, Handler, HandlerResult,
+    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, err_nosuchnick,
+    get_nick_or_star, require_oper, resolve_nick_to_uid, server_reply,
 };
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
@@ -18,7 +18,12 @@ use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 async fn get_user_full_info(ctx: &Context<'_>) -> Option<(String, String, String, bool)> {
     let user_ref = ctx.matrix.users.get(ctx.uid)?;
     let user = user_ref.read().await;
-    Some((user.nick.clone(), user.user.clone(), user.host.clone(), user.modes.oper))
+    Some((
+        user.nick.clone(),
+        user.user.clone(),
+        user.host.clone(),
+        user.modes.oper,
+    ))
 }
 
 /// Handler for OPER command.
@@ -38,7 +43,9 @@ impl Handler for OperHandler {
             Some(n) if !n.is_empty() => n,
             _ => {
                 let nick = get_nick_or_star(ctx).await;
-                ctx.sender.send(err_needmoreparams(server_name, &nick, "OPER")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "OPER"))
+                    .await?;
                 return Ok(());
             }
         };
@@ -46,7 +53,9 @@ impl Handler for OperHandler {
             Some(p) if !p.is_empty() => p,
             _ => {
                 let nick = get_nick_or_star(ctx).await;
-                ctx.sender.send(err_needmoreparams(server_name, &nick, "OPER")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "OPER"))
+                    .await?;
                 return Ok(());
             }
         };
@@ -55,32 +64,35 @@ impl Handler for OperHandler {
 
         // Brute-force protection: Check rate limiting and attempt counter
         const MAX_OPER_ATTEMPTS: u8 = 3;
-        const OPER_DELAY_MS: u64 = 3000;  // 3 seconds between attempts (anti-brute-force)
-        const LOCKOUT_DELAY_MS: u64 = 30000;  // 30 second lockout after max attempts
+        const OPER_DELAY_MS: u64 = 3000; // 3 seconds between attempts (anti-brute-force)
+        const LOCKOUT_DELAY_MS: u64 = 30000; // 30 second lockout after max attempts
 
         let now = std::time::Instant::now();
 
         // Check if user is in lockout period
-        if ctx.handshake.failed_oper_attempts >= MAX_OPER_ATTEMPTS {
-            if let Some(last_attempt) = ctx.handshake.last_oper_attempt {
-                let elapsed = now.duration_since(last_attempt).as_millis() as u64;
-                if elapsed < LOCKOUT_DELAY_MS {
-                    let remaining_sec = (LOCKOUT_DELAY_MS - elapsed) / 1000;
-                    let reply = server_reply(
-                        server_name,
-                        Response::ERR_PASSWDMISMATCH,
-                        vec![
-                            nick.clone(),
-                            format!("Too many failed attempts. Try again in {} seconds.", remaining_sec)
-                        ],
-                    );
-                    ctx.sender.send(reply).await?;
-                    tracing::warn!(nick = %nick, attempts = ctx.handshake.failed_oper_attempts, "OPER brute-force lockout active");
-                    return Ok(());
-                } else {
-                    // Lockout period expired, reset counter
-                    ctx.handshake.failed_oper_attempts = 0;
-                }
+        if ctx.handshake.failed_oper_attempts >= MAX_OPER_ATTEMPTS
+            && let Some(last_attempt) = ctx.handshake.last_oper_attempt
+        {
+            let elapsed = now.duration_since(last_attempt).as_millis() as u64;
+            if elapsed < LOCKOUT_DELAY_MS {
+                let remaining_sec = (LOCKOUT_DELAY_MS - elapsed) / 1000;
+                let reply = server_reply(
+                    server_name,
+                    Response::ERR_PASSWDMISMATCH,
+                    vec![
+                        nick.clone(),
+                        format!(
+                            "Too many failed attempts. Try again in {} seconds.",
+                            remaining_sec
+                        ),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+                tracing::warn!(nick = %nick, attempts = ctx.handshake.failed_oper_attempts, "OPER brute-force lockout active");
+                return Ok(());
+            } else {
+                // Lockout period expired, reset counter
+                ctx.handshake.failed_oper_attempts = 0;
             }
         }
 
@@ -96,13 +108,18 @@ impl Handler for OperHandler {
         ctx.handshake.last_oper_attempt = Some(now);
 
         // Check oper blocks in config
-        let oper_block = ctx.matrix.config.oper_blocks.iter().find(|block| block.name == name);
+        let oper_block = ctx
+            .matrix
+            .config
+            .oper_blocks
+            .iter()
+            .find(|block| block.name == name);
 
         let Some(oper_block) = oper_block else {
             ctx.handshake.failed_oper_attempts += 1;
             tracing::warn!(
-                nick = %nick, 
-                oper_name = %name, 
+                nick = %nick,
+                oper_name = %name,
                 attempts = ctx.handshake.failed_oper_attempts,
                 "OPER failed: unknown oper name"
             );
@@ -176,7 +193,9 @@ impl Handler for KillHandler {
             Some(t) if !t.is_empty() => t,
             _ => {
                 let nick = get_nick_or_star(ctx).await;
-                ctx.sender.send(err_needmoreparams(server_name, &nick, "KILL")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "KILL"))
+                    .await?;
                 return Ok(());
             }
         };
@@ -189,21 +208,32 @@ impl Handler for KillHandler {
         };
 
         if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &killer_nick)).await?;
+            ctx.sender
+                .send(err_noprivileges(server_name, &killer_nick))
+                .await?;
             return Ok(());
         }
 
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            ctx.sender.send(err_nosuchnick(server_name, &killer_nick, target_nick)).await?;
+            ctx.sender
+                .send(err_nosuchnick(server_name, &killer_nick, target_nick))
+                .await?;
             return Ok(());
         };
 
         // Build KILL message for confirmation
         let kill_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(killer_nick.clone(), killer_user, killer_host)),
-            command: Command::KILL(target_nick.to_string(), format!("Killed by {killer_nick} ({reason})")),
+            prefix: Some(Prefix::Nickname(
+                killer_nick.clone(),
+                killer_user,
+                killer_host,
+            )),
+            command: Command::KILL(
+                target_nick.to_string(),
+                format!("Killed by {killer_nick} ({reason})"),
+            ),
         };
 
         tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
@@ -236,7 +266,9 @@ impl Handler for WallopsHandler {
             Some(t) if !t.is_empty() => t,
             _ => {
                 let nick = get_nick_or_star(ctx).await;
-                ctx.sender.send(err_needmoreparams(server_name, &nick, "WALLOPS")).await?;
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "WALLOPS"))
+                    .await?;
                 return Ok(());
             }
         };
@@ -248,7 +280,9 @@ impl Handler for WallopsHandler {
         };
 
         if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, &sender_nick)).await?;
+            ctx.sender
+                .send(err_noprivileges(server_name, &sender_nick))
+                .await?;
             return Ok(());
         }
 
@@ -292,7 +326,10 @@ impl Handler for DieHandler {
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(nick.clone(), "DIE command received (not implemented - use process signals)".to_string()),
+            command: Command::NOTICE(
+                nick.clone(),
+                "DIE command received (not implemented - use process signals)".to_string(),
+            ),
         };
         ctx.sender.send(notice).await?;
 
@@ -320,7 +357,11 @@ impl Handler for RehashHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_REHASHING,
-            vec![nick.clone(), "config.toml".to_string(), "Rehashing".to_string()],
+            vec![
+                nick.clone(),
+                "config.toml".to_string(),
+                "Rehashing".to_string(),
+            ],
         );
         ctx.sender.send(reply).await?;
 
@@ -328,7 +369,10 @@ impl Handler for RehashHandler {
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(nick.clone(), "REHASH acknowledged (config reload not yet implemented)".to_string()),
+            command: Command::NOTICE(
+                nick.clone(),
+                "REHASH acknowledged (config reload not yet implemented)".to_string(),
+            ),
         };
         ctx.sender.send(notice).await?;
 

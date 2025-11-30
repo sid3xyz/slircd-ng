@@ -5,7 +5,7 @@
 
 use crate::state::Matrix;
 use rand::Rng;
-use slirc_proto::{irc_to_lower, Command, Message, Prefix};
+use slirc_proto::{Command, Message, Prefix, irc_to_lower};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
@@ -17,7 +17,7 @@ use tracing::{debug, info};
 pub fn spawn_enforcement_task(matrix: Arc<Matrix>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(5));
-        
+
         loop {
             interval.tick().await;
             check_expired_timers(&matrix).await;
@@ -71,7 +71,10 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
         );
 
         // Apply the forced nick change
-        apply_force_nick(matrix, &uid, &old_nick, &new_nick, &username, &hostname, &channels).await;
+        apply_force_nick(
+            matrix, &uid, &old_nick, &new_nick, &username, &hostname, &channels,
+        )
+        .await;
     }
 }
 
@@ -94,7 +97,11 @@ async fn apply_force_nick(
     // Build NICK message
     let nick_msg = Message {
         tags: None,
-        prefix: Some(Prefix::Nickname(old_nick.to_string(), username.to_string(), hostname.to_string())),
+        prefix: Some(Prefix::Nickname(
+            old_nick.to_string(),
+            username.to_string(),
+            hostname.to_string(),
+        )),
         command: Command::NICK(new_nick.to_string()),
     };
 
@@ -110,7 +117,9 @@ async fn apply_force_nick(
 
     // Broadcast NICK change to all channels the user is in
     for channel_name in channels {
-        matrix.broadcast_to_channel(channel_name, nick_msg.clone(), None).await;
+        matrix
+            .broadcast_to_channel(channel_name, nick_msg.clone(), None)
+            .await;
     }
 
     // Also send to the user themselves
@@ -142,12 +151,12 @@ async fn apply_force_nick(
 /// Generate a unique guest nickname (Guest + 5 random digits).
 async fn generate_guest_nick(matrix: &Arc<Matrix>) -> String {
     let mut rng = rand::thread_rng();
-    
+
     loop {
         let num: u32 = rng.gen_range(10000..100000);
         let nick = format!("Guest{}", num);
         let nick_lower = irc_to_lower(&nick);
-        
+
         // Check if this nick is already in use
         if !matrix.nicks.contains_key(&nick_lower) {
             return nick;

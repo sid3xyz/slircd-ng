@@ -6,7 +6,7 @@
 //! - UNKLINE: Remove a K-line
 //! - UNDLINE: Remove a D-line
 
-use super::{err_needmoreparams, require_oper, Context, Handler, HandlerResult};
+use super::{Context, Handler, HandlerResult, err_needmoreparams, require_oper};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
 
@@ -40,7 +40,12 @@ impl Handler for KlineHandler {
         let reason = msg.arg(1).unwrap_or("No reason given");
 
         // Store K-line in database
-        if let Err(e) = ctx.db.bans().add_kline(mask, Some(reason), &nick, None).await {
+        if let Err(e) = ctx
+            .db
+            .bans()
+            .add_kline(mask, Some(reason), &nick, None)
+            .await
+        {
             tracing::error!(error = %e, "Failed to add K-line to database");
         }
 
@@ -48,9 +53,9 @@ impl Handler for KlineHandler {
         let disconnected = disconnect_matching_kline(ctx, mask, reason).await;
 
         tracing::info!(
-            oper = %nick, 
-            mask = %mask, 
-            reason = %reason, 
+            oper = %nick,
+            mask = %mask,
+            reason = %reason,
             disconnected = disconnected,
             "KLINE added"
         );
@@ -172,7 +177,7 @@ async fn disconnect_matching_dline(ctx: &Context<'_>, mask: &str, reason: &str) 
     for entry in ctx.matrix.users.iter() {
         let uid = entry.key().clone();
         let user = entry.value().read().await;
-        
+
         // Check if user's host/IP matches the D-line
         if wildcard_match(mask, &user.host) || cidr_match(mask, &user.host) {
             to_disconnect.push(uid);
@@ -328,9 +333,8 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
                 }
                 // Try matching from each position
                 while t_chars.peek().is_some() {
-                    let remaining_pattern: String = std::iter::once(p_chars.clone())
-                        .flatten()
-                        .collect();
+                    let remaining_pattern: String =
+                        std::iter::once(p_chars.clone()).flatten().collect();
                     let remaining_text: String = t_chars.clone().collect();
                     if wildcard_match(&remaining_pattern, &remaining_text) {
                         return true;
@@ -370,10 +374,7 @@ fn cidr_match(cidr: &str, ip: &str) -> bool {
     };
 
     // Parse network IP
-    let network_parts: Vec<u8> = network
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
+    let network_parts: Vec<u8> = network.split('.').filter_map(|s| s.parse().ok()).collect();
     if network_parts.len() != 4 {
         return false;
     }

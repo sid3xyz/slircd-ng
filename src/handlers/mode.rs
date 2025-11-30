@@ -5,10 +5,14 @@
 //! - User modes: `MODE nick [+/-modes]`
 //! - Channel modes: `MODE channel [+/-modes [args...]]`
 
-use super::{err_chanoprivsneeded, server_reply, user_prefix, Context, Handler, HandlerError, HandlerResult};
+use super::{
+    Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, user_prefix,
+};
 use crate::state::{ListEntry, UserModes};
 use async_trait::async_trait;
-use slirc_proto::{irc_eq, irc_to_lower, ChannelMode, Command, Message, MessageRef, Mode, Response, UserMode};
+use slirc_proto::{
+    ChannelMode, Command, Message, MessageRef, Mode, Response, UserMode, irc_eq, irc_to_lower,
+};
 use tracing::{debug, info};
 
 /// Handler for MODE command.
@@ -23,9 +27,13 @@ impl Handler for ModeHandler {
 
         // MODE <target> [modes [params]]
         let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
         let server_name = &ctx.matrix.server_info.name;
-        
+
         // Determine if this is a user or channel mode based on target
         if is_channel_target(target) {
             // Parse channel modes from args
@@ -41,7 +49,11 @@ impl Handler for ModeHandler {
                         let reply = server_reply(
                             server_name,
                             Response::ERR_UNKNOWNMODE,
-                            vec![nick.clone(), mode_args.first().copied().unwrap_or("").to_string(), "is unknown mode char to me".to_string()],
+                            vec![
+                                nick.clone(),
+                                mode_args.first().copied().unwrap_or("").to_string(),
+                                "is unknown mode char to me".to_string(),
+                            ],
                         );
                         ctx.sender.send(reply).await?;
                         return Ok(());
@@ -86,14 +98,21 @@ async fn handle_user_mode(
     target: &str,
     modes: &[Mode<UserMode>],
 ) -> HandlerResult {
-    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx
+        .handshake
+        .nick
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
 
     // Can only query/change your own modes
     if !irc_eq(target, nick) {
         let reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::ERR_USERSDONTMATCH,
-            vec![nick.clone(), "Can't change mode for other users".to_string()],
+            vec![
+                nick.clone(),
+                "Can't change mode for other users".to_string(),
+            ],
         );
         ctx.sender.send(reply).await?;
         return Ok(());
@@ -124,7 +143,14 @@ async fn handle_user_mode(
             // Echo the change back using typed Command::UserMODE
             let mode_msg = Message {
                 tags: None,
-                prefix: Some(user_prefix(nick, ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?, "localhost")),
+                prefix: Some(user_prefix(
+                    nick,
+                    ctx.handshake
+                        .user
+                        .as_ref()
+                        .ok_or(HandlerError::NickOrUserMissing)?,
+                    "localhost",
+                )),
                 command: Command::UserMODE(nick.clone(), applied.clone()),
             };
             ctx.sender.send(mode_msg).await?;
@@ -146,7 +172,10 @@ async fn handle_user_mode(
 }
 
 /// Apply user mode changes from typed modes, returns (applied_modes, rejected_modes).
-fn apply_user_modes_typed(user_modes: &mut UserModes, modes: &[Mode<UserMode>]) -> (Vec<Mode<UserMode>>, Vec<UserMode>) {
+fn apply_user_modes_typed(
+    user_modes: &mut UserModes,
+    modes: &[Mode<UserMode>],
+) -> (Vec<Mode<UserMode>>, Vec<UserMode>) {
     let mut applied = Vec::new();
     let mut rejected = Vec::new();
 
@@ -201,8 +230,16 @@ async fn handle_channel_mode(
     channel_name: &str,
     modes: &[Mode<ChannelMode>],
 ) -> HandlerResult {
-    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
-    let user_name = ctx.handshake.user.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx
+        .handshake
+        .nick
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
+    let user_name = ctx
+        .handshake
+        .user
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
     let channel_lower = irc_to_lower(channel_name);
 
     // Get channel
@@ -212,7 +249,11 @@ async fn handle_channel_mode(
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_NOSUCHCHANNEL,
-                vec![nick.clone(), channel_name.to_string(), "No such channel".to_string()],
+                vec![
+                    nick.clone(),
+                    channel_name.to_string(),
+                    "No such channel".to_string(),
+                ],
             );
             ctx.sender.send(reply).await?;
             return Ok(());
@@ -237,7 +278,11 @@ async fn handle_channel_mode(
         let time_reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_CREATIONTIME,
-            vec![nick.clone(), canonical_name, channel_guard.created.to_string()],
+            vec![
+                nick.clone(),
+                canonical_name,
+                channel_guard.created.to_string(),
+            ],
         );
         ctx.sender.send(time_reply).await?;
     } else {
@@ -251,16 +296,18 @@ async fn handle_channel_mode(
 
         // Must be op to change modes
         if !is_op {
-            ctx.sender.send(err_chanoprivsneeded(&ctx.matrix.server_info.name, nick, &canonical_name)).await?;
+            ctx.sender
+                .send(err_chanoprivsneeded(
+                    &ctx.matrix.server_info.name,
+                    nick,
+                    &canonical_name,
+                ))
+                .await?;
             return Ok(());
         }
 
         let mut channel_guard = channel.write().await;
-        let applied_modes = apply_channel_modes_typed(
-            ctx,
-            &mut channel_guard,
-            modes,
-        )?;
+        let applied_modes = apply_channel_modes_typed(ctx, &mut channel_guard, modes)?;
 
         if !applied_modes.is_empty() {
             // Broadcast the mode change to channel using typed Command
@@ -290,11 +337,12 @@ fn get_list_mode_query(modes: &[Mode<ChannelMode>]) -> Option<ChannelMode> {
     if modes.len() == 1 && modes[0].arg().is_none() {
         let mode_type = modes[0].mode();
         // Type A (list) modes: Ban, Exception, InviteException, Quiet
-        if matches!(mode_type, 
-            ChannelMode::Ban | 
-            ChannelMode::Exception | 
-            ChannelMode::InviteException | 
-            ChannelMode::Quiet
+        if matches!(
+            mode_type,
+            ChannelMode::Ban
+                | ChannelMode::Exception
+                | ChannelMode::InviteException
+                | ChannelMode::Quiet
         ) {
             return Some(mode_type.clone());
         }
@@ -309,7 +357,11 @@ async fn send_list_mode(
     canonical_name: &str,
     list_mode: ChannelMode,
 ) -> HandlerResult {
-    let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx
+        .handshake
+        .nick
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
 
     if let Some(channel) = ctx.matrix.channels.get(channel_lower) {
         let channel = channel.read().await;
@@ -361,7 +413,11 @@ async fn send_list_mode(
         let end_reply = server_reply(
             &ctx.matrix.server_info.name,
             end_code,
-            vec![nick.clone(), canonical_name.to_string(), end_msg.to_string()],
+            vec![
+                nick.clone(),
+                canonical_name.to_string(),
+                end_msg.to_string(),
+            ],
         );
         ctx.sender.send(end_reply).await?;
     }
@@ -456,7 +512,8 @@ pub fn apply_channel_modes_typed(
                         && let Ok(limit) = limit_str.parse::<u32>()
                     {
                         channel.modes.limit = Some(limit);
-                        applied_modes.push(Mode::Plus(ChannelMode::Limit, Some(limit_str.to_string())));
+                        applied_modes
+                            .push(Mode::Plus(ChannelMode::Limit, Some(limit_str.to_string())));
                     }
                 } else {
                     channel.modes.limit = None;
@@ -475,14 +532,16 @@ pub fn apply_channel_modes_typed(
                         // Don't add duplicate bans
                         if !channel.bans.iter().any(|b| b.mask == entry.mask) {
                             channel.bans.push(entry);
-                            applied_modes.push(Mode::Plus(ChannelMode::Ban, Some(mask.to_string())));
+                            applied_modes
+                                .push(Mode::Plus(ChannelMode::Ban, Some(mask.to_string())));
                         }
                     } else {
                         // Remove ban
                         let before_len = channel.bans.len();
                         channel.bans.retain(|b| b.mask != *mask);
                         if channel.bans.len() != before_len {
-                            applied_modes.push(Mode::Minus(ChannelMode::Ban, Some(mask.to_string())));
+                            applied_modes
+                                .push(Mode::Minus(ChannelMode::Ban, Some(mask.to_string())));
                         }
                     }
                 }
@@ -498,13 +557,15 @@ pub fn apply_channel_modes_typed(
                         };
                         if !channel.excepts.iter().any(|b| b.mask == entry.mask) {
                             channel.excepts.push(entry);
-                            applied_modes.push(Mode::Plus(ChannelMode::Exception, Some(mask.to_string())));
+                            applied_modes
+                                .push(Mode::Plus(ChannelMode::Exception, Some(mask.to_string())));
                         }
                     } else {
                         let before_len = channel.excepts.len();
                         channel.excepts.retain(|b| b.mask != *mask);
                         if channel.excepts.len() != before_len {
-                            applied_modes.push(Mode::Minus(ChannelMode::Exception, Some(mask.to_string())));
+                            applied_modes
+                                .push(Mode::Minus(ChannelMode::Exception, Some(mask.to_string())));
                         }
                     }
                 }
@@ -520,13 +581,19 @@ pub fn apply_channel_modes_typed(
                         };
                         if !channel.invex.iter().any(|b| b.mask == entry.mask) {
                             channel.invex.push(entry);
-                            applied_modes.push(Mode::Plus(ChannelMode::InviteException, Some(mask.to_string())));
+                            applied_modes.push(Mode::Plus(
+                                ChannelMode::InviteException,
+                                Some(mask.to_string()),
+                            ));
                         }
                     } else {
                         let before_len = channel.invex.len();
                         channel.invex.retain(|b| b.mask != *mask);
                         if channel.invex.len() != before_len {
-                            applied_modes.push(Mode::Minus(ChannelMode::InviteException, Some(mask.to_string())));
+                            applied_modes.push(Mode::Minus(
+                                ChannelMode::InviteException,
+                                Some(mask.to_string()),
+                            ));
                         }
                     }
                 }
@@ -542,13 +609,15 @@ pub fn apply_channel_modes_typed(
                         };
                         if !channel.quiets.iter().any(|b| b.mask == entry.mask) {
                             channel.quiets.push(entry);
-                            applied_modes.push(Mode::Plus(ChannelMode::Quiet, Some(mask.to_string())));
+                            applied_modes
+                                .push(Mode::Plus(ChannelMode::Quiet, Some(mask.to_string())));
                         }
                     } else {
                         let before_len = channel.quiets.len();
                         channel.quiets.retain(|b| b.mask != *mask);
                         if channel.quiets.len() != before_len {
-                            applied_modes.push(Mode::Minus(ChannelMode::Quiet, Some(mask.to_string())));
+                            applied_modes
+                                .push(Mode::Minus(ChannelMode::Quiet, Some(mask.to_string())));
                         }
                     }
                 }
@@ -602,18 +671,18 @@ pub fn format_modes_for_log(modes: &[Mode<ChannelMode>]) -> String {
     use std::fmt::Write;
     let mut result = String::new();
     let mut args = Vec::new();
-    
+
     for mode in modes {
         let _ = write!(result, "{}", mode.flag());
         if let Some(arg) = mode.arg() {
             args.push(arg);
         }
     }
-    
+
     for arg in args {
         result.push(' ');
         result.push_str(arg);
     }
-    
+
     result
 }

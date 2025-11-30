@@ -4,8 +4,8 @@
 
 use super::DbError;
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use sqlx::SqlitePool;
 
@@ -362,23 +362,28 @@ impl<'a> AccountRepository<'a> {
         }
 
         // Check if this is the primary account name (cannot unlink)
-        let account = self.find_by_id(account_id).await?
+        let account = self
+            .find_by_id(account_id)
+            .await?
             .ok_or_else(|| DbError::AccountNotFound(account_id.to_string()))?;
 
         if account.name.eq_ignore_ascii_case(nick) {
-            return Err(DbError::UnknownOption("Cannot ungroup primary account nickname".to_string()));
+            return Err(DbError::UnknownOption(
+                "Cannot ungroup primary account nickname".to_string(),
+            ));
         }
 
         // Count remaining nicknames - must have at least 2 to ungroup one
-        let nick_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM nicknames WHERE account_id = ?",
-        )
-        .bind(account_id)
-        .fetch_one(self.pool)
-        .await?;
+        let nick_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM nicknames WHERE account_id = ?")
+                .bind(account_id)
+                .fetch_one(self.pool)
+                .await?;
 
         if nick_count < 2 {
-            return Err(DbError::UnknownOption("Account must have at least one nickname".to_string()));
+            return Err(DbError::UnknownOption(
+                "Account must have at least one nickname".to_string(),
+            ));
         }
 
         // Delete the nickname link

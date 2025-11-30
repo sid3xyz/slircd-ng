@@ -64,25 +64,29 @@ impl ChannelModeBuilder {
 
     /// Add operator status to a user (+o nick).
     pub fn add_op(mut self, nick: impl Into<String>) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::Oper, Some(&nick.into())));
+        self.modes
+            .push(Mode::plus(ChannelMode::Oper, Some(&nick.into())));
         self
     }
 
     /// Remove operator status from a user (-o nick).
     pub fn remove_op(mut self, nick: impl Into<String>) -> Self {
-        self.modes.push(Mode::minus(ChannelMode::Oper, Some(&nick.into())));
+        self.modes
+            .push(Mode::minus(ChannelMode::Oper, Some(&nick.into())));
         self
     }
 
     /// Add voice status to a user (+v nick).
     pub fn add_voice(mut self, nick: impl Into<String>) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::Voice, Some(&nick.into())));
+        self.modes
+            .push(Mode::plus(ChannelMode::Voice, Some(&nick.into())));
         self
     }
 
     /// Remove voice status from a user (-v nick).
     pub fn remove_voice(mut self, nick: impl Into<String>) -> Self {
-        self.modes.push(Mode::minus(ChannelMode::Voice, Some(&nick.into())));
+        self.modes
+            .push(Mode::minus(ChannelMode::Voice, Some(&nick.into())));
         self
     }
 
@@ -90,49 +94,59 @@ impl ChannelModeBuilder {
 
     /// Add a ban mask (+b mask).
     pub fn add_ban(mut self, mask: impl Into<String>) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::Ban, Some(&mask.into())));
+        self.modes
+            .push(Mode::plus(ChannelMode::Ban, Some(&mask.into())));
         self
     }
 
     /// Remove a ban mask (-b mask).
     pub fn remove_ban(mut self, mask: impl Into<String>) -> Self {
-        self.modes.push(Mode::minus(ChannelMode::Ban, Some(&mask.into())));
+        self.modes
+            .push(Mode::minus(ChannelMode::Ban, Some(&mask.into())));
         self
     }
 
     /// Add a ban exception mask (+e mask).
     pub fn add_except(mut self, mask: impl Into<String>) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::Exception, Some(&mask.into())));
+        self.modes
+            .push(Mode::plus(ChannelMode::Exception, Some(&mask.into())));
         self
     }
 
     /// Remove a ban exception mask (-e mask).
     pub fn remove_except(mut self, mask: impl Into<String>) -> Self {
-        self.modes.push(Mode::minus(ChannelMode::Exception, Some(&mask.into())));
+        self.modes
+            .push(Mode::minus(ChannelMode::Exception, Some(&mask.into())));
         self
     }
 
     /// Add an invite exception mask (+I mask).
     pub fn add_invex(mut self, mask: impl Into<String>) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::InviteException, Some(&mask.into())));
+        self.modes
+            .push(Mode::plus(ChannelMode::InviteException, Some(&mask.into())));
         self
     }
 
     /// Remove an invite exception mask (-I mask).
     pub fn remove_invex(mut self, mask: impl Into<String>) -> Self {
-        self.modes.push(Mode::minus(ChannelMode::InviteException, Some(&mask.into())));
+        self.modes.push(Mode::minus(
+            ChannelMode::InviteException,
+            Some(&mask.into()),
+        ));
         self
     }
 
     /// Add a quiet mask (+q mask).
     pub fn add_quiet(mut self, mask: impl Into<String>) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::Quiet, Some(&mask.into())));
+        self.modes
+            .push(Mode::plus(ChannelMode::Quiet, Some(&mask.into())));
         self
     }
 
     /// Remove a quiet mask (-q mask).
     pub fn remove_quiet(mut self, mask: impl Into<String>) -> Self {
-        self.modes.push(Mode::minus(ChannelMode::Quiet, Some(&mask.into())));
+        self.modes
+            .push(Mode::minus(ChannelMode::Quiet, Some(&mask.into())));
         self
     }
 
@@ -140,7 +154,8 @@ impl ChannelModeBuilder {
 
     /// Set the channel key (+k key).
     pub fn set_key(mut self, key: impl Into<String>) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::Key, Some(&key.into())));
+        self.modes
+            .push(Mode::plus(ChannelMode::Key, Some(&key.into())));
         self
     }
 
@@ -152,7 +167,8 @@ impl ChannelModeBuilder {
 
     /// Set the user limit (+l limit).
     pub fn set_limit(mut self, limit: u32) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::Limit, Some(&limit.to_string())));
+        self.modes
+            .push(Mode::plus(ChannelMode::Limit, Some(&limit.to_string())));
         self
     }
 
@@ -190,13 +206,15 @@ impl ChannelModeBuilder {
 
     /// Set no-external-messages mode (+n).
     pub fn set_no_external(mut self) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::NoExternalMessages, None));
+        self.modes
+            .push(Mode::plus(ChannelMode::NoExternalMessages, None));
         self
     }
 
     /// Unset no-external-messages mode (-n).
     pub fn unset_no_external(mut self) -> Self {
-        self.modes.push(Mode::minus(ChannelMode::NoExternalMessages, None));
+        self.modes
+            .push(Mode::minus(ChannelMode::NoExternalMessages, None));
         self
     }
 
@@ -214,25 +232,29 @@ impl ChannelModeBuilder {
 
     /// Set topic-lock mode (+t).
     pub fn set_topic_lock(mut self) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::ProtectedTopic, None));
+        self.modes
+            .push(Mode::plus(ChannelMode::ProtectedTopic, None));
         self
     }
 
     /// Unset topic-lock mode (-t).
     pub fn unset_topic_lock(mut self) -> Self {
-        self.modes.push(Mode::minus(ChannelMode::ProtectedTopic, None));
+        self.modes
+            .push(Mode::minus(ChannelMode::ProtectedTopic, None));
         self
     }
 
     /// Set registered-only mode (+r).
     pub fn set_registered_only(mut self) -> Self {
-        self.modes.push(Mode::plus(ChannelMode::RegisteredOnly, None));
+        self.modes
+            .push(Mode::plus(ChannelMode::RegisteredOnly, None));
         self
     }
 
     /// Unset registered-only mode (-r).
     pub fn unset_registered_only(mut self) -> Self {
-        self.modes.push(Mode::minus(ChannelMode::RegisteredOnly, None));
+        self.modes
+            .push(Mode::minus(ChannelMode::RegisteredOnly, None));
         self
     }
 

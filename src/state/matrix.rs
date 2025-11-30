@@ -6,11 +6,12 @@
 use crate::config::{Config, LimitsConfig, OperBlock};
 use crate::state::UidGenerator;
 use dashmap::DashMap;
+use sha2::{Digest, Sha256};
+use slirc_proto::Message;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::{mpsc, RwLock};
-use slirc_proto::Message;
+use tokio::sync::{RwLock, mpsc};
 
 /// Unique user identifier (TS6 format: 9 characters).
 pub type Uid = String;
@@ -104,6 +105,8 @@ pub struct User {
     pub user: String,
     pub realname: String,
     pub host: String,
+    /// Visible hostname shown to other users (cloaked for privacy).
+    pub visible_host: String,
     /// Channels this user is in (lowercase names).
     pub channels: HashSet<String>,
     /// User modes.
@@ -117,45 +120,82 @@ pub struct User {
 /// User modes.
 #[derive(Debug, Default, Clone)]
 pub struct UserModes {
-    pub invisible: bool,      // +i
-    pub wallops: bool,        // +w
-    pub oper: bool,           // +o (IRC operator)
-    pub registered: bool,     // +r (identified to NickServ)
-    pub secure: bool,         // +Z (TLS connection)
+    pub invisible: bool,  // +i
+    pub wallops: bool,    // +w
+    pub oper: bool,       // +o (IRC operator)
+    pub registered: bool, // +r (identified to NickServ)
+    pub secure: bool,     // +Z (TLS connection)
 }
 
 impl UserModes {
     /// Convert modes to a string like "+iw".
     pub fn as_mode_string(&self) -> String {
         let mut s = String::from("+");
-        if self.invisible { s.push('i'); }
-        if self.wallops { s.push('w'); }
-        if self.oper { s.push('o'); }
-        if self.registered { s.push('r'); }
-        if self.secure { s.push('Z'); }
-        if s == "+" {
-            "+".to_string()
-        } else {
-            s
+        if self.invisible {
+            s.push('i');
         }
+        if self.wallops {
+            s.push('w');
+        }
+        if self.oper {
+            s.push('o');
+        }
+        if self.registered {
+            s.push('r');
+        }
+        if self.secure {
+            s.push('Z');
+        }
+        if s == "+" { "+".to_string() } else { s }
     }
 }
 
 impl User {
     /// Create a new user.
     pub fn new(uid: Uid, nick: String, user: String, realname: String, host: String) -> Self {
+        let visible_host = cloak_host(&host);
         Self {
             uid,
             nick,
             user,
             realname,
             host,
+            visible_host,
             channels: HashSet::new(),
             modes: UserModes::default(),
             account: None,
             away: None,
         }
     }
+}
+
+/// Cloak a hostname for user privacy.
+///
+/// Uses SHA256(IP + SALT) to create a deterministic but unpredictable cloaked hostname.
+/// This prevents exposing user IP addresses to other users while maintaining uniqueness.
+///
+/// Format: `<prefix>-<hash>.cloak`
+///
+/// # Arguments
+/// * `host` - The real IP address or hostname to cloak
+///
+/// # Returns
+/// A cloaked hostname string
+pub fn cloak_host(host: &str) -> String {
+    // Salt for cloaking (in production, this should be configurable and secret)
+    const CLOAK_SALT: &str = "slircd-ng-cloak-salt-change-me";
+
+    // Create SHA256 hash of IP + salt
+    let mut hasher = Sha256::new();
+    hasher.update(host.as_bytes());
+    hasher.update(CLOAK_SALT.as_bytes());
+    let result = hasher.finalize();
+
+    // Take first 8 bytes of hash and convert to hex
+    let hash_hex = format!("{:x}", u64::from_be_bytes(result[0..8].try_into().unwrap()));
+
+    // Format: user-<hash>.cloak
+    format!("user-{}.cloak", &hash_hex[0..8])
 }
 
 /// An IRC channel.
@@ -181,33 +221,45 @@ pub struct Channel {
 /// Channel modes.
 #[derive(Debug, Default, Clone)]
 pub struct ChannelModes {
-    pub invite_only: bool,      // +i
-    pub moderated: bool,        // +m
-    pub no_external: bool,      // +n
-    pub secret: bool,           // +s
-    pub topic_lock: bool,       // +t
-    pub registered_only: bool,  // +r
-    pub key: Option<String>,    // +k
-    pub limit: Option<u32>,     // +l
+    pub invite_only: bool,     // +i
+    pub moderated: bool,       // +m
+    pub no_external: bool,     // +n
+    pub secret: bool,          // +s
+    pub topic_lock: bool,      // +t
+    pub registered_only: bool, // +r
+    pub key: Option<String>,   // +k
+    pub limit: Option<u32>,    // +l
 }
 
 impl ChannelModes {
     /// Convert modes to a string like "+nt".
     pub fn as_mode_string(&self) -> String {
         let mut s = String::from("+");
-        if self.invite_only { s.push('i'); }
-        if self.moderated { s.push('m'); }
-        if self.no_external { s.push('n'); }
-        if self.secret { s.push('s'); }
-        if self.topic_lock { s.push('t'); }
-        if self.registered_only { s.push('r'); }
-        if self.key.is_some() { s.push('k'); }
-        if self.limit.is_some() { s.push('l'); }
-        if s == "+" {
-            "+".to_string()
-        } else {
-            s
+        if self.invite_only {
+            s.push('i');
         }
+        if self.moderated {
+            s.push('m');
+        }
+        if self.no_external {
+            s.push('n');
+        }
+        if self.secret {
+            s.push('s');
+        }
+        if self.topic_lock {
+            s.push('t');
+        }
+        if self.registered_only {
+            s.push('r');
+        }
+        if self.key.is_some() {
+            s.push('k');
+        }
+        if self.limit.is_some() {
+            s.push('l');
+        }
+        if s == "+" { "+".to_string() } else { s }
     }
 }
 
@@ -230,8 +282,8 @@ pub struct Topic {
 /// Member modes (op, voice, etc.).
 #[derive(Debug, Default, Clone)]
 pub struct MemberModes {
-    pub op: bool,      // +o
-    pub voice: bool,   // +v
+    pub op: bool,    // +o
+    pub voice: bool, // +v
 }
 
 impl MemberModes {
@@ -356,7 +408,12 @@ impl Matrix {
     /// Broadcast a message to all members of a channel.
     /// Optionally exclude one UID (usually the sender).
     /// Note: `channel_name` should already be lowercased by the caller.
-    pub async fn broadcast_to_channel(&self, channel_name: &str, msg: Message, exclude: Option<&str>) {
+    pub async fn broadcast_to_channel(
+        &self,
+        channel_name: &str,
+        msg: Message,
+        exclude: Option<&str>,
+    ) {
         if let Some(channel) = self.channels.get(channel_name) {
             let channel = channel.read().await;
             for uid in channel.members.keys() {
@@ -442,7 +499,7 @@ impl Matrix {
     }
 
     /// Record a WHOWAS entry for a user who is disconnecting.
-    /// 
+    ///
     /// Entries are stored per-nick (lowercase) with most recent first.
     /// Old entries are pruned to keep only MAX_WHOWAS_PER_NICK entries.
     pub fn record_whowas(&self, nick: &str, user: &str, host: &str, realname: &str) {
@@ -456,10 +513,7 @@ impl Matrix {
             logout_time: chrono::Utc::now().timestamp(),
         };
 
-        self.whowas
-            .entry(nick_lower)
-            .or_default()
-            .push_front(entry);
+        self.whowas.entry(nick_lower).or_default().push_front(entry);
 
         // Prune old entries if over the limit
         if let Some(mut entries) = self.whowas.get_mut(&slirc_proto::irc_to_lower(nick)) {

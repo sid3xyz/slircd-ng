@@ -2,7 +2,7 @@
 //!
 //! RFC 2812 §3.4 - Server queries and commands
 
-use super::{err_notregistered, server_reply, Context, Handler, HandlerError, HandlerResult};
+use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,12 +21,18 @@ pub struct VersionHandler;
 impl Handler for VersionHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_VERSION (351): <version>.<debuglevel> <server> :<comments>
         #[cfg(debug_assertions)]
@@ -61,12 +67,18 @@ pub struct TimeHandler;
 impl Handler for TimeHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_TIME (391): <server> :<string showing server's local time>
         let now = chrono::Local::now();
@@ -94,12 +106,18 @@ pub struct AdminHandler;
 impl Handler for AdminHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_ADMINME (256): <server> :Administrative info
         let reply = server_reply(
@@ -152,12 +170,18 @@ pub struct InfoHandler;
 impl Handler for InfoHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         let info_lines = [
             format!("slircd-ng v{} - High-performance IRC daemon", VERSION),
@@ -204,12 +228,18 @@ pub struct LusersHandler;
 impl Handler for LusersHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Count users and channels
         let total_users = ctx.matrix.users.len();
@@ -331,12 +361,18 @@ pub struct StatsHandler;
 impl Handler for StatsHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // STATS [query]
         let query = msg.arg(0).and_then(|s| s.chars().next());
@@ -419,12 +455,18 @@ pub struct MotdHandler;
 impl Handler for MotdHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_MOTDSTART (375): :- <server> Message of the day -
         let reply = server_reply(
@@ -478,12 +520,18 @@ pub struct ListHandler;
 impl Handler for ListHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if !ctx.handshake.registered {
-            ctx.sender.send(err_notregistered(&ctx.matrix.server_info.name)).await?;
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
             return Ok(());
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.as_ref().ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // LIST [channels]
         let filter = msg.arg(0);

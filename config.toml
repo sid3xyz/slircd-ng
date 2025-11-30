@@ -14,6 +14,17 @@ description = "Straylight IRC Daemon - Next Generation"
 # Address to bind to
 address = "0.0.0.0:6667"
 
+# Optional: TLS/SSL listener
+# [tls]
+# address = "0.0.0.0:6697"
+# cert_path = "server.crt"
+# key_path = "server.key"
+
+# Optional: WebSocket listener for web-based clients
+# [websocket]
+# address = "0.0.0.0:8080"
+# allow_origins = ["https://example.com"]
+
 [database]
 # Path to SQLite database file
 path = "slircd.db"
