@@ -9,7 +9,9 @@ use super::{
 use crate::db::ChannelRepository;
 use crate::state::{Channel, MemberModes, Topic, User};
 use async_trait::async_trait;
-use slirc_proto::{ChannelExt, Command, Message, MessageRef, Prefix, Response, irc_to_lower};
+use slirc_proto::{
+    ChannelExt, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower,
+};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
@@ -263,15 +265,21 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         .broadcast_to_channel(&channel_lower, join_msg, None)
         .await;
 
-    // If auto-op/voice was applied, broadcast the MODE change
+    // If auto-op/voice was applied, broadcast the MODE change using typed modes
     if modes.op || modes.voice {
-        let mode_str = if modes.op && modes.voice {
-            "+ov"
-        } else if modes.op {
-            "+o"
-        } else {
-            "+v"
-        };
+        let mut mode_changes: Vec<Mode<ChannelMode>> = Vec::new();
+
+        if modes.op {
+            mode_changes.push(Mode::plus(ChannelMode::Oper, Some(nick)));
+        }
+        if modes.voice {
+            mode_changes.push(Mode::plus(ChannelMode::Voice, Some(nick)));
+        }
+
+        let mode_str = mode_changes
+            .iter()
+            .map(|m| m.flag())
+            .collect::<String>();
 
         let mode_msg = Message {
             tags: None,
@@ -280,19 +288,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
                 "ChanServ".to_string(),
                 "services.".to_string(),
             )),
-            command: Command::Raw(
-                "MODE".to_string(),
-                if modes.op && modes.voice {
-                    vec![
-                        canonical_name.clone(),
-                        mode_str.to_string(),
-                        nick.clone(),
-                        nick.clone(),
-                    ]
-                } else {
-                    vec![canonical_name.clone(), mode_str.to_string(), nick.clone()]
-                },
-            ),
+            command: Command::ChannelMODE(canonical_name.clone(), mode_changes),
         };
 
         ctx.matrix

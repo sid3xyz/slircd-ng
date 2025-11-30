@@ -10,7 +10,7 @@
 use crate::db::Database;
 use crate::services::ServiceEffect;
 use crate::state::Matrix;
-use slirc_proto::{Command, Message, Prefix, irc_to_lower};
+use slirc_proto::{ChannelMode, Command, Message, Mode, Prefix, irc_to_lower};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
@@ -805,14 +805,21 @@ pub async fn apply_effect(
                 }
             }
 
-            // Build MODE message from ChanServ
-            // NOTE: Using Command::Raw for dynamic single-mode change. The mode_char
-            // comes from service effect, not parsed from wire, so we build manually.
-            let mode_str = if adding {
-                format!("+{}", mode_char)
-            } else {
-                format!("-{}", mode_char)
+            // Build typed MODE message from ChanServ
+            let channel_mode = match mode_char {
+                'o' => ChannelMode::Oper,
+                'v' => ChannelMode::Voice,
+                'h' => ChannelMode::Halfop,
+                c => ChannelMode::Unknown(c),
             };
+
+            let mode_change = if adding {
+                Mode::plus(channel_mode, Some(&target_nick))
+            } else {
+                Mode::minus(channel_mode, Some(&target_nick))
+            };
+
+            let mode_str = mode_change.flag();
 
             let mode_msg = Message {
                 tags: None,
@@ -821,14 +828,7 @@ pub async fn apply_effect(
                     "ChanServ".to_string(),
                     "services.".to_string(),
                 )),
-                command: Command::Raw(
-                    "MODE".to_string(),
-                    vec![
-                        canonical_name.clone(),
-                        mode_str.clone(),
-                        target_nick.clone(),
-                    ],
-                ),
+                command: Command::ChannelMODE(canonical_name.clone(), vec![mode_change]),
             };
 
             // Broadcast MODE change to channel members

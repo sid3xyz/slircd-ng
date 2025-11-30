@@ -27,7 +27,8 @@ use crate::db::Database;
 use crate::handlers::{Context, HandshakeState, Registry};
 use crate::network::limit::RateLimiter;
 use crate::state::Matrix;
-use slirc_proto::transport::ZeroCopyTransportEnum;
+use slirc_proto::error::ProtocolError;
+use slirc_proto::transport::{TransportReadError, ZeroCopyTransportEnum};
 use slirc_proto::{Command, Message, irc_to_lower};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -36,6 +37,42 @@ use tokio::sync::mpsc;
 use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{debug, info, instrument, warn};
+
+/// Classification of transport read errors for appropriate handling.
+enum ReadErrorAction {
+    /// Recoverable protocol violation - send error message to client
+    ProtocolViolation { error_msg: String },
+    /// I/O error - connection is broken, just log and disconnect
+    IoError,
+}
+
+/// Classify a transport read error into an actionable category.
+fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
+    match e {
+        TransportReadError::Protocol(proto_err) => {
+            let msg = match proto_err {
+                ProtocolError::MessageTooLong { actual, limit } => {
+                    format!("Input line too long ({actual} bytes, max {limit})")
+                }
+                ProtocolError::TagsTooLong { actual, limit } => {
+                    format!("Message tags too long ({actual} bytes, max {limit})")
+                }
+                ProtocolError::IllegalControlChar(ch) => {
+                    format!("Illegal control character: {ch:?}")
+                }
+                ProtocolError::InvalidMessage { string, cause } => {
+                    format!("Malformed message: {cause} (input: {string:?})")
+                }
+                // Handle other variants that might be added in the future
+                _ => format!("Protocol error: {proto_err}"),
+            };
+            ReadErrorAction::ProtocolViolation { error_msg: msg }
+        }
+        TransportReadError::Io(_) => ReadErrorAction::IoError,
+        // Handle future variants gracefully
+        _ => ReadErrorAction::IoError,
+    }
+}
 
 /// A client connection handler.
 pub struct Connection {
@@ -175,7 +212,21 @@ impl Connection {
                     }
                 }
                 Some(Err(e)) => {
-                    warn!(error = ?e, "Read error during handshake");
+                    match classify_read_error(&e) {
+                        ReadErrorAction::ProtocolViolation { error_msg } => {
+                            warn!(error = %error_msg, "Protocol error during handshake");
+                            // Send ERROR message before disconnecting
+                            let error_reply = Message {
+                                tags: None,
+                                prefix: None,
+                                command: Command::ERROR(error_msg),
+                            };
+                            let _ = self.transport.write_message(&error_reply).await;
+                        }
+                        ReadErrorAction::IoError => {
+                            debug!(error = ?e, "I/O error during handshake");
+                        }
+                    }
                     return Ok(());
                 }
                 None => {
@@ -263,7 +314,21 @@ impl Connection {
                             }
                         }
                         Some(Err(e)) => {
-                            warn!(error = ?e, "Read error");
+                            match classify_read_error(&e) {
+                                ReadErrorAction::ProtocolViolation { error_msg } => {
+                                    warn!(error = %error_msg, "Protocol error from client");
+                                    // Send ERROR message before disconnecting
+                                    let error_reply = Message {
+                                        tags: None,
+                                        prefix: None,
+                                        command: Command::ERROR(error_msg),
+                                    };
+                                    let _ = self.transport.write_message(&error_reply).await;
+                                }
+                                ReadErrorAction::IoError => {
+                                    debug!(error = ?e, "I/O error");
+                                }
+                            }
                             break;
                         }
                         None => {
