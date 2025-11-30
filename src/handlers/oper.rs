@@ -55,7 +55,7 @@ impl Handler for OperHandler {
 
         // Brute-force protection: Check rate limiting and attempt counter
         const MAX_OPER_ATTEMPTS: u8 = 3;
-        const OPER_DELAY_MS: u64 = 2000;  // 2 seconds between attempts
+        const OPER_DELAY_MS: u64 = 3000;  // 3 seconds between attempts (anti-brute-force)
         const LOCKOUT_DELAY_MS: u64 = 30000;  // 30 second lockout after max attempts
 
         let now = std::time::Instant::now();
