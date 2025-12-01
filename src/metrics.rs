@@ -45,6 +45,12 @@ lazy_static! {
         "Rate limit hits"
     ).unwrap();
 
+    /// Total +r (registered-only) enforcement events (JOIN/speak denied).
+    pub static ref REGISTERED_ONLY_BLOCKED: IntCounter = IntCounter::new(
+        "irc_registered_only_blocked_total",
+        "Registered-only (+r) enforcement events"
+    ).unwrap();
+
     // ========================================================================
     // Gauges (can increase/decrease)
     // ========================================================================
@@ -80,6 +86,9 @@ pub fn init() {
         .unwrap();
     REGISTRY
         .register(Box::new(RATE_LIMITED.clone()))
+        .unwrap();
+    REGISTRY
+        .register(Box::new(REGISTERED_ONLY_BLOCKED.clone()))
         .unwrap();
     REGISTRY
         .register(Box::new(CONNECTED_USERS.clone()))
