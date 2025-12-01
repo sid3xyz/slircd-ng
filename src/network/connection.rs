@@ -272,6 +272,7 @@ impl Connection {
                             // Flood protection using global rate limiter
                             if !self.matrix.rate_limiter.check_message_rate(&self.uid) {
                                 flood_violations += 1;
+                                crate::metrics::RATE_LIMITED.inc();
                                 warn!(uid = %self.uid, violations = flood_violations, "Rate limit exceeded");
 
                                 if flood_violations >= MAX_FLOOD_VIOLATIONS {
@@ -384,6 +385,7 @@ impl Connection {
             }
         }
         self.matrix.users.remove(&self.uid);
+        crate::metrics::CONNECTED_USERS.dec();
 
         // Cleanup: remove nick from index
         if let Some(nick) = &handshake.nick {

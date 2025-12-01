@@ -59,3 +59,8 @@ regex = "1.10"
 tokio-tungstenite = "0.21"
 sha2 = "0.10"
 http = "1.4.0"
+
+# Metrics
+prometheus = "0.13"
+lazy_static = "1.4"
+axum = "0.7"

@@ -181,6 +181,7 @@ async fn route_to_channel(
                         pattern = %pattern,
                         "Message blocked as spam"
                     );
+                    crate::metrics::SPAM_BLOCKED.inc();
                     return ChannelRouteResult::BlockedSpam;
                 }
                 SpamVerdict::Clean => {
@@ -208,6 +209,7 @@ async fn route_to_channel(
         }
         if let Some(sender) = ctx.matrix.senders.get(uid) {
             let _ = sender.send(msg.clone()).await;
+            crate::metrics::MESSAGES_SENT.inc();
         }
     }
 
@@ -250,6 +252,7 @@ async fn route_to_user(
     // Send to target user
     if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
         let _ = sender.send(msg).await;
+        crate::metrics::MESSAGES_SENT.inc();
         true
     } else {
         false
