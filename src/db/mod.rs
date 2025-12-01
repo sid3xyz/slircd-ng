@@ -10,7 +10,7 @@ mod bans;
 mod channels;
 
 pub use accounts::AccountRepository;
-pub use bans::BanRepository;
+pub use bans::{BanRepository, Shun};
 pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
 
 use sqlx::SqlitePool;

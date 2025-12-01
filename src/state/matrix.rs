@@ -4,6 +4,7 @@
 //! data structures accessible from any async task.
 
 use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
+use crate::db::Shun;
 use crate::security::{RateLimitManager, XLine};
 use crate::state::UidGenerator;
 use dashmap::{DashMap, DashSet};
@@ -71,6 +72,10 @@ pub struct Matrix {
 
     /// Set of registered channel names (lowercase) for fast lookup.
     pub registered_channels: DashSet<String>,
+
+    /// Active shuns cached in memory for fast lookup.
+    /// Key is the mask pattern, value is the Shun record.
+    pub shuns: DashMap<String, Shun>,
 }
 
 /// An entry in the WHOWAS history for a disconnected user.
@@ -367,7 +372,8 @@ impl Matrix {
     ///
     /// `registered_channels` is a list of channel names that are registered with ChanServ.
     /// These are stored in lowercase for fast lookup.
-    pub fn new(config: &Config, registered_channels: Vec<String>) -> Self {
+    /// `shuns` is a list of active shuns loaded from the database.
+    pub fn new(config: &Config, registered_channels: Vec<String>, shuns: Vec<Shun>) -> Self {
         use slirc_proto::irc_to_lower;
 
         let now = chrono::Utc::now().timestamp();
@@ -376,6 +382,12 @@ impl Matrix {
         let registered_set = DashSet::new();
         for name in registered_channels {
             registered_set.insert(irc_to_lower(&name));
+        }
+
+        // Build the shuns map
+        let shuns_map = DashMap::new();
+        for shun in shuns {
+            shuns_map.insert(shun.mask.clone(), shun);
         }
 
         Self {
@@ -407,6 +419,7 @@ impl Matrix {
             },
             xlines: DashMap::new(),
             registered_channels: registered_set,
+            shuns: shuns_map,
         }
     }
 
