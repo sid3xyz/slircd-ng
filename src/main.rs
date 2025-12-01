@@ -146,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
         config.listen.address,
         config.tls,
         config.websocket,
+        config.webirc,
         matrix,
         db,
     )

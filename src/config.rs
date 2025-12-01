@@ -28,6 +28,9 @@ pub struct Config {
     /// Operator blocks.
     #[serde(default)]
     pub oper: Vec<OperBlock>,
+    /// WEBIRC blocks for trusted gateway clients.
+    #[serde(default)]
+    pub webirc: Vec<WebircBlock>,
     /// Database configuration.
     pub database: Option<DatabaseConfig>,
     /// Rate limiting configuration.
@@ -73,6 +76,22 @@ pub struct OperBlock {
     pub password: String,
     /// Optional hostmask restriction (e.g., "*!*@trusted.host").
     pub hostmask: Option<String>,
+}
+
+/// WEBIRC block configuration for trusted gateway clients.
+///
+/// WEBIRC allows trusted proxies (web clients, bouncers) to forward
+/// the real user's IP/host to the IRC server.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WebircBlock {
+    /// Password for WEBIRC authentication.
+    pub password: String,
+    /// Allowed host/IP patterns for the gateway (glob patterns supported).
+    #[serde(default)]
+    pub hosts: Vec<String>,
+    /// Description of this WEBIRC gateway (for admin reference).
+    #[allow(dead_code)] // Used for admin logging/inspection
+    pub description: Option<String>,
 }
 
 /// Server identity configuration.
