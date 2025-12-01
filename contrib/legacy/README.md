@@ -1,5 +1,14 @@
 # Legacy slircd Code Reference
 
+> **⚠️ READ-ONLY REFERENCE MATERIAL**
+>
+> This directory contains archived code from the original slircd implementation.
+> **Do not modify these files.** They exist solely as reference for adapting
+> features into slircd-ng's Matrix/Effects architecture.
+>
+> See [`MIGRATION_LOG.md`](./MIGRATION_LOG.md) for granular tracking of what
+> has been adapted and what remains.
+
 This folder contains code extracted from the original slircd implementation
 (located at `/home/case/_SLIRC_DEVELOPMENT_/ircd/`) for reference and potential
 adaptation into slircd-ng.

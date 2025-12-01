@@ -61,12 +61,40 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or("slircd.db");
     let db = Database::new(db_path).await?;
 
+    // Load registered channels from database
+    let registered_channels: Vec<String> = db
+        .channels()
+        .load_all_channels()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "Failed to load registered channels from database");
+            Vec::new()
+        })
+        .into_iter()
+        .map(|r| r.name)
+        .collect();
+    info!(count = registered_channels.len(), "Loaded registered channels");
+
     // Create the Matrix (shared state)
-    let matrix = Arc::new(Matrix::new(&config));
+    let matrix = Arc::new(Matrix::new(&config, registered_channels));
 
     // Start nick enforcement background task
     spawn_enforcement_task(Arc::clone(&matrix));
     info!("Nick enforcement task started");
+
+    // Start WHOWAS cleanup task (runs every hour, removes entries older than 7 days)
+    {
+        let matrix = Arc::clone(&matrix);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                matrix.cleanup_whowas(7);
+                info!("WHOWAS cleanup completed");
+            }
+        });
+    }
+    info!("WHOWAS cleanup task started");
 
     // Start the Gateway (with optional TLS and WebSocket)
     let gateway = Gateway::bind(

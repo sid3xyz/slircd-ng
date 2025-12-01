@@ -9,7 +9,8 @@
 
 use super::{
     Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, err_nosuchnick,
-    get_nick_or_star, matches_hostmask, require_oper, resolve_nick_to_uid, server_reply,
+    get_nick_or_star, matches_hostmask, require_oper, resolve_nick_to_uid, server_notice,
+    server_reply,
 };
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
@@ -354,15 +355,11 @@ impl Handler for DieHandler {
         };
 
         // TODO: Implement actual shutdown
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick.clone(),
-                "DIE command received (not implemented - use process signals)".to_string(),
-            ),
-        };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(
+            server_name,
+            &nick,
+            "DIE command received (not implemented - use process signals)",
+        )).await?;
 
         tracing::warn!(oper = %nick, "DIE command received (stub)");
 
@@ -397,15 +394,11 @@ impl Handler for RehashHandler {
         ctx.sender.send(reply).await?;
 
         // TODO: Implement actual config reload
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick.clone(),
-                "REHASH acknowledged (config reload not yet implemented)".to_string(),
-            ),
-        };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(
+            server_name,
+            &nick,
+            "REHASH acknowledged (config reload not yet implemented)",
+        )).await?;
 
         tracing::info!(oper = %nick, "REHASH command received (stub)");
 

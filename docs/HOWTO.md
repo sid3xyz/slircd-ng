@@ -1,171 +1,120 @@
-# slirc-proto: The Definitive Guide
+# slircd-ng Development Guide
 
-This guide provides a deep dive into using `slirc-proto`, a high-performance Rust library for parsing and serializing IRC protocol messages with full IRCv3 support.
+This guide covers common development tasks for the slircd-ng IRC daemon.
 
-## 1. Core Concepts
+## Quick Start
 
-`slirc-proto` is designed around a few key types:
+### Building
 
-- **`Message`**: An owned, heap-allocated IRC message. Easy to use, safe to pass around.
-- **`MessageRef<'a>`**: A zero-copy, borrowed view of an IRC message. Extremely fast, ties to the lifetime of the input string.
-- **`Command`**: A strongly-typed enum representing every supported IRC command (e.g., `PRIVMSG`, `JOIN`, `KLINE`).
-- **`Prefix`**: Represents the source of a message (e.g., `nick!user@host` or `servername`).
-- **`Tag`**: IRCv3 message tags (key-value pairs).
+```bash
+cargo build --release
+```
 
-## 2. Parsing Messages
+### Running
 
-### Owned Parsing (Easiest)
-Use this when you need to keep the message around or pass it between threads.
+```bash
+./target/release/slircd config.toml
+```
+
+See `config.toml` in the repository root for configuration examples.
+
+## Development Workflow
+
+### Testing
+
+```bash
+# Run all tests
+cargo test
+
+# Run specific test
+cargo test test_name
+
+# Run with logging
+RUST_LOG=debug cargo test
+```
+
+### Database Migrations
+
+Migrations are in `migrations/` directory and run automatically on startup.
+
+To create a new migration:
+
+1. Create `migrations/XXX_description.sql`
+2. Migrations run in alphanumeric order
+3. Test with a fresh database
+
+### Adding New Commands
+
+1. Add command variant to `slirc-proto::Command` (if not already present)
+2. Create handler in `src/handlers/`
+3. Register handler in `src/handlers/mod.rs::HandlerRegistry::new()`
+4. Add tests
+
+### Service Development (NickServ/ChanServ)
+
+Services use the `ServiceEffect` pattern:
 
 ```rust
-use slirc_proto::{Message, Command};
-
-let raw = "@time=12345 :nick!user@host PRIVMSG #channel :Hello world!";
-let msg: Message = raw.parse().expect("Failed to parse");
-
-if let Command::PRIVMSG(target, text) = msg.command {
-    println!("{} says to {}: {}", msg.source_nickname().unwrap(), target, text);
+pub fn handle_nickserv_register(
+    ctx: &Context,
+    nick: &str,
+    password: &str,
+) -> Vec<ServiceEffect> {
+    vec![
+        ServiceEffect::SetRegistered(nick.to_string()),
+        ServiceEffect::SendNotice(nick.to_string(), "Account registered.".to_string()),
+    ]
 }
 ```
 
-### Zero-Copy Parsing (Fastest)
-Use this in hot loops (like a server) where you process and discard messages immediately.
+Effects are applied by the caller, keeping services as pure functions.
 
-```rust
-use slirc_proto::MessageRef;
+## Architecture
 
-let raw = "@time=12345 :nick!user@host PRIVMSG #channel :Hello world!";
-// Returns a MessageRef<'a> borrowing from `raw`
-let msg = MessageRef::parse(raw).expect("Failed to parse");
+See `docs/ARCHITECTURE.md` for detailed architecture documentation.
 
-// Accessors are similar, but return &str
-assert_eq!(msg.command_str(), "PRIVMSG");
+### Key Components
+
+- **Gateway**: TCP/TLS listeners
+- **Connection**: Per-client tokio task with MessageRef hot loop
+- **Handlers**: Command processing with read-only Context
+- **Matrix**: Shared state (DashMap for lock-free access)
+- **Services**: NickServ/ChanServ as pure functions returning effects
+
+## Troubleshooting
+
+### Database Errors
+
+Delete `slircd.db` to reset (development only):
+
+```bash
+rm slircd.db
+cargo run
 ```
 
-## 3. Working with Commands
+### TLS Certificate Issues
 
-The `Command` enum is the heart of the library. It covers standard RFC 1459/2812 commands, IRCv3 extensions, and common server-side operations.
+Generate self-signed cert for testing:
 
-### Pattern Matching
-```rust
-match msg.command {
-    Command::JOIN(channel, key) => {
-        println!("Joining {}", channel);
-    },
-    Command::KLINE(duration, mask, reason) => {
-        // Typed operator commands!
-        println!("Banning {} for {:?}", mask, duration);
-    },
-    Command::Raw(cmd, args) => {
-        // Fallback for unknown commands
-        println!("Unknown command: {} {:?}", cmd, args);
-    },
-    _ => {}
-}
+```bash
+openssl req -x509 -newkey rsa:4096 -nodes \
+  -keyout certs/key.pem -out certs/cert.pem \
+  -days 365 -subj "/CN=localhost"
 ```
 
-### Operator Commands
-We support typed variants for administrative actions to avoid `Command::Raw`:
-- `KLINE`, `DLINE`, `UNKLINE`, `UNDLINE`
-- `KNOCK`, `CHGHOST`, `SAJOIN`, `SAMODE`
+### Performance Profiling
 
-## 4. Constructing & Serializing
+```bash
+# Build with debug symbols
+cargo build --release
 
-You can build messages using helper methods or by constructing the struct directly.
-
-### Using Builders (Recommended)
-```rust
-use slirc_proto::{Message, Prefix};
-
-let msg = Message::privmsg("#rust", "Hello!")
-    .with_prefix(Prefix::new_from_str("mybot!bot@example.com"))
-    .with_tag("time", Some("2023-11-28T12:00:00Z"));
-
-println!("{}", msg); // Serializes to wire format
+# Run with flamegraph
+cargo flamegraph -- config.toml
 ```
 
-### Manual Construction
-```rust
-use slirc_proto::{Message, Command};
+## References
 
-let msg = Message {
-    tags: None,
-    prefix: None,
-    command: Command::KLINE(Some("60".into()), "*@bad.host".into(), "Spam".into()),
-};
-```
-
-## 5. Handling Modes
-
-Modes are complex because they can be user modes (`+i`) or channel modes (`+o nick`). `slirc-proto` provides typed handling to avoid string parsing errors.
-
-### The `Mode<T>` Type
-```rust
-use slirc_proto::{Mode, ChannelMode, UserMode};
-
-// Constructing a channel mode change
-let modes = vec![
-    Mode::plus(ChannelMode::Op, Some("nick")),
-    Mode::minus(ChannelMode::Secret, None),
-    Mode::Plus(ChannelMode::Ban, Some("*!*@bad".into()))
-];
-
-let cmd = Command::ChannelMODE("#channel".into(), modes);
-```
-
-**Note**: Always use `Mode::plus`/`Mode::minus` or the enum variants. Avoid constructing raw mode strings manually if possible.
-
-## 6. Transport & Async (Tokio)
-
-If the `tokio` feature is enabled (default), you get `IrcCodec` for framing.
-
-```rust
-use futures::StreamExt;
-use tokio::net::TcpStream;
-use tokio_util::codec::Framed;
-use slirc_proto::IrcCodec;
-
-#[tokio::main]
-async fn main() {
-    let stream = TcpStream::connect("irc.example.com:6667").await.unwrap();
-    let mut framed = Framed::new(stream, IrcCodec::new());
-
-    // Send
-    framed.send(Message::nick("mybot")).await.unwrap();
-    framed.send(Message::user("mybot", "Bot")).await.unwrap();
-
-    // Receive
-    while let Some(Ok(msg)) = framed.next().await {
-        println!("Received: {}", msg);
-    }
-}
-```
-
-## 7. IRCv3 Capabilities
-
-The library has first-class support for `CAP` negotiation and subcommands.
-
-```rust
-use slirc_proto::{Command, CapSubCommand};
-
-// Request capabilities
-let cap_req = Command::CAP(
-    None, 
-    CapSubCommand::REQ, 
-    None, 
-    Some("server-time message-tags".into())
-);
-```
-
-## 8. Best Practices
-
-1.  **Prefer `MessageRef` for Servers**: If you are writing a server or a high-throughput bot, use `MessageRef` to avoid allocation overhead.
-2.  **Use Typed Commands**: Don't rely on `Command::Raw` unless necessary. If a command is missing, open an issue or PR to add it to `Command` enum.
-3.  **Sanitization**: The library handles basic sanitization (e.g., no newlines in commands), but always validate user input before constructing administrative commands.
-4.  **ISUPPORT**: Use the `isupport` module to parse server features. This is critical for knowing which channel modes require arguments.
-
-## 9. Feature Flags
-
-- `tokio`: Enables `IrcCodec` and async utilities (Default: enabled).
-- `proptest`: Enables property-based testing utilities.
-- `encoding`: Enables `encoding_rs` support for non-UTF8 fallbacks.
+- RFC 1459: Original IRC specification
+- RFC 2812: Updated IRC protocol
+- IRCv3 specifications: https://ircv3.net/
+- `slirc-proto` documentation: https://docs.rs/slirc-proto/

@@ -1,30 +1,21 @@
-//! ChanServ - Channel registration and access control service.
+//! ChanServ command handlers.
 //!
-//! Handles:
-//! - REGISTER #channel [description] - Register a channel
-//! - ACCESS #channel LIST - List access entries
-//! - ACCESS #channel ADD <account> <flags> - Add access entry
-//! - ACCESS #channel DEL <account> - Remove access entry
-//! - INFO #channel - Show channel information
-//! - SET #channel <option> <value> - Configure channel settings
-//! - DROP #channel - Unregister a channel
+//! This module contains all command handler implementations for ChanServ.
 
 use crate::db::{ChannelRepository, Database};
 use crate::services::ServiceEffect;
-use crate::services::nickserv::apply_effect;
 use crate::state::Matrix;
 use slirc_proto::{Command, Message, Prefix, irc_to_lower};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tracing::{info, warn};
+
+/// Result of a ChanServ command - a list of effects to apply.
+pub type ChanServResult = Vec<ServiceEffect>;
 
 /// ChanServ service.
 pub struct ChanServ {
     db: Database,
 }
-
-/// Result of a ChanServ command - a list of effects to apply.
-pub type ChanServResult = Vec<ServiceEffect>;
 
 impl ChanServ {
     /// Create a new ChanServ service.
@@ -1285,38 +1276,13 @@ impl ChanServ {
     }
 }
 
-/// Route a service message to ChanServ.
-pub async fn route_chanserv_message(
-    matrix: &Arc<Matrix>,
-    db: &Database,
-    uid: &str,
-    nick: &str,
-    target: &str,
-    text: &str,
-    sender: &mpsc::Sender<Message>,
-) -> bool {
-    let target_lower = irc_to_lower(target);
-
-    if target_lower == "chanserv" || target_lower == "cs" {
-        let chanserv = ChanServ::new(db.clone());
-        let effects = chanserv.handle(matrix, uid, nick, text).await;
-
-        // Apply each effect
-        for effect in effects {
-            apply_effect(matrix, nick, sender, effect).await;
-        }
-
-        true
-    } else {
-        false
-    }
-}
-
 /// Format a Unix timestamp for display.
 fn format_timestamp(ts: i64) -> String {
     use chrono::{TimeZone, Utc};
     Utc.timestamp_opt(ts, 0)
         .single()
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
-        .unwrap_or_else(|| "(unknown)".to_string())
+        .unwrap_or_else(|| "Unknown".to_string())
 }
+
+

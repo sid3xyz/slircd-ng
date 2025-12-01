@@ -6,7 +6,7 @@
 use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
 use crate::security::{RateLimitManager, XLine};
 use crate::state::UidGenerator;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use slirc_proto::Message;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -65,6 +65,9 @@ pub struct Matrix {
     /// Active X-lines (K/G/Z/R/S-lines) for server-level bans.
     /// Key is the pattern/mask, value is the XLine.
     pub xlines: DashMap<String, XLine>,
+
+    /// Set of registered channel names (lowercase) for fast lookup.
+    pub registered_channels: DashSet<String>,
 }
 
 /// An entry in the WHOWAS history for a disconnected user.
@@ -355,8 +358,19 @@ pub struct Server {
 
 impl Matrix {
     /// Create a new Matrix with the given server configuration.
-    pub fn new(config: &Config) -> Self {
+    ///
+    /// `registered_channels` is a list of channel names that are registered with ChanServ.
+    /// These are stored in lowercase for fast lookup.
+    pub fn new(config: &Config, registered_channels: Vec<String>) -> Self {
+        use slirc_proto::irc_to_lower;
+
         let now = chrono::Utc::now().timestamp();
+
+        // Build the registered channels set (lowercase for consistent lookup)
+        let registered_set = DashSet::new();
+        for name in registered_channels {
+            registered_set.insert(irc_to_lower(&name));
+        }
 
         Self {
             users: DashMap::new(),
@@ -381,6 +395,7 @@ impl Matrix {
             },
             rate_limiter: RateLimitManager::new(config.security.rate_limits.clone()),
             xlines: DashMap::new(),
+            registered_channels: registered_set,
         }
     }
 
@@ -407,6 +422,8 @@ impl Matrix {
     /// Broadcast a message to all members of a channel.
     /// Optionally exclude one UID (usually the sender).
     /// Note: `channel_name` should already be lowercased by the caller.
+    ///
+    /// Uses `Arc<Message>` for efficient broadcasting to multiple recipients.
     pub async fn broadcast_to_channel(
         &self,
         channel_name: &str,
@@ -415,12 +432,15 @@ impl Matrix {
     ) {
         if let Some(channel) = self.channels.get(channel_name) {
             let channel = channel.read().await;
+            // Use Arc for efficient multi-recipient broadcasting
+            let msg = Arc::new(msg);
             for uid in channel.members.keys() {
                 if exclude.is_some_and(|e| e == uid.as_str()) {
                     continue;
                 }
                 if let Some(sender) = self.senders.get(uid) {
-                    let _ = sender.send(msg.clone()).await;
+                    // Arc clone is just pointer copy (8 bytes)
+                    let _ = sender.send((*msg).clone()).await;
                 }
             }
         }
@@ -520,5 +540,18 @@ impl Matrix {
                 entries.pop_back();
             }
         }
+    }
+
+    /// Clean up expired WHOWAS entries.
+    ///
+    /// Removes entries older than 7 days. Call this periodically from a
+    /// maintenance task to prevent unbounded growth.
+    pub fn cleanup_whowas(&self, max_age_days: i64) {
+        let cutoff = chrono::Utc::now().timestamp() - (max_age_days * 24 * 3600);
+
+        self.whowas.retain(|_, entries| {
+            entries.retain(|e| e.logout_time > cutoff);
+            !entries.is_empty()
+        });
     }
 }

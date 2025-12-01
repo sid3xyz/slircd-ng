@@ -9,7 +9,7 @@
 use super::{
     Context, Handler, HandlerResult, apply_channel_modes_typed, err_needmoreparams,
     err_nosuchchannel, err_nosuchnick, format_modes_for_log, require_oper, resolve_nick_to_uid,
-    server_reply,
+    server_notice, server_reply,
 };
 use crate::state::MemberModes;
 use async_trait::async_trait;
@@ -129,15 +129,11 @@ impl Handler for SajoinHandler {
         );
 
         // Confirm to operator
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                oper_nick,
-                format!("SAJOIN: {target_nick} has been forced to join {channel_name}"),
-            ),
-        };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(
+            server_name,
+            &oper_nick,
+            format!("SAJOIN: {target_nick} has been forced to join {channel_name}"),
+        )).await?;
 
         Ok(())
     }
@@ -235,15 +231,11 @@ impl Handler for SapartHandler {
         );
 
         // Confirm to operator
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                oper_nick,
-                format!("SAPART: {target_nick} has been forced to leave {channel_name}"),
-            ),
-        };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(
+            server_name,
+            &oper_nick,
+            format!("SAPART: {target_nick} has been forced to leave {channel_name}"),
+        )).await?;
 
         Ok(())
     }
@@ -364,15 +356,11 @@ impl Handler for SanickHandler {
         );
 
         // Confirm to operator
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                oper_nick,
-                format!("SANICK: {old_nick} has been forced to change nick to {new_nick}"),
-            ),
-        };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(
+            server_name,
+            &oper_nick,
+            format!("SANICK: {old_nick} has been forced to change nick to {new_nick}"),
+        )).await?;
 
         Ok(())
     }
@@ -435,12 +423,11 @@ impl Handler for SamodeHandler {
             Ok(modes) => modes,
             Err(e) => {
                 // Invalid mode string - send notice to operator
-                let notice = Message {
-                    tags: None,
-                    prefix: Some(Prefix::ServerName(server_name.clone())),
-                    command: Command::NOTICE(oper_nick.clone(), format!("SAMODE error: {e}")),
-                };
-                ctx.sender.send(notice).await?;
+                ctx.sender.send(server_notice(
+                    server_name,
+                    &oper_nick,
+                    format!("SAMODE error: {e}"),
+                )).await?;
                 return Ok(());
             }
         };
@@ -477,26 +464,18 @@ impl Handler for SamodeHandler {
             );
 
             // Confirm to operator
-            let notice = Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(server_name.clone())),
-                command: Command::NOTICE(
-                    oper_nick,
-                    format!("SAMODE: {canonical_name} {modes_str}"),
-                ),
-            };
-            ctx.sender.send(notice).await?;
+            ctx.sender.send(server_notice(
+                server_name,
+                &oper_nick,
+                format!("SAMODE: {canonical_name} {modes_str}"),
+            )).await?;
         } else {
             // No modes applied - still confirm to operator
-            let notice = Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(server_name.clone())),
-                command: Command::NOTICE(
-                    oper_nick,
-                    format!("SAMODE: {canonical_name} (no modes applied)"),
-                ),
-            };
-            ctx.sender.send(notice).await?;
+            ctx.sender.send(server_notice(
+                server_name,
+                &oper_nick,
+                format!("SAMODE: {canonical_name} (no modes applied)"),
+            )).await?;
         }
 
         Ok(())
