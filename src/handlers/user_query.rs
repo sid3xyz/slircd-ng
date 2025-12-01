@@ -2,7 +2,9 @@
 //!
 //! RFC 2812 §3.6 - User based queries
 
-use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
+use super::{
+    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply, with_label,
+};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tracing::debug;
@@ -136,14 +138,17 @@ impl Handler for WhoHandler {
         }
         // No mask = return all visible users (typically empty for privacy)
 
-        // RPL_ENDOFWHO (315)
+        // RPL_ENDOFWHO (315) - attach label for labeled-response
         let end_mask = mask
             .map(|s| s.to_string())
             .unwrap_or_else(|| "*".to_string());
-        let reply = server_reply(
-            server_name,
-            Response::RPL_ENDOFWHO,
-            vec![nick.clone(), end_mask, "End of WHO list".to_string()],
+        let reply = with_label(
+            server_reply(
+                server_name,
+                Response::RPL_ENDOFWHO,
+                vec![nick.clone(), end_mask, "End of WHO list".to_string()],
+            ),
+            ctx.label.as_deref(),
         );
         ctx.sender.send(reply).await?;
 
@@ -314,15 +319,18 @@ impl Handler for WhoisHandler {
                     ctx.sender.send(reply).await?;
                 }
 
-                // RPL_ENDOFWHOIS (318): <nick> :End of WHOIS list
-                let reply = server_reply(
-                    server_name,
-                    Response::RPL_ENDOFWHOIS,
-                    vec![
-                        nick.clone(),
-                        target_user.nick.clone(),
-                        "End of WHOIS list".to_string(),
-                    ],
+                // RPL_ENDOFWHOIS (318): <nick> :End of WHOIS list - attach label for labeled-response
+                let reply = with_label(
+                    server_reply(
+                        server_name,
+                        Response::RPL_ENDOFWHOIS,
+                        vec![
+                            nick.clone(),
+                            target_user.nick.clone(),
+                            "End of WHOIS list".to_string(),
+                        ],
+                    ),
+                    ctx.label.as_deref(),
                 );
                 ctx.sender.send(reply).await?;
 
@@ -551,15 +559,18 @@ async fn send_no_such_nick(ctx: &mut Context<'_>, target: &str) -> HandlerResult
     );
     ctx.sender.send(reply).await?;
 
-    // Also send end of whois
-    let reply = server_reply(
-        server_name,
-        Response::RPL_ENDOFWHOIS,
-        vec![
-            nick.clone(),
-            target.to_string(),
-            "End of WHOIS list".to_string(),
-        ],
+    // Also send end of whois - attach label for labeled-response
+    let reply = with_label(
+        server_reply(
+            server_name,
+            Response::RPL_ENDOFWHOIS,
+            vec![
+                nick.clone(),
+                target.to_string(),
+                "End of WHOIS list".to_string(),
+            ],
+        ),
+        ctx.label.as_deref(),
     );
     ctx.sender.send(reply).await?;
 

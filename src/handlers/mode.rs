@@ -7,6 +7,7 @@
 
 use super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, user_prefix,
+    with_label,
 };
 use crate::security::ExtendedBan;
 use crate::state::{ListEntry, UserModes};
@@ -266,12 +267,15 @@ async fn handle_channel_mode(
     let is_op = channel_guard.is_op(ctx.uid);
 
     if modes.is_empty() {
-        // Query: return current modes
+        // Query: return current modes - attach label for labeled-response
         let mode_string = channel_guard.modes.as_mode_string();
-        let reply = server_reply(
-            &ctx.matrix.server_info.name,
-            Response::RPL_CHANNELMODEIS,
-            vec![nick.clone(), canonical_name.clone(), mode_string],
+        let reply = with_label(
+            server_reply(
+                &ctx.matrix.server_info.name,
+                Response::RPL_CHANNELMODEIS,
+                vec![nick.clone(), canonical_name.clone(), mode_string],
+            ),
+            ctx.label.as_deref(),
         );
         ctx.sender.send(reply).await?;
 

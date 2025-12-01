@@ -148,7 +148,6 @@ pub fn err_unknowncommand(server_name: &str, nick: &str, command: &str) -> Messa
 /// Attach a label tag to a message if one was provided.
 ///
 /// Used for IRCv3 labeled-response capability to echo the client's label.
-#[allow(dead_code)] // Will be used in Phase 4 for full labeled-response support
 pub fn with_label(msg: Message, label: Option<&str>) -> Message {
     match label {
         Some(value) => msg.with_tag("label", Some(value)),

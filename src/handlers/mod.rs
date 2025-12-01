@@ -26,7 +26,7 @@ mod user_query;
 pub use helpers::{
     err_chanoprivsneeded, err_needmoreparams, err_noprivileges, err_nosuchchannel, err_nosuchnick,
     err_notonchannel, err_notregistered, err_unknowncommand, err_usernotinchannel, labeled_ack,
-    matches_ban_or_except, matches_hostmask, server_notice, server_reply, user_prefix,
+    matches_ban_or_except, matches_hostmask, server_notice, server_reply, user_prefix, with_label,
 };
 
 pub use admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler};
