@@ -9,6 +9,8 @@ network = "Straylight"
 sid = "001"
 # Server description
 description = "Straylight IRC Daemon - Next Generation"
+# Prometheus metrics HTTP port
+metrics_port = 9090
 
 [listen]
 # Address to bind to

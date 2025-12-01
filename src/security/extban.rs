@@ -21,9 +21,6 @@
 //! - `$z:pattern` - matches SASL authentication mechanism
 //! - `$j:pattern` - matches channel join patterns
 
-// Allow dead_code for Phase 1: types will be integrated in Phase 2
-#![allow(dead_code)]
-
 use std::net::IpAddr;
 use std::time::SystemTime;
 

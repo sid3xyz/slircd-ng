@@ -86,6 +86,8 @@ pub struct ServerConfig {
     pub sid: String,
     /// Server description.
     pub description: String,
+    /// Prometheus metrics HTTP port (default: 9090).
+    pub metrics_port: Option<u16>,
 }
 
 /// Network listener configuration.

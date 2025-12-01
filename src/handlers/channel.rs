@@ -164,7 +164,10 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         .matrix
         .channels
         .entry(channel_lower.clone())
-        .or_insert_with(|| Arc::new(RwLock::new(Channel::new(channel_name.to_string()))))
+        .or_insert_with(|| {
+            crate::metrics::ACTIVE_CHANNELS.inc();
+            Arc::new(RwLock::new(Channel::new(channel_name.to_string())))
+        })
         .clone();
 
     let mut channel_guard = channel.write().await;
@@ -232,6 +235,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
                 ],
             );
             ctx.sender.send(reply).await?;
+            crate::metrics::BANS_TRIGGERED.inc();
             drop(channel_guard);
             info!(nick = %nick, channel = %channel_name, "JOIN denied: banned");
             return Ok(());
@@ -618,6 +622,7 @@ async fn leave_channel_internal(
     // If channel is now empty, remove it
     if is_empty {
         ctx.matrix.channels.remove(channel_lower);
+        crate::metrics::ACTIVE_CHANNELS.dec();
         debug!(channel = %canonical_name, "Channel removed (empty)");
     }
 

@@ -15,9 +15,6 @@
 //! - **Configurability**: Thresholds tunable via config
 //! - **Extensibility**: Easy to add new detection mechanisms
 
-// Allow dead_code for Phase 1: SpamDetectionService will be integrated in Phase 2
-#![allow(dead_code)]
-
 use std::collections::HashSet;
 use tracing::debug;
 
@@ -287,33 +284,39 @@ impl SpamDetectionService {
     }
 
     /// Add custom spam keyword
+    #[allow(dead_code)] // Used in tests, available for runtime config
     pub fn add_keyword(&mut self, keyword: String) {
         self.spam_keywords.insert(keyword.to_lowercase());
     }
 
     /// Remove spam keyword
+    #[allow(dead_code)] // Available for runtime config
     pub fn remove_keyword(&mut self, keyword: &str) -> bool {
         self.spam_keywords.remove(&keyword.to_lowercase())
     }
 
     /// Add URL shortener domain
+    #[allow(dead_code)] // Available for runtime config
     pub fn add_shortener(&mut self, domain: String) {
         self.url_shorteners.insert(domain.to_lowercase());
     }
 
     /// Get current entropy threshold
+    #[allow(dead_code)] // Available for runtime config
     pub fn entropy_threshold(&self) -> f32 {
         self.entropy_threshold
     }
 
     /// Set entropy threshold (0.0-8.0)
     /// Lower = stricter detection, higher false positive rate
+    #[allow(dead_code)] // Available for runtime config
     pub fn set_entropy_threshold(&mut self, threshold: f32) {
         self.entropy_threshold = threshold.clamp(0.0, 8.0);
     }
 
     /// Set maximum character repetition threshold
     /// Higher = more lenient, allows more repeated characters
+    #[allow(dead_code)] // Available for runtime config
     pub fn set_max_repetition(&mut self, max: usize) {
         self.max_char_repetition = max;
     }

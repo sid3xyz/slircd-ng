@@ -286,6 +286,8 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             )));
             ctx.sender.send(error).await?;
 
+            crate::metrics::XLINES_ENFORCED.inc();
+
             return Err(HandlerError::NotRegistered);
         }
     }
@@ -321,6 +323,8 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     ctx.matrix
         .users
         .insert(ctx.uid.to_string(), Arc::new(RwLock::new(user_obj)));
+
+    crate::metrics::CONNECTED_USERS.inc();
 
     info!(nick = %nick, user = %user, uid = %ctx.uid, account = ?ctx.handshake.account, "Client registered");
 

@@ -5,6 +5,8 @@
 mod config;
 mod db;
 mod handlers;
+mod http;
+mod metrics;
 mod network;
 mod security;
 mod services;
@@ -77,6 +79,17 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the Matrix (shared state)
     let matrix = Arc::new(Matrix::new(&config, registered_channels));
+
+    // Initialize Prometheus metrics
+    metrics::init();
+    info!("Metrics initialized");
+
+    // Start Prometheus HTTP server
+    let metrics_port = config.server.metrics_port.unwrap_or(9090);
+    tokio::spawn(async move {
+        http::run_http_server(metrics_port).await;
+    });
+    info!(port = metrics_port, "Prometheus HTTP server started");
 
     // Start nick enforcement background task
     spawn_enforcement_task(Arc::clone(&matrix));

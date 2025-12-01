@@ -9,6 +9,8 @@
 
 ```
 Client → Gateway → Connection (tokio::select!) → Handler → Matrix (DashMap) → Router
+                                                     ↓
+                                    Security Layer (Spam, ExtBan, XLine, Rate Limit)
 ```
 
 | Component | Pattern | Status |
@@ -18,6 +20,10 @@ Client → Gateway → Connection (tokio::select!) → Handler → Matrix (DashM
 | Handlers | `async fn handle(&self, ctx, msg)` trait | ✅ Clean |
 | Rate Limit | Token bucket in `limit.rs` | ✅ 2.5 msg/s |
 | UID Gen | TS6-compliant `UidGenerator` | ✅ Correct |
+| **Spam Detection** | **Multi-layer content analysis** | ✅ **Phase 2** |
+| **Extended Bans** | **$a/$r/$U pattern matching** | ✅ **Phase 2** |
+| **XLines (R-Line)** | **Database-backed bans** | ✅ **Phase 2** |
+| **Metrics** | **Prometheus HTTP /metrics** | ✅ **Phase 2** |
 
 ---
 
@@ -73,6 +79,48 @@ Client → Gateway → Connection (tokio::select!) → Handler → Matrix (DashM
 3. **Handler Trait**: Clean async dispatch with borrowed context
 4. **Error Helpers**: DRY error responses via helper functions
 5. **Service Effects**: Services return effects, don't mutate state directly
+6. **Security First**: Multi-layer spam/abuse protection (Phase 2)
+7. **Observability**: Prometheus metrics for production monitoring
+
+---
+
+## Phase 2: Security & Observability (Complete ✅)
+
+### Spam Detection
+- **File**: `src/security/spam.rs` (411 lines)
+- **Integration**: `handlers/messaging.rs` - Pre-broadcast spam check
+- **Mechanisms**: Keyword matching, entropy analysis, URL shorteners, CTCP flood detection
+- **Config**: `security.spam_detection_enabled` (default: true)
+- **Metrics**: `irc_spam_blocked_total` counter
+
+### Extended Bans (EXTBAN)
+- **File**: `src/security/extban.rs` (445 lines)
+- **Types**: $a:account, $r:realname, $U (unregistered), $s:server, +5 more
+- **Integration**: MODE +b handler, JOIN enforcement, PRIVMSG filtering
+- **Storage**: `Channel.extended_bans` list (parallel to regular bans)
+- **Pattern**: Wildcard matching via `slirc_proto::util::wildcard_match`
+
+### XLine System (R-Line)
+- **Database**: `migrations/003_rlines.sql` (realname/GECOS bans)
+- **Methods**: `db/bans.rs` - add/remove/list/matches R-lines
+- **Enforcement**: `handlers/connection.rs` - Blocks on USER command
+- **Commands**: RLINE/UNRLINE (oper-only)
+- **Metrics**: `irc_xlines_enforced_total` counter
+
+### Rate Limiting
+- **Integration**: PRIVMSG, NOTICE, JOIN handlers
+- **Transport**: Connection-level flood protection (5 strikes)
+- **Config**: `security.rate_limits.*` (message/join/connection limits)
+- **Error**: ERR_THROTTLE (407) sent to rate-limited clients
+- **Metrics**: `irc_rate_limited_total` counter
+
+### Prometheus Metrics
+- **File**: `src/metrics.rs` (113 lines)
+- **Registry**: lazy_static global registry with 7 metrics
+- **Counters**: messages_sent, spam_blocked, bans_triggered, xlines_enforced, rate_limited
+- **Gauges**: connected_users, active_channels
+- **HTTP Endpoint**: `src/http.rs` - GET /metrics on port 9090
+- **Config**: `server.metrics_port` (default: 9090)
 
 ---
 
@@ -85,3 +133,7 @@ Client → Gateway → Connection (tokio::select!) → Handler → Matrix (DashM
 | `src/network/connection.rs` | Unified `tokio::select!` loop |
 | `src/network/limit.rs` | Token bucket rate limiter |
 | `src/services/*.rs` | NickServ, ChanServ pseudo-services |
+| **`src/security/spam.rs`** | **Spam detection service (Phase 2)** |
+| **`src/security/extban.rs`** | **Extended ban types (Phase 2)** |
+| **`src/metrics.rs`** | **Prometheus metrics registry (Phase 2)** |
+| **`src/http.rs`** | **HTTP /metrics endpoint (Phase 2)** |
