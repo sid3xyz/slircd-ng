@@ -2,9 +2,16 @@
 //!
 //! Handles NICK, USER, PASS, PING, PONG, QUIT commands.
 
-mod handshake;
+mod nick;
+mod user;
+mod pass;
+mod webirc;
+mod welcome;
 mod ping;
 mod caps;
 
-pub use handshake::{NickHandler, PassHandler, UserHandler, WebircHandler};
+pub use nick::NickHandler;
+pub use user::UserHandler;
+pub use pass::PassHandler;
+pub use webirc::WebircHandler;
 pub use ping::{PingHandler, PongHandler, QuitHandler};
