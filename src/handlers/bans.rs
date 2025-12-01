@@ -13,6 +13,83 @@ use crate::db::Shun;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, wildcard_match};
 
+// ============================================================================
+// Consolidated ban disconnection logic
+// ============================================================================
+
+/// Types of bans for matching purposes.
+#[derive(Debug, Clone, Copy)]
+enum BanType {
+    /// K-line: matches user@host
+    Kline,
+    /// D-line: matches IP (with CIDR support)
+    Dline,
+    /// G-line: matches user@host (global)
+    Gline,
+    /// Z-line: matches IP (with CIDR support, global)
+    Zline,
+    /// R-line: matches realname
+    Rline,
+}
+
+impl BanType {
+    /// Returns the ban type name for quit messages.
+    fn name(&self) -> &'static str {
+        match self {
+            BanType::Kline => "K-lined",
+            BanType::Dline => "D-lined",
+            BanType::Gline => "G-lined",
+            BanType::Zline => "Z-lined",
+            BanType::Rline => "R-lined",
+        }
+    }
+}
+
+/// Disconnect all users matching a ban pattern.
+///
+/// Consolidates the disconnect logic for all ban types (K/D/G/Z/R-lines).
+/// The matching strategy varies by ban type:
+/// - K-line/G-line: Match against `user@host`
+/// - D-line/Z-line: Match against IP with CIDR support
+/// - R-line: Match against realname
+async fn disconnect_matching_ban(
+    ctx: &Context<'_>,
+    ban_type: BanType,
+    pattern: &str,
+    reason: &str,
+) -> usize {
+    let mut to_disconnect = Vec::new();
+
+    // Collect matching users
+    for entry in ctx.matrix.users.iter() {
+        let uid = entry.key().clone();
+        let user = entry.value().read().await;
+
+        let matches = match ban_type {
+            BanType::Kline | BanType::Gline => {
+                let user_host = format!("{}@{}", user.user, user.host);
+                wildcard_match(pattern, &user_host)
+            }
+            BanType::Dline | BanType::Zline => {
+                wildcard_match(pattern, &user.host) || cidr_match(pattern, &user.host)
+            }
+            BanType::Rline => wildcard_match(pattern, &user.realname),
+        };
+
+        if matches {
+            to_disconnect.push(uid);
+        }
+    }
+
+    // Disconnect matching users
+    let quit_reason = format!("{}: {}", ban_type.name(), reason);
+    for uid in &to_disconnect {
+        ctx.matrix.disconnect_user(uid, &quit_reason).await;
+    }
+
+    to_disconnect.len()
+}
+
 /// Handler for KLINE command.
 ///
 /// `KLINE [time] user@host :reason`
@@ -53,7 +130,7 @@ impl Handler for KlineHandler {
         }
 
         // Disconnect any matching users
-        let disconnected = disconnect_matching_kline(ctx, mask, reason).await;
+        let disconnected = disconnect_matching_ban(ctx, BanType::Kline, mask, reason).await;
 
         tracing::info!(
             oper = %nick,
@@ -73,32 +150,6 @@ impl Handler for KlineHandler {
 
         Ok(())
     }
-}
-
-/// Disconnect all users matching a K-line mask.
-async fn disconnect_matching_kline(ctx: &Context<'_>, mask: &str, reason: &str) -> usize {
-    let mut disconnected = 0;
-    let mut to_disconnect = Vec::new();
-
-    // Find matching users
-    for entry in ctx.matrix.users.iter() {
-        let uid = entry.key().clone();
-        let user = entry.value().read().await;
-        let user_host = format!("{}@{}", user.user, user.host);
-
-        if wildcard_match(mask, &user_host) {
-            to_disconnect.push(uid);
-        }
-    }
-
-    // Disconnect them
-    for uid in to_disconnect {
-        let quit_reason = format!("K-lined: {}", reason);
-        ctx.matrix.disconnect_user(&uid, &quit_reason).await;
-        disconnected += 1;
-    }
-
-    disconnected
 }
 
 /// Handler for DLINE command.
@@ -135,7 +186,7 @@ impl Handler for DlineHandler {
         }
 
         // Disconnect any matching users
-        let disconnected = disconnect_matching_dline(ctx, ip, reason).await;
+        let disconnected = disconnect_matching_ban(ctx, BanType::Dline, ip, reason).await;
 
         tracing::info!(
             oper = %nick,
@@ -155,32 +206,6 @@ impl Handler for DlineHandler {
 
         Ok(())
     }
-}
-
-/// Disconnect all users matching a D-line (IP ban).
-async fn disconnect_matching_dline(ctx: &Context<'_>, mask: &str, reason: &str) -> usize {
-    let mut disconnected = 0;
-    let mut to_disconnect = Vec::new();
-
-    // Find matching users by IP (stored in host field for now)
-    for entry in ctx.matrix.users.iter() {
-        let uid = entry.key().clone();
-        let user = entry.value().read().await;
-
-        // Check if user's host/IP matches the D-line
-        if wildcard_match(mask, &user.host) || cidr_match(mask, &user.host) {
-            to_disconnect.push(uid);
-        }
-    }
-
-    // Disconnect them
-    for uid in to_disconnect {
-        let quit_reason = format!("D-lined: {}", reason);
-        ctx.matrix.disconnect_user(&uid, &quit_reason).await;
-        disconnected += 1;
-    }
-
-    disconnected
 }
 
 /// Handler for UNKLINE command.
@@ -326,7 +351,7 @@ impl Handler for GlineHandler {
         }
 
         // Disconnect any matching users
-        let disconnected = disconnect_matching_gline(ctx, mask, reason).await;
+        let disconnected = disconnect_matching_ban(ctx, BanType::Gline, mask, reason).await;
 
         tracing::info!(
             oper = %nick,
@@ -346,32 +371,6 @@ impl Handler for GlineHandler {
 
         Ok(())
     }
-}
-
-/// Disconnect all users matching a G-line mask.
-async fn disconnect_matching_gline(ctx: &Context<'_>, mask: &str, reason: &str) -> usize {
-    let mut disconnected = 0;
-    let mut to_disconnect = Vec::new();
-
-    // Find matching users
-    for entry in ctx.matrix.users.iter() {
-        let uid = entry.key().clone();
-        let user = entry.value().read().await;
-        let user_host = format!("{}@{}", user.user, user.host);
-
-        if wildcard_match(mask, &user_host) {
-            to_disconnect.push(uid);
-        }
-    }
-
-    // Disconnect them
-    for uid in to_disconnect {
-        let quit_reason = format!("G-lined: {}", reason);
-        ctx.matrix.disconnect_user(&uid, &quit_reason).await;
-        disconnected += 1;
-    }
-
-    disconnected
 }
 
 /// Handler for UNGLINE command.
@@ -460,7 +459,7 @@ impl Handler for ZlineHandler {
         }
 
         // Disconnect any matching users
-        let disconnected = disconnect_matching_zline(ctx, ip, reason).await;
+        let disconnected = disconnect_matching_ban(ctx, BanType::Zline, ip, reason).await;
 
         tracing::info!(
             oper = %nick,
@@ -480,32 +479,6 @@ impl Handler for ZlineHandler {
 
         Ok(())
     }
-}
-
-/// Disconnect all users matching a Z-line (IP ban).
-async fn disconnect_matching_zline(ctx: &Context<'_>, mask: &str, reason: &str) -> usize {
-    let mut disconnected = 0;
-    let mut to_disconnect = Vec::new();
-
-    // Find matching users by IP (stored in host field for now)
-    for entry in ctx.matrix.users.iter() {
-        let uid = entry.key().clone();
-        let user = entry.value().read().await;
-
-        // Check if user's host/IP matches the Z-line
-        if wildcard_match(mask, &user.host) || cidr_match(mask, &user.host) {
-            to_disconnect.push(uid);
-        }
-    }
-
-    // Disconnect them
-    for uid in to_disconnect {
-        let quit_reason = format!("Z-lined: {}", reason);
-        ctx.matrix.disconnect_user(&uid, &quit_reason).await;
-        disconnected += 1;
-    }
-
-    disconnected
 }
 
 /// Handler for UNZLINE command.
@@ -599,7 +572,7 @@ impl Handler for RlineHandler {
         }
 
         // Disconnect any matching users
-        let disconnected = disconnect_matching_rline(ctx, pattern, reason).await;
+        let disconnected = disconnect_matching_ban(ctx, BanType::Rline, pattern, reason).await;
 
         tracing::info!(
             oper = %nick,
@@ -619,31 +592,6 @@ impl Handler for RlineHandler {
 
         Ok(())
     }
-}
-
-/// Disconnect all users matching an R-line (realname ban).
-async fn disconnect_matching_rline(ctx: &Context<'_>, pattern: &str, reason: &str) -> usize {
-    let mut disconnected = 0;
-    let mut to_disconnect = Vec::new();
-
-    // Find matching users by realname
-    for entry in ctx.matrix.users.iter() {
-        let uid = entry.key().clone();
-        let user = entry.value().read().await;
-
-        if wildcard_match(pattern, &user.realname) {
-            to_disconnect.push(uid);
-        }
-    }
-
-    // Disconnect them
-    for uid in to_disconnect {
-        let quit_reason = format!("R-lined: {}", reason);
-        ctx.matrix.disconnect_user(&uid, &quit_reason).await;
-        disconnected += 1;
-    }
-
-    disconnected
 }
 
 /// Handler for UNRLINE command.
