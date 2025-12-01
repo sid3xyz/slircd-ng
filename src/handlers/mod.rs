@@ -41,7 +41,8 @@ pub use connection::{
 };
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
 pub use misc::{
-    AwayHandler, CsHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, UserhostHandler,
+    AwayHandler, CsHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, SetnameHandler,
+    UserhostHandler,
 };
 pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
 pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
@@ -207,6 +208,7 @@ impl Registry {
         handlers.insert("USERHOST", Box::new(UserhostHandler));
         handlers.insert("ISON", Box::new(IsonHandler));
         handlers.insert("KNOCK", Box::new(KnockHandler));
+        handlers.insert("SETNAME", Box::new(SetnameHandler));
 
         // Service aliases
         handlers.insert("NICKSERV", Box::new(NsHandler));

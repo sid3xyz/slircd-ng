@@ -18,6 +18,7 @@ const SUPPORTED_CAPS: &[&str] = &[
     "batch",
     "message-tags",
     "labeled-response",
+    "setname",
     // Phase 3: "away-notify", "account-notify", "extended-join",
 ];
 
