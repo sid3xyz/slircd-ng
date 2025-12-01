@@ -1,15 +1,19 @@
 //! Channel command handlers.
 //!
-//! Handles JOIN, PART, TOPIC, NAMES, KICK commands.
+//! Handles JOIN, PART, TOPIC, NAMES, KICK, INVITE, KNOCK commands.
 
+mod invite;
 mod join;
 mod kick;
+mod knock;
 mod names;
 mod part;
 mod topic;
 
+pub use invite::InviteHandler;
 pub use join::JoinHandler;
 pub use kick::KickHandler;
+pub use knock::KnockHandler;
 pub use names::NamesHandler;
 pub use part::PartHandler;
 pub use topic::TopicHandler;
