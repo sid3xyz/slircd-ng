@@ -624,3 +624,94 @@ impl Handler for CsHandler {
         Ok(())
     }
 }
+
+/// Handler for SETNAME command (IRCv3).
+///
+/// `SETNAME <new realname>`
+///
+/// Allows users to change their realname (gecos) after connection.
+/// Requires the `setname` capability to be negotiated.
+/// Reference: <https://ircv3.net/specs/extensions/setname>
+pub struct SetnameHandler;
+
+#[async_trait]
+impl Handler for SetnameHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        if !ctx.handshake.registered {
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
+            return Ok(());
+        }
+
+        // Check if client has negotiated setname capability
+        if !ctx.handshake.capabilities.contains("setname") {
+            debug!("SETNAME rejected: client has not negotiated setname capability");
+            return Ok(());
+        }
+
+        let new_realname = match msg.arg(0) {
+            Some(name) if !name.is_empty() => name,
+            _ => {
+                // FAIL SETNAME INVALID_REALNAME :Realname is not valid
+                let fail = slirc_proto::Message {
+                    tags: None,
+                    prefix: None,
+                    command: Command::Raw(
+                        "FAIL".to_string(),
+                        vec![
+                            "SETNAME".to_string(),
+                            "INVALID_REALNAME".to_string(),
+                            "Realname is not valid".to_string(),
+                        ],
+                    ),
+                };
+                ctx.sender.send(fail).await?;
+                return Ok(());
+            }
+        };
+
+        // Update the user's realname
+        let (nick, user, host) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let mut user = user_ref.write().await;
+            user.realname = new_realname.to_string();
+            (user.nick.clone(), user.user.clone(), user.host.clone())
+        } else {
+            return Ok(());
+        };
+
+        // Also update handshake state
+        ctx.handshake.realname = Some(new_realname.to_string());
+
+        // Broadcast SETNAME to all channels the user is in (for clients with setname cap)
+        let setname_msg = slirc_proto::Message {
+            tags: None,
+            prefix: Some(slirc_proto::Prefix::new(&nick, &user, &host)),
+            command: Command::SETNAME(new_realname.to_string()),
+        };
+
+        // Get user's channels
+        let channels: Vec<String> = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let user = user_ref.read().await;
+            user.channels.iter().cloned().collect()
+        } else {
+            Vec::new()
+        };
+
+        // Broadcast to each channel (including back to sender for echo)
+        for channel_name in &channels {
+            ctx.matrix
+                .broadcast_to_channel(channel_name, setname_msg.clone(), None)
+                .await;
+        }
+
+        // Also echo back to the sender if not in any channels
+        if channels.is_empty() {
+            ctx.sender.send(setname_msg).await?;
+        }
+
+        debug!(nick = %nick, new_realname = %new_realname, "User changed realname via SETNAME");
+
+        Ok(())
+    }
+}
