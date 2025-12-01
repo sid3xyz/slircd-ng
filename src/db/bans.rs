@@ -298,6 +298,17 @@ pub struct Zline {
     pub expires_at: Option<i64>,
 }
 
+/// An R-line (realname/GECOS ban).
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields used by admin commands in Phase 3b
+pub struct Rline {
+    pub mask: String,
+    pub reason: Option<String>,
+    pub set_by: String,
+    pub set_at: i64,
+    pub expires_at: Option<i64>,
+}
+
 impl<'a> BanRepository<'a> {
     // ========== G-line operations ==========
 
@@ -463,6 +474,86 @@ impl<'a> BanRepository<'a> {
         Ok(None)
     }
 
+    // ========== R-line operations ==========
+
+    /// Add an R-line (realname ban).
+    pub async fn add_rline(
+        &self,
+        mask: &str,
+        reason: Option<&str>,
+        set_by: &str,
+        duration: Option<i64>,
+    ) -> Result<(), DbError> {
+        let now = chrono::Utc::now().timestamp();
+        let expires_at = duration.map(|d| now + d);
+
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO rlines (mask, reason, set_by, set_at, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(mask)
+        .bind(reason)
+        .bind(set_by)
+        .bind(now)
+        .bind(expires_at)
+        .execute(self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Remove an R-line.
+    pub async fn remove_rline(&self, mask: &str) -> Result<bool, DbError> {
+        let result = sqlx::query("DELETE FROM rlines WHERE mask = ?")
+            .bind(mask)
+            .execute(self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Get all active R-lines (not expired).
+    pub async fn get_active_rlines(&self) -> Result<Vec<Rline>, DbError> {
+        let now = chrono::Utc::now().timestamp();
+
+        let rows = sqlx::query_as::<_, (String, Option<String>, String, i64, Option<i64>)>(
+            r#"
+            SELECT mask, reason, set_by, set_at, expires_at
+            FROM rlines
+            WHERE expires_at IS NULL OR expires_at > ?
+            "#,
+        )
+        .bind(now)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(mask, reason, set_by, set_at, expires_at)| Rline {
+                mask,
+                reason,
+                set_by,
+                set_at,
+                expires_at,
+            })
+            .collect())
+    }
+
+    /// Check if a realname matches any active R-line.
+    pub async fn matches_rline(&self, realname: &str) -> Result<Option<Rline>, DbError> {
+        let rlines = self.get_active_rlines().await?;
+
+        for rline in rlines {
+            if wildcard_match(&rline.mask, realname) {
+                return Ok(Some(rline));
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Check if a connection should be banned (extended to include G-lines and Z-lines).
     ///
     /// Checks in order: Z-line (IP), D-line (IP), G-line (user@host), K-line (user@host).
@@ -498,6 +589,16 @@ impl<'a> BanRepository<'a> {
             return Ok(Some(format!("K-lined: {}", reason)));
         }
 
+        Ok(None)
+    }
+
+    /// Check if a realname is banned (R-line check).
+    /// This is typically called during registration after USER command is received.
+    pub async fn check_realname_ban(&self, realname: &str) -> Result<Option<String>, DbError> {
+        if let Some(rline) = self.matches_rline(realname).await? {
+            let reason = rline.reason.unwrap_or_else(|| "Banned".to_string());
+            return Ok(Some(format!("R-lined: {}", reason)));
+        }
         Ok(None)
     }
 

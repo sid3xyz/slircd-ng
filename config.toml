@@ -34,3 +34,21 @@ path = "slircd.db"
 rate = 2.5
 # Maximum burst of messages allowed (default: 5.0)
 burst = 5.0
+
+# Security configuration for anti-abuse protection
+[security]
+# HMAC secret for host cloaking - CHANGE IN PRODUCTION!
+cloak_secret = "slircd-default-secret-CHANGE-ME-IN-PRODUCTION"
+# Suffix for cloaked IP addresses
+cloak_suffix = "ip"
+# Enable spam detection for message content
+spam_detection_enabled = true
+
+# Rate limiting for flood protection
+[security.rate_limits]
+# Maximum messages per second per client (default: 2)
+message_rate_per_second = 2
+# Maximum connection burst per IP in 10 seconds (default: 3)
+connection_burst_per_ip = 3
+# Maximum channel join burst per client in 10 seconds (default: 5)
+join_burst_per_client = 5

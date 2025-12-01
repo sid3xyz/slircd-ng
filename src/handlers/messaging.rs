@@ -5,6 +5,8 @@
 //! Includes CTCP (Client-to-Client Protocol) handling for VERSION, PING, etc.
 
 use super::{Context, Handler, HandlerError, HandlerResult, matches_hostmask, server_reply, user_prefix};
+use crate::security::spam::SpamVerdict;
+use crate::security::{ExtendedBan, UserContext, matches_extended_ban};
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
@@ -59,6 +61,8 @@ enum ChannelRouteResult {
     BlockedExternal,
     /// Sender is blocked by +m (moderated).
     BlockedModerated,
+    /// Message blocked by spam detection.
+    BlockedSpam,
 }
 
 /// Options for message routing behavior.
@@ -91,19 +95,49 @@ async fn route_to_channel(
     }
 
     // Build user's hostmask for ban/quiet checks (nick!user@host)
-    let user_mask = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+    let (user_mask, user_context) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
         let user = user_ref.read().await;
-        format!("{}!{}@{}", user.nick, user.user, user.host)
+        let mask = format!("{}!{}@{}", user.nick, user.user, user.host);
+        let context = UserContext::for_registration(
+            ctx.remote_addr.ip(),
+            user.host.clone(),
+            user.nick.clone(),
+            user.user.clone(),
+            user.realname.clone(),
+            ctx.matrix.server_info.name.clone(),
+            user.account.clone(),
+        );
+        (mask, context)
     } else {
         // Shouldn't happen for registered users, but provide fallback
-        "unknown!unknown@unknown".to_string()
+        let mask = "unknown!unknown@unknown".to_string();
+        let context = UserContext::for_registration(
+            ctx.remote_addr.ip(),
+            "unknown".to_string(),
+            "unknown".to_string(),
+            "unknown".to_string(),
+            "unknown".to_string(),
+            ctx.matrix.server_info.name.clone(),
+            None,
+        );
+        (mask, context)
     };
 
     // Check +b (bans) - banned users cannot speak even if in channel
     let is_banned = channel
         .bans
         .iter()
-        .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+        .any(|entry| matches_hostmask(&entry.mask, &user_mask))
+        || channel
+            .extended_bans
+            .iter()
+            .any(|entry| {
+                if let Some(extban) = ExtendedBan::parse(&entry.mask) {
+                    matches_extended_ban(&extban, &user_context)
+                } else {
+                    false
+                }
+            });
 
     if is_banned {
         // Check if user has ban exception (+e)
@@ -132,6 +166,27 @@ async fn route_to_channel(
 
         if !has_exception {
             return ChannelRouteResult::BlockedModerated; // Reuse for quiet
+        }
+    }
+
+    // Check for spam (if enabled)
+    if let Some(detector) = &ctx.matrix.spam_detector {
+        // Extract message text from PRIVMSG command
+        if let Command::PRIVMSG(_, ref text) = msg.command {
+            match detector.check_message(text) {
+                SpamVerdict::Spam { pattern, .. } => {
+                    debug!(
+                        uid = %ctx.uid,
+                        channel = %channel_lower,
+                        pattern = %pattern,
+                        "Message blocked as spam"
+                    );
+                    return ChannelRouteResult::BlockedSpam;
+                }
+                SpamVerdict::Clean => {
+                    // Message is clean, proceed
+                }
+            }
         }
     }
 
@@ -375,6 +430,24 @@ impl Handler for PrivmsgHandler {
             return Ok(());
         }
 
+        // Check message rate limit
+        let uid_string = ctx.uid.to_string();
+        if !ctx.matrix.rate_limiter.check_message_rate(&uid_string) {
+            let nick = ctx.handshake.nick.as_ref()
+                .ok_or(HandlerError::NickOrUserMissing)?;
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_TOOMANYTARGETS,
+                vec![
+                    nick.to_string(),
+                    "*".to_string(),
+                    "You are sending messages too quickly. Please wait.".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
         // PRIVMSG <target> <text>
         let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
@@ -445,6 +518,9 @@ impl Handler for PrivmsgHandler {
                 ChannelRouteResult::BlockedModerated => {
                     send_cannot_send(ctx, nick, target, "Cannot send to channel (+m)").await?;
                 }
+                ChannelRouteResult::BlockedSpam => {
+                    send_cannot_send(ctx, nick, target, "Message rejected as spam").await?;
+                }
             }
         } else if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {
             debug!(from = %nick, to = %target, "PRIVMSG to user");
@@ -475,6 +551,12 @@ impl Handler for NoticeHandler {
         // Check shun first - silently ignore if shunned
         if is_shunned(ctx).await {
             return Ok(());
+        }
+
+        // Check message rate limit (NOTICE errors are silently ignored per RFC)
+        let uid_string = ctx.uid.to_string();
+        if !ctx.matrix.rate_limiter.check_message_rate(&uid_string) {
+            return Ok(()); // Silently drop if rate limited
         }
 
         // NOTICE <target> <text>
@@ -622,6 +704,10 @@ impl Handler for TagmsgHandler {
                 ChannelRouteResult::BlockedModerated => {
                     // TAGMSG doesn't check +m, so this shouldn't happen
                     unreachable!("TAGMSG should not check moderated mode");
+                }
+                ChannelRouteResult::BlockedSpam => {
+                    // TAGMSG has no text, so spam detection shouldn't trigger
+                    unreachable!("TAGMSG has no text content to check for spam");
                 }
             }
         } else {
