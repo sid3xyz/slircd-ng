@@ -1,0 +1,44 @@
+//! MODE command handler.
+//!
+//! Handles both user modes and channel modes using slirc-proto's typed MODE parsing.
+//!
+//! - User modes: `MODE nick [+/-modes]`
+//! - Channel modes: `MODE channel [+/-modes [args...]]`
+
+mod channel;
+mod common;
+mod user;
+
+pub use channel::{apply_channel_modes_typed, format_modes_for_log};
+
+use super::{Context, Handler, HandlerError, HandlerResult};
+use async_trait::async_trait;
+use slirc_proto::MessageRef;
+
+/// Handler for MODE command.
+pub struct ModeHandler;
+
+#[async_trait]
+impl Handler for ModeHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        if !ctx.handshake.registered {
+            return Err(HandlerError::NotRegistered);
+        }
+
+        // MODE <target> [modes [params]]
+        let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+
+        // Determine if this is a user or channel mode based on target
+        if common::is_channel_target(target) {
+            // Parse channel modes from args
+            let mode_args: Vec<&str> = msg.args().iter().skip(1).copied().collect();
+            let modes = common::parse_channel_modes(ctx, &mode_args).await?;
+            channel::handle_channel_mode(ctx, target, &modes).await
+        } else {
+            // Parse user modes from args
+            let mode_args: Vec<&str> = msg.args().iter().skip(1).copied().collect();
+            let modes = common::parse_user_modes(ctx, &mode_args).await?;
+            user::handle_user_mode(ctx, target, &modes).await
+        }
+    }
+}
