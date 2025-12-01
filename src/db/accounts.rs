@@ -33,25 +33,22 @@ impl<'a> AccountRepository<'a> {
     }
 
     /// Register a new account with the given nickname and password.
+    ///
+    /// Uses a transaction to ensure atomicity between account and nickname creation.
     pub async fn register(
         &self,
         name: &str,
         password: &str,
         email: Option<&str>,
     ) -> Result<Account, DbError> {
-        // Check if account or nickname already exists
-        if self.find_by_name(name).await?.is_some() {
-            return Err(DbError::AccountExists(name.to_string()));
-        }
-        if self.find_by_nickname(name).await?.is_some() {
-            return Err(DbError::NicknameRegistered(name.to_string()));
-        }
-
         // Hash the password using Argon2
         let password_hash = hash_password(password)?;
         let now = chrono::Utc::now().timestamp();
 
-        // Insert account
+        // Use a transaction to ensure account + nickname are created atomically
+        let mut tx = self.pool.begin().await?;
+
+        // Insert account (UNIQUE constraint will catch duplicates)
         let result = sqlx::query(
             r#"
             INSERT INTO accounts (name, password_hash, email, registered_at, last_seen_at)
@@ -63,8 +60,17 @@ impl<'a> AccountRepository<'a> {
         .bind(email)
         .bind(now)
         .bind(now)
-        .execute(self.pool)
-        .await?;
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            // Convert UNIQUE constraint violation to AccountExists error
+            if let sqlx::Error::Database(ref db_err) = e
+                && db_err.is_unique_violation()
+            {
+                return DbError::AccountExists(name.to_string());
+            }
+            DbError::from(e)
+        })?;
 
         let account_id = result.last_insert_rowid();
 
@@ -77,8 +83,20 @@ impl<'a> AccountRepository<'a> {
         )
         .bind(name)
         .bind(account_id)
-        .execute(self.pool)
-        .await?;
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            // Convert UNIQUE constraint violation to NicknameRegistered error
+            if let sqlx::Error::Database(ref db_err) = e
+                && db_err.is_unique_violation()
+            {
+                return DbError::NicknameRegistered(name.to_string());
+            }
+            DbError::from(e)
+        })?;
+
+        // Commit the transaction
+        tx.commit().await?;
 
         Ok(Account {
             id: account_id,

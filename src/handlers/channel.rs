@@ -245,9 +245,14 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             voice: false,
         }
     } else {
-        // Check for auto-op/voice on registered channels
-        let auto_modes = check_auto_modes(ctx, &channel_lower).await;
-        auto_modes.unwrap_or_default()
+        // Only check for auto-op/voice if channel is registered
+        if ctx.matrix.registered_channels.contains(&channel_lower) {
+            check_auto_modes(ctx, &channel_lower)
+                .await
+                .unwrap_or_default()
+        } else {
+            MemberModes::default()
+        }
     };
 
     // Add user to channel

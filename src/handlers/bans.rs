@@ -6,9 +6,9 @@
 //! - UNKLINE: Remove a K-line
 //! - UNDLINE: Remove a D-line
 
-use super::{Context, Handler, HandlerResult, err_needmoreparams, require_oper};
+use super::{Context, Handler, HandlerResult, err_needmoreparams, require_oper, server_notice};
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix, wildcard_match};
+use slirc_proto::{MessageRef, wildcard_match};
 
 /// Handler for KLINE command.
 ///
@@ -61,19 +61,12 @@ impl Handler for KlineHandler {
         );
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick,
-                if disconnected > 0 {
-                    format!("K-line added: {mask} ({reason}) - {disconnected} user(s) disconnected")
-                } else {
-                    format!("K-line added: {mask} ({reason})")
-                },
-            ),
+        let text = if disconnected > 0 {
+            format!("K-line added: {mask} ({reason}) - {disconnected} user(s) disconnected")
+        } else {
+            format!("K-line added: {mask} ({reason})")
         };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
         Ok(())
     }
@@ -150,19 +143,12 @@ impl Handler for DlineHandler {
         );
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick,
-                if disconnected > 0 {
-                    format!("D-line added: {ip} ({reason}) - {disconnected} user(s) disconnected")
-                } else {
-                    format!("D-line added: {ip} ({reason})")
-                },
-            ),
+        let text = if disconnected > 0 {
+            format!("D-line added: {ip} ({reason}) - {disconnected} user(s) disconnected")
+        } else {
+            format!("D-line added: {ip} ({reason})")
         };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
         Ok(())
     }
@@ -235,19 +221,12 @@ impl Handler for UnklineHandler {
         }
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick,
-                if removed {
-                    format!("K-line removed: {mask}")
-                } else {
-                    format!("No K-line found for: {mask}")
-                },
-            ),
+        let text = if removed {
+            format!("K-line removed: {mask}")
+        } else {
+            format!("No K-line found for: {mask}")
         };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
         Ok(())
     }
@@ -294,19 +273,12 @@ impl Handler for UndlineHandler {
         }
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick,
-                if removed {
-                    format!("D-line removed: {ip}")
-                } else {
-                    format!("No D-line found for: {ip}")
-                },
-            ),
+        let text = if removed {
+            format!("D-line removed: {ip}")
+        } else {
+            format!("No D-line found for: {ip}")
         };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
         Ok(())
     }
@@ -362,19 +334,12 @@ impl Handler for GlineHandler {
         );
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick,
-                if disconnected > 0 {
-                    format!("G-line added: {mask} ({reason}) - {disconnected} user(s) disconnected")
-                } else {
-                    format!("G-line added: {mask} ({reason})")
-                },
-            ),
+        let text = if disconnected > 0 {
+            format!("G-line added: {mask} ({reason}) - {disconnected} user(s) disconnected")
+        } else {
+            format!("G-line added: {mask} ({reason})")
         };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
         Ok(())
     }
@@ -447,19 +412,12 @@ impl Handler for UnglineHandler {
         }
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick,
-                if removed {
-                    format!("G-line removed: {mask}")
-                } else {
-                    format!("No G-line found for: {mask}")
-                },
-            ),
+        let text = if removed {
+            format!("G-line removed: {mask}")
+        } else {
+            format!("No G-line found for: {mask}")
         };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
         Ok(())
     }
@@ -510,19 +468,12 @@ impl Handler for ZlineHandler {
         );
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick,
-                if disconnected > 0 {
-                    format!("Z-line added: {ip} ({reason}) - {disconnected} user(s) disconnected")
-                } else {
-                    format!("Z-line added: {ip} ({reason})")
-                },
-            ),
+        let text = if disconnected > 0 {
+            format!("Z-line added: {ip} ({reason}) - {disconnected} user(s) disconnected")
+        } else {
+            format!("Z-line added: {ip} ({reason})")
         };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
         Ok(())
     }
@@ -595,19 +546,12 @@ impl Handler for UnzlineHandler {
         }
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick,
-                if removed {
-                    format!("Z-line removed: {ip}")
-                } else {
-                    format!("No Z-line found for: {ip}")
-                },
-            ),
+        let text = if removed {
+            format!("Z-line removed: {ip}")
+        } else {
+            format!("No Z-line found for: {ip}")
         };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
         Ok(())
     }
@@ -659,12 +603,7 @@ impl Handler for ShunHandler {
         );
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(nick, format!("Shun added: {mask} ({reason})")),
-        };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, format!("Shun added: {mask} ({reason})"))).await?;
 
         Ok(())
     }
@@ -711,19 +650,12 @@ impl Handler for UnshunHandler {
         }
 
         // Send confirmation
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
-            command: Command::NOTICE(
-                nick,
-                if removed {
-                    format!("Shun removed: {mask}")
-                } else {
-                    format!("No shun found for: {mask}")
-                },
-            ),
+        let text = if removed {
+            format!("Shun removed: {mask}")
+        } else {
+            format!("No shun found for: {mask}")
         };
-        ctx.sender.send(notice).await?;
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
         Ok(())
     }

@@ -229,6 +229,45 @@ impl<'a> ChannelRepository<'a> {
             .collect())
     }
 
+    /// Load all registered channels from the database.
+    pub async fn load_all_channels(&self) -> Result<Vec<ChannelRecord>, DbError> {
+        let rows = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool)>(
+            r#"
+            SELECT id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic
+            FROM channels
+            "#,
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(
+                    id,
+                    name,
+                    founder_account_id,
+                    registered_at,
+                    last_used_at,
+                    description,
+                    mlock,
+                    keeptopic,
+                )| {
+                    ChannelRecord {
+                        id,
+                        name,
+                        founder_account_id,
+                        registered_at,
+                        last_used_at,
+                        description,
+                        mlock,
+                        keeptopic,
+                    }
+                },
+            )
+            .collect())
+    }
+
     /// Get access flags for an account on a channel.
     pub async fn get_access(
         &self,

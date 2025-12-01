@@ -3,6 +3,7 @@
 //! Monitors enforce_timers in the Matrix and force-renames users who
 //! don't identify within the timeout period.
 
+use crate::services::{ServiceEffect, apply_effect};
 use crate::state::Matrix;
 use rand::Rng;
 use slirc_proto::{Command, Message, Prefix, irc_to_lower};
@@ -45,15 +46,10 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
         matrix.enforce_timers.remove(&uid);
 
         // Get user info
-        let (old_nick, username, hostname, channels) = {
+        let old_nick = {
             if let Some(user_ref) = matrix.users.get(&uid) {
                 let user = user_ref.read().await;
-                (
-                    user.nick.clone(),
-                    user.user.clone(),
-                    user.host.clone(),
-                    user.channels.iter().cloned().collect::<Vec<_>>(),
-                )
+                user.nick.clone()
             } else {
                 debug!(uid = %uid, "User not found for enforcement (already disconnected?)");
                 continue;
@@ -70,80 +66,38 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
             "Nick enforcement: forcing nick change"
         );
 
-        // Apply the forced nick change
-        apply_force_nick(
-            matrix, &uid, &old_nick, &new_nick, &username, &hostname, &channels,
-        )
-        .await;
-    }
-}
+        // Get sender for the user
+        let sender = if let Some(s) = matrix.senders.get(&uid) {
+            s.clone()
+        } else {
+            debug!(uid = %uid, "No sender found for user, cannot send enforcement messages");
+            continue;
+        };
 
-/// Apply a forced nick change - updates Matrix state and broadcasts to channels.
-///
-/// This is the effect application for ServiceEffect::ForceNick, implemented
-/// directly here since enforcement runs as a background task.
-async fn apply_force_nick(
-    matrix: &Arc<Matrix>,
-    uid: &str,
-    old_nick: &str,
-    new_nick: &str,
-    username: &str,
-    hostname: &str,
-    channels: &[String],
-) {
-    let old_lower = irc_to_lower(old_nick);
-    let new_lower = irc_to_lower(new_nick);
+        // Apply the forced nick change using centralized effect
+        let effect = ServiceEffect::ForceNick {
+            target_uid: uid.clone(),
+            old_nick: old_nick.clone(),
+            new_nick: new_nick.clone(),
+        };
+        apply_effect(matrix, &old_nick, &sender, effect).await;
 
-    // Build NICK message
-    let nick_msg = Message {
-        tags: None,
-        prefix: Some(Prefix::Nickname(
-            old_nick.to_string(),
-            username.to_string(),
-            hostname.to_string(),
-        )),
-        command: Command::NICK(new_nick.to_string()),
-    };
-
-    // Update nick mapping
-    matrix.nicks.remove(&old_lower);
-    matrix.nicks.insert(new_lower, uid.to_string());
-
-    // Update user's nick
-    if let Some(user_ref) = matrix.users.get(uid) {
-        let mut user = user_ref.write().await;
-        user.nick = new_nick.to_string();
-    }
-
-    // Broadcast NICK change to all channels the user is in
-    for channel_name in channels {
-        matrix
-            .broadcast_to_channel(channel_name, nick_msg.clone(), None)
-            .await;
-    }
-
-    // Also send to the user themselves
-    if let Some(sender) = matrix.senders.get(uid) {
-        let _ = sender.send(nick_msg).await;
-    }
-
-    // Send notice to user explaining what happened
-    let notice = Message {
-        tags: None,
-        prefix: Some(Prefix::Nickname(
-            "NickServ".to_string(),
-            "NickServ".to_string(),
-            "services.".to_string(),
-        )),
-        command: Command::NOTICE(
-            new_nick.to_string(),
-            format!(
-                "Your nickname has been changed to \x02{}\x02 because you did not identify in time.",
-                new_nick
+        // Send notice to user explaining what happened
+        let notice = Message {
+            tags: None,
+            prefix: Some(Prefix::Nickname(
+                "NickServ".to_string(),
+                "NickServ".to_string(),
+                "services.".to_string(),
+            )),
+            command: Command::NOTICE(
+                new_nick.clone(),
+                format!(
+                    "Your nickname has been changed to \x02{}\x02 because you did not identify in time.",
+                    new_nick
+                ),
             ),
-        ),
-    };
-    if let Some(sender) = matrix.senders.get(uid) {
+        };
         let _ = sender.send(notice).await;
     }
 }
