@@ -1,7 +1,7 @@
 # XLine Database Integration - Implementation Report
 
-**Date:** December 1, 2025  
-**Phase:** Step 2.4 - XLine Database Integration  
+**Date:** December 1, 2025
+**Phase:** Step 2.4 - XLine Database Integration
 **Status:** ✅ COMPLETE
 
 ## Summary
@@ -51,7 +51,7 @@ pub struct Rline {
 - ✅ `check_realname_ban()` - High-level ban check with formatted error
 
 **Existing XLine Methods (already implemented):**
-- ✅ `add_gline()`, `remove_gline()`, `matches_gline()` 
+- ✅ `add_gline()`, `remove_gline()`, `matches_gline()`
 - ✅ `add_zline()`, `remove_zline()`, `matches_zline()`
 - ✅ `add_kline()`, `remove_kline()`, `matches_kline()`
 - ✅ `add_dline()`, `remove_dline()`, `matches_dline()`
@@ -127,26 +127,26 @@ handlers.insert("UNRLINE", Box::new(UnrlineHandler));
 
 ## XLine Types - Complete Implementation Status
 
-| Type | Scope | Match Pattern | Database | Handlers | Enforcement | Status |
-|------|-------|---------------|----------|----------|-------------|--------|
-| **K-Line** | Local | user@host | ✅ | ✅ | ✅ Registration | ✅ Phase 1 |
-| **D-Line** | Local | IP address | ✅ | ✅ | ✅ Registration | ✅ Phase 1 |
-| **G-Line** | Global | user@host | ✅ | ✅ | ✅ Registration | ✅ Phase 2 |
-| **Z-Line** | Global | IP (no DNS) | ✅ | ✅ | ✅ Registration | ✅ Phase 2 |
-| **R-Line** | Global | Realname (GECOS) | ✅ | ✅ | ✅ Registration | ✅ **NEW** |
-| **S-Line** | Global | Server link | ❌ | ❌ | ❌ N/A | ⏸️ Future (S2S) |
+| Type       | Scope  | Match Pattern    | Database | Handlers | Enforcement    | Status         |
+| ---------- | ------ | ---------------- | -------- | -------- | -------------- | -------------- |
+| **K-Line** | Local  | user@host        | ✅        | ✅        | ✅ Registration | ✅ Phase 1      |
+| **D-Line** | Local  | IP address       | ✅        | ✅        | ✅ Registration | ✅ Phase 1      |
+| **G-Line** | Global | user@host        | ✅        | ✅        | ✅ Registration | ✅ Phase 2      |
+| **Z-Line** | Global | IP (no DNS)      | ✅        | ✅        | ✅ Registration | ✅ Phase 2      |
+| **R-Line** | Global | Realname (GECOS) | ✅        | ✅        | ✅ Registration | ✅ **NEW**      |
+| **S-Line** | Global | Server link      | ❌        | ❌        | ❌ N/A          | ⏸️ Future (S2S) |
 
 **Note:** S-Line is deferred as it's only relevant for server-to-server linking, which is not yet implemented.
 
 ## File Changes Summary
 
-| File | Lines Changed | Description |
-|------|---------------|-------------|
-| `migrations/002_xlines.sql` | +9 | Added rlines table + index |
-| `src/db/bans.rs` | +104 | Rline struct + 5 methods |
-| `src/handlers/connection.rs` | +23 | R-line enforcement check |
-| `src/handlers/bans.rs` | +159 | RLINE/UNRLINE handlers |
-| `src/handlers/mod.rs` | +3 | Handler exports + registry |
+| File                         | Lines Changed | Description                |
+| ---------------------------- | ------------- | -------------------------- |
+| `migrations/002_xlines.sql`  | +9            | Added rlines table + index |
+| `src/db/bans.rs`             | +104          | Rline struct + 5 methods   |
+| `src/handlers/connection.rs` | +23           | R-line enforcement check   |
+| `src/handlers/bans.rs`       | +159          | RLINE/UNRLINE handlers     |
+| `src/handlers/mod.rs`        | +3            | Handler exports + registry |
 
 **Total:** ~298 lines added
 
