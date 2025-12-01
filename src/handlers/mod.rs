@@ -18,6 +18,7 @@ mod helpers;
 mod messaging;
 mod misc;
 mod mode;
+mod monitor;
 mod oper;
 mod server_query;
 mod user_query;
@@ -45,6 +46,7 @@ pub use misc::{
     UserhostHandler,
 };
 pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
+pub use monitor::{MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online};
 pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
 pub use server_query::{
     AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler, TimeHandler,
@@ -220,6 +222,7 @@ impl Registry {
         handlers.insert("ISON", Box::new(IsonHandler));
         handlers.insert("KNOCK", Box::new(KnockHandler));
         handlers.insert("SETNAME", Box::new(SetnameHandler));
+        handlers.insert("MONITOR", Box::new(MonitorHandler));
 
         // Service aliases
         handlers.insert("NICKSERV", Box::new(NsHandler));

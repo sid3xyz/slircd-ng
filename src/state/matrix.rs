@@ -76,6 +76,14 @@ pub struct Matrix {
     /// Active shuns cached in memory for fast lookup.
     /// Key is the mask pattern, value is the Shun record.
     pub shuns: DashMap<String, Shun>,
+
+    /// MONITOR: Nicknames being monitored by each UID.
+    /// Key is UID, value is set of lowercase nicknames.
+    pub monitors: DashMap<Uid, DashSet<String>>,
+
+    /// MONITOR: Reverse mapping - who is monitoring each nickname.
+    /// Key is lowercase nickname, value is set of UIDs monitoring it.
+    pub monitoring: DashMap<String, DashSet<Uid>>,
 }
 
 /// An entry in the WHOWAS history for a disconnected user.
@@ -420,6 +428,8 @@ impl Matrix {
             xlines: DashMap::new(),
             registered_channels: registered_set,
             shuns: shuns_map,
+            monitors: DashMap::new(),
+            monitoring: DashMap::new(),
         }
     }
 
