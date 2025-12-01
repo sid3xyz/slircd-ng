@@ -1,0 +1,300 @@
+//! PRIVMSG command handler.
+//!
+//! Handles private messages to users and channels, with support for CTCP.
+
+use super::common::{
+    is_shunned, is_channel, route_to_channel, route_to_user, send_cannot_send,
+    send_no_such_channel, send_no_such_nick, ChannelRouteResult, RouteOptions,
+};
+use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply, user_prefix};
+use crate::services::chanserv::route_chanserv_message;
+use crate::services::nickserv::route_service_message;
+use async_trait::async_trait;
+use chrono::Local;
+use slirc_proto::ctcp::{Ctcp, CtcpKind};
+use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
+use tracing::debug;
+
+// ============================================================================
+// CTCP Handling
+// ============================================================================
+
+/// Server version string for CTCP VERSION replies.
+const SERVER_VERSION: &str = concat!("slircd-ng ", env!("CARGO_PKG_VERSION"));
+
+/// Handle a CTCP request and send appropriate reply via NOTICE.
+///
+/// CTCP requests come in PRIVMSG, replies go out as NOTICE per spec.
+/// See: https://modern.ircdocs.horse/ctcp.html
+async fn handle_ctcp_request(
+    ctx: &Context<'_>,
+    sender_nick: &str,
+    sender_user: &str,
+    target: &str,
+    ctcp: &Ctcp<'_>,
+) -> HandlerResult {
+    // Build the reply text based on CTCP type
+    let reply_text = match &ctcp.kind {
+        CtcpKind::Version => {
+            // Reply with server version info
+            Some(format!("\x01VERSION {}\x01", SERVER_VERSION))
+        }
+        CtcpKind::Ping => {
+            // Echo back the ping timestamp
+            if let Some(timestamp) = ctcp.params {
+                Some(format!("\x01PING {}\x01", timestamp))
+            } else {
+                Some("\x01PING\x01".to_string())
+            }
+        }
+        CtcpKind::Time => {
+            // Reply with current server time
+            let now = Local::now();
+            Some(format!("\x01TIME {}\x01", now.format("%a %b %d %H:%M:%S %Y")))
+        }
+        CtcpKind::Clientinfo => {
+            // List supported CTCP commands
+            Some("\x01CLIENTINFO ACTION PING TIME VERSION\x01".to_string())
+        }
+        CtcpKind::Action => {
+            // ACTION is not a request - it's a message type, relay it normally
+            // Return None to fall through to normal message routing
+            None
+        }
+        _ => {
+            // Unknown CTCP - ignore silently
+            debug!(ctcp = ?ctcp.kind, "Ignoring unknown CTCP request");
+            return Ok(());
+        }
+    };
+
+    // If we have a reply, send it via NOTICE
+    if let Some(text) = reply_text {
+        let target_lower = irc_to_lower(target);
+
+        // Find target UID to send reply to
+        if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower)
+            && let Some(sender) = ctx.matrix.senders.get(target_uid.value())
+        {
+            let reply_msg = Message {
+                tags: None,
+                prefix: Some(user_prefix(sender_nick, sender_user, "localhost")),
+                command: Command::NOTICE(target.to_string(), text),
+            };
+            let _ = sender.send(reply_msg).await;
+            debug!(from = %sender_nick, to = %target, ctcp = ?ctcp.kind, "CTCP reply sent");
+        }
+        return Ok(());
+    }
+
+    // For ACTION, we need to relay the message normally
+    // Return a special indicator that we should continue processing
+    // Actually, we'll handle ACTION by NOT matching it above and letting it fall through
+    // But since we're in this function, we need to handle it here
+
+    // For ACTION messages, route them as normal PRIVMSG
+    if matches!(ctcp.kind, CtcpKind::Action) {
+        let action_text = ctcp.params.unwrap_or("");
+        let full_text = format!("\x01ACTION {}\x01", action_text);
+
+        let out_msg = Message {
+            tags: None,
+            prefix: Some(user_prefix(sender_nick, sender_user, "localhost")),
+            command: Command::PRIVMSG(target.to_string(), full_text),
+        };
+
+        let target_lower = irc_to_lower(target);
+        let opts = RouteOptions {
+            check_moderated: true,
+            send_away_reply: true,
+        };
+
+        if route_to_user(ctx, &target_lower, out_msg, &opts, sender_nick).await {
+            debug!(from = %sender_nick, to = %target, "CTCP ACTION to user");
+        } else {
+            send_no_such_nick(ctx, sender_nick, target).await?;
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// PRIVMSG Handler
+// ============================================================================
+
+/// Handler for PRIVMSG command.
+pub struct PrivmsgHandler;
+
+#[async_trait]
+impl Handler for PrivmsgHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        if !ctx.handshake.registered {
+            return Err(HandlerError::NotRegistered);
+        }
+
+        // Check shun first - silently ignore if shunned
+        if is_shunned(ctx).await {
+            return Ok(());
+        }
+
+        // Check message rate limit
+        let uid_string = ctx.uid.to_string();
+        if !ctx.matrix.rate_limiter.check_message_rate(&uid_string) {
+            let nick = ctx.handshake.nick.as_ref()
+                .ok_or(HandlerError::NickOrUserMissing)?;
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_TOOMANYTARGETS,
+                vec![
+                    nick.to_string(),
+                    "*".to_string(),
+                    "You are sending messages too quickly. Please wait.".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        // PRIVMSG <target> <text>
+        let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
+
+        if target.is_empty() || text.is_empty() {
+            return Err(HandlerError::NeedMoreParams);
+        }
+
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx
+            .handshake
+            .user
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
+
+        // Check if this is a service message (NickServ, ChanServ, etc.)
+        let target_lower = irc_to_lower(target);
+        if (target_lower == "nickserv" || target_lower == "ns")
+            && route_service_message(ctx.matrix, ctx.db, ctx.uid, nick, target, text, ctx.sender)
+                .await
+        {
+            return Ok(());
+        }
+        if (target_lower == "chanserv" || target_lower == "cs")
+            && route_chanserv_message(ctx.matrix, ctx.db, ctx.uid, nick, target, text, ctx.sender)
+                .await
+        {
+            return Ok(());
+        }
+
+        // Handle CTCP requests (only for user-to-user, not channels)
+        // CTCP messages start and end with \x01
+        if !is_channel(target)
+            && Ctcp::is_ctcp(text)
+            && let Some(ctcp) = Ctcp::parse(text)
+        {
+            return handle_ctcp_request(ctx, nick, user_name, target, &ctcp).await;
+        }
+
+        // Build the outgoing message
+        let out_msg = Message {
+            tags: None,
+            prefix: Some(user_prefix(nick, user_name, "localhost")),
+            command: Command::PRIVMSG(target.to_string(), text.to_string()),
+        };
+
+        let opts = RouteOptions {
+            check_moderated: true,
+            send_away_reply: true,
+        };
+
+        if is_channel(target) {
+            let channel_lower = irc_to_lower(target);
+            match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
+                ChannelRouteResult::Sent => {
+                    debug!(from = %nick, to = %target, "PRIVMSG to channel");
+                }
+                ChannelRouteResult::NoSuchChannel => {
+                    send_no_such_channel(ctx, nick, target).await?;
+                }
+                ChannelRouteResult::BlockedExternal => {
+                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+n)").await?;
+                }
+                ChannelRouteResult::BlockedModerated => {
+                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+m)").await?;
+                }
+                ChannelRouteResult::BlockedSpam => {
+                    send_cannot_send(ctx, nick, target, "Message rejected as spam").await?;
+                }
+                ChannelRouteResult::BlockedRegisteredOnly => {
+                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+r)").await?;
+                }
+            }
+        } else if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {
+            debug!(from = %nick, to = %target, "PRIVMSG to user");
+        } else {
+            send_no_such_nick(ctx, nick, target).await?;
+        }
+
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::ctcp::{Ctcp, CtcpKind};
+
+    #[test]
+    fn test_ctcp_parsing() {
+        // Verify slirc_proto's CTCP parsing works as expected
+        let version = Ctcp::parse("\x01VERSION\x01");
+        assert!(version.is_some());
+        assert!(matches!(version.unwrap().kind, CtcpKind::Version));
+
+        let ping = Ctcp::parse("\x01PING 1234567890\x01");
+        assert!(ping.is_some());
+        let ping = ping.unwrap();
+        assert!(matches!(ping.kind, CtcpKind::Ping));
+        assert_eq!(ping.params, Some("1234567890"));
+
+        let time = Ctcp::parse("\x01TIME\x01");
+        assert!(time.is_some());
+        assert!(matches!(time.unwrap().kind, CtcpKind::Time));
+
+        let clientinfo = Ctcp::parse("\x01CLIENTINFO\x01");
+        assert!(clientinfo.is_some());
+        assert!(matches!(clientinfo.unwrap().kind, CtcpKind::Clientinfo));
+
+        let action = Ctcp::parse("\x01ACTION waves\x01");
+        assert!(action.is_some());
+        let action = action.unwrap();
+        assert!(matches!(action.kind, CtcpKind::Action));
+        assert_eq!(action.params, Some("waves"));
+    }
+
+    #[test]
+    fn test_ctcp_is_ctcp() {
+        assert!(Ctcp::is_ctcp("\x01VERSION\x01"));
+        assert!(Ctcp::is_ctcp("\x01ACTION test\x01"));
+        assert!(!Ctcp::is_ctcp("regular message"));
+        // slirc_proto is lenient: strings starting with \x01 are considered CTCP
+        // and parse() accepts messages without trailing \x01 (real-world tolerance)
+        assert!(Ctcp::is_ctcp("\x01incomplete"));
+        assert!(Ctcp::parse("\x01incomplete").is_some()); // Lenient parsing
+    }
+
+    #[test]
+    fn test_server_version_constant() {
+        // Ensure SERVER_VERSION is set correctly
+        assert!(SERVER_VERSION.starts_with("slircd-ng "));
+        assert!(SERVER_VERSION.contains(env!("CARGO_PKG_VERSION")));
+    }
+}
