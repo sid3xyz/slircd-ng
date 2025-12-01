@@ -16,12 +16,13 @@ mod channel;
 mod connection;
 mod helpers;
 mod messaging;
-mod misc;
 mod mode;
 mod monitor;
 mod oper;
 mod server_query;
+mod service_aliases;
 mod user_query;
+mod user_status;
 
 // Re-export helper functions for use by handlers
 pub use helpers::{
@@ -36,15 +37,11 @@ pub use bans::{
     UnglineHandler, UnklineHandler, UnrlineHandler, UnshunHandler, UnzlineHandler, ZlineHandler,
 };
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
-pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
+pub use channel::{InviteHandler, JoinHandler, KickHandler, KnockHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{
     NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,
 };
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
-pub use misc::{
-    AwayHandler, CsHandler, InviteHandler, IsonHandler, KnockHandler, NsHandler, SetnameHandler,
-    UserhostHandler,
-};
 pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
 pub use monitor::{MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online};
 pub use oper::{DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
@@ -52,7 +49,9 @@ pub use server_query::{
     AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler, TimeHandler,
     VersionHandler,
 };
-pub use user_query::{WhoHandler, WhoisHandler, WhowasHandler};
+pub use service_aliases::{CsHandler, NsHandler};
+pub use user_query::{IsonHandler, UserhostHandler, WhoHandler, WhoisHandler, WhowasHandler};
+pub use user_status::{AwayHandler, SetnameHandler};
 
 use crate::db::Database;
 use crate::state::Matrix;
