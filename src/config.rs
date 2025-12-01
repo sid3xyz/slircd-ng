@@ -127,6 +127,9 @@ pub struct SecurityConfig {
     /// Suffix for cloaked IP addresses (default: "ip").
     #[serde(default = "default_cloak_suffix")]
     pub cloak_suffix: String,
+    /// Enable spam detection for message content (default: true).
+    #[serde(default = "default_spam_detection_enabled")]
+    pub spam_detection_enabled: bool,
     /// Rate limiting configuration.
     #[serde(default)]
     pub rate_limits: RateLimitConfig,
@@ -137,6 +140,7 @@ impl Default for SecurityConfig {
         Self {
             cloak_secret: default_cloak_secret(),
             cloak_suffix: default_cloak_suffix(),
+            spam_detection_enabled: default_spam_detection_enabled(),
             rate_limits: RateLimitConfig::default(),
         }
     }
@@ -148,6 +152,10 @@ fn default_cloak_secret() -> String {
 
 fn default_cloak_suffix() -> String {
     "ip".to_string()
+}
+
+fn default_spam_detection_enabled() -> bool {
+    true
 }
 
 /// Rate limiting configuration for anti-flood protection.

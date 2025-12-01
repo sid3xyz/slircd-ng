@@ -208,7 +208,11 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     let is_banned = channel_guard
         .bans
         .iter()
-        .any(|entry| matches_ban(entry, &user_mask, &user_context));
+        .any(|entry| matches_ban(entry, &user_mask, &user_context))
+        || channel_guard
+            .extended_bans
+            .iter()
+            .any(|entry| matches_ban(entry, &user_mask, &user_context));
 
     if is_banned {
         // Check if user has ban exception (+e) - supports extended bans

@@ -233,6 +233,27 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         return Err(HandlerError::NotRegistered);
     }
 
+    // Check for R-line (realname ban)
+    if let Ok(Some(ban_reason)) = ctx.db.bans().check_realname_ban(&realname).await {
+        let reply = server_reply(
+            server_name,
+            Response::ERR_YOUREBANNEDCREEP,
+            vec![
+                nick.clone(),
+                format!("You are banned from this server: {}", ban_reason),
+            ],
+        );
+        ctx.sender.send(reply).await?;
+
+        let error = Message::from(Command::ERROR(format!(
+            "Closing Link: {} ({})",
+            host, ban_reason
+        )));
+        ctx.sender.send(error).await?;
+
+        return Err(HandlerError::NotRegistered);
+    }
+
     // Check in-memory X-lines (for real-time updates without DB query)
     let user_context = crate::security::UserContext::for_registration(
         ctx.remote_addr.ip(),

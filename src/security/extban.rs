@@ -12,7 +12,7 @@
 //!
 //! Supported formats:
 //! - `$a:account` - matches users logged into account
-//! - `$r:pattern` - matches realname field  
+//! - `$r:pattern` - matches realname field
 //! - `$s:server` - matches user's server
 //! - `$c:channel` - matches users in channel
 //! - `$o:type` - matches IRCops of given type

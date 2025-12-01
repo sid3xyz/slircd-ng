@@ -62,6 +62,9 @@ pub struct Matrix {
     /// Global rate limiter for flood protection.
     pub rate_limiter: RateLimitManager,
 
+    /// Spam detection service for content analysis.
+    pub spam_detector: Option<Arc<crate::security::spam::SpamDetectionService>>,
+
     /// Active X-lines (K/G/Z/R/S-lines) for server-level bans.
     /// Key is the pattern/mask, value is the XLine.
     pub xlines: DashMap<String, XLine>,
@@ -215,6 +218,8 @@ pub struct Channel {
     pub invex: Vec<ListEntry>,
     /// Quiet list (+q).
     pub quiets: Vec<ListEntry>,
+    /// Extended ban list (bans with $ prefix like $a:account).
+    pub extended_bans: Vec<ListEntry>,
 }
 
 /// Channel modes.
@@ -311,6 +316,7 @@ impl Channel {
             excepts: Vec::new(),
             invex: Vec::new(),
             quiets: Vec::new(),
+            extended_bans: Vec::new(),
         }
     }
 
@@ -394,6 +400,11 @@ impl Matrix {
                 security: config.security.clone(),
             },
             rate_limiter: RateLimitManager::new(config.security.rate_limits.clone()),
+            spam_detector: if config.security.spam_detection_enabled {
+                Some(Arc::new(crate::security::spam::SpamDetectionService::new()))
+            } else {
+                None
+            },
             xlines: DashMap::new(),
             registered_channels: registered_set,
         }

@@ -8,6 +8,7 @@
 use super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, user_prefix,
 };
+use crate::security::ExtendedBan;
 use crate::state::{ListEntry, UserModes};
 use async_trait::async_trait;
 use slirc_proto::{
@@ -529,17 +530,44 @@ pub fn apply_channel_modes_typed(
                             set_by: ctx.handshake.nick.clone().unwrap_or_default(),
                             set_at: chrono::Utc::now().timestamp(),
                         };
-                        // Don't add duplicate bans
-                        if !channel.bans.iter().any(|b| b.mask == entry.mask) {
-                            channel.bans.push(entry);
-                            applied_modes
-                                .push(Mode::Plus(ChannelMode::Ban, Some(mask.to_string())));
+                        
+                        // Check if this is an extended ban (starts with $)
+                        if mask.starts_with('$') {
+                            // Try to parse as extended ban
+                            if ExtendedBan::parse(mask).is_some() {
+                                // Valid extended ban - add to extended_bans list
+                                if !channel.extended_bans.iter().any(|b| b.mask == entry.mask) {
+                                    channel.extended_bans.push(entry);
+                                    applied_modes
+                                        .push(Mode::Plus(ChannelMode::Ban, Some(mask.to_string())));
+                                }
+                            } else {
+                                // Invalid extended ban format - treat as regular hostmask
+                                if !channel.bans.iter().any(|b| b.mask == entry.mask) {
+                                    channel.bans.push(entry);
+                                    applied_modes
+                                        .push(Mode::Plus(ChannelMode::Ban, Some(mask.to_string())));
+                                }
+                            }
+                        } else {
+                            // Regular hostmask ban
+                            if !channel.bans.iter().any(|b| b.mask == entry.mask) {
+                                channel.bans.push(entry);
+                                applied_modes
+                                    .push(Mode::Plus(ChannelMode::Ban, Some(mask.to_string())));
+                            }
                         }
                     } else {
-                        // Remove ban
+                        // Remove ban from both lists
                         let before_len = channel.bans.len();
                         channel.bans.retain(|b| b.mask != *mask);
-                        if channel.bans.len() != before_len {
+                        let removed_normal = channel.bans.len() != before_len;
+                        
+                        let before_len_ext = channel.extended_bans.len();
+                        channel.extended_bans.retain(|b| b.mask != *mask);
+                        let removed_extended = channel.extended_bans.len() != before_len_ext;
+                        
+                        if removed_normal || removed_extended {
                             applied_modes
                                 .push(Mode::Minus(ChannelMode::Ban, Some(mask.to_string())));
                         }

@@ -19,8 +19,18 @@ CREATE TABLE zlines (
     expires_at INTEGER
 );
 
+-- R-Lines (realname/GECOS bans - matches on realname field)
+CREATE TABLE rlines (
+    mask TEXT PRIMARY KEY,
+    reason TEXT,
+    set_by TEXT NOT NULL,
+    set_at INTEGER NOT NULL,
+    expires_at INTEGER
+);
+
 -- Create indexes for expiry-based queries
 CREATE INDEX idx_glines_expires ON glines(expires_at);
 CREATE INDEX idx_zlines_expires ON zlines(expires_at);
 CREATE INDEX idx_klines_expires ON klines(expires_at);
 CREATE INDEX idx_dlines_expires ON dlines(expires_at);
+CREATE INDEX idx_rlines_expires ON rlines(expires_at);
