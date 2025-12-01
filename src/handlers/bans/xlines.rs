@@ -1,94 +1,20 @@
-//! Ban command handlers.
+//! X-line ban command handlers.
 //!
-//! Commands for server bans (operator-only):
-//! - KLINE: Ban by nick!user@host mask
-//! - DLINE: Ban by IP address
-//! - UNKLINE: Remove a K-line
-//! - UNDLINE: Remove a D-line
-//! - SHUN: Silently ignore commands from matching users
-//! - UNSHUN: Remove a shun
+//! Server-wide ban commands (operator-only):
+//! - KLINE/UNKLINE: Ban/unban by nick!user@host mask
+//! - DLINE/UNDLINE: Ban/unban by IP address
+//! - GLINE/UNGLINE: Global ban/unban by nick!user@host mask
+//! - ZLINE/UNZLINE: Global IP ban/unban (skips DNS)
+//! - RLINE/UNRLINE: Ban/unban by realname (GECOS)
 
-use super::{Context, Handler, HandlerResult, err_needmoreparams, require_oper, server_notice};
-use crate::db::Shun;
+use super::common::{BanType, disconnect_matching_ban};
+use crate::handlers::{err_needmoreparams, require_oper, server_notice, Context, Handler, HandlerResult};
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, wildcard_match};
+use slirc_proto::MessageRef;
 
 // ============================================================================
-// Consolidated ban disconnection logic
+// K-line (local user@host ban)
 // ============================================================================
-
-/// Types of bans for matching purposes.
-#[derive(Debug, Clone, Copy)]
-enum BanType {
-    /// K-line: matches user@host
-    Kline,
-    /// D-line: matches IP (with CIDR support)
-    Dline,
-    /// G-line: matches user@host (global)
-    Gline,
-    /// Z-line: matches IP (with CIDR support, global)
-    Zline,
-    /// R-line: matches realname
-    Rline,
-}
-
-impl BanType {
-    /// Returns the ban type name for quit messages.
-    fn name(&self) -> &'static str {
-        match self {
-            BanType::Kline => "K-lined",
-            BanType::Dline => "D-lined",
-            BanType::Gline => "G-lined",
-            BanType::Zline => "Z-lined",
-            BanType::Rline => "R-lined",
-        }
-    }
-}
-
-/// Disconnect all users matching a ban pattern.
-///
-/// Consolidates the disconnect logic for all ban types (K/D/G/Z/R-lines).
-/// The matching strategy varies by ban type:
-/// - K-line/G-line: Match against `user@host`
-/// - D-line/Z-line: Match against IP with CIDR support
-/// - R-line: Match against realname
-async fn disconnect_matching_ban(
-    ctx: &Context<'_>,
-    ban_type: BanType,
-    pattern: &str,
-    reason: &str,
-) -> usize {
-    let mut to_disconnect = Vec::new();
-
-    // Collect matching users
-    for entry in ctx.matrix.users.iter() {
-        let uid = entry.key().clone();
-        let user = entry.value().read().await;
-
-        let matches = match ban_type {
-            BanType::Kline | BanType::Gline => {
-                let user_host = format!("{}@{}", user.user, user.host);
-                wildcard_match(pattern, &user_host)
-            }
-            BanType::Dline | BanType::Zline => {
-                wildcard_match(pattern, &user.host) || cidr_match(pattern, &user.host)
-            }
-            BanType::Rline => wildcard_match(pattern, &user.realname),
-        };
-
-        if matches {
-            to_disconnect.push(uid);
-        }
-    }
-
-    // Disconnect matching users
-    let quit_reason = format!("{}: {}", ban_type.name(), reason);
-    for uid in &to_disconnect {
-        ctx.matrix.disconnect_user(uid, &quit_reason).await;
-    }
-
-    to_disconnect.len()
-}
 
 /// Handler for KLINE command.
 ///
@@ -152,6 +78,62 @@ impl Handler for KlineHandler {
     }
 }
 
+/// Handler for UNKLINE command.
+///
+/// `UNKLINE user@host`
+///
+/// Removes a K-line.
+pub struct UnklineHandler;
+
+#[async_trait]
+impl Handler for UnklineHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        let server_name = &ctx.matrix.server_info.name;
+
+        let Ok(nick) = require_oper(ctx).await else {
+            return Ok(());
+        };
+
+        // UNKLINE <mask>
+        let mask = match msg.arg(0) {
+            Some(m) if !m.is_empty() => m,
+            _ => {
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &nick, "UNKLINE"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Remove K-line from database
+        let removed = match ctx.db.bans().remove_kline(mask).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to remove K-line from database");
+                false
+            }
+        };
+
+        if removed {
+            tracing::info!(oper = %nick, mask = %mask, "UNKLINE removed");
+        }
+
+        // Send confirmation
+        let text = if removed {
+            format!("K-line removed: {mask}")
+        } else {
+            format!("No K-line found for: {mask}")
+        };
+        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
+
+        Ok(())
+    }
+}
+
+// ============================================================================
+// D-line (local IP ban)
+// ============================================================================
+
 /// Handler for DLINE command.
 ///
 /// `DLINE [time] ip :reason`
@@ -201,58 +183,6 @@ impl Handler for DlineHandler {
             format!("D-line added: {ip} ({reason}) - {disconnected} user(s) disconnected")
         } else {
             format!("D-line added: {ip} ({reason})")
-        };
-        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
-
-        Ok(())
-    }
-}
-
-/// Handler for UNKLINE command.
-///
-/// `UNKLINE user@host`
-///
-/// Removes a K-line.
-pub struct UnklineHandler;
-
-#[async_trait]
-impl Handler for UnklineHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
-
-        let Ok(nick) = require_oper(ctx).await else {
-            return Ok(());
-        };
-
-        // UNKLINE <mask>
-        let mask = match msg.arg(0) {
-            Some(m) if !m.is_empty() => m,
-            _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "UNKLINE"))
-                    .await?;
-                return Ok(());
-            }
-        };
-
-        // Remove K-line from database
-        let removed = match ctx.db.bans().remove_kline(mask).await {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to remove K-line from database");
-                false
-            }
-        };
-
-        if removed {
-            tracing::info!(oper = %nick, mask = %mask, "UNKLINE removed");
-        }
-
-        // Send confirmation
-        let text = if removed {
-            format!("K-line removed: {mask}")
-        } else {
-            format!("No K-line found for: {mask}")
         };
         ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
 
@@ -311,6 +241,10 @@ impl Handler for UndlineHandler {
         Ok(())
     }
 }
+
+// ============================================================================
+// G-line (global user@host ban)
+// ============================================================================
 
 /// Handler for GLINE command.
 ///
@@ -425,6 +359,10 @@ impl Handler for UnglineHandler {
     }
 }
 
+// ============================================================================
+// Z-line (global IP ban, skips DNS)
+// ============================================================================
+
 /// Handler for ZLINE command.
 ///
 /// `ZLINE [time] ip :reason`
@@ -532,6 +470,10 @@ impl Handler for UnzlineHandler {
         Ok(())
     }
 }
+
+// ============================================================================
+// R-line (realname/GECOS ban)
+// ============================================================================
 
 /// Handler for RLINE command.
 ///
@@ -644,168 +586,4 @@ impl Handler for UnrlineHandler {
 
         Ok(())
     }
-}
-
-/// Handler for SHUN command.
-///
-/// `SHUN [time] <mask> [reason]`
-///
-/// Silently ignores commands from matching users without disconnecting them.
-pub struct ShunHandler;
-
-#[async_trait]
-impl Handler for ShunHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
-
-        let Ok(nick) = require_oper(ctx).await else {
-            return Ok(());
-        };
-
-        // SHUN [time] <mask> [reason]
-        let mask = match msg.arg(0) {
-            Some(m) if !m.is_empty() => m,
-            _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "SHUN"))
-                    .await?;
-                return Ok(());
-            }
-        };
-        let reason = msg.arg(1).unwrap_or("Shunned");
-
-        // Store shun in database
-        if let Err(e) = ctx
-            .db
-            .bans()
-            .add_shun(mask, Some(reason), &nick, None)
-            .await
-        {
-            tracing::error!(error = %e, "Failed to add shun to database");
-        } else {
-            // Also add to in-memory cache for fast lookup
-            let now = chrono::Utc::now().timestamp();
-            ctx.matrix.shuns.insert(
-                mask.to_string(),
-                Shun {
-                    mask: mask.to_string(),
-                    reason: Some(reason.to_string()),
-                    set_by: nick.clone(),
-                    set_at: now,
-                    expires_at: None,
-                },
-            );
-        }
-
-        tracing::info!(
-            oper = %nick,
-            mask = %mask,
-            reason = %reason,
-            "SHUN added"
-        );
-
-        // Send confirmation
-        ctx.sender.send(server_notice(server_name, &nick, format!("Shun added: {mask} ({reason})"))).await?;
-
-        Ok(())
-    }
-}
-
-/// Handler for UNSHUN command.
-///
-/// `UNSHUN <mask>`
-///
-/// Removes a shun.
-pub struct UnshunHandler;
-
-#[async_trait]
-impl Handler for UnshunHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
-
-        let Ok(nick) = require_oper(ctx).await else {
-            return Ok(());
-        };
-
-        // UNSHUN <mask>
-        let mask = match msg.arg(0) {
-            Some(m) if !m.is_empty() => m,
-            _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "UNSHUN"))
-                    .await?;
-                return Ok(());
-            }
-        };
-
-        // Remove shun from database
-        let removed = match ctx.db.bans().remove_shun(mask).await {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to remove shun from database");
-                false
-            }
-        };
-
-        if removed {
-            // Also remove from in-memory cache
-            ctx.matrix.shuns.remove(mask);
-            tracing::info!(oper = %nick, mask = %mask, "UNSHUN removed");
-        }
-
-        // Send confirmation
-        let text = if removed {
-            format!("Shun removed: {mask}")
-        } else {
-            format!("No shun found for: {mask}")
-        };
-        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
-
-        Ok(())
-    }
-}
-
-/// Basic CIDR matching for IP addresses.
-fn cidr_match(cidr: &str, ip: &str) -> bool {
-    // Parse CIDR notation (e.g., "192.168.1.0/24")
-    let parts: Vec<&str> = cidr.split('/').collect();
-    if parts.len() != 2 {
-        return false;
-    }
-
-    let network = parts[0];
-    let prefix_len: u32 = match parts[1].parse() {
-        Ok(p) if p <= 32 => p,
-        _ => return false,
-    };
-
-    // Parse network IP
-    let network_parts: Vec<u8> = network.split('.').filter_map(|s| s.parse().ok()).collect();
-    if network_parts.len() != 4 {
-        return false;
-    }
-
-    // Parse target IP
-    let ip_parts: Vec<u8> = ip.split('.').filter_map(|s| s.parse().ok()).collect();
-    if ip_parts.len() != 4 {
-        return false;
-    }
-
-    // Convert to u32
-    let network_u32 = u32::from_be_bytes([
-        network_parts[0],
-        network_parts[1],
-        network_parts[2],
-        network_parts[3],
-    ]);
-    let ip_u32 = u32::from_be_bytes([ip_parts[0], ip_parts[1], ip_parts[2], ip_parts[3]]);
-
-    // Create mask and compare
-    let mask = if prefix_len == 0 {
-        0
-    } else {
-        !0u32 << (32 - prefix_len)
-    };
-
-    (network_u32 & mask) == (ip_u32 & mask)
 }
