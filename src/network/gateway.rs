@@ -4,6 +4,7 @@
 //! incoming client. Supports both plaintext and TLS connections.
 
 use crate::config::{TlsConfig, WebSocketConfig};
+use crate::config::WebircBlock;
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::network::Connection;
@@ -35,11 +36,12 @@ impl Gateway {
         addr: SocketAddr,
         tls_config: Option<TlsConfig>,
         websocket_config: Option<WebSocketConfig>,
+        webirc_blocks: Vec<WebircBlock>,
         matrix: Arc<Matrix>,
         db: Database,
     ) -> anyhow::Result<Self> {
         let plaintext_listener = TcpListener::bind(addr).await?;
-        let registry = Arc::new(Registry::new());
+        let registry = Arc::new(Registry::new(webirc_blocks));
         info!(%addr, "Plaintext listener bound");
 
         let tls_listener = if let Some(tls_cfg) = tls_config {

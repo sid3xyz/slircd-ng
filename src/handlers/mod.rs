@@ -37,7 +37,7 @@ pub use bans::{
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
 pub use channel::{JoinHandler, KickHandler, NamesHandler, PartHandler, TopicHandler};
 pub use connection::{
-    NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler,
+    NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,
 };
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
 pub use misc::{
@@ -108,6 +108,12 @@ pub struct HandshakeState {
     pub failed_oper_attempts: u8,
     /// Timestamp of last OPER attempt (for rate limiting).
     pub last_oper_attempt: Option<std::time::Instant>,
+    /// Whether WEBIRC was used to set client info.
+    pub webirc_used: bool,
+    /// Real IP address from WEBIRC (overrides connection IP).
+    pub webirc_ip: Option<String>,
+    /// Real hostname from WEBIRC (overrides reverse DNS).
+    pub webirc_host: Option<String>,
 }
 
 impl HandshakeState {
@@ -161,8 +167,13 @@ pub struct Registry {
 
 impl Registry {
     /// Create a new registry with all handlers registered.
-    pub fn new() -> Self {
+    ///
+    /// `webirc_blocks` is passed from config for WEBIRC authorization.
+    pub fn new(webirc_blocks: Vec<crate::config::WebircBlock>) -> Self {
         let mut handlers: HashMap<&'static str, Box<dyn Handler>> = HashMap::new();
+
+        // WEBIRC must be first to process before NICK/USER
+        handlers.insert("WEBIRC", Box::new(WebircHandler::new(webirc_blocks)));
 
         // Connection/registration handlers
         handlers.insert("NICK", Box::new(NickHandler));
@@ -267,7 +278,7 @@ impl Registry {
 
 impl Default for Registry {
     fn default() -> Self {
-        Self::new()
+        Self::new(Vec::new())
     }
 }
 
