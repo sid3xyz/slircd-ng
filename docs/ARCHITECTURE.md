@@ -13,17 +13,17 @@ Client → Gateway → Connection (tokio::select!) → Handler → Matrix (DashM
                                     Security Layer (Spam, ExtBan, XLine, Rate Limit)
 ```
 
-| Component | Pattern | Status |
-|-----------|---------|--------|
-| Hot Loop | `tokio::select!` with `MessageRef<'_>` | ✅ Zero-copy |
-| State | `DashMap` for nicks/users/channels | ✅ Lock-free |
-| Handlers | `async fn handle(&self, ctx, msg)` trait | ✅ Clean |
-| Rate Limit | Token bucket in `limit.rs` | ✅ 2.5 msg/s |
-| UID Gen | TS6-compliant `UidGenerator` | ✅ Correct |
-| **Spam Detection** | **Multi-layer content analysis** | ✅ **Phase 2** |
-| **Extended Bans** | **$a/$r/$U pattern matching** | ✅ **Phase 2** |
-| **XLines (R-Line)** | **Database-backed bans** | ✅ **Phase 2** |
-| **Metrics** | **Prometheus HTTP /metrics** | ✅ **Phase 2** |
+| Component           | Pattern                                  | Status        |
+| ------------------- | ---------------------------------------- | ------------- |
+| Hot Loop            | `tokio::select!` with `MessageRef<'_>`   | ✅ Zero-copy   |
+| State               | `DashMap` for nicks/users/channels       | ✅ Lock-free   |
+| Handlers            | `async fn handle(&self, ctx, msg)` trait | ✅ Clean       |
+| Rate Limit          | Token bucket in `limit.rs`               | ✅ 2.5 msg/s   |
+| UID Gen             | TS6-compliant `UidGenerator`             | ✅ Correct     |
+| **Spam Detection**  | **Multi-layer content analysis**         | ✅ **Phase 2** |
+| **Extended Bans**   | **$a/$r/$U pattern matching**            | ✅ **Phase 2** |
+| **XLines (R-Line)** | **Database-backed bans**                 | ✅ **Phase 2** |
+| **Metrics**         | **Prometheus HTTP /metrics**             | ✅ **Phase 2** |
 
 ---
 
@@ -41,8 +41,8 @@ Client → Gateway → Connection (tokio::select!) → Handler → Matrix (DashM
   - Updated: bans.rs, admin.rs, misc.rs, oper.rs
 
 - [x] **Complete error helper migration** (b0d568c)
-  - Helpers: `err_noprivileges`, `err_needmoreparams`, `err_nosuchnick`, 
-    `err_nosuchchannel`, `err_notonchannel`, `err_chanoprivsneeded`, 
+  - Helpers: `err_noprivileges`, `err_needmoreparams`, `err_nosuchnick`,
+    `err_nosuchchannel`, `err_notonchannel`, `err_chanoprivsneeded`,
     `err_usernotinchannel`, `err_notregistered`, `user_prefix`
 
 ### P2: Service Layer Decoupling
@@ -126,14 +126,14 @@ Client → Gateway → Connection (tokio::select!) → Handler → Matrix (DashM
 
 ## File Reference
 
-| File | Purpose |
-|------|---------|
-| `src/handlers/mod.rs` | Handler trait, Registry, error helpers |
-| `src/state/matrix.rs` | Central state: users, channels, nicks |
-| `src/network/connection.rs` | Unified `tokio::select!` loop |
-| `src/network/limit.rs` | Token bucket rate limiter |
-| `src/services/*.rs` | NickServ, ChanServ pseudo-services |
-| **`src/security/spam.rs`** | **Spam detection service (Phase 2)** |
-| **`src/security/extban.rs`** | **Extended ban types (Phase 2)** |
-| **`src/metrics.rs`** | **Prometheus metrics registry (Phase 2)** |
-| **`src/http.rs`** | **HTTP /metrics endpoint (Phase 2)** |
+| File                         | Purpose                                   |
+| ---------------------------- | ----------------------------------------- |
+| `src/handlers/mod.rs`        | Handler trait, Registry, error helpers    |
+| `src/state/matrix.rs`        | Central state: users, channels, nicks     |
+| `src/network/connection.rs`  | Unified `tokio::select!` loop             |
+| `src/network/limit.rs`       | Token bucket rate limiter                 |
+| `src/services/*.rs`          | NickServ, ChanServ pseudo-services        |
+| **`src/security/spam.rs`**   | **Spam detection service (Phase 2)**      |
+| **`src/security/extban.rs`** | **Extended ban types (Phase 2)**          |
+| **`src/metrics.rs`**         | **Prometheus metrics registry (Phase 2)** |
+| **`src/http.rs`**            | **HTTP /metrics endpoint (Phase 2)**      |

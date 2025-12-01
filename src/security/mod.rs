@@ -19,7 +19,6 @@
 //! ```
 
 pub mod cloaking;
-pub mod extban;
 pub mod spam;
 pub mod rate_limit;
 pub mod xlines;

@@ -13,105 +13,105 @@ This document tracks all features present in `slircd` that need to be implemente
 
 ### 1.1 Connection/Registration Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| NICK | ✅ | ✅ | Implemented |
-| USER | ✅ | ✅ | Implemented |
-| PASS | ✅ | ✅ | Implemented |
-| PING | ✅ | ✅ | Implemented |
-| PONG | ✅ | ✅ | Implemented |
-| QUIT | ✅ | ✅ | Implemented |
-| CAP | ✅ | ✅ | **Implemented: IRCv3 capability negotiation** |
-| AUTHENTICATE | ✅ | ✅ | **Implemented: SASL PLAIN with database validation** |
+| Command      | slircd | slircd-ng | Notes                                                |
+| ------------ | ------ | --------- | ---------------------------------------------------- |
+| NICK         | ✅      | ✅         | Implemented                                          |
+| USER         | ✅      | ✅         | Implemented                                          |
+| PASS         | ✅      | ✅         | Implemented                                          |
+| PING         | ✅      | ✅         | Implemented                                          |
+| PONG         | ✅      | ✅         | Implemented                                          |
+| QUIT         | ✅      | ✅         | Implemented                                          |
+| CAP          | ✅      | ✅         | **Implemented: IRCv3 capability negotiation**        |
+| AUTHENTICATE | ✅      | ✅         | **Implemented: SASL PLAIN with database validation** |
 
 ### 1.2 Channel Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| JOIN | ✅ | ✅ | Implemented |
-| PART | ✅ | ✅ | Implemented |
-| TOPIC | ✅ | ✅ | Implemented |
-| NAMES | ✅ | ✅ | Implemented |
-| LIST | ✅ | ✅ | Implemented |
-| KICK | ✅ | ✅ | Implemented |
-| MODE | ✅ | ✅ | Implemented (Type A lists, ABCD modes) |
-| INVITE | ✅ | ✅ | Implemented |
-| KNOCK | ✅ | ✅ | Implemented |
+| Command | slircd | slircd-ng | Notes                                  |
+| ------- | ------ | --------- | -------------------------------------- |
+| JOIN    | ✅      | ✅         | Implemented                            |
+| PART    | ✅      | ✅         | Implemented                            |
+| TOPIC   | ✅      | ✅         | Implemented                            |
+| NAMES   | ✅      | ✅         | Implemented                            |
+| LIST    | ✅      | ✅         | Implemented                            |
+| KICK    | ✅      | ✅         | Implemented                            |
+| MODE    | ✅      | ✅         | Implemented (Type A lists, ABCD modes) |
+| INVITE  | ✅      | ✅         | Implemented                            |
+| KNOCK   | ✅      | ✅         | Implemented                            |
 
 ### 1.3 Messaging Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| PRIVMSG | ✅ | ✅ | Implemented |
-| NOTICE | ✅ | ✅ | Implemented |
-| TAGMSG | ✅ | ✅ | **Implemented: IRCv3 tags-only message** |
+| Command | slircd | slircd-ng | Notes                                    |
+| ------- | ------ | --------- | ---------------------------------------- |
+| PRIVMSG | ✅      | ✅         | Implemented                              |
+| NOTICE  | ✅      | ✅         | Implemented                              |
+| TAGMSG  | ✅      | ✅         | **Implemented: IRCv3 tags-only message** |
 
 ### 1.4 User Query Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| WHO | ✅ | ✅ | Implemented |
-| WHOIS | ✅ | ✅ | Implemented |
-| WHOWAS | ✅ | ✅ | Implemented |
-| USERHOST | ✅ | ✅ | Implemented |
-| ISON | ✅ | ✅ | Implemented |
-| USERIP | ✅ | ❌ | **Missing: Returns user's IP (oper only)** |
-| MONITOR | ✅ | ❌ | **Missing: IRCv3 presence monitoring** |
+| Command  | slircd | slircd-ng | Notes                                      |
+| -------- | ------ | --------- | ------------------------------------------ |
+| WHO      | ✅      | ✅         | Implemented                                |
+| WHOIS    | ✅      | ✅         | Implemented                                |
+| WHOWAS   | ✅      | ✅         | Implemented                                |
+| USERHOST | ✅      | ✅         | Implemented                                |
+| ISON     | ✅      | ✅         | Implemented                                |
+| USERIP   | ✅      | ❌         | **Missing: Returns user's IP (oper only)** |
+| MONITOR  | ✅      | ❌         | **Missing: IRCv3 presence monitoring**     |
 
 ### 1.5 Server Query Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| VERSION | ✅ | ✅ | Implemented |
-| TIME | ✅ | ✅ | Implemented |
-| ADMIN | ✅ | ✅ | Implemented |
-| INFO | ✅ | ✅ | Implemented |
-| LUSERS | ✅ | ✅ | Implemented |
-| MOTD | ✅ | ✅ | Implemented |
-| STATS | ✅ | ✅ | Implemented |
-| LINKS | ✅ | ❌ | **Missing: Server links info** |
-| MAP | ✅ | ❌ | **Missing: Network map** |
-| TRACE | ✅ | ❌ | **Missing: Route to server/user** |
-| HELP / HELPOP | ✅ | ❌ | **Missing: Help system** |
-| RULES | ✅ | ❌ | **Missing: Server rules display** |
-| SUMMON | ✅ | ❌ | **Missing: Summon user (stub OK)** |
-| USERS | ✅ | ❌ | **Missing: Users on host (stub OK)** |
-| SERVLIST | ✅ | ❌ | **Missing: Services list (stub OK)** |
+| Command       | slircd | slircd-ng | Notes                                |
+| ------------- | ------ | --------- | ------------------------------------ |
+| VERSION       | ✅      | ✅         | Implemented                          |
+| TIME          | ✅      | ✅         | Implemented                          |
+| ADMIN         | ✅      | ✅         | Implemented                          |
+| INFO          | ✅      | ✅         | Implemented                          |
+| LUSERS        | ✅      | ✅         | Implemented                          |
+| MOTD          | ✅      | ✅         | Implemented                          |
+| STATS         | ✅      | ✅         | Implemented                          |
+| LINKS         | ✅      | ❌         | **Missing: Server links info**       |
+| MAP           | ✅      | ❌         | **Missing: Network map**             |
+| TRACE         | ✅      | ❌         | **Missing: Route to server/user**    |
+| HELP / HELPOP | ✅      | ❌         | **Missing: Help system**             |
+| RULES         | ✅      | ❌         | **Missing: Server rules display**    |
+| SUMMON        | ✅      | ❌         | **Missing: Summon user (stub OK)**   |
+| USERS         | ✅      | ❌         | **Missing: Users on host (stub OK)** |
+| SERVLIST      | ✅      | ❌         | **Missing: Services list (stub OK)** |
 
 ### 1.6 Operator Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| OPER | ✅ | ✅ | Implemented |
-| KILL | ✅ | ✅ | Implemented |
-| REHASH | ✅ | ✅ | Implemented |
-| DIE | ✅ | ✅ | Implemented |
-| WALLOPS | ✅ | ✅ | Implemented |
-| KLINE | ✅ | ✅ | Implemented |
-| UNKLINE | ✅ | ✅ | Implemented |
-| DLINE | ✅ | ✅ | Implemented |
-| UNDLINE | ✅ | ✅ | Implemented |
-| SHUN | ✅ | ❌ | **Missing: Shun (quiet ban)** |
-| UNSHUN | ✅ | ❌ | **Missing: Remove shun** |
-| RESTART | ✅ | ❌ | **Missing: Server restart** |
-| CHGHOST | ✅ | ❌ | **Missing: Change user's host (oper)** |
+| Command | slircd | slircd-ng | Notes                                  |
+| ------- | ------ | --------- | -------------------------------------- |
+| OPER    | ✅      | ✅         | Implemented                            |
+| KILL    | ✅      | ✅         | Implemented                            |
+| REHASH  | ✅      | ✅         | Implemented                            |
+| DIE     | ✅      | ✅         | Implemented                            |
+| WALLOPS | ✅      | ✅         | Implemented                            |
+| KLINE   | ✅      | ✅         | Implemented                            |
+| UNKLINE | ✅      | ✅         | Implemented                            |
+| DLINE   | ✅      | ✅         | Implemented                            |
+| UNDLINE | ✅      | ✅         | Implemented                            |
+| SHUN    | ✅      | ✅         | Implemented in handlers/bans.rs        |
+| UNSHUN  | ✅      | ✅         | Implemented in handlers/bans.rs        |
+| RESTART | ✅      | ❌         | **Missing: Server restart**            |
+| CHGHOST | ✅      | ❌         | **Missing: Change user's host (oper)** |
 
 ### 1.7 Admin SA* Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| SAJOIN | ✅ | ✅ | Implemented |
-| SAPART | ✅ | ✅ | Implemented |
-| SANICK | ✅ | ✅ | Implemented |
-| SAMODE | ✅ | ✅ | Implemented |
+| Command | slircd | slircd-ng | Notes       |
+| ------- | ------ | --------- | ----------- |
+| SAJOIN  | ✅      | ✅         | Implemented |
+| SAPART  | ✅      | ✅         | Implemented |
+| SANICK  | ✅      | ✅         | Implemented |
+| SAMODE  | ✅      | ✅         | Implemented |
 
 ### 1.8 Miscellaneous Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| AWAY | ✅ | ✅ | Implemented |
-| SETNAME | ✅ | ❌ | **Missing: Change realname (IRCv3)** |
-| WEBIRC | ✅ | ❌ | **Missing: WebIRC gateway support** |
+| Command | slircd | slircd-ng | Notes                                |
+| ------- | ------ | --------- | ------------------------------------ |
+| AWAY    | ✅      | ✅         | Implemented                          |
+| SETNAME | ✅      | ❌         | **Missing: Change realname (IRCv3)** |
+| WEBIRC  | ✅      | ❌         | **Missing: WebIRC gateway support**  |
 
 ---
 
@@ -119,22 +119,22 @@ This document tracks all features present in `slircd` that need to be implemente
 
 ### 2.1 Required Capabilities
 
-| Capability | slircd | slircd-ng | Priority | Notes |
-|------------|--------|-----------|----------|-------|
-| multi-prefix | ✅ | ✅ | P1 | Advertised in CAP LS |
-| userhost-in-names | ✅ | ✅ | P1 | Advertised in CAP LS |
-| echo-message | ✅ | ✅ | P1 | Advertised in CAP LS |
-| server-time | ✅ | ✅ | P1 | Advertised in CAP LS |
-| message-tags | ✅ | ✅ | P1 | **Implemented: Parse/forward client tags** |
-| labeled-response | ✅ | ❌ | P1 | Label tag for request correlation |
-| batch | ✅ | ❌ | P2 | Multi-line response batching |
-| setname | ✅ | ❌ | P2 | SETNAME command support |
-| away-notify | ✅ | ✅ | P2 | **Implemented: Broadcast AWAY to shared channels** |
-| account-notify | ✅ | ✅ | P2 | **Implemented: ACCOUNT message broadcasts** |
-| extended-join | ✅ | ✅ | P2 | **Implemented: JOIN with account + realname** |
-| cap-notify | ✅ | ❌ | P2 | CAP NEW/DEL notifications |
-| sasl | ✅ | ✅ | P1 | **Implemented: SASL PLAIN with database** |
-| account-tag | ✅ | ❌ | P2 | Account tag on messages |
+| Capability        | slircd | slircd-ng | Priority | Notes                                              |
+| ----------------- | ------ | --------- | -------- | -------------------------------------------------- |
+| multi-prefix      | ✅      | ✅         | P1       | Advertised in CAP LS                               |
+| userhost-in-names | ✅      | ✅         | P1       | Advertised in CAP LS                               |
+| echo-message      | ✅      | ✅         | P1       | Advertised in CAP LS                               |
+| server-time       | ✅      | ✅         | P1       | Advertised in CAP LS                               |
+| message-tags      | ✅      | ✅         | P1       | **Implemented: Parse/forward client tags**         |
+| labeled-response  | ✅      | ❌         | P1       | Label tag for request correlation                  |
+| batch             | ✅      | ❌         | P2       | Multi-line response batching                       |
+| setname           | ✅      | ❌         | P2       | SETNAME command support                            |
+| away-notify       | ✅      | ✅         | P2       | **Implemented: Broadcast AWAY to shared channels** |
+| account-notify    | ✅      | ✅         | P2       | **Implemented: ACCOUNT message broadcasts**        |
+| extended-join     | ✅      | ✅         | P2       | **Implemented: JOIN with account + realname**      |
+| cap-notify        | ✅      | ❌         | P2       | CAP NEW/DEL notifications                          |
+| sasl              | ✅      | ✅         | P1       | **Implemented: SASL PLAIN with database**          |
+| account-tag       | ✅      | ❌         | P2       | Account tag on messages                            |
 
 ### 2.2 CAP Handler Implementation
 
@@ -151,36 +151,36 @@ This document tracks all features present in `slircd` that need to be implemente
 
 ### 3.1 NickServ Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| REGISTER | ✅ | ✅ | **Implemented:** Register nickname with password/email |
-| IDENTIFY | ✅ | ✅ | **Implemented:** Authenticate to account |
-| GHOST | ✅ | ✅ | **Implemented:** Kill session using your nick |
-| GROUP | ✅ | ✅ | **Implemented: Link nickname to existing account** |
-| UNGROUP | ✅ | ✅ | **Implemented: Unlink nickname from account** |
-| INFO | ✅ | ✅ | **Implemented:** Account information |
-| SET | ✅ | ✅ | **Implemented:** Account settings (EMAIL, ENFORCE, etc.) |
-| VERIFY | ✅ | ❌ | Email verification |
-| DROP | ✅ | ✅ | **Implemented: Drop account registration** |
-| RECOVER | ✅ | ❌ | Recover registered nick |
+| Command  | slircd | slircd-ng | Notes                                                    |
+| -------- | ------ | --------- | -------------------------------------------------------- |
+| REGISTER | ✅      | ✅         | **Implemented:** Register nickname with password/email   |
+| IDENTIFY | ✅      | ✅         | **Implemented:** Authenticate to account                 |
+| GHOST    | ✅      | ✅         | **Implemented:** Kill session using your nick            |
+| GROUP    | ✅      | ✅         | **Implemented: Link nickname to existing account**       |
+| UNGROUP  | ✅      | ✅         | **Implemented: Unlink nickname from account**            |
+| INFO     | ✅      | ✅         | **Implemented:** Account information                     |
+| SET      | ✅      | ✅         | **Implemented:** Account settings (EMAIL, ENFORCE, etc.) |
+| VERIFY   | ✅      | ❌         | Email verification                                       |
+| DROP     | ✅      | ✅         | **Implemented: Drop account registration**               |
+| RECOVER  | ✅      | ❌         | Recover registered nick                                  |
 
 ### 3.2 ChanServ Commands
 
-| Command | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| REGISTER | ✅ | ✅ | **Implemented: Register channel with founder access** |
-| DROP | ✅ | ✅ | **Implemented: Unregister channel** |
-| ACCESS ADD | ✅ | ✅ | **Implemented: Add account to channel access list** |
-| ACCESS DEL | ✅ | ✅ | **Implemented: Remove account from access list** |
-| ACCESS LIST | ✅ | ✅ | **Implemented: List all channel access entries** |
-| OP | ✅ | ✅ | **Implemented: Grant op via ChanServ mode handling** |
-| DEOP | ✅ | ✅ | **Implemented: Remove op via ChanServ mode handling** |
-| VOICE | ✅ | ✅ | **Implemented: Grant voice via ChanServ mode handling** |
-| DEVOICE | ✅ | ✅ | **Implemented: Remove voice via ChanServ mode handling** |
-| INFO | ✅ | ✅ | **Implemented: Display channel registration info** |
-| SET | ✅ | ✅ | **Implemented: DESCRIPTION, MLOCK, KEEPTOPIC settings** |
-| AKICK | ✅ | ✅ | **Implemented: ADD/DEL/LIST auto-kick management** |
-| CLEAR | ✅ | ❌ | Clear modes/bans/ops |
+| Command     | slircd | slircd-ng | Notes                                                    |
+| ----------- | ------ | --------- | -------------------------------------------------------- |
+| REGISTER    | ✅      | ✅         | **Implemented: Register channel with founder access**    |
+| DROP        | ✅      | ✅         | **Implemented: Unregister channel**                      |
+| ACCESS ADD  | ✅      | ✅         | **Implemented: Add account to channel access list**      |
+| ACCESS DEL  | ✅      | ✅         | **Implemented: Remove account from access list**         |
+| ACCESS LIST | ✅      | ✅         | **Implemented: List all channel access entries**         |
+| OP          | ✅      | ✅         | **Implemented: Grant op via ChanServ mode handling**     |
+| DEOP        | ✅      | ✅         | **Implemented: Remove op via ChanServ mode handling**    |
+| VOICE       | ✅      | ✅         | **Implemented: Grant voice via ChanServ mode handling**  |
+| DEVOICE     | ✅      | ✅         | **Implemented: Remove voice via ChanServ mode handling** |
+| INFO        | ✅      | ✅         | **Implemented: Display channel registration info**       |
+| SET         | ✅      | ✅         | **Implemented: DESCRIPTION, MLOCK, KEEPTOPIC settings**  |
+| AKICK       | ✅      | ✅         | **Implemented: ADD/DEL/LIST auto-kick management**       |
+| CLEAR       | ✅      | ❌         | Clear modes/bans/ops                                     |
 
 ### 3.3 Services Infrastructure
 
@@ -197,18 +197,18 @@ This document tracks all features present in `slircd` that need to be implemente
 
 ### 4.1 SQLite Integration
 
-| Feature | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| SQLx async database | ✅ | ✅ | **Implemented: Async SQLite with sqlx** |
-| Accounts table | ✅ | ✅ | **Implemented: NickServ accounts** |
-| Nicknames table | ✅ | ✅ | **Implemented: Nick → account mapping** |
-| Channels table | ✅ | ❌ | ChanServ registrations |
-| Access table | ✅ | ❌ | Channel access lists |
-| KLines table | ✅ | ✅ | **Implemented: Schema ready (not wired)** |
-| DLines table | ✅ | ✅ | **Implemented: Schema ready (not wired)** |
-| Shuns table | ✅ | ❌ | Persistent shuns |
-| Event store | ✅ | ❌ | Event sourcing (optional) |
-| Snapshots | ✅ | ❌ | State snapshots for recovery |
+| Feature             | slircd | slircd-ng | Notes                                     |
+| ------------------- | ------ | --------- | ----------------------------------------- |
+| SQLx async database | ✅      | ✅         | **Implemented: Async SQLite with sqlx**   |
+| Accounts table      | ✅      | ✅         | **Implemented: NickServ accounts**        |
+| Nicknames table     | ✅      | ✅         | **Implemented: Nick → account mapping**   |
+| Channels table      | ✅      | ✅         | Schema in 001_init.sql                    |
+| Access table        | ✅      | ✅         | Schema in 001_init.sql                    |
+| KLines table        | ✅      | ✅         | **Implemented: Schema ready (not wired)** |
+| DLines table        | ✅      | ✅         | **Implemented: Schema ready (not wired)** |
+| Shuns table         | ✅      | ✅         | Schema in 002_shuns.sql                   |
+| Event store         | ✅      | ❌         | Event sourcing (optional)                 |
+| Snapshots           | ✅      | ❌         | State snapshots for recovery              |
 
 ### 4.2 Database Schema (Required)
 
@@ -266,32 +266,32 @@ CREATE TABLE klines (
 
 ### 5.1 TLS Support
 
-| Feature | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| Implicit TLS (6697) | ✅ | ✅ | **Implemented: TLS listener with tokio-rustls** |
-| STARTTLS upgrade | ✅ | ❌ | Upgrade plaintext to TLS |
-| Client cert auth | ✅ | ❌ | TLS fingerprint for SASL EXTERNAL |
-| rustls integration | ✅ | ✅ | **Implemented: TLS without OpenSSL** |
+| Feature             | slircd | slircd-ng | Notes                                           |
+| ------------------- | ------ | --------- | ----------------------------------------------- |
+| Implicit TLS (6697) | ✅      | ✅         | **Implemented: TLS listener with tokio-rustls** |
+| STARTTLS upgrade    | ✅      | ❌         | Upgrade plaintext to TLS                        |
+| Client cert auth    | ✅      | ❌         | TLS fingerprint for SASL EXTERNAL               |
+| rustls integration  | ✅      | ✅         | **Implemented: TLS without OpenSSL**            |
 
 ### 5.2 WebSocket Support
 
-| Feature | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| IRC-over-WebSocket | ✅ | ❌ | ws:// protocol |
-| WebSocket+TLS | ✅ | ❌ | wss:// protocol |
-| WebIRC gateway | ✅ | ❌ | Pass real client IP |
+| Feature            | slircd | slircd-ng | Notes                   |
+| ------------------ | ------ | --------- | ----------------------- |
+| IRC-over-WebSocket | ✅      | ✅         | Implemented in network/ |
+| WebSocket+TLS      | ✅      | ✅         | Implemented in network/ |
+| WebIRC gateway     | ✅      | ❌         | Pass real client IP     |
 
 ### 5.3 Connection Handling
 
-| Feature | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| DNS reverse lookup | ✅ | ❌ | Resolve hostnames |
-| IP cloaking | ✅ | ✅ | **Implemented: HMAC-SHA256 in security/cloaking.rs** |
-| Flood protection | ✅ | ✅ | **Implemented: Governor token bucket rate limiting** |
-| Per-command rate limits | ✅ | Partial | Message + join rate limits (not per-command) |
-| Max connections per IP | ✅ | ✅ | **Implemented: connection_burst_per_ip in gateway.rs** |
-| Registration timeout | ✅ | ❌ | Kick unregistered clients |
-| Ping timeout | ✅ | ❌ | Disconnect idle clients |
+| Feature                 | slircd | slircd-ng | Notes                                                  |
+| ----------------------- | ------ | --------- | ------------------------------------------------------ |
+| DNS reverse lookup      | ✅      | ❌         | Resolve hostnames                                      |
+| IP cloaking             | ✅      | ✅         | **Implemented: HMAC-SHA256 in security/cloaking.rs**   |
+| Flood protection        | ✅      | ✅         | **Implemented: Governor token bucket rate limiting**   |
+| Per-command rate limits | ✅      | Partial   | Message + join rate limits (not per-command)           |
+| Max connections per IP  | ✅      | ✅         | **Implemented: connection_burst_per_ip in gateway.rs** |
+| Registration timeout    | ✅      | ❌         | Kick unregistered clients                              |
+| Ping timeout            | ✅      | ❌         | Disconnect idle clients                                |
 
 ---
 
@@ -299,19 +299,19 @@ CREATE TABLE klines (
 
 ### 6.1 Configuration Options
 
-| Feature | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| Admin info block | ✅ | ❌ | ADMIN reply data |
-| TLS cert/key paths | ✅ | ❌ | TLS configuration |
-| WebSocket listeners | ✅ | ❌ | WS/WSS bind addresses |
-| Oper hostmask check | ✅ | Partial | Has field, not enforced |
-| Per-command limits | ✅ | Partial | RateLimitConfig (msg, conn, join) |
-| Anti-spam config | ✅ | ✅ | **Implemented: RateLimitConfig in config.rs** |
-| WebIRC blocks | ✅ | ❌ | Gateway config |
-| NickServ config | ✅ | ❌ | Service settings |
-| ChanServ config | ✅ | ❌ | Service settings |
-| MOTD file path | ✅ | ❌ | External MOTD file |
-| Cloak secret | ✅ | ✅ | **Implemented: cloak_secret in config.rs** |
+| Feature             | slircd | slircd-ng | Notes                                         |
+| ------------------- | ------ | --------- | --------------------------------------------- |
+| Admin info block    | ✅      | ❌         | ADMIN reply data                              |
+| TLS cert/key paths  | ✅      | ❌         | TLS configuration                             |
+| WebSocket listeners | ✅      | ✅         | Configured in config.toml                     |
+| Oper hostmask check | ✅      | Partial   | Has field, not enforced                       |
+| Per-command limits  | ✅      | Partial   | RateLimitConfig (msg, conn, join)             |
+| Anti-spam config    | ✅      | ✅         | **Implemented: RateLimitConfig in config.rs** |
+| WebIRC blocks       | ✅      | ❌         | Gateway config                                |
+| NickServ config     | ✅      | ❌         | Service settings                              |
+| ChanServ config     | ✅      | ❌         | Service settings                              |
+| MOTD file path      | ✅      | ❌         | External MOTD file                            |
+| Cloak secret        | ✅      | ✅         | **Implemented: cloak_secret in config.rs**    |
 
 ---
 
@@ -319,28 +319,28 @@ CREATE TABLE klines (
 
 ### 7.1 Monitoring
 
-| Feature | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| Prometheus metrics | ✅ | ❌ | /metrics endpoint |
-| Connection count | ✅ | ❌ | Gauge metric |
-| Message throughput | ✅ | ❌ | Counter metric |
-| Command latency | ✅ | ❌ | Histogram metric |
+| Feature            | slircd | slircd-ng | Notes             |
+| ------------------ | ------ | --------- | ----------------- |
+| Prometheus metrics | ✅      | ❌         | /metrics endpoint |
+| Connection count   | ✅      | ❌         | Gauge metric      |
+| Message throughput | ✅      | ❌         | Counter metric    |
+| Command latency    | ✅      | ❌         | Histogram metric  |
 
 ### 7.2 Logging
 
-| Feature | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| Structured logging | ✅ | ✅ | tracing crate |
-| Log levels | ✅ | ✅ | RUST_LOG env |
-| Span context | ✅ | Partial | Per-connection tracing |
+| Feature            | slircd | slircd-ng | Notes                  |
+| ------------------ | ------ | --------- | ---------------------- |
+| Structured logging | ✅      | ✅         | tracing crate          |
+| Log levels         | ✅      | ✅         | RUST_LOG env           |
+| Span context       | ✅      | Partial   | Per-connection tracing |
 
 ### 7.3 Error Handling
 
-| Feature | slircd | slircd-ng | Notes |
-|---------|--------|-----------|-------|
-| ERR_UNKNOWNCOMMAND | ✅ | ❌ | Reply for unknown cmds |
-| Graceful shutdown | ✅ | ❌ | Signal handling |
-| Connection cleanup | ✅ | Partial | QUIT handling |
+| Feature            | slircd | slircd-ng | Notes                  |
+| ------------------ | ------ | --------- | ---------------------- |
+| ERR_UNKNOWNCOMMAND | ✅      | ❌         | Reply for unknown cmds |
+| Graceful shutdown  | ✅      | ❌         | Signal handling        |
+| Connection cleanup | ✅      | Partial   | QUIT handling          |
 
 ---
 
@@ -437,12 +437,12 @@ RESTART, CHGHOST, SETNAME, WEBIRC
 
 Before implementing certain features, verify `slirc-proto` has:
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Capability enum | ✅ | Full IRCv3.2 caps |
-| SASL support | ✅ | PLAIN mechanism |
-| Message tags | ✅ | IRCv3 tags parsing |
-| TAGMSG command | Verify | May need Command variant |
+| Feature         | Status | Notes                    |
+| --------------- | ------ | ------------------------ |
+| Capability enum | ✅      | Full IRCv3.2 caps        |
+| SASL support    | ✅      | PLAIN mechanism          |
+| Message tags    | ✅      | IRCv3 tags parsing       |
+| TAGMSG command  | Verify | May need Command variant |
 | MONITOR command | Verify | May need Command variant |
 | SETNAME command | Verify | May need Command variant |
 | CHGHOST command | Verify | May need Command variant |

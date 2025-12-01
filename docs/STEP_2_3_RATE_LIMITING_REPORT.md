@@ -1,8 +1,8 @@
 # Step 2.3: Rate Limiting Activation - Implementation Report
 
-**Date:** December 1, 2025  
-**Status:** ✅ COMPLETE  
-**Testing:** ✅ All tests passing (63 slircd-ng tests, 28 slirc-proto doctests)  
+**Date:** December 1, 2025
+**Status:** ✅ COMPLETE
+**Testing:** ✅ All tests passing (63 slircd-ng tests, 28 slirc-proto doctests)
 **Clippy:** ✅ Zero warnings with `-D warnings`
 
 ---
@@ -32,7 +32,7 @@ Rate limiting has been successfully activated across all critical command handle
 ```rust
 impl RateLimitManager {
     pub fn check_message_rate(&self, uid: &Uid) -> bool
-    pub fn check_connection_rate(&self, ip: IpAddr) -> bool  
+    pub fn check_connection_rate(&self, ip: IpAddr) -> bool
     pub fn check_join_rate(&self, uid: &Uid) -> bool
     pub fn remove_client(&self, uid: &Uid)
     pub fn cleanup(&self)
@@ -60,8 +60,8 @@ pub struct RateLimitConfig {
 ### A. Message Rate Limiting
 
 #### PRIVMSG Handler
-**File:** `slircd-ng/src/handlers/messaging.rs`  
-**Line:** 435  
+**File:** `slircd-ng/src/handlers/messaging.rs`
+**Line:** 435
 **Response:** `ERR_TOOMANYTARGETS` (407) with custom message
 
 ```rust
@@ -84,9 +84,9 @@ if !ctx.matrix.rate_limiter.check_message_rate(&uid_string) {
 }
 ```
 
-#### NOTICE Handler  
-**File:** `slircd-ng/src/handlers/messaging.rs`  
-**Line:** 558  
+#### NOTICE Handler
+**File:** `slircd-ng/src/handlers/messaging.rs`
+**Line:** 558
 **Response:** Silent drop (per RFC 2812 - NOTICE never generates error replies)
 
 ```rust
@@ -101,8 +101,8 @@ if !ctx.matrix.rate_limiter.check_message_rate(&uid_string) {
 
 ### B. JOIN Rate Limiting (Pre-existing)
 
-**File:** `slircd-ng/src/handlers/channel.rs`  
-**Line:** 55  
+**File:** `slircd-ng/src/handlers/channel.rs`
+**Line:** 55
 **Response:** `ERR_TOOMANYCHANNELS` (405) - reused for rate limiting
 
 ```rust
@@ -127,7 +127,7 @@ if !ctx.matrix.rate_limiter.check_join_rate(&uid_string) {
 ### C. Connection Rate Limiting (Pre-existing)
 
 #### Plaintext Listener
-**File:** `slircd-ng/src/network/gateway.rs`  
+**File:** `slircd-ng/src/network/gateway.rs`
 **Line:** 256
 
 ```rust
@@ -139,7 +139,7 @@ if !matrix.rate_limiter.check_connection_rate(addr.ip()) {
 ```
 
 #### TLS Listener
-**File:** `slircd-ng/src/network/gateway.rs`  
+**File:** `slircd-ng/src/network/gateway.rs`
 **Line:** 124
 
 ```rust
@@ -151,7 +151,7 @@ if !matrix_tls.rate_limiter.check_connection_rate(addr.ip()) {
 ```
 
 #### WebSocket Listener
-**File:** `slircd-ng/src/network/gateway.rs`  
+**File:** `slircd-ng/src/network/gateway.rs`
 **Line:** 181
 
 ```rust
@@ -164,8 +164,8 @@ if !matrix_ws.rate_limiter.check_connection_rate(addr.ip()) {
 
 ### D. Connection-Level Flood Protection (Pre-existing)
 
-**File:** `slircd-ng/src/network/connection.rs`  
-**Line:** 273  
+**File:** `slircd-ng/src/network/connection.rs`
+**Line:** 273
 **Behavior:** Strike counter (5 violations = auto-disconnect)
 
 ```rust
@@ -228,7 +228,7 @@ test result: ok. 28 passed; 0 failed; 8 ignored
 ### Rate Limiter Unit Tests (Pre-existing)
 All passing in `security/rate_limit.rs`:
 - ✅ `test_message_rate_limiting` - Verifies 2/sec limit
-- ✅ `test_connection_rate_limiting` - Verifies 3-burst limit  
+- ✅ `test_connection_rate_limiting` - Verifies 3-burst limit
 - ✅ `test_join_rate_limiting` - Verifies 5-burst limit
 - ✅ `test_client_removal` - Cleanup on disconnect
 - ✅ `test_different_clients_independent` - Per-client isolation
@@ -252,11 +252,11 @@ All rate checks use proper error handling:
 
 ### IRC Numeric Selection
 
-| Handler | Numeric | Code | Reason |
-|---------|---------|------|--------|
-| PRIVMSG | `ERR_TOOMANYTARGETS` | 407 | Semantically appropriate - "too many" messages |
-| NOTICE | (none) | - | RFC 2812 mandates silent drop for NOTICE errors |
-| JOIN | `ERR_TOOMANYCHANNELS` | 405 | Already used, semantically fits rate limiting |
+| Handler | Numeric               | Code | Reason                                          |
+| ------- | --------------------- | ---- | ----------------------------------------------- |
+| PRIVMSG | `ERR_TOOMANYTARGETS`  | 407  | Semantically appropriate - "too many" messages  |
+| NOTICE  | (none)                | -    | RFC 2812 mandates silent drop for NOTICE errors |
+| JOIN    | `ERR_TOOMANYCHANNELS` | 405  | Already used, semantically fits rate limiting   |
 
 **Note:** Modern IRC servers often use custom numerics (440-449 range) for rate limiting, but we reuse standard numerics for maximum client compatibility.
 
@@ -297,7 +297,7 @@ All rate checks use proper error handling:
 ### Multi-Layer Protection
 
 1. **Connection Layer** (gateway.rs) - Blocks rapid connections from same IP
-2. **Transport Layer** (connection.rs) - Disconnects after 5 flood violations  
+2. **Transport Layer** (connection.rs) - Disconnects after 5 flood violations
 3. **Handler Layer** (messaging.rs, channel.rs) - Per-command rate limiting with user feedback
 
 This defense-in-depth approach provides:
@@ -393,12 +393,12 @@ for i in {1..5}; do (echo -e "NICK test$i\r\n" | nc localhost 6667 &); done
 
 Step 2.3 successfully activated rate limiting across all critical handlers. The implementation:
 
-✅ Protects PRIVMSG, NOTICE, JOIN commands  
-✅ Guards all connection types (plaintext, TLS, WebSocket)  
-✅ Provides dual-layer flood protection (handler + connection)  
-✅ Follows IRC RFC specifications  
-✅ Maintains zero clippy warnings  
-✅ Passes all tests  
-✅ Documents configuration clearly  
+✅ Protects PRIVMSG, NOTICE, JOIN commands
+✅ Guards all connection types (plaintext, TLS, WebSocket)
+✅ Provides dual-layer flood protection (handler + connection)
+✅ Follows IRC RFC specifications
+✅ Maintains zero clippy warnings
+✅ Passes all tests
+✅ Documents configuration clearly
 
 The slircd-ng server now has comprehensive flood protection at multiple layers, ready for production deployment.
