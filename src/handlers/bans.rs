@@ -5,8 +5,11 @@
 //! - DLINE: Ban by IP address
 //! - UNKLINE: Remove a K-line
 //! - UNDLINE: Remove a D-line
+//! - SHUN: Silently ignore commands from matching users
+//! - UNSHUN: Remove a shun
 
 use super::{Context, Handler, HandlerResult, err_needmoreparams, require_oper, server_notice};
+use crate::db::Shun;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, wildcard_match};
 
@@ -731,6 +734,19 @@ impl Handler for ShunHandler {
             .await
         {
             tracing::error!(error = %e, "Failed to add shun to database");
+        } else {
+            // Also add to in-memory cache for fast lookup
+            let now = chrono::Utc::now().timestamp();
+            ctx.matrix.shuns.insert(
+                mask.to_string(),
+                Shun {
+                    mask: mask.to_string(),
+                    reason: Some(reason.to_string()),
+                    set_by: nick.clone(),
+                    set_at: now,
+                    expires_at: None,
+                },
+            );
         }
 
         tracing::info!(
@@ -784,6 +800,8 @@ impl Handler for UnshunHandler {
         };
 
         if removed {
+            // Also remove from in-memory cache
+            ctx.matrix.shuns.remove(mask);
             tracing::info!(oper = %nick, mask = %mask, "UNSHUN removed");
         }
 

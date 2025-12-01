@@ -77,8 +77,19 @@ async fn main() -> anyhow::Result<()> {
         .collect();
     info!(count = registered_channels.len(), "Loaded registered channels");
 
+    // Load active shuns from database
+    let active_shuns = db
+        .bans()
+        .get_active_shuns()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "Failed to load shuns from database");
+            Vec::new()
+        });
+    info!(count = active_shuns.len(), "Loaded active shuns");
+
     // Create the Matrix (shared state)
-    let matrix = Arc::new(Matrix::new(&config, registered_channels));
+    let matrix = Arc::new(Matrix::new(&config, registered_channels, active_shuns));
 
     // Initialize Prometheus metrics
     metrics::init();
@@ -108,6 +119,27 @@ async fn main() -> anyhow::Result<()> {
         });
     }
     info!("WHOWAS cleanup task started");
+
+    // Start shun expiry cleanup task (runs every minute)
+    {
+        let matrix = Arc::clone(&matrix);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                let now = chrono::Utc::now().timestamp();
+                let before = matrix.shuns.len();
+                matrix.shuns.retain(|_, shun| {
+                    shun.expires_at.is_none_or(|exp| exp > now)
+                });
+                let removed = before - matrix.shuns.len();
+                if removed > 0 {
+                    info!(removed = removed, "Expired shuns removed");
+                }
+            }
+        });
+    }
+    info!("Shun expiry cleanup task started");
 
     // Start the Gateway (with optional TLS and WebSocket)
     let gateway = Gateway::bind(
