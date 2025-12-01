@@ -4,7 +4,7 @@
 
 use super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
-    err_usernotinchannel, matches_ban_or_except, server_reply, user_prefix,
+    err_usernotinchannel, matches_ban_or_except, server_reply, user_prefix, with_label,
 };
 use crate::db::ChannelRepository;
 use crate::security::UserContext;
@@ -418,14 +418,17 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     );
     ctx.sender.send(names_reply).await?;
 
-    let end_names = server_reply(
-        &ctx.matrix.server_info.name,
-        Response::RPL_ENDOFNAMES,
-        vec![
-            nick.clone(),
-            canonical_name,
-            "End of /NAMES list".to_string(),
-        ],
+    let end_names = with_label(
+        server_reply(
+            &ctx.matrix.server_info.name,
+            Response::RPL_ENDOFNAMES,
+            vec![
+                nick.clone(),
+                canonical_name,
+                "End of /NAMES list".to_string(),
+            ],
+        ),
+        ctx.label.as_deref(),
     );
     ctx.sender.send(end_names).await?;
 
