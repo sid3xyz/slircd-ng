@@ -24,7 +24,7 @@
 //! ```
 
 use crate::db::Database;
-use crate::handlers::{Context, HandshakeState, Registry};
+use crate::handlers::{Context, HandshakeState, Registry, cleanup_monitors, notify_monitors_offline};
 use crate::state::Matrix;
 use slirc_proto::error::ProtocolError;
 use slirc_proto::transport::{TransportReadError, ZeroCopyTransportEnum};
@@ -387,12 +387,18 @@ impl Connection {
         self.matrix.users.remove(&self.uid);
         crate::metrics::CONNECTED_USERS.dec();
 
-        // Cleanup: remove nick from index
+        // Cleanup: remove nick from index and notify MONITOR watchers
         if let Some(nick) = &handshake.nick {
+            // Notify MONITOR watchers that this nick is going offline
+            notify_monitors_offline(&self.matrix, nick).await;
+
             let nick_lower = irc_to_lower(nick);
             self.matrix.nicks.remove(&nick_lower);
             info!(nick = %nick, "Nick released");
         }
+
+        // Clean up this user's MONITOR entries
+        cleanup_monitors(&self.matrix, &self.uid);
 
         // Unregister sender from Matrix
         self.matrix.unregister_sender(&self.uid);

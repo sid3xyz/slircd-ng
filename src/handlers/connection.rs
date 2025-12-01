@@ -2,7 +2,7 @@
 //!
 //! Handles NICK, USER, PING, PONG, QUIT commands.
 
-use super::{Context, Handler, HandlerError, HandlerResult, server_reply};
+use super::{Context, Handler, HandlerError, HandlerResult, notify_monitors_offline, notify_monitors_online, server_reply};
 use crate::config::WebircBlock;
 use crate::state::User;
 use async_trait::async_trait;
@@ -88,6 +88,11 @@ impl Handler for NickHandler {
 
         // Remove old nick from index if changing
         if let Some(old_nick) = &ctx.handshake.nick {
+            // Notify MONITOR watchers that old nick is going offline
+            if ctx.handshake.registered {
+                notify_monitors_offline(ctx.matrix, old_nick).await;
+            }
+
             let old_nick_lower = irc_to_lower(old_nick);
             ctx.matrix.nicks.remove(&old_nick_lower);
             // Clear any enforcement timer for old nick
@@ -99,6 +104,15 @@ impl Handler for NickHandler {
             .nicks
             .insert(nick_lower.clone(), ctx.uid.to_string());
         ctx.handshake.nick = Some(nick.to_string());
+
+        // Notify MONITOR watchers that new nick is online (only for already-registered users)
+        if ctx.handshake.registered {
+            // Get user info for the hostmask
+            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let user = user_ref.read().await;
+                notify_monitors_online(ctx.matrix, nick, &user.user, &user.visible_host).await;
+            }
+        }
 
         debug!(nick = %nick, uid = %ctx.uid, "Nick set");
 
@@ -461,6 +475,9 @@ async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         vec![nick.clone(), "End of /MOTD command.".to_string()],
     );
     ctx.sender.send(endmotd).await?;
+
+    // Notify MONITOR watchers that this nick has come online
+    notify_monitors_online(ctx.matrix, nick, user, &cloaked_host).await;
 
     Ok(())
 }
