@@ -530,7 +530,7 @@ pub fn apply_channel_modes_typed(
                             set_by: ctx.handshake.nick.clone().unwrap_or_default(),
                             set_at: chrono::Utc::now().timestamp(),
                         };
-                        
+
                         // Check if this is an extended ban (starts with $)
                         if mask.starts_with('$') {
                             // Try to parse as extended ban
@@ -562,11 +562,11 @@ pub fn apply_channel_modes_typed(
                         let before_len = channel.bans.len();
                         channel.bans.retain(|b| b.mask != *mask);
                         let removed_normal = channel.bans.len() != before_len;
-                        
+
                         let before_len_ext = channel.extended_bans.len();
                         channel.extended_bans.retain(|b| b.mask != *mask);
                         let removed_extended = channel.extended_bans.len() != before_len_ext;
-                        
+
                         if removed_normal || removed_extended {
                             applied_modes
                                 .push(Mode::Minus(ChannelMode::Ban, Some(mask.to_string())));

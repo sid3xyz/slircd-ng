@@ -4,9 +4,9 @@
 //! Uses a unified routing system to enforce channel modes (+n, +m).
 //! Includes CTCP (Client-to-Client Protocol) handling for VERSION, PING, etc.
 
-use super::{Context, Handler, HandlerError, HandlerResult, matches_hostmask, server_reply, user_prefix};
+use super::{Context, Handler, HandlerError, HandlerResult, matches_ban_or_except, server_reply, user_prefix};
 use crate::security::spam::SpamVerdict;
-use crate::security::{ExtendedBan, UserContext, matches_extended_ban};
+use crate::security::UserContext;
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
@@ -63,6 +63,8 @@ enum ChannelRouteResult {
     BlockedModerated,
     /// Message blocked by spam detection.
     BlockedSpam,
+    /// Sender is blocked by +r (registered-only channel).
+    BlockedRegisteredOnly,
 }
 
 /// Options for message routing behavior.
@@ -95,7 +97,7 @@ async fn route_to_channel(
     }
 
     // Build user's hostmask for ban/quiet checks (nick!user@host)
-    let (user_mask, user_context) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+    let (user_mask, user_context, is_registered) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
         let user = user_ref.read().await;
         let mask = format!("{}!{}@{}", user.nick, user.user, user.host);
         let context = UserContext::for_registration(
@@ -107,7 +109,7 @@ async fn route_to_channel(
             ctx.matrix.server_info.name.clone(),
             user.account.clone(),
         );
-        (mask, context)
+        (mask, context, user.modes.registered)
     } else {
         // Shouldn't happen for registered users, but provide fallback
         let mask = "unknown!unknown@unknown".to_string();
@@ -120,31 +122,32 @@ async fn route_to_channel(
             ctx.matrix.server_info.name.clone(),
             None,
         );
-        (mask, context)
+        (mask, context, false)
     };
 
+    // Check +r (registered-only channel)
+    if channel.modes.registered_only && !is_registered {
+        crate::metrics::REGISTERED_ONLY_BLOCKED.inc();
+        return ChannelRouteResult::BlockedRegisteredOnly;
+    }
+
     // Check +b (bans) - banned users cannot speak even if in channel
+    // Supports both hostmask and extended bans ($a:account, $r:realname, etc.)
     let is_banned = channel
         .bans
         .iter()
-        .any(|entry| matches_hostmask(&entry.mask, &user_mask))
+        .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context))
         || channel
             .extended_bans
             .iter()
-            .any(|entry| {
-                if let Some(extban) = ExtendedBan::parse(&entry.mask) {
-                    matches_extended_ban(&extban, &user_context)
-                } else {
-                    false
-                }
-            });
+            .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context));
 
     if is_banned {
-        // Check if user has ban exception (+e)
+        // Check if user has ban exception (+e) - supports extended bans
         let has_exception = channel
             .excepts
             .iter()
-            .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+            .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context));
 
         if !has_exception {
             return ChannelRouteResult::BlockedExternal; // Reuse for ban
@@ -152,17 +155,18 @@ async fn route_to_channel(
     }
 
     // Check +q (quiet) - quieted users cannot speak
+    // Supports both hostmask and extended bans
     let is_quieted = channel
         .quiets
         .iter()
-        .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+        .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context));
 
     if is_quieted {
         // Check if user has ban exception (+e) - some IRCds allow +e to bypass +q
         let has_exception = channel
             .excepts
             .iter()
-            .any(|entry| matches_hostmask(&entry.mask, &user_mask));
+            .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context));
 
         if !has_exception {
             return ChannelRouteResult::BlockedModerated; // Reuse for quiet
@@ -524,6 +528,9 @@ impl Handler for PrivmsgHandler {
                 ChannelRouteResult::BlockedSpam => {
                     send_cannot_send(ctx, nick, target, "Message rejected as spam").await?;
                 }
+                ChannelRouteResult::BlockedRegisteredOnly => {
+                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+r)").await?;
+                }
             }
         } else if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {
             debug!(from = %nick, to = %target, "PRIVMSG to user");
@@ -712,6 +719,9 @@ impl Handler for TagmsgHandler {
                     // TAGMSG has no text, so spam detection shouldn't trigger
                     unreachable!("TAGMSG has no text content to check for spam");
                 }
+                ChannelRouteResult::BlockedRegisteredOnly => {
+                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+r)").await?;
+                }
             }
         } else {
             let target_lower = irc_to_lower(target);
@@ -733,6 +743,7 @@ impl Handler for TagmsgHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::handlers::matches_hostmask;
     use slirc_proto::ctcp::{Ctcp, CtcpKind};
 
     #[test]

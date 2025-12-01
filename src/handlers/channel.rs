@@ -4,10 +4,10 @@
 
 use super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
-    err_usernotinchannel, matches_hostmask, server_reply, user_prefix,
+    err_usernotinchannel, matches_ban_or_except, server_reply, user_prefix,
 };
 use crate::db::ChannelRepository;
-use crate::security::{ExtendedBan, UserContext, matches_extended_ban};
+use crate::security::UserContext;
 use crate::state::{Channel, ListEntry, MemberModes, Topic, User};
 use async_trait::async_trait;
 use slirc_proto::{
@@ -19,17 +19,7 @@ use tracing::{debug, info};
 
 /// Check if a ban entry matches a user, supporting both hostmask and extended bans.
 fn matches_ban(entry: &ListEntry, user_mask: &str, user_context: &UserContext) -> bool {
-    if entry.mask.starts_with('$') {
-        // Extended ban format ($a:account, $r:realname, etc.)
-        if let Some(extban) = ExtendedBan::parse(&entry.mask) {
-            matches_extended_ban(&extban, user_context)
-        } else {
-            false
-        }
-    } else {
-        // Traditional nick!user@host ban
-        matches_hostmask(&entry.mask, user_mask)
-    }
+    matches_ban_or_except(&entry.mask, user_mask, user_context)
 }
 
 /// Handler for JOIN command.
@@ -203,6 +193,34 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             ctx.sender.send(reply).await?;
             drop(channel_guard);
             info!(nick = %nick, channel = %channel_name, "JOIN denied: invite-only");
+            return Ok(());
+        }
+    }
+
+    // 1b. Check Registered-Only (+r) mode
+    if channel_guard.modes.registered_only {
+        // Determine if the user is identified (user mode +r)
+        let is_registered = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let user = user_ref.read().await;
+            user.modes.registered
+        } else {
+            false
+        };
+
+        if !is_registered {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_NEEDREGGEDNICK,
+                vec![
+                    nick.clone(),
+                    channel_name.to_string(),
+                    "Cannot join channel (+r)".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            crate::metrics::REGISTERED_ONLY_BLOCKED.inc();
+            drop(channel_guard);
+            info!(nick = %nick, channel = %channel_name, "JOIN denied: +r registered-only");
             return Ok(());
         }
     }
