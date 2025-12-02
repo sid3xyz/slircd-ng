@@ -16,12 +16,12 @@ pub use privmsg::PrivmsgHandler;
 
 use super::{Context, Handler, HandlerError, HandlerResult, user_prefix};
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Tag, irc_to_lower};
+use slirc_proto::{ChannelExt, Command, Message, MessageRef, Tag, irc_to_lower};
 use std::borrow::Cow;
 use tracing::debug;
 
 use common::{
-    is_shunned, is_channel, route_to_channel, route_to_user, send_cannot_send,
+    is_shunned, route_to_channel, route_to_user, send_cannot_send,
     send_no_such_channel, send_no_such_nick, ChannelRouteResult, RouteOptions,
 };
 
@@ -105,7 +105,7 @@ impl Handler for TagmsgHandler {
             block_ctcp: false,
         };
 
-        if is_channel(target) {
+        if target.is_channel_name() {
             let channel_lower = irc_to_lower(target);
             match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
                 ChannelRouteResult::Sent => {
@@ -156,17 +156,17 @@ impl Handler for TagmsgHandler {
 
 #[cfg(test)]
 mod tests {
-    use super::common::is_channel;
+    use slirc_proto::ChannelExt;
     use crate::handlers::matches_hostmask;
 
     #[test]
     fn test_is_channel() {
-        assert!(is_channel("#rust"));
-        assert!(is_channel("&local"));
-        assert!(is_channel("+modeless"));
-        assert!(is_channel("!safe"));
-        assert!(!is_channel("nickname"));
-        assert!(!is_channel("NickServ"));
+        assert!("#rust".is_channel_name());
+        assert!("&local".is_channel_name());
+        assert!("+modeless".is_channel_name());
+        assert!("!safe".is_channel_name());
+        assert!(!"nickname".is_channel_name());
+        assert!(!"NickServ".is_channel_name());
     }
 
     #[test]

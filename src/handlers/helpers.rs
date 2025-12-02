@@ -1,12 +1,14 @@
 //! Helper functions for IRC command handlers.
 //!
-//! This module contains common error reply builders, labeled-response helpers,
-//! and hostmask matching used across multiple handlers.
+//! This module contains common error reply builders and labeled-response helpers.
 //!
 //! Note: User lookup helpers (`resolve_nick_to_uid`, `get_nick_or_star`, etc.)
 //! remain in `mod.rs` because they depend on `Context` which is defined there.
 
 use slirc_proto::{Command, Message, Prefix, Response, Tag};
+
+// Re-export hostmask matching from proto for use by handlers
+pub use slirc_proto::matches_hostmask;
 
 // ============================================================================
 // Common reply helpers
@@ -177,62 +179,8 @@ pub fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
 }
 
 // ============================================================================
-// Hostmask matching (shared by channel, messaging, oper handlers)
+// Ban matching (extended bans + hostmask via proto)
 // ============================================================================
-
-/// Check if a hostmask (nick!user@host) matches a pattern.
-/// Supports wildcards (* and ?).
-///
-/// # Examples
-/// ```ignore
-/// matches_hostmask("*!*@*.example.com", "nick!user@host.example.com") // true
-/// matches_hostmask("nick!*@*", "nick!user@host") // true
-/// matches_hostmask("*!user@*", "nick!other@host") // false
-/// ```
-pub fn matches_hostmask(pattern: &str, hostmask: &str) -> bool {
-    let pattern = pattern.to_lowercase();
-    let hostmask = hostmask.to_lowercase();
-
-    let mut p_chars = pattern.chars().peekable();
-    let mut h_chars = hostmask.chars().peekable();
-
-    while let Some(p) = p_chars.next() {
-        match p {
-            '*' => {
-                // Consume consecutive *
-                while p_chars.peek() == Some(&'*') {
-                    p_chars.next();
-                }
-                // If * is at end, match rest
-                if p_chars.peek().is_none() {
-                    return true;
-                }
-                // Try matching from each position
-                while h_chars.peek().is_some() {
-                    let remaining_pattern: String = p_chars.clone().collect();
-                    let remaining_hostmask: String = h_chars.clone().collect();
-                    if matches_hostmask(&remaining_pattern, &remaining_hostmask) {
-                        return true;
-                    }
-                    h_chars.next();
-                }
-                return matches_hostmask(&p_chars.collect::<String>(), "");
-            }
-            '?' => {
-                if h_chars.next().is_none() {
-                    return false;
-                }
-            }
-            c => {
-                if h_chars.next() != Some(c) {
-                    return false;
-                }
-            }
-        }
-    }
-
-    h_chars.peek().is_none()
-}
 
 /// Check if a ban/exception entry matches a user, supporting both hostmask and extended bans.
 ///

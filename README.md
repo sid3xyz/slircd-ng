@@ -22,25 +22,25 @@
 
 Extensive IRCv3 support including:
 
-| Capability | Description |
-|------------|-------------|
-| `multi-prefix` | Multiple prefix characters in NAMES/WHO |
-| `userhost-in-names` | Full user@host in NAMES replies |
-| `server-time` | Message timestamps |
-| `echo-message` | Echo sent messages back to client |
-| `sasl` | PLAIN/SCRAM-SHA-256 authentication |
-| `batch` | Message batching |
-| `message-tags` | Arbitrary message metadata |
-| `labeled-response` | Request/response correlation |
-| `setname` | Change realname without reconnect |
-| `away-notify` | AWAY status notifications |
-| `account-notify` | Account login/logout notifications |
-| `extended-join` | Account info in JOIN |
-| `invite-notify` | INVITE notifications to channel |
-| `chghost` | Username/hostname change notifications |
-| `monitor` | Presence monitoring |
-| `cap-notify` | Capability change notifications |
-| `chathistory` | Message history retrieval (draft) |
+| Capability          | Description                             |
+| ------------------- | --------------------------------------- |
+| `multi-prefix`      | Multiple prefix characters in NAMES/WHO |
+| `userhost-in-names` | Full user@host in NAMES replies         |
+| `server-time`       | Message timestamps                      |
+| `echo-message`      | Echo sent messages back to client       |
+| `sasl`              | PLAIN/SCRAM-SHA-256 authentication      |
+| `batch`             | Message batching                        |
+| `message-tags`      | Arbitrary message metadata              |
+| `labeled-response`  | Request/response correlation            |
+| `setname`           | Change realname without reconnect       |
+| `away-notify`       | AWAY status notifications               |
+| `account-notify`    | Account login/logout notifications      |
+| `extended-join`     | Account info in JOIN                    |
+| `invite-notify`     | INVITE notifications to channel         |
+| `chghost`           | Username/hostname change notifications  |
+| `monitor`           | Presence monitoring                     |
+| `cap-notify`        | Capability change notifications         |
+| `chathistory`       | Message history retrieval (draft)       |
 
 ### Connectivity
 
@@ -66,24 +66,24 @@ Built-in service bots with SQLite persistence:
 
 ### Security
 
-| Feature | Description |
-|---------|-------------|
-| **Host Cloaking** | HMAC-SHA256 IP/hostname masking |
-| **Rate Limiting** | Per-client message/connection/join flood protection |
-| **Spam Detection** | Multi-layer content analysis (entropy, patterns, URLs) |
-| **Ban Cache** | In-memory K/D/G/Z-line cache for fast connection checks |
-| **Extended Bans** | `$a:account`, `$r:realname`, `$U` (unregistered), etc. |
+| Feature            | Description                                             |
+| ------------------ | ------------------------------------------------------- |
+| **Host Cloaking**  | HMAC-SHA256 IP/hostname masking                         |
+| **Rate Limiting**  | Per-client message/connection/join flood protection     |
+| **Spam Detection** | Multi-layer content analysis (entropy, patterns, URLs)  |
+| **Ban Cache**      | In-memory K/D/G/Z-line cache for fast connection checks |
+| **Extended Bans**  | `$a:account`, `$r:realname`, `$U` (unregistered), etc.  |
 
 ### Server Bans (X-Lines)
 
-| Type | Target | Persistence |
-|------|--------|-------------|
-| K-Line | user@host (local) | SQLite |
-| G-Line | user@host (global) | SQLite |
-| D-Line | IP address | SQLite |
-| Z-Line | IP address (no DNS) | SQLite |
-| R-Line | Realname pattern | SQLite |
-| SHUN | Silent ban (in-memory) | Runtime only |
+| Type   | Target                 | Persistence  |
+| ------ | ---------------------- | ------------ |
+| K-Line | user@host (local)      | SQLite       |
+| G-Line | user@host (global)     | SQLite       |
+| D-Line | IP address             | SQLite       |
+| Z-Line | IP address (no DNS)    | SQLite       |
+| R-Line | Realname pattern       | SQLite       |
+| SHUN   | Silent ban (in-memory) | Runtime only |
 
 ## Architecture
 
@@ -263,52 +263,52 @@ slircd-ng/
 
 The server runs several background maintenance tasks:
 
-| Task | Interval | Purpose |
-|------|----------|---------|
-| Nick enforcement | 100ms | Force nick changes for unidentified users |
-| WHOWAS cleanup | 1 hour | Remove entries older than 7 days |
-| Shun expiry | 1 minute | Remove expired shuns |
-| Ban cache prune | 5 minutes | Remove expired K/D/G/Z-lines |
-| Rate limiter cleanup | 5 minutes | Clean up old rate limit buckets |
-| History prune | 24 hours | Remove messages older than 7 days |
+| Task                 | Interval  | Purpose                                   |
+| -------------------- | --------- | ----------------------------------------- |
+| Nick enforcement     | 100ms     | Force nick changes for unidentified users |
+| WHOWAS cleanup       | 1 hour    | Remove entries older than 7 days          |
+| Shun expiry          | 1 minute  | Remove expired shuns                      |
+| Ban cache prune      | 5 minutes | Remove expired K/D/G/Z-lines              |
+| Rate limiter cleanup | 5 minutes | Clean up old rate limit buckets           |
+| History prune        | 24 hours  | Remove messages older than 7 days         |
 
 ## Channel Modes
 
-| Mode | Description |
-|------|-------------|
-| `+i` | Invite only |
-| `+m` | Moderated |
-| `+n` | No external messages |
-| `+s` | Secret |
-| `+t` | Topic lock (ops only) |
-| `+r` | Registered users only |
-| `+k <key>` | Channel key |
-| `+l <limit>` | User limit |
-| `+f <lines>:<secs>` | Flood protection |
-| `+L <#channel>` | Redirect on limit |
-| `+j <joins>:<secs>` | Join throttle |
-| `+J <secs>` | Join delay (quiet period) |
-| `+c` | Strip colors |
-| `+C` | No CTCP (except ACTION) |
-| `+N` | No nick changes |
-| `+K` | No KNOCK |
-| `+V` | No INVITE |
-| `+T` | No channel NOTICE |
-| `+u` | No kicks (peace mode) |
-| `+P` | Permanent (persists empty) |
-| `+O` | Oper-only |
-| `+g` | Free INVITE (anyone can invite) |
+| Mode                | Description                     |
+| ------------------- | ------------------------------- |
+| `+i`                | Invite only                     |
+| `+m`                | Moderated                       |
+| `+n`                | No external messages            |
+| `+s`                | Secret                          |
+| `+t`                | Topic lock (ops only)           |
+| `+r`                | Registered users only           |
+| `+k <key>`          | Channel key                     |
+| `+l <limit>`        | User limit                      |
+| `+f <lines>:<secs>` | Flood protection                |
+| `+L <#channel>`     | Redirect on limit               |
+| `+j <joins>:<secs>` | Join throttle                   |
+| `+J <secs>`         | Join delay (quiet period)       |
+| `+c`                | Strip colors                    |
+| `+C`                | No CTCP (except ACTION)         |
+| `+N`                | No nick changes                 |
+| `+K`                | No KNOCK                        |
+| `+V`                | No INVITE                       |
+| `+T`                | No channel NOTICE               |
+| `+u`                | No kicks (peace mode)           |
+| `+P`                | Permanent (persists empty)      |
+| `+O`                | Oper-only                       |
+| `+g`                | Free INVITE (anyone can invite) |
 
 ## User Modes
 
-| Mode | Description |
-|------|-------------|
-| `+i` | Invisible |
-| `+w` | Receive wallops |
-| `+o` | IRC operator |
+| Mode | Description             |
+| ---- | ----------------------- |
+| `+i` | Invisible               |
+| `+w` | Receive wallops         |
+| `+o` | IRC operator            |
 | `+r` | Registered (identified) |
-| `+Z` | TLS connection |
-| `+R` | Registered-only PMs |
+| `+Z` | TLS connection          |
+| `+R` | Registered-only PMs     |
 
 ## License
 

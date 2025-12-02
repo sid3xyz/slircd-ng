@@ -60,19 +60,19 @@ pub struct Matrix {
     pub users: DashMap<Uid, Arc<RwLock<User>>>,
     pub nicks: DashMap<String, Uid>,
     pub senders: DashMap<Uid, mpsc::Sender<Message>>,
-    
+
     // Channel state
     pub channels: DashMap<String, Arc<RwLock<Channel>>>,
-    
+
     // Presence monitoring (MONITOR)
     pub monitors: DashMap<Uid, DashSet<String>>,
     pub monitoring: DashMap<String, DashSet<Uid>>,
-    
+
     // Security
     pub ban_cache: BanCache,
     pub rate_limiter: RateLimitManager,
     pub shuns: DashMap<String, Shun>,
-    
+
     // History
     pub whowas: DashMap<String, VecDeque<WhowasEntry>>,
 }
@@ -209,7 +209,7 @@ pub fn cloak_ip_hmac(ip: &str, secret: &str, suffix: &str) -> String {
 
 **Rate Limiting**: Token bucket algorithm via `governor` crate:
 - Per-client message rate
-- Per-IP connection rate  
+- Per-IP connection rate
 - Per-client join rate
 
 **Spam Detection**: Multi-layer content analysis:
@@ -243,14 +243,14 @@ Migrations run automatically on startup from `migrations/`.
 
 Spawned in `main.rs`:
 
-| Task | Interval | Description |
-|------|----------|-------------|
-| `spawn_enforcement_task` | 100ms | Nick enforcement |
-| WHOWAS cleanup | 1 hour | Prune old entries |
-| Shun expiry | 1 minute | Remove expired shuns |
-| Ban cache prune | 5 minutes | Remove expired bans |
-| Rate limiter cleanup | 5 minutes | Clean old buckets |
-| History prune | 24 hours | Remove old messages |
+| Task                     | Interval  | Description          |
+| ------------------------ | --------- | -------------------- |
+| `spawn_enforcement_task` | 100ms     | Nick enforcement     |
+| WHOWAS cleanup           | 1 hour    | Prune old entries    |
+| Shun expiry              | 1 minute  | Remove expired shuns |
+| Ban cache prune          | 5 minutes | Remove expired bans  |
+| Rate limiter cleanup     | 5 minutes | Clean old buckets    |
+| History prune            | 24 hours  | Remove old messages  |
 
 ### Metrics
 

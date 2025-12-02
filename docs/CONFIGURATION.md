@@ -25,13 +25,13 @@ description = "My IRC Server"   # Server description
 metrics_port = 9090             # Prometheus metrics HTTP port
 ```
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `name` | string | yes | - | Server hostname shown to clients |
-| `network` | string | yes | - | Network name |
-| `sid` | string | yes | - | TS6 server ID (3 alphanumeric chars) |
-| `description` | string | no | - | Server description |
-| `metrics_port` | integer | no | 9090 | Prometheus HTTP port |
+| Option         | Type    | Required | Default | Description                          |
+| -------------- | ------- | -------- | ------- | ------------------------------------ |
+| `name`         | string  | yes      | -       | Server hostname shown to clients     |
+| `network`      | string  | yes      | -       | Network name                         |
+| `sid`          | string  | yes      | -       | TS6 server ID (3 alphanumeric chars) |
+| `description`  | string  | no       | -       | Server description                   |
+| `metrics_port` | integer | no       | 9090    | Prometheus HTTP port                 |
 
 ### [listen]
 
@@ -42,9 +42,9 @@ Plaintext TCP listener.
 address = "0.0.0.0:6667"
 ```
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `address` | string | yes | - | IP:port to bind (e.g., `0.0.0.0:6667`) |
+| Option    | Type   | Required | Default | Description                            |
+| --------- | ------ | -------- | ------- | -------------------------------------- |
+| `address` | string | yes      | -       | IP:port to bind (e.g., `0.0.0.0:6667`) |
 
 ### [tls]
 
@@ -57,11 +57,11 @@ cert_path = "/path/to/server.crt"
 key_path = "/path/to/server.key"
 ```
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `address` | string | yes | - | TLS listener address |
-| `cert_path` | string | yes | - | Path to PEM certificate chain |
-| `key_path` | string | yes | - | Path to PKCS8 private key |
+| Option      | Type   | Required | Default | Description                   |
+| ----------- | ------ | -------- | ------- | ----------------------------- |
+| `address`   | string | yes      | -       | TLS listener address          |
+| `cert_path` | string | yes      | -       | Path to PEM certificate chain |
+| `key_path`  | string | yes      | -       | Path to PKCS8 private key     |
 
 ### [websocket]
 
@@ -73,10 +73,10 @@ address = "0.0.0.0:8080"
 allow_origins = ["https://example.com"]
 ```
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `address` | string | yes | - | WebSocket listener address |
-| `allow_origins` | array | no | [] | CORS allowed origins |
+| Option          | Type   | Required | Default | Description                |
+| --------------- | ------ | -------- | ------- | -------------------------- |
+| `address`       | string | yes      | -       | WebSocket listener address |
+| `allow_origins` | array  | no       | []      | CORS allowed origins       |
 
 ### [database]
 
@@ -87,9 +87,9 @@ SQLite database for persistent storage (services, bans, history).
 path = "slircd.db"
 ```
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `path` | string | no | `slircd.db` | Path to SQLite database file |
+| Option | Type   | Required | Default     | Description                  |
+| ------ | ------ | -------- | ----------- | ---------------------------- |
+| `path` | string | no       | `slircd.db` | Path to SQLite database file |
 
 ### [security]
 
@@ -102,11 +102,11 @@ cloak_suffix = "ip"
 spam_detection_enabled = true
 ```
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `cloak_secret` | string | yes | - | HMAC secret for host cloaking (**CHANGE THIS!**) |
-| `cloak_suffix` | string | no | `ip` | Suffix for cloaked addresses |
-| `spam_detection_enabled` | boolean | no | true | Enable spam detection |
+| Option                   | Type    | Required | Default | Description                                      |
+| ------------------------ | ------- | -------- | ------- | ------------------------------------------------ |
+| `cloak_secret`           | string  | yes      | -       | HMAC secret for host cloaking (**CHANGE THIS!**) |
+| `cloak_suffix`           | string  | no       | `ip`    | Suffix for cloaked addresses                     |
+| `spam_detection_enabled` | boolean | no       | true    | Enable spam detection                            |
 
 **WARNING**: The default `cloak_secret` provides NO privacy protection. Always set a unique, random secret in production.
 
@@ -121,11 +121,11 @@ connection_burst_per_ip = 3
 join_burst_per_client = 5
 ```
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `message_rate_per_second` | integer | no | 2 | Max messages/second per client |
-| `connection_burst_per_ip` | integer | no | 3 | Max connections/10s per IP |
-| `join_burst_per_client` | integer | no | 5 | Max channel joins/10s per client |
+| Option                    | Type    | Required | Default | Description                      |
+| ------------------------- | ------- | -------- | ------- | -------------------------------- |
+| `message_rate_per_second` | integer | no       | 2       | Max messages/second per client   |
+| `connection_burst_per_ip` | integer | no       | 3       | Max connections/10s per IP       |
+| `join_burst_per_client`   | integer | no       | 5       | Max channel joins/10s per client |
 
 ### [limits]
 
@@ -148,11 +148,11 @@ password_hash = "$argon2id$v=19$m=19456,t=2,p=1$..."
 host = "*@trusted.host"
 ```
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `name` | string | yes | Operator username (for OPER command) |
-| `password_hash` | string | yes | Argon2id password hash |
-| `host` | string | yes | Required user@host mask |
+| Option          | Type   | Required | Description                          |
+| --------------- | ------ | -------- | ------------------------------------ |
+| `name`          | string | yes      | Operator username (for OPER command) |
+| `password_hash` | string | yes      | Argon2id password hash               |
+| `host`          | string | yes      | Required user@host mask              |
 
 #### Generating Password Hashes
 
@@ -173,10 +173,10 @@ password = "gateway-password"
 hosts = ["192.168.1.0/24", "10.0.0.1"]
 ```
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `password` | string | yes | Password sent by gateway |
-| `hosts` | array | yes | Allowed gateway IP addresses/CIDRs |
+| Option     | Type   | Required | Description                        |
+| ---------- | ------ | -------- | ---------------------------------- |
+| `password` | string | yes      | Password sent by gateway           |
+| `hosts`    | array  | yes      | Allowed gateway IP addresses/CIDRs |
 
 ## Complete Example
 
@@ -232,8 +232,8 @@ hosts = ["192.168.1.100"]
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
+| Variable   | Description                                              |
+| ---------- | -------------------------------------------------------- |
 | `RUST_LOG` | Logging level: `error`, `warn`, `info`, `debug`, `trace` |
 
 Example:

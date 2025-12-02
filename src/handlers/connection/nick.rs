@@ -3,31 +3,9 @@
 use super::super::{Context, Handler, HandlerError, HandlerResult, notify_monitors_offline, notify_monitors_online, server_reply};
 use super::welcome::send_welcome_burst;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix, Response, irc_to_lower};
+use slirc_proto::{Command, Message, MessageRef, NickExt, Prefix, Response, irc_to_lower};
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
-
-/// Validates an IRC nickname per RFC 2812.
-/// First char: letter or special [\]^_`{|}
-/// Rest: letter, digit, special, or hyphen
-fn is_valid_nick(nick: &str) -> bool {
-    if nick.is_empty() || nick.len() > 30 {
-        return false;
-    }
-
-    let is_special = |c: char| matches!(c, '[' | ']' | '\\' | '`' | '_' | '^' | '{' | '|' | '}');
-
-    let mut chars = nick.chars();
-    let first = chars.next().unwrap();
-
-    // First char: letter or special
-    if !first.is_ascii_alphabetic() && !is_special(first) {
-        return false;
-    }
-
-    // Rest: letter, digit, special, or hyphen
-    chars.all(|c| c.is_ascii_alphanumeric() || is_special(c) || c == '-')
-}
 
 /// Handler for NICK command.
 pub struct NickHandler;
@@ -42,7 +20,7 @@ impl Handler for NickHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        if !is_valid_nick(nick) {
+        if !nick.is_valid_nick() {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_ERRONEOUSNICKNAME,

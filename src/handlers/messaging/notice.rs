@@ -3,11 +3,11 @@
 //! Per RFC 2812, NOTICE errors are silently ignored (no error replies).
 
 use super::common::{
-    is_shunned, is_channel, route_to_channel, route_to_user, ChannelRouteResult, RouteOptions,
+    is_shunned, route_to_channel, route_to_user, ChannelRouteResult, RouteOptions,
 };
 use super::super::{Context, Handler, HandlerError, HandlerResult, user_prefix};
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, irc_to_lower};
+use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
 use tracing::debug;
 
 // ============================================================================
@@ -73,7 +73,7 @@ impl Handler for NoticeHandler {
             block_ctcp: true,
         };
 
-        if is_channel(target) {
+        if target.is_channel_name() {
             let channel_lower = irc_to_lower(target);
             if let ChannelRouteResult::Sent =
                 route_to_channel(ctx, &channel_lower, out_msg, &opts).await

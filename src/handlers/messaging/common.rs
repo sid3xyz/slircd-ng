@@ -367,8 +367,3 @@ pub async fn send_no_such_nick(ctx: &Context<'_>, nick: &str, target: &str) -> H
     ctx.sender.send(reply).await?;
     Ok(())
 }
-
-/// Check if target is a channel name.
-pub fn is_channel(target: &str) -> bool {
-    matches!(target.chars().next(), Some('#' | '&' | '+' | '!'))
-}
