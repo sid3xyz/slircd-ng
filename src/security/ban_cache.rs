@@ -34,8 +34,12 @@ pub struct BanResult {
 #[allow(clippy::enum_variant_names)] // Traditional IRC naming: K-Line, G-Line, etc.
 pub enum BanType {
     /// Z-line: IP ban (no DNS lookup).
+    /// NOTE: IP bans now use IpDenyList for O(1) checking; this is kept for API compatibility.
+    #[allow(dead_code)]
     ZLine,
     /// D-line: IP ban.
+    /// NOTE: IP bans now use IpDenyList for O(1) checking; this is kept for API compatibility.
+    #[allow(dead_code)]
     DLine,
     /// G-line: Global user@host ban.
     GLine,
@@ -190,6 +194,10 @@ impl BanCache {
     ///
     /// Called at connection time before any handshake.
     /// Checks Z-lines first (IP ban, skips DNS), then D-lines.
+    ///
+    /// NOTE: Superseded by `IpDenyList::check_ip()` for O(1) gateway checks.
+    /// Kept for API compatibility and potential fallback.
+    #[allow(dead_code)]
     pub fn check_ip(&self, ip: &IpAddr) -> Option<BanResult> {
         let ip_str = ip.to_string();
 
@@ -383,6 +391,9 @@ impl BanCache {
     }
 
     /// Match an IP pattern (supports wildcards and CIDR notation).
+    ///
+    /// NOTE: Superseded by IpDenyList's Roaring Bitmap for IP bans.
+    #[allow(dead_code)]
     fn matches_ip_pattern(&self, pattern: &str, ip: &str) -> bool {
         // Check for CIDR notation
         if pattern.contains('/') {
@@ -395,6 +406,9 @@ impl BanCache {
 }
 
 /// Match IP against CIDR notation (e.g., "192.168.1.0/24").
+///
+/// NOTE: Superseded by IpDenyList's Roaring Bitmap for IP bans.
+#[allow(dead_code)]
 fn cidr_match(cidr: &str, ip: &str) -> bool {
     let parts: Vec<&str> = cidr.split('/').collect();
     if parts.len() != 2 {

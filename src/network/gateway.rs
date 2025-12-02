@@ -139,17 +139,7 @@ impl Gateway {
                                 continue;
                             }
 
-                            // Check IP bans (Z-lines and D-lines)
-                            if let Some(ban) = matrix_tls.ban_cache.check_ip(&addr.ip()) {
-                                warn!(
-                                    %addr,
-                                    ban_type = ban.ban_type.name(),
-                                    reason = %ban.reason,
-                                    "TLS connection rejected - IP banned"
-                                );
-                                drop(stream);
-                                continue;
-                            }
+                            // NOTE: ban_cache.check_ip() removed - IpDenyList handles Z-lines/D-lines
 
                             info!(%addr, "TLS connection accepted");
 
@@ -218,17 +208,7 @@ impl Gateway {
                                 continue;
                             }
 
-                            // Check IP bans (Z-lines and D-lines)
-                            if let Some(ban) = matrix_ws.ban_cache.check_ip(&addr.ip()) {
-                                warn!(
-                                    %addr,
-                                    ban_type = ban.ban_type.name(),
-                                    reason = %ban.reason,
-                                    "WebSocket connection rejected - IP banned"
-                                );
-                                drop(stream);
-                                continue;
-                            }
+                            // NOTE: ban_cache.check_ip() removed - IpDenyList handles Z-lines/D-lines
 
                             info!(%addr, "WebSocket connection attempt");
 
@@ -315,17 +295,7 @@ impl Gateway {
                         continue;
                     }
 
-                    // Check IP bans (Z-lines and D-lines)
-                    if let Some(ban) = matrix.ban_cache.check_ip(&addr.ip()) {
-                        warn!(
-                            %addr,
-                            ban_type = ban.ban_type.name(),
-                            reason = %ban.reason,
-                            "Plaintext connection rejected - IP banned"
-                        );
-                        drop(stream);
-                        continue;
-                    }
+                    // NOTE: ban_cache.check_ip() removed - IpDenyList handles Z-lines/D-lines
 
                     info!(%addr, "Plaintext connection accepted");
 
