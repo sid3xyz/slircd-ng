@@ -2,45 +2,69 @@
 
 /// A K-line (user@host ban).
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // TODO: Use for connection-time ban checks
 pub struct Kline {
+    /// User@host mask pattern (e.g., "*@*.badhost.com").
     pub mask: String,
+    /// Reason for the ban.
     pub reason: Option<String>,
+    /// Operator who set the ban.
+    #[allow(dead_code)] // Used by admin STATS command
     pub set_by: String,
+    /// Unix timestamp when the ban was set.
+    #[allow(dead_code)] // Used by admin STATS command
     pub set_at: i64,
+    /// Optional expiration timestamp.
     pub expires_at: Option<i64>,
 }
 
 /// A D-line (IP ban).
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // TODO: Use for connection-time ban checks
 pub struct Dline {
+    /// IP or CIDR mask (e.g., "192.168.1.0/24").
     pub mask: String,
+    /// Reason for the ban.
     pub reason: Option<String>,
+    /// Operator who set the ban.
+    #[allow(dead_code)] // Used by admin STATS command
     pub set_by: String,
+    /// Unix timestamp when the ban was set.
+    #[allow(dead_code)] // Used by admin STATS command
     pub set_at: i64,
+    /// Optional expiration timestamp.
     pub expires_at: Option<i64>,
 }
 
 /// A G-line (global hostmask ban).
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Fields used by admin commands in Phase 3b
 pub struct Gline {
+    /// User@host mask pattern.
     pub mask: String,
+    /// Reason for the ban.
     pub reason: Option<String>,
+    /// Operator who set the ban.
+    #[allow(dead_code)] // Used by admin STATS command
     pub set_by: String,
+    /// Unix timestamp when the ban was set.
+    #[allow(dead_code)] // Used by admin STATS command
     pub set_at: i64,
+    /// Optional expiration timestamp.
     pub expires_at: Option<i64>,
 }
 
 /// A Z-line (IP ban that skips DNS lookup).
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Fields used by admin commands in Phase 3b
 pub struct Zline {
+    /// IP mask pattern.
     pub mask: String,
+    /// Reason for the ban.
     pub reason: Option<String>,
+    /// Operator who set the ban.
+    #[allow(dead_code)] // Used by admin STATS command
     pub set_by: String,
+    /// Unix timestamp when the ban was set.
+    #[allow(dead_code)] // Used by admin STATS command
     pub set_at: i64,
+    /// Optional expiration timestamp.
     pub expires_at: Option<i64>,
 }
 

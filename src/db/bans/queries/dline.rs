@@ -44,7 +44,6 @@ pub async fn remove_dline(pool: &SqlitePool, mask: &str) -> Result<bool, DbError
 }
 
 /// Get all active D-lines (not expired).
-#[allow(dead_code)] // TODO: Use for connection-time ban checks
 pub async fn get_active_dlines(pool: &SqlitePool) -> Result<Vec<Dline>, DbError> {
     let now = chrono::Utc::now().timestamp();
 

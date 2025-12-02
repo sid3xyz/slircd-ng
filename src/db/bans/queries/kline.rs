@@ -44,7 +44,6 @@ pub async fn remove_kline(pool: &SqlitePool, mask: &str) -> Result<bool, DbError
 }
 
 /// Get all active K-lines (not expired).
-#[allow(dead_code)] // TODO: Use for connection-time ban checks
 pub async fn get_active_klines(pool: &SqlitePool) -> Result<Vec<Kline>, DbError> {
     let now = chrono::Utc::now().timestamp();
 
