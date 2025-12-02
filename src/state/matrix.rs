@@ -393,4 +393,44 @@ impl Matrix {
             !entries.is_empty()
         });
     }
+
+    /// Broadcast CAP NEW or CAP DEL to all connected clients with cap-notify enabled.
+    ///
+    /// This is called when the server dynamically adds or removes capabilities.
+    /// Per IRCv3 cap-notify spec: https://ircv3.net/specs/extensions/capability-negotiation#cap-notify
+    ///
+    /// # Arguments
+    /// * `is_new` - true for CAP NEW, false for CAP DEL
+    /// * `caps` - list of capability names being added or removed
+    #[allow(dead_code)] // Infrastructure for dynamic capability changes (e.g., SASL backend up/down)
+    pub async fn broadcast_cap_change(&self, is_new: bool, caps: &[&str]) {
+        use slirc_proto::{CapSubCommand, Command, Prefix};
+
+        if caps.is_empty() {
+            return;
+        }
+
+        let subcommand = if is_new {
+            CapSubCommand::NEW
+        } else {
+            CapSubCommand::DEL
+        };
+        let caps_str = caps.join(" ");
+
+        let msg = Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(self.server_info.name.clone())),
+            command: Command::CAP(Some("*".to_string()), subcommand, None, Some(caps_str)),
+        };
+
+        // Send to all users who have cap-notify enabled
+        for user_ref in self.users.iter() {
+            let user = user_ref.read().await;
+            if user.caps.contains("cap-notify")
+                && let Some(sender) = self.senders.get(&user.uid)
+            {
+                let _ = sender.send(msg.clone()).await;
+            }
+        }
+    }
 }
