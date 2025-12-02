@@ -68,6 +68,27 @@ pub enum ServiceEffect {
         old_nick: String,
         new_nick: String,
     },
+
+    /// Broadcast account change to all shared channels (account-notify capability).
+    /// Sends `:old_prefix ACCOUNT new_account` to channel members with account-notify.
+    /// If new_account is "*", user logged out.
+    /// TODO: Use from NickServ IDENTIFY/LOGOUT when account-notify is fully implemented.
+    #[allow(dead_code)]
+    BroadcastAccount {
+        target_uid: String,
+        /// Account name, or "*" for logout.
+        new_account: String,
+    },
+
+    /// Broadcast host change to all shared channels (chghost capability).
+    /// Sends `:old_prefix CHGHOST new_user new_host` to channel members with chghost.
+    /// TODO: Use from HostServ or vhost changes when chghost is fully implemented.
+    #[allow(dead_code)]
+    BroadcastChghost {
+        target_uid: String,
+        new_user: String,
+        new_host: String,
+    },
 }
 
 /// Apply a list of service effects sequentially.
@@ -420,6 +441,108 @@ pub async fn apply_effect(
             }
 
             info!(uid = %target_uid, old = %old_nick, new = %new_nick, "Forced nick change");
+        }
+
+        ServiceEffect::BroadcastAccount {
+            target_uid,
+            new_account,
+        } => {
+            // Get user info for ACCOUNT broadcast
+            let (nick, user_str, host, channels) = {
+                if let Some(user_ref) = matrix.users.get(&target_uid) {
+                    let user = user_ref.read().await;
+                    (
+                        user.nick.clone(),
+                        user.user.clone(),
+                        user.host.clone(),
+                        user.channels.iter().cloned().collect::<Vec<_>>(),
+                    )
+                } else {
+                    return;
+                }
+            };
+
+            // Build ACCOUNT message: :nick!user@host ACCOUNT accountname
+            let account_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::new(&nick, &user_str, &host)),
+                command: Command::ACCOUNT(new_account.clone()),
+            };
+
+            // Broadcast to all shared channels (only to clients with account-notify)
+            for channel_name in &channels {
+                matrix
+                    .broadcast_to_channel_with_cap(
+                        channel_name,
+                        account_msg.clone(),
+                        None,
+                        Some("account-notify"),
+                        None, // No fallback - clients without cap get nothing
+                    )
+                    .await;
+            }
+
+            // Also send to the user themselves
+            if let Some(sender) = matrix.senders.get(&target_uid) {
+                let _ = sender.send(account_msg).await;
+            }
+
+            info!(uid = %target_uid, account = %new_account, "Broadcast account change");
+        }
+
+        ServiceEffect::BroadcastChghost {
+            target_uid,
+            new_user,
+            new_host,
+        } => {
+            // Get user info for CHGHOST broadcast BEFORE updating
+            let (nick, old_user, old_host, channels) = {
+                if let Some(user_ref) = matrix.users.get(&target_uid) {
+                    let user = user_ref.read().await;
+                    (
+                        user.nick.clone(),
+                        user.user.clone(),
+                        user.host.clone(),
+                        user.channels.iter().cloned().collect::<Vec<_>>(),
+                    )
+                } else {
+                    return;
+                }
+            };
+
+            // Build CHGHOST message: :nick!old_user@old_host CHGHOST new_user new_host
+            let chghost_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::new(&nick, &old_user, &old_host)),
+                command: Command::CHGHOST(new_user.clone(), new_host.clone()),
+            };
+
+            // Broadcast to all shared channels (only to clients with chghost)
+            for channel_name in &channels {
+                matrix
+                    .broadcast_to_channel_with_cap(
+                        channel_name,
+                        chghost_msg.clone(),
+                        None,
+                        Some("chghost"),
+                        None, // No fallback - clients without cap get nothing
+                    )
+                    .await;
+            }
+
+            // Update the user's user and host fields
+            if let Some(user_ref) = matrix.users.get(&target_uid) {
+                let mut user = user_ref.write().await;
+                user.user = new_user.clone();
+                user.host = new_host.clone();
+            }
+
+            // Also send to the user themselves
+            if let Some(sender) = matrix.senders.get(&target_uid) {
+                let _ = sender.send(chghost_msg).await;
+            }
+
+            info!(uid = %target_uid, new_user = %new_user, new_host = %new_host, "Broadcast host change");
         }
     }
 }
