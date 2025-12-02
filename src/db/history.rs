@@ -60,10 +60,12 @@ pub struct StoreMessageParams<'a> {
 pub struct StoredMessage {
     pub msgid: String,
     /// Target channel (lowercased for lookup).
-    #[allow(dead_code)]
+    /// Used for debugging/logging; envelope.target contains display name.
+    #[allow(dead_code)] // Retained for debugging and future TARGETS subcommand
     pub target: String,
     /// Sender nickname (for filtering).
-    #[allow(dead_code)]
+    /// Used for debugging/logging and future sender-based filtering.
+    #[allow(dead_code)] // Retained for debugging and future sender filtering
     pub sender: String,
     pub envelope: MessageEnvelope,
     pub nanotime: i64,
@@ -344,8 +346,7 @@ impl<'a> HistoryRepository<'a> {
 
     /// Prune old messages based on retention policy.
     ///
-    /// Called by scheduled maintenance task.
-    #[allow(dead_code)]
+    /// Called by scheduled maintenance task in main.rs (runs daily).
     pub async fn prune_old_messages(&self, retention_days: u32) -> Result<u64, DbError> {
         let retention_nanos = (retention_days as i64) * 86400 * 1_000_000_000;
         let now_nanos = SystemTime::now()

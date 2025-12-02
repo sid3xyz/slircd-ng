@@ -2,6 +2,17 @@
 //!
 //! Handles MODE commands for channels: `MODE <channel> [+/-modes [args...]]`
 //! Supports both simple flags and parameterized modes including list modes.
+//!
+//! ## Module Structure
+//!
+//! This file is intentionally kept as a single unit (~670 lines) because:
+//! - All channel mode logic is tightly coupled and shares the same types
+//! - The `apply_channel_modes_typed` function handles all modes in one match
+//! - Splitting would fragment the mode dispatch logic without clarity benefit
+//! - Each mode type section is clearly separated with comments
+//!
+//! If this file grows beyond 800 lines, consider extracting list mode handling
+//! (`send_list_mode`, `get_list_mode_query`) to a separate `channel_lists.rs`.
 
 use super::super::{
     Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, user_prefix,

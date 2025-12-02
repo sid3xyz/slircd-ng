@@ -206,6 +206,28 @@ async fn main() -> anyhow::Result<()> {
     }
     info!("Ban cache pruning task started");
 
+    // Start message history pruning task (runs daily, retains 30 days)
+    {
+        let db = db.clone();
+        tokio::spawn(async move {
+            // Run daily (86400 seconds)
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(86400));
+            loop {
+                interval.tick().await;
+                match db.history().prune_old_messages(30).await {
+                    Ok(removed) if removed > 0 => {
+                        info!(removed = removed, "Old messages pruned from history");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to prune message history");
+                    }
+                }
+            }
+        });
+    }
+    info!("Message history pruning task started");
+
     // Start the Gateway (with optional TLS and WebSocket)
     let gateway = Gateway::bind(
         config.listen.address,
