@@ -98,19 +98,33 @@ impl Handler for InviteHandler {
             // We'll allow it for now
         }
 
-        // Send INVITE to target
+        // Build the INVITE message
+        let invite_msg = slirc_proto::Message {
+            tags: None,
+            prefix: Some(slirc_proto::Prefix::Nickname(
+                nick.clone(),
+                ctx.handshake.user.clone().unwrap_or_default(),
+                "localhost".to_string(), // TODO: get actual host
+            )),
+            command: Command::INVITE(target_nick.to_string(), channel_name.to_string()),
+        };
+
+        // Send INVITE to target user
         if let Some(sender) = ctx.matrix.senders.get(&target_uid) {
-            let invite_msg = slirc_proto::Message {
-                tags: None,
-                prefix: Some(slirc_proto::Prefix::Nickname(
-                    nick.clone(),
-                    ctx.handshake.user.clone().unwrap_or_default(),
-                    "localhost".to_string(), // TODO: get actual host
-                )),
-                command: Command::INVITE(target_nick.to_string(), channel_name.to_string()),
-            };
-            let _ = sender.send(invite_msg).await;
+            let _ = sender.send(invite_msg.clone()).await;
         }
+
+        // IRCv3 invite-notify: broadcast INVITE to channel members who have the capability
+        // Exclude the target user (they already received the direct INVITE)
+        ctx.matrix
+            .broadcast_to_channel_with_cap(
+                &channel_lower,
+                invite_msg,
+                Some(&target_uid),
+                Some("invite-notify"),
+                None, // No fallback - clients without cap receive nothing
+            )
+            .await;
 
         // RPL_INVITING (341)
         let reply = server_reply(
