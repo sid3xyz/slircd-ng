@@ -548,6 +548,87 @@ pub fn apply_channel_modes_typed(
                     applied_modes.push(Mode::Minus(ChannelMode::Unknown('J'), None));
                 }
             }
+            // Extended channel modes (simple flags)
+            ChannelMode::NoColors => {
+                channel.modes.no_colors = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::NoColors, None)
+                } else {
+                    Mode::Minus(ChannelMode::NoColors, None)
+                });
+            }
+            ChannelMode::NoCTCP => {
+                channel.modes.no_ctcp = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::NoCTCP, None)
+                } else {
+                    Mode::Minus(ChannelMode::NoCTCP, None)
+                });
+            }
+            ChannelMode::NoNickChange => {
+                channel.modes.no_nick_change = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::NoNickChange, None)
+                } else {
+                    Mode::Minus(ChannelMode::NoNickChange, None)
+                });
+            }
+            ChannelMode::NoKnock => {
+                channel.modes.no_knock = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::NoKnock, None)
+                } else {
+                    Mode::Minus(ChannelMode::NoKnock, None)
+                });
+            }
+            ChannelMode::NoInvite => {
+                channel.modes.no_invite = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::NoInvite, None)
+                } else {
+                    Mode::Minus(ChannelMode::NoInvite, None)
+                });
+            }
+            ChannelMode::NoChannelNotice => {
+                channel.modes.no_channel_notice = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::NoChannelNotice, None)
+                } else {
+                    Mode::Minus(ChannelMode::NoChannelNotice, None)
+                });
+            }
+            ChannelMode::NoKick => {
+                channel.modes.no_kick = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::NoKick, None)
+                } else {
+                    Mode::Minus(ChannelMode::NoKick, None)
+                });
+            }
+            ChannelMode::Permanent => {
+                channel.modes.permanent = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::Permanent, None)
+                } else {
+                    Mode::Minus(ChannelMode::Permanent, None)
+                });
+            }
+            ChannelMode::OperOnly => {
+                channel.modes.oper_only = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::OperOnly, None)
+                } else {
+                    Mode::Minus(ChannelMode::OperOnly, None)
+                });
+            }
+            ChannelMode::FreeInvite => {
+                channel.modes.free_invite = adding;
+                applied_modes.push(if adding {
+                    Mode::Plus(ChannelMode::FreeInvite, None)
+                } else {
+                    Mode::Minus(ChannelMode::FreeInvite, None)
+                });
+            }
             _ => {
                 // Unknown/unsupported mode - ignore
             }

@@ -46,6 +46,27 @@ pub struct ChannelModes {
     pub join_throttle: Option<(u32, u32)>,
     /// +J - Join delay in seconds before user can speak
     pub join_delay: Option<u32>,
+    // Extended channel modes
+    /// +c - Strip/block color codes
+    pub no_colors: bool,
+    /// +C - No CTCP (except ACTION)
+    pub no_ctcp: bool,
+    /// +N - No nick changes while in channel
+    pub no_nick_change: bool,
+    /// +K - No KNOCK
+    pub no_knock: bool,
+    /// +V - No INVITE
+    pub no_invite: bool,
+    /// +T - No channel NOTICE
+    pub no_channel_notice: bool,
+    /// +u - No kicks (peace mode)
+    pub no_kick: bool,
+    /// +P - Permanent channel (persists with 0 users)
+    pub permanent: bool,
+    /// +O - Oper-only channel
+    pub oper_only: bool,
+    /// +g - Free INVITE (anyone can invite)
+    pub free_invite: bool,
 }
 
 impl ChannelModes {
@@ -95,6 +116,37 @@ impl ChannelModes {
         if let Some(delay) = self.join_delay {
             s.push('J');
             params.push(delay.to_string());
+        }
+        // Extended modes (no parameters)
+        if self.no_colors {
+            s.push('c');
+        }
+        if self.no_ctcp {
+            s.push('C');
+        }
+        if self.no_nick_change {
+            s.push('N');
+        }
+        if self.no_knock {
+            s.push('K');
+        }
+        if self.no_invite {
+            s.push('V');
+        }
+        if self.no_channel_notice {
+            s.push('T');
+        }
+        if self.no_kick {
+            s.push('u');
+        }
+        if self.permanent {
+            s.push('P');
+        }
+        if self.oper_only {
+            s.push('O');
+        }
+        if self.free_invite {
+            s.push('g');
         }
 
         if s == "+" {
