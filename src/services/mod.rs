@@ -34,9 +34,7 @@ pub enum ServiceEffect {
     /// Clear user's account and -r mode (DROP).
     AccountClear { target_uid: String },
 
-    /// Clear enforcement timer for a user.
-    /// TODO: Generate this from NickServ IDENTIFY to cancel pending renames
-    #[allow(dead_code)]
+    /// Clear enforcement timer for a user (cancels pending nick enforcement).
     ClearEnforceTimer { target_uid: String },
 
     /// Disconnect a user (GHOST, AKICK, KILL).

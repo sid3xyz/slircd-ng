@@ -314,6 +314,17 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
 
     drop(channel_guard);
 
+    // Update last_used timestamp for registered channels (non-blocking)
+    if ctx.matrix.registered_channels.contains(&channel_lower) {
+        let db = ctx.db.clone();
+        let channel_name = channel_lower.clone();
+        tokio::spawn(async move {
+            if let Err(e) = db.channels().touch_by_name(&channel_name).await {
+                tracing::warn!(channel = %channel_name, error = ?e, "Failed to update channel last_used");
+            }
+        });
+    }
+
     // Add channel to user's list
     if let Some(user) = ctx.matrix.users.get(ctx.uid) {
         let mut user = user.write().await;
