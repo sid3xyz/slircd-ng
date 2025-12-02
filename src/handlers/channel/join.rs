@@ -258,19 +258,26 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     // Determine member modes:
     // 1. First user gets ops
     // 2. If channel is registered, check access list for auto-op/voice
+    let now = chrono::Utc::now().timestamp();
     let modes = if channel_guard.members.is_empty() {
         MemberModes {
             op: true,
             voice: false,
+            join_time: Some(now),
         }
     } else {
         // Only check for auto-op/voice if channel is registered
         if ctx.matrix.registered_channels.contains(&channel_lower) {
-            check_auto_modes(ctx, &channel_lower)
+            let mut member_modes = check_auto_modes(ctx, &channel_lower)
                 .await
-                .unwrap_or_default()
+                .unwrap_or_default();
+            member_modes.join_time = Some(now);
+            member_modes
         } else {
-            MemberModes::default()
+            MemberModes {
+                join_time: Some(now),
+                ..Default::default()
+            }
         }
     };
 
@@ -461,6 +468,7 @@ async fn check_auto_modes(ctx: &Context<'_>, channel_lower: &str) -> Option<Memb
         return Some(MemberModes {
             op: true,
             voice: false,
+            join_time: None, // Will be set by caller
         });
     }
 
@@ -476,7 +484,7 @@ async fn check_auto_modes(ctx: &Context<'_>, channel_lower: &str) -> Option<Memb
     let voice = ChannelRepository::has_voice_access(&access.flags);
 
     if op || voice {
-        Some(MemberModes { op, voice })
+        Some(MemberModes { op, voice, join_time: None }) // join_time set by caller
     } else {
         None
     }

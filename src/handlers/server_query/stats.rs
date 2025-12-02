@@ -180,7 +180,7 @@ impl Handler for StatsHandler {
                 // Connection statistics
                 let current_users = ctx.matrix.users.len();
                 let current_channels = ctx.matrix.channels.len();
-                
+
                 // Use RPL_LUSERCLIENT style for connection info
                 let reply = server_reply(
                     server_name,

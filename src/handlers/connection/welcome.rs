@@ -206,7 +206,10 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             "CASEMAPPING=rfc1459".to_string(),
             "CHANTYPES=#&+!".to_string(), // All RFC 2811 channel types
             "PREFIX=(ov)@+".to_string(),
-            "CHANMODES=beIq,k,l,imnrst".to_string(),
+            // CHANMODES=A,B,C,D format:
+            // A=list modes, B=always param, C=param when set, D=no param
+            // Added f,L,j,J to C (param when setting)
+            "CHANMODES=beIq,k,fLjJl,imnrst".to_string(),
             "are supported by this server".to_string(),
         ],
     );

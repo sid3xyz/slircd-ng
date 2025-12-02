@@ -474,6 +474,80 @@ pub fn apply_channel_modes_typed(
                     }
                 }
             }
+            // SLIRCd advanced channel protection modes (via Unknown variant)
+            ChannelMode::Unknown('f') => {
+                // Flood protection: +f lines:seconds
+                if adding {
+                    if let Some(param) = arg
+                        && let Some((lines, secs)) = parse_colon_pair(param)
+                    {
+                        channel.modes.flood_limit = Some((lines, secs));
+                        applied_modes.push(Mode::Plus(
+                            ChannelMode::Unknown('f'),
+                            Some(param.to_string()),
+                        ));
+                    }
+                } else {
+                    channel.modes.flood_limit = None;
+                    applied_modes.push(Mode::Minus(ChannelMode::Unknown('f'), None));
+                }
+            }
+            ChannelMode::Unknown('L') => {
+                // Channel redirect: +L #channel
+                if adding {
+                    if let Some(target) = arg {
+                        // Validate target is a channel name
+                        if target.starts_with('#')
+                            || target.starts_with('&')
+                            || target.starts_with('+')
+                            || target.starts_with('!')
+                        {
+                            channel.modes.redirect = Some(target.to_string());
+                            applied_modes.push(Mode::Plus(
+                                ChannelMode::Unknown('L'),
+                                Some(target.to_string()),
+                            ));
+                        }
+                    }
+                } else {
+                    channel.modes.redirect = None;
+                    applied_modes.push(Mode::Minus(ChannelMode::Unknown('L'), None));
+                }
+            }
+            ChannelMode::Unknown('j') => {
+                // Join throttle: +j count:seconds
+                if adding {
+                    if let Some(param) = arg
+                        && let Some((count, secs)) = parse_colon_pair(param)
+                    {
+                        channel.modes.join_throttle = Some((count, secs));
+                        applied_modes.push(Mode::Plus(
+                            ChannelMode::Unknown('j'),
+                            Some(param.to_string()),
+                        ));
+                    }
+                } else {
+                    channel.modes.join_throttle = None;
+                    applied_modes.push(Mode::Minus(ChannelMode::Unknown('j'), None));
+                }
+            }
+            ChannelMode::Unknown('J') => {
+                // Join delay: +J seconds
+                if adding {
+                    if let Some(secs_str) = arg
+                        && let Ok(secs) = secs_str.parse::<u32>()
+                    {
+                        channel.modes.join_delay = Some(secs);
+                        applied_modes.push(Mode::Plus(
+                            ChannelMode::Unknown('J'),
+                            Some(secs_str.to_string()),
+                        ));
+                    }
+                } else {
+                    channel.modes.join_delay = None;
+                    applied_modes.push(Mode::Minus(ChannelMode::Unknown('J'), None));
+                }
+            }
             _ => {
                 // Unknown/unsupported mode - ignore
             }
@@ -481,6 +555,18 @@ pub fn apply_channel_modes_typed(
     }
 
     Ok(applied_modes)
+}
+
+/// Parse a "number:number" format parameter (e.g., "5:10" for flood/throttle modes).
+fn parse_colon_pair(s: &str) -> Option<(u32, u32)> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() == 2 {
+        let first = parts[0].parse::<u32>().ok()?;
+        let second = parts[1].parse::<u32>().ok()?;
+        Some((first, second))
+    } else {
+        None
+    }
 }
 
 /// Format applied modes for logging (e.g., "+o+v nick1 nick2").
