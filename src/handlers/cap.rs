@@ -19,7 +19,12 @@ const SUPPORTED_CAPS: &[&str] = &[
     "message-tags",
     "labeled-response",
     "setname",
-    // Phase 3: "away-notify", "account-notify", "extended-join",
+    "away-notify",
+    "account-notify",
+    "extended-join",
+    "invite-notify",
+    "chghost",
+    "monitor",
 ];
 
 /// Handler for CAP command.
