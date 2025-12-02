@@ -294,6 +294,26 @@ pub async fn route_to_user(
         }
     }
 
+    // Check +R (registered-only PMs) - target only accepts PMs from identified users
+    if let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value()) {
+        let target_user = target_user_ref.read().await;
+        if target_user.modes.registered_only {
+            // Check if sender is identified
+            let sender_identified = if let Some(sender_ref) = ctx.matrix.users.get(ctx.uid) {
+                let sender_user = sender_ref.read().await;
+                sender_user.modes.registered
+            } else {
+                false
+            };
+
+            if !sender_identified {
+                // Silently drop or send error - most servers silently drop
+                // to avoid information leakage about +R status
+                return false;
+            }
+        }
+    }
+
     // Send to target user
     if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
         let _ = sender.send(msg).await;

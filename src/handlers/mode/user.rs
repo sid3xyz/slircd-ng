@@ -130,6 +130,11 @@ pub fn apply_user_modes_typed(
                 // +x is set by server, can't be changed by user
                 rejected.push(mode_type.clone());
             }
+            UserMode::RegisteredOnly => {
+                // +R - only accept PMs from registered users
+                user_modes.registered_only = adding;
+                applied.push(mode.clone());
+            }
             _ => {
                 // Unknown/unsupported modes
                 rejected.push(mode_type.clone());
