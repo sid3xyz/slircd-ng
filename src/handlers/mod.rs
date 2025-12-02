@@ -44,7 +44,7 @@ pub use connection::{
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
 pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
 pub use monitor::{MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online};
-pub use oper::{ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, WallopsHandler};
+pub use oper::{ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, TraceHandler, WallopsHandler};
 pub use server_query::{
     AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler, TimeHandler,
     VersionHandler,
@@ -236,6 +236,7 @@ impl Registry {
         handlers.insert("DIE", Box::new(DieHandler));
         handlers.insert("REHASH", Box::new(RehashHandler));
         handlers.insert("CHGHOST", Box::new(ChghostHandler));
+        handlers.insert("TRACE", Box::new(TraceHandler));
 
         // Ban handlers
         handlers.insert("KLINE", Box::new(KlineHandler));
