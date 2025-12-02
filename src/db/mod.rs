@@ -4,14 +4,17 @@
 //! - NickServ accounts and nicknames
 //! - ChanServ channel registration and access lists
 //! - K-lines and D-lines persistence
+//! - Message history for CHATHISTORY
 
 mod accounts;
 mod bans;
 mod channels;
+mod history;
 
 pub use accounts::AccountRepository;
 pub use bans::{BanRepository, Shun};
 pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
+pub use history::{HistoryRepository, StoredMessage, StoreMessageParams};
 
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -111,45 +114,63 @@ impl Database {
         .await
         .unwrap_or(false);
 
+        let history_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='message_history')"
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+
         // Run migrations if any tables are missing
         if !accounts_exists || !channels_exists || !akick_exists {
             // Run the full migration
-            let migration = include_str!("../../migrations/001_init.sql");
+            Self::run_migration_file(pool, include_str!("../../migrations/001_init.sql")).await;
+            info!("Database migrations applied (001_init)");
+        }
 
-            for statement in migration.split(';') {
-                // Remove leading comments and whitespace to get actual SQL
-                let mut sql_lines: Vec<&str> = Vec::new();
-                for line in statement.lines() {
-                    let line = line.trim();
-                    // Skip empty lines and comment-only lines
-                    if line.is_empty() || line.starts_with("--") {
-                        continue;
-                    }
-                    sql_lines.push(line);
-                }
+        // Always check for history table (newer migration)
+        if !history_exists {
+            Self::run_migration_file(pool, include_str!("../../migrations/003_history.sql")).await;
+            info!("Database migrations applied (003_history)");
+        }
 
-                if sql_lines.is_empty() {
-                    continue;
-                }
-
-                // Rejoin the SQL statement
-                let sql = sql_lines.join("\n");
-
-                // Execute each statement, logging errors
-                if let Err(e) = sqlx::query(&sql).execute(pool).await {
-                    // Only log if it's not a "table already exists" error
-                    let err_str = e.to_string();
-                    if !err_str.contains("already exists") {
-                        tracing::warn!(sql = %sql, error = %e, "Migration statement failed");
-                    }
-                }
-            }
-            info!("Database migrations applied");
-        } else {
+        if accounts_exists && channels_exists && akick_exists && history_exists {
             info!("Database already initialized");
         }
 
         Ok(())
+    }
+
+    /// Run a single migration file, executing each statement.
+    async fn run_migration_file(pool: &SqlitePool, migration: &str) {
+        for statement in migration.split(';') {
+            // Remove leading comments and whitespace to get actual SQL
+            let mut sql_lines: Vec<&str> = Vec::new();
+            for line in statement.lines() {
+                let line = line.trim();
+                // Skip empty lines and comment-only lines
+                if line.is_empty() || line.starts_with("--") {
+                    continue;
+                }
+                sql_lines.push(line);
+            }
+
+            if sql_lines.is_empty() {
+                continue;
+            }
+
+            // Rejoin the SQL statement
+            let sql = sql_lines.join("\n");
+
+            // Execute each statement, logging errors
+            if let Err(e) = sqlx::query(&sql).execute(pool).await {
+                // Only log if it's not a "table already exists" error
+                let err_str = e.to_string();
+                if !err_str.contains("already exists") {
+                    tracing::warn!(sql = %sql, error = %e, "Migration statement failed");
+                }
+            }
+        }
     }
 
     /// Get account repository.
@@ -165,5 +186,10 @@ impl Database {
     /// Get ban repository.
     pub fn bans(&self) -> BanRepository<'_> {
         BanRepository::new(&self.pool)
+    }
+
+    /// Get history repository.
+    pub fn history(&self) -> HistoryRepository<'_> {
+        HistoryRepository::new(&self.pool)
     }
 }

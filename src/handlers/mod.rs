@@ -13,6 +13,7 @@ mod admin;
 mod bans;
 mod cap;
 mod channel;
+mod chathistory;
 mod connection;
 mod helpers;
 mod messaging;
@@ -38,6 +39,7 @@ pub use bans::{
 };
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
 pub use channel::{InviteHandler, JoinHandler, KickHandler, KnockHandler, NamesHandler, PartHandler, TopicHandler};
+pub use chathistory::ChatHistoryHandler;
 pub use connection::{
     NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,
 };
@@ -226,6 +228,7 @@ impl Registry {
         handlers.insert("KNOCK", Box::new(KnockHandler));
         handlers.insert("SETNAME", Box::new(SetnameHandler));
         handlers.insert("MONITOR", Box::new(MonitorHandler));
+        handlers.insert("CHATHISTORY", Box::new(ChatHistoryHandler));
 
         // Service aliases
         handlers.insert("NICKSERV", Box::new(NsHandler));
