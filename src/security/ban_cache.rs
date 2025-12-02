@@ -336,7 +336,6 @@ impl BanCache {
     /// Prune expired bans from all caches.
     ///
     /// Called periodically by a background task.
-    #[allow(dead_code)] // Phase 3b: Called by background maintenance task
     pub fn prune_expired(&self) -> usize {
         let mut removed = 0;
 

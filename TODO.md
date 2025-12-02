@@ -45,11 +45,11 @@ Remove outdated Phase 3b dead_code annotations from now-used code:
 - [x] 3c.3 Remove dead_code from queries/mod.rs wrapper methods
 - [x] 3c.4 Final clippy/test verification
 
-## Phase 4: Background Maintenance (Future)
+## Phase 4: Background Maintenance ✅ COMPLETE
 
-- [ ] 4.1 Ban expiration pruning task
-- [ ] 4.2 prune_expired() wiring
-- [ ] 4.3 Startup task registration
+- [x] 4.1 Add ban cache pruning task to main.rs (every 5 minutes)
+- [x] 4.2 Remove dead_code from prune_expired()
+- [x] 4.3 Final clippy/test verification
 
 ## Phase 5: Server Linking S2S (Future)
 
@@ -61,6 +61,6 @@ Remove outdated Phase 3b dead_code annotations from now-used code:
 
 ## Summary
 
-Phases 1-3c complete and audited. Phase 4 is background maintenance.
+Phases 1-4 complete and audited. Phase 5 is server linking (future).
 
 

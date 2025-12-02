@@ -190,6 +190,22 @@ async fn main() -> anyhow::Result<()> {
     }
     info!("Shun expiry cleanup task started");
 
+    // Start ban cache pruning task (runs every 5 minutes)
+    {
+        let matrix = Arc::clone(&matrix);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
+            loop {
+                interval.tick().await;
+                let removed = matrix.ban_cache.prune_expired();
+                if removed > 0 {
+                    info!(removed = removed, "Expired bans pruned from cache");
+                }
+            }
+        });
+    }
+    info!("Ban cache pruning task started");
+
     // Start the Gateway (with optional TLS and WebSocket)
     let gateway = Gateway::bind(
         config.listen.address,
