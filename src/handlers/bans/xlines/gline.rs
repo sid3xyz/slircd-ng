@@ -43,6 +43,13 @@ impl Handler for GlineHandler {
             tracing::error!(error = %e, "Failed to add G-line to database");
         }
 
+        // Update in-memory cache for immediate effect
+        ctx.matrix.ban_cache.add_gline(
+            mask.to_string(),
+            reason.to_string(),
+            None, // No expiration for now
+        );
+
         // Disconnect any matching users
         let disconnected = disconnect_matching_ban(ctx, BanType::Gline, mask, reason).await;
 
@@ -101,6 +108,9 @@ impl Handler for UnglineHandler {
                 false
             }
         };
+
+        // Remove from in-memory cache
+        ctx.matrix.ban_cache.remove_gline(mask);
 
         if removed {
             tracing::info!(oper = %nick, mask = %mask, "UNGLINE removed");
