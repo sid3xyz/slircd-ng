@@ -15,10 +15,28 @@
 - [x] 2.4 Wire ban check into Gateway for TLS/plain/WebSocket connections
 - [x] 2.5 Add ban check in handshake after USER (for user@host patterns)
 
-## Phase 3: Cleanup
+## Phase 3: Cleanup ✅ COMPLETE
 
-- [ ] 3.1 Remove dead_code annotations for now-used methods
-- [ ] 3.2 Wire remaining unused code or remove
-- [ ] 3.3 Final clippy/test verification
+- [x] 3.1 Remove dead_code annotations for now-used methods (ban models, get_active_*)
+- [x] 3.2 Wire remaining unused code or remove
+- [x] 3.3 Final clippy/test verification
+
+---
+
+## Summary
+
+All three phases of the security hardening migration are complete:
+
+1. **CHATHISTORY**: IRCv3 message history with database storage
+2. **BanCache**: Fast in-memory ban checks at connection time (IP) and registration (user@host)
+3. **Cleanup**: Removed outdated dead_code annotations, added proper documentation
+
+### Future Work (Phase 3b+)
+
+Remaining dead_code annotations are intentional for:
+
+- Admin commands (KLINE, DLINE, GLINE, ZLINE, etc.) - Phase 3b
+- Server linking (S2S) - Phase 4+
+- Background maintenance tasks (ban expiration pruning)
 
 
