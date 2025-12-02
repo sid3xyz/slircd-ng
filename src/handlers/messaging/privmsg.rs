@@ -7,6 +7,7 @@ use super::common::{
     send_no_such_channel, send_no_such_nick, ChannelRouteResult, RouteOptions,
 };
 use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply, user_prefix};
+use crate::db::StoreMessageParams;
 use crate::services::chanserv::route_chanserv_message;
 use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
@@ -14,6 +15,7 @@ use chrono::Local;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
 use tracing::debug;
+use uuid::Uuid;
 
 // ============================================================================
 // CTCP Handling
@@ -236,6 +238,24 @@ impl Handler for PrivmsgHandler {
             match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
                 ChannelRouteResult::Sent => {
                     debug!(from = %nick, to = %target, "PRIVMSG to channel");
+
+                    // Store message in history for CHATHISTORY support
+                    let msgid = Uuid::new_v4().to_string();
+                    let prefix = format!("{}!{}@localhost", nick, user_name);
+                    let account = ctx.handshake.account.as_deref();
+
+                    let params = StoreMessageParams {
+                        msgid: &msgid,
+                        channel: target,
+                        sender_nick: nick,
+                        prefix: &prefix,
+                        text,
+                        account,
+                    };
+
+                    if let Err(e) = ctx.db.history().store_message(params).await {
+                        debug!(error = %e, "Failed to store message in history");
+                    }
                 }
                 ChannelRouteResult::NoSuchChannel => {
                     send_no_such_channel(ctx, nick, target).await?;
