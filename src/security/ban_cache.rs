@@ -266,7 +266,6 @@ impl BanCache {
     }
 
     /// Add a K-line to the cache.
-    #[allow(dead_code)] // Phase 3b: Called by KLINE admin command
     pub fn add_kline(&self, mask: String, reason: String, expires_at: Option<i64>) {
         self.klines.insert(
             mask.clone(),
@@ -279,7 +278,6 @@ impl BanCache {
     }
 
     /// Add a D-line to the cache.
-    #[allow(dead_code)] // Phase 3b: Called by DLINE admin command
     pub fn add_dline(&self, mask: String, reason: String, expires_at: Option<i64>) {
         self.dlines.insert(
             mask.clone(),
@@ -292,7 +290,6 @@ impl BanCache {
     }
 
     /// Add a G-line to the cache.
-    #[allow(dead_code)] // Phase 3b: Called by GLINE admin command
     pub fn add_gline(&self, mask: String, reason: String, expires_at: Option<i64>) {
         self.glines.insert(
             mask.clone(),
@@ -305,7 +302,6 @@ impl BanCache {
     }
 
     /// Add a Z-line to the cache.
-    #[allow(dead_code)] // Phase 3b: Called by ZLINE admin command
     pub fn add_zline(&self, mask: String, reason: String, expires_at: Option<i64>) {
         self.zlines.insert(
             mask.clone(),
@@ -318,25 +314,21 @@ impl BanCache {
     }
 
     /// Remove a K-line from the cache.
-    #[allow(dead_code)] // Phase 3b: Called by UNKLINE admin command
     pub fn remove_kline(&self, mask: &str) {
         self.klines.remove(mask);
     }
 
     /// Remove a D-line from the cache.
-    #[allow(dead_code)] // Phase 3b: Called by UNDLINE admin command
     pub fn remove_dline(&self, mask: &str) {
         self.dlines.remove(mask);
     }
 
     /// Remove a G-line from the cache.
-    #[allow(dead_code)] // Phase 3b: Called by UNGLINE admin command
     pub fn remove_gline(&self, mask: &str) {
         self.glines.remove(mask);
     }
 
     /// Remove a Z-line from the cache.
-    #[allow(dead_code)] // Phase 3b: Called by UNZLINE admin command
     pub fn remove_zline(&self, mask: &str) {
         self.zlines.remove(mask);
     }

@@ -38,6 +38,13 @@ impl Handler for ZlineHandler {
             tracing::error!(error = %e, "Failed to add Z-line to database");
         }
 
+        // Update in-memory cache for immediate effect
+        ctx.matrix.ban_cache.add_zline(
+            ip.to_string(),
+            reason.to_string(),
+            None, // No expiration for now
+        );
+
         // Disconnect any matching users
         let disconnected = disconnect_matching_ban(ctx, BanType::Zline, ip, reason).await;
 
@@ -96,6 +103,9 @@ impl Handler for UnzlineHandler {
                 false
             }
         };
+
+        // Remove from in-memory cache
+        ctx.matrix.ban_cache.remove_zline(ip);
 
         if removed {
             tracing::info!(oper = %nick, ip = %ip, "UNZLINE removed");

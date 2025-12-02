@@ -38,6 +38,13 @@ impl Handler for DlineHandler {
             tracing::error!(error = %e, "Failed to add D-line to database");
         }
 
+        // Update in-memory cache for immediate effect
+        ctx.matrix.ban_cache.add_dline(
+            ip.to_string(),
+            reason.to_string(),
+            None, // No expiration for now
+        );
+
         // Disconnect any matching users
         let disconnected = disconnect_matching_ban(ctx, BanType::Dline, ip, reason).await;
 
@@ -96,6 +103,9 @@ impl Handler for UndlineHandler {
                 false
             }
         };
+
+        // Remove from in-memory cache
+        ctx.matrix.ban_cache.remove_dline(ip);
 
         if removed {
             tracing::info!(oper = %nick, ip = %ip, "UNDLINE removed");
