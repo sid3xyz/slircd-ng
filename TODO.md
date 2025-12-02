@@ -13,7 +13,7 @@
 - [x] 2.2 Load bans on startup (K-lines, D-lines, G-lines, Z-lines)
 - [x] 2.3 Add ban_cache field to Matrix
 - [x] 2.4 Wire ban check into Gateway for TLS/plain/WebSocket connections
-- [ ] 2.5 Add ban check in handshake after USER (for user@host patterns)
+- [x] 2.5 Add ban check in handshake after USER (for user@host patterns)
 
 ## Phase 3: Cleanup
 

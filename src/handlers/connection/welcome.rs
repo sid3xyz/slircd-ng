@@ -24,7 +24,31 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     let network = &ctx.matrix.server_info.network;
     let host = ctx.remote_addr.ip().to_string();
 
-    // Check for database bans (K-lines, D-lines, G-lines, Z-lines)
+    // Check BanCache for user@host bans (G-lines, K-lines) - fast in-memory check
+    if let Some(ban_result) = ctx.matrix.ban_cache.check_user_host(user, &host) {
+        let ban_reason = format!("{}: {}", ban_result.ban_type, ban_result.reason);
+
+        let reply = server_reply(
+            server_name,
+            Response::ERR_YOUREBANNEDCREEP,
+            vec![
+                nick.clone(),
+                format!("You are banned from this server: {}", ban_reason),
+            ],
+        );
+        ctx.sender.send(reply).await?;
+
+        let error = Message::from(Command::ERROR(format!(
+            "Closing Link: {} ({})",
+            host, ban_reason
+        )));
+        ctx.sender.send(error).await?;
+
+        return Err(HandlerError::NotRegistered);
+    }
+
+    // Fallback: Check database bans (K-lines, D-lines, G-lines, Z-lines)
+    // This catches any bans not yet in the cache (e.g., added via DB admin tools)
     if let Ok(Some(ban_reason)) = ctx.db.bans().check_all_bans(&host, user, &host).await {
         // ERR_YOUREBANNEDCREEP (465)
         let reply = server_reply(
