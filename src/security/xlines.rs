@@ -1,18 +1,6 @@
-//! X-Lines and Extended Bans for server-level moderation.
+//! Extended Bans for channel-level moderation.
 //!
-//! Provides:
-//! - **X-Lines**: K-line, G-line, Z-line, R-line, S-line server bans
-//! - **Extended Bans**: Pattern matching beyond nick!user@host (accounts, realnames, etc.)
-//!
-//! # X-Line Types
-//!
-//! | Type | Scope | Match Pattern |
-//! |------|-------|---------------|
-//! | K-Line | Local | nick!user@host |
-//! | G-Line | Global | nick!user@host |
-//! | Z-Line | Global | IP address |
-//! | R-Line | Global | Regex on nick!user@host realname |
-//! | S-Line | Global | Server name |
+//! Provides pattern matching beyond nick!user@host for channel bans (+b).
 //!
 //! # Extended Ban Types
 //!
@@ -26,17 +14,19 @@
 //! | `$x:` | Certificate fingerprint |
 //! | `$z:` | SASL mechanism |
 //! | `$U` | Unregistered users |
+//!
+//! # Note on X-Lines (K/G/Z/D-Lines)
+//!
+//! Server-level bans are handled by [`crate::security::BanCache`] which loads
+//! from the database models in [`crate::db::bans`]. This module only handles
+//! extended ban patterns for channel mode +b.
 
-use regex::Regex;
 use slirc_proto::wildcard_match;
 use std::net::IpAddr;
-use std::time::SystemTime;
 
 /// Extended Ban types for advanced pattern matching.
 ///
-/// These extend beyond simple nick!user@host to match on various user attributes.
-/// Will be used in Phase 3 for +b extended ban support.
-#[allow(dead_code)]
+/// Used for channel bans (+b) to match on user attributes beyond nick!user@host.
 #[derive(Debug, Clone)]
 pub enum ExtendedBan {
     /// `$a:account` - Matches users logged into a specific account.
@@ -59,7 +49,6 @@ pub enum ExtendedBan {
     Unregistered,
 }
 
-#[allow(dead_code)]
 impl ExtendedBan {
     /// Parse extended ban from string format like "$a:nickname" or "$r:*bot*".
     ///
@@ -95,6 +84,7 @@ impl ExtendedBan {
     }
 
     /// Convert extended ban back to string format.
+    #[allow(dead_code)] // Used for admin display/logging
     pub fn to_ban_string(&self) -> String {
         match self {
             ExtendedBan::Account(p) => format!("$a:{}", p),
@@ -110,14 +100,18 @@ impl ExtendedBan {
     }
 }
 
-/// User context for evaluating extended bans and X-lines.
+/// User context for evaluating extended bans.
+///
+/// Contains all user attributes that extended bans can match against.
 #[derive(Debug, Clone)]
 pub struct UserContext {
     /// User's current nickname.
     pub nickname: String,
     /// User's username (ident).
+    #[allow(dead_code)] // Future: $u:pattern extended ban type
     pub username: String,
     /// User's hostname (may be cloaked).
+    #[allow(dead_code)] // Future: $h:pattern extended ban type
     pub hostname: String,
     /// User's realname (GECOS).
     pub realname: String,
@@ -136,33 +130,13 @@ pub struct UserContext {
     /// SASL mechanism used for authentication.
     pub sasl_mechanism: Option<String>,
     /// User's real IP address.
+    #[allow(dead_code)] // Future: $i:pattern extended ban type
     pub ip_address: IpAddr,
     /// Whether the user has identified to an account.
     pub is_registered: bool,
 }
 
 impl UserContext {
-    /// Create a minimal context for connection-time checks (before NICK/USER).
-    /// Used for Z-line checks at connection time.
-    #[allow(dead_code)] // Will be used when we add early Z-line checks
-    pub fn for_connection(ip: IpAddr, hostname: String) -> Self {
-        Self {
-            nickname: "*".to_string(),
-            username: "*".to_string(),
-            hostname,
-            realname: String::new(),
-            account: None,
-            server: String::new(),
-            channels: Vec::new(),
-            is_oper: false,
-            oper_type: None,
-            certificate_fp: None,
-            sasl_mechanism: None,
-            ip_address: ip,
-            is_registered: false,
-        }
-    }
-
     /// Create a context for registration-time checks (after NICK/USER, before welcome).
     pub fn for_registration(
         ip: IpAddr,
@@ -187,114 +161,6 @@ impl UserContext {
             sasl_mechanism: None,
             ip_address: ip,
             is_registered: account.is_some(),
-        }
-    }
-
-    /// Get the full hostmask (nick!user@host).
-    #[allow(dead_code)] // Will be used in Phase 3b for logging
-    pub fn hostmask(&self) -> String {
-        format!("{}!{}@{}", self.nickname, self.username, self.hostname)
-    }
-}
-
-/// X-Line ban types following traditional IRC server conventions.
-/// Variants are constructed by admin commands (KLINE, GLINE, ZLINE) in Phase 3b.
-#[allow(dead_code)] // Constructed by admin commands
-#[derive(Debug, Clone)]
-#[allow(clippy::enum_variant_names)] // Traditional IRC naming convention: K-Line, G-Line, etc.
-pub enum XLine {
-    /// K-Line: Local user ban by hostmask.
-    KLine {
-        mask: String,
-        reason: String,
-        expires: Option<SystemTime>,
-        set_by: String,
-        set_at: SystemTime,
-    },
-    /// G-Line: Global user ban by hostmask.
-    GLine {
-        mask: String,
-        reason: String,
-        expires: Option<SystemTime>,
-        set_by: String,
-        set_at: SystemTime,
-    },
-    /// Z-Line: IP address ban (no DNS lookup required).
-    ZLine {
-        ip: String,
-        reason: String,
-        expires: Option<SystemTime>,
-        set_by: String,
-        set_at: SystemTime,
-    },
-    /// R-Line: Regex-based ban on nick!user@host + realname.
-    #[allow(dead_code)] // Phase 4: Regex bans
-    RLine {
-        regex: String,
-        reason: String,
-        expires: Option<SystemTime>,
-        set_by: String,
-        set_at: SystemTime,
-    },
-    /// S-Line: Server ban (prevents server linking).
-    #[allow(dead_code)] // Phase 4: Server linking
-    SLine {
-        mask: String,
-        reason: String,
-        expires: Option<SystemTime>,
-        set_by: String,
-        set_at: SystemTime,
-    },
-}
-
-impl XLine {
-    /// Check if this X-line has expired.
-    pub fn is_expired(&self) -> bool {
-        let expires = match self {
-            XLine::KLine { expires, .. }
-            | XLine::GLine { expires, .. }
-            | XLine::ZLine { expires, .. }
-            | XLine::RLine { expires, .. }
-            | XLine::SLine { expires, .. } => *expires,
-        };
-
-        if let Some(expiry) = expires {
-            SystemTime::now() > expiry
-        } else {
-            false // Permanent ban (no expiry)
-        }
-    }
-
-    /// Get the pattern/mask for this X-line.
-    #[allow(dead_code)] // Used by admin commands in Phase 3b
-    pub fn pattern(&self) -> &str {
-        match self {
-            XLine::KLine { mask, .. } | XLine::GLine { mask, .. } => mask,
-            XLine::ZLine { ip, .. } => ip,
-            XLine::RLine { regex, .. } => regex,
-            XLine::SLine { mask, .. } => mask,
-        }
-    }
-
-    /// Get the reason for this X-line.
-    pub fn reason(&self) -> &str {
-        match self {
-            XLine::KLine { reason, .. }
-            | XLine::GLine { reason, .. }
-            | XLine::ZLine { reason, .. }
-            | XLine::RLine { reason, .. }
-            | XLine::SLine { reason, .. } => reason,
-        }
-    }
-
-    /// Get the type name of this X-line.
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            XLine::KLine { .. } => "K-Line",
-            XLine::GLine { .. } => "G-Line",
-            XLine::ZLine { .. } => "Z-Line",
-            XLine::RLine { .. } => "R-Line",
-            XLine::SLine { .. } => "S-Line",
         }
     }
 }
@@ -348,41 +214,6 @@ pub fn matches_extended_ban(ban: &ExtendedBan, context: &UserContext) -> bool {
     }
 }
 
-/// Check if an X-line matches a user context.
-pub fn matches_xline(xline: &XLine, context: &UserContext) -> bool {
-    if xline.is_expired() {
-        return false;
-    }
-
-    match xline {
-        XLine::KLine { mask, .. } | XLine::GLine { mask, .. } => {
-            // Check both nick!user@ip and nick!user@hostname
-            let user_mask_ip = format!(
-                "{}!{}@{}",
-                context.nickname, context.username, context.ip_address
-            );
-            let user_mask_host = format!(
-                "{}!{}@{}",
-                context.nickname, context.username, context.hostname
-            );
-            wildcard_match(mask, &user_mask_ip) || wildcard_match(mask, &user_mask_host)
-        }
-        XLine::ZLine { ip, .. } => wildcard_match(ip, &context.ip_address.to_string()),
-        XLine::RLine { regex, .. } => {
-            if let Ok(re) = Regex::new(regex) {
-                let user_string = format!(
-                    "{}!{}@{} {}",
-                    context.nickname, context.username, context.ip_address, context.realname
-                );
-                re.is_match(&user_string)
-            } else {
-                false
-            }
-        }
-        XLine::SLine { mask, .. } => wildcard_match(mask, &context.server),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,12 +256,7 @@ mod tests {
 
     #[test]
     fn test_extended_ban_roundtrip() {
-        let bans = vec![
-            "$a:testaccount",
-            "$r:*bot*",
-            "$s:*.freenode.net",
-            "$U",
-        ];
+        let bans = vec!["$a:testaccount", "$r:*bot*", "$s:*.freenode.net", "$U"];
         for ban_str in bans {
             let ban = ExtendedBan::parse(ban_str).unwrap();
             assert_eq!(ban.to_ban_string(), ban_str);
@@ -468,79 +294,5 @@ mod tests {
 
         let ban_nomatch = ExtendedBan::Channel("#secret".to_string());
         assert!(!matches_extended_ban(&ban_nomatch, &context));
-    }
-
-    #[test]
-    fn test_wildcard_matching() {
-        assert!(wildcard_match("*", "anything"));
-        assert!(wildcard_match("test*", "testing"));
-        assert!(wildcard_match("*test", "unittest"));
-        assert!(wildcard_match("*test*", "unittesting"));
-        assert!(wildcard_match("te?t", "test"));
-        assert!(!wildcard_match("te?t", "tests"));
-        assert!(wildcard_match("*.example.com", "user.example.com"));
-    }
-
-    #[test]
-    fn test_wildcard_case_insensitive() {
-        assert!(wildcard_match("TEST*", "testing"));
-        assert!(wildcard_match("test*", "TESTING"));
-    }
-
-    #[test]
-    fn test_xline_expiry() {
-        use std::time::Duration;
-
-        let now = SystemTime::now();
-        let expired = XLine::KLine {
-            mask: "*!*@example.com".to_string(),
-            reason: "Test".to_string(),
-            expires: Some(now - Duration::from_secs(60)),
-            set_by: "admin".to_string(),
-            set_at: now - Duration::from_secs(120),
-        };
-        assert!(expired.is_expired());
-
-        let active = XLine::KLine {
-            mask: "*!*@example.com".to_string(),
-            reason: "Test".to_string(),
-            expires: Some(now + Duration::from_secs(3600)),
-            set_by: "admin".to_string(),
-            set_at: now,
-        };
-        assert!(!active.is_expired());
-
-        let permanent = XLine::KLine {
-            mask: "*!*@example.com".to_string(),
-            reason: "Test".to_string(),
-            expires: None, // Permanent
-            set_by: "admin".to_string(),
-            set_at: now,
-        };
-        assert!(!permanent.is_expired());
-    }
-
-    #[test]
-    fn test_zline_match() {
-        let now = SystemTime::now();
-        let context = test_context();
-
-        let zline = XLine::ZLine {
-            ip: "192.168.1.*".to_string(),
-            reason: "Banned subnet".to_string(),
-            expires: None,
-            set_by: "admin".to_string(),
-            set_at: now,
-        };
-        assert!(matches_xline(&zline, &context));
-
-        let zline_nomatch = XLine::ZLine {
-            ip: "10.0.0.*".to_string(),
-            reason: "Different subnet".to_string(),
-            expires: None,
-            set_by: "admin".to_string(),
-            set_at: now,
-        };
-        assert!(!matches_xline(&zline_nomatch, &context));
     }
 }

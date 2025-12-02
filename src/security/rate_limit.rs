@@ -127,9 +127,8 @@ impl RateLimitManager {
 
     /// Cleanup old entries to prevent memory growth.
     ///
-    /// Call periodically (e.g., every 5 minutes) from a maintenance task.
-    /// Will be wired into server maintenance loop in Phase 3.
-    #[allow(dead_code)]
+    /// Called every 5 minutes by background task in main.rs.
+    /// Primarily cleans connection_limiters (keyed by IP, not removed on disconnect).
     pub fn cleanup(&self) {
         // Simple strategy: if we have too many entries, clear them all
         // In production, you'd want to track last-access time

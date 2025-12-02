@@ -8,7 +8,7 @@ use super::user::{User, WhowasEntry};
 
 use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
 use crate::db::{Dline, Gline, Kline, Shun, Zline};
-use crate::security::{BanCache, RateLimitManager, XLine};
+use crate::security::{BanCache, RateLimitManager};
 use crate::state::UidGenerator;
 use dashmap::{DashMap, DashSet};
 use slirc_proto::Message;
@@ -67,10 +67,6 @@ pub struct Matrix {
 
     /// Spam detection service for content analysis.
     pub spam_detector: Option<Arc<crate::security::spam::SpamDetectionService>>,
-
-    /// Active X-lines (K/G/Z/R/S-lines) for server-level bans.
-    /// Key is the pattern/mask, value is the XLine.
-    pub xlines: DashMap<String, XLine>,
 
     /// Set of registered channel names (lowercase) for fast lookup.
     pub registered_channels: DashSet<String>,
@@ -189,7 +185,6 @@ impl Matrix {
             } else {
                 None
             },
-            xlines: DashMap::new(),
             registered_channels: registered_set,
             shuns: shuns_map,
             monitors: DashMap::new(),
