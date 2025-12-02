@@ -32,6 +32,10 @@ pub async fn handle_identify(
                     target_uid: uid.to_string(),
                     account: account.name,
                 },
+                // Cancel any pending nick enforcement timer
+                ServiceEffect::ClearEnforceTimer {
+                    target_uid: uid.to_string(),
+                },
             ]
         }
         Err(crate::db::DbError::AccountNotFound(_)) => {

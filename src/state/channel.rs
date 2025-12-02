@@ -234,8 +234,7 @@ impl Channel {
         self.members.get(uid).is_some_and(|m| m.op)
     }
 
-    /// Check if user has voice or higher.
-    #[allow(dead_code)] // TODO: Use for +m moderated channel enforcement
+    /// Check if user has voice or higher (can speak in +m moderated channel).
     pub fn can_speak(&self, uid: &str) -> bool {
         self.members.get(uid).is_some_and(|m| m.op || m.voice)
     }

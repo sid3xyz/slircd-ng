@@ -369,13 +369,25 @@ impl<'a> ChannelRepository<'a> {
         Ok(())
     }
 
-    /// Update last used timestamp.
-    #[allow(dead_code)] // TODO: Call on channel activity for expiration tracking
+    /// Update last used timestamp by channel ID.
+    #[allow(dead_code)] // Alternative to touch_by_name when ID is already known
     pub async fn touch(&self, channel_id: i64) -> Result<(), DbError> {
         let now = chrono::Utc::now().timestamp();
         sqlx::query("UPDATE channels SET last_used_at = ? WHERE id = ?")
             .bind(now)
             .bind(channel_id)
+            .execute(self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Update last used timestamp by channel name.
+    /// Used to track channel activity for expiration policies.
+    pub async fn touch_by_name(&self, name: &str) -> Result<(), DbError> {
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("UPDATE channels SET last_used_at = ? WHERE name = ? COLLATE NOCASE")
+            .bind(now)
+            .bind(name)
             .execute(self.pool)
             .await?;
         Ok(())

@@ -210,14 +210,8 @@ pub async fn route_to_channel(
     }
 
     // Check +m (moderated) - only if option enabled
-    if opts.check_moderated && channel.modes.moderated {
-        let can_speak = channel
-            .members
-            .get(ctx.uid)
-            .is_some_and(|m| m.op || m.voice);
-        if !can_speak {
-            return ChannelRouteResult::BlockedModerated;
-        }
+    if opts.check_moderated && channel.modes.moderated && !channel.can_speak(ctx.uid) {
+        return ChannelRouteResult::BlockedModerated;
     }
 
     // Prepare final message: potentially strip colors (+c) or modify text
