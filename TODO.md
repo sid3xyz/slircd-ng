@@ -36,16 +36,31 @@ Wire admin ban commands to update BanCache (not just DB):
 - [x] 3b.9 Remove dead_code from cache add/remove methods
 - [x] 3b.10 Final clippy/test verification
 
+## Phase 3c: Stale Annotation Cleanup ✅ COMPLETE
+
+Remove outdated Phase 3b dead_code annotations from now-used code:
+
+- [x] 3c.1 Remove dead_code from gline.rs add_gline/remove_gline
+- [x] 3c.2 Remove dead_code from zline.rs add_zline/remove_zline
+- [x] 3c.3 Remove dead_code from queries/mod.rs wrapper methods
+- [x] 3c.4 Final clippy/test verification
+
+## Phase 4: Background Maintenance (Future)
+
+- [ ] 4.1 Ban expiration pruning task
+- [ ] 4.2 prune_expired() wiring
+- [ ] 4.3 Startup task registration
+
+## Phase 5: Server Linking S2S (Future)
+
+- [ ] 5.1 S2S protocol design
+- [ ] 5.2 Server state in Matrix
+- [ ] 5.3 S2S message routing
+
 ---
 
 ## Summary
 
-Phases 1-3b complete and audited. Phase 4 is server linking (future).
-
-### Future Work (Phase 4+)
-
-- Server linking (S2S) - Phase 4
-- Background maintenance tasks (ban expiration pruning)
-- Regex bans support
+Phases 1-3c complete and audited. Phase 4 is background maintenance.
 
 

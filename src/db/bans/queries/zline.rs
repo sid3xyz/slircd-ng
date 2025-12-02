@@ -6,7 +6,6 @@ use slirc_proto::wildcard_match;
 use sqlx::SqlitePool;
 
 /// Add a Z-line.
-#[allow(dead_code)] // Phase 3b: Admin commands
 pub async fn add_zline(
     pool: &SqlitePool,
     mask: &str,
@@ -35,7 +34,6 @@ pub async fn add_zline(
 }
 
 /// Remove a Z-line.
-#[allow(dead_code)] // Phase 3b: Admin commands
 pub async fn remove_zline(pool: &SqlitePool, mask: &str) -> Result<bool, DbError> {
     let result = sqlx::query("DELETE FROM zlines WHERE mask = ?")
         .bind(mask)

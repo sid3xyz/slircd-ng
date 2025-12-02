@@ -80,7 +80,6 @@ impl<'a> BanRepository<'a> {
     // ========== G-line operations ==========
 
     /// Add a G-line.
-    #[allow(dead_code)] // Phase 3b: Admin commands
     pub async fn add_gline(
         &self,
         mask: &str,
@@ -92,7 +91,6 @@ impl<'a> BanRepository<'a> {
     }
 
     /// Remove a G-line.
-    #[allow(dead_code)] // Phase 3b: Admin commands
     pub async fn remove_gline(&self, mask: &str) -> Result<bool, DbError> {
         gline::remove_gline(self.pool, mask).await
     }
@@ -110,7 +108,6 @@ impl<'a> BanRepository<'a> {
     // ========== Z-line operations ==========
 
     /// Add a Z-line.
-    #[allow(dead_code)] // Phase 3b: Admin commands
     pub async fn add_zline(
         &self,
         mask: &str,
@@ -122,7 +119,6 @@ impl<'a> BanRepository<'a> {
     }
 
     /// Remove a Z-line.
-    #[allow(dead_code)] // Phase 3b: Admin commands
     pub async fn remove_zline(&self, mask: &str) -> Result<bool, DbError> {
         zline::remove_zline(self.pool, mask).await
     }
