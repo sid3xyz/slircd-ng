@@ -46,8 +46,8 @@ pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
 pub use monitor::{MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online};
 pub use oper::{ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, TraceHandler, WallopsHandler};
 pub use server_query::{
-    AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, StatsHandler, TimeHandler,
-    VersionHandler,
+    AdminHandler, InfoHandler, LinksHandler, ListHandler, LusersHandler, MapHandler, MotdHandler,
+    RulesHandler, StatsHandler, TimeHandler, UseripHandler, VersionHandler,
 };
 pub use service_aliases::{CsHandler, NsHandler};
 pub use user_query::{IsonHandler, UserhostHandler, WhoHandler, WhoisHandler, WhowasHandler};
@@ -214,6 +214,10 @@ impl Registry {
         handlers.insert("LUSERS", Box::new(LusersHandler));
         handlers.insert("STATS", Box::new(StatsHandler));
         handlers.insert("MOTD", Box::new(MotdHandler));
+        handlers.insert("MAP", Box::new(MapHandler));
+        handlers.insert("RULES", Box::new(RulesHandler));
+        handlers.insert("USERIP", Box::new(UseripHandler));
+        handlers.insert("LINKS", Box::new(LinksHandler));
 
         // Misc handlers
         handlers.insert("AWAY", Box::new(AwayHandler));

@@ -6,7 +6,7 @@
 > **Do not modify these files.** They exist solely as reference for adapting
 > features into slircd-ng's Matrix/Effects architecture.
 >
-> See [`MIGRATION_LOG.md`](./MIGRATION_LOG.md) for granular tracking of what
+> See [`MIGRATION_LOG.md`](../../../../docs/archive/slircd-ng/MIGRATION_LOG.md) for granular tracking of what
 > has been adapted and what remains.
 
 This folder contains code extracted from the original slircd implementation
@@ -19,45 +19,45 @@ adaptation into slircd-ng.
 
 ### 🛡️ Security (`security/`)
 
-| Module | Lines | Description | Reusability |
-|--------|-------|-------------|-------------|
-| `cloaking/mod.rs` | 264 | HMAC-SHA256 IP cloaking with hierarchical segments | ⭐⭐⭐ Ready to adapt |
-| `anti_abuse/primitives.rs` | 604 | ExtendedBan types, X-lines (K/G/Z/R/S), rate limiting | ⭐⭐⭐ Ready to adapt |
-| `anti_abuse/service.rs` | 634 | Full anti-abuse service with connection tracking | ⭐⭐ Needs Matrix adaptation |
-| `anti_abuse/spam_detection.rs` | 395 | CTCP flood, repeat message detection | ⭐⭐ Needs Matrix adaptation |
+| Module                         | Lines | Description                                           | Reusability                |
+| ------------------------------ | ----- | ----------------------------------------------------- | -------------------------- |
+| `cloaking/mod.rs`              | 264   | HMAC-SHA256 IP cloaking with hierarchical segments    | ⭐⭐⭐ Ready to adapt         |
+| `anti_abuse/primitives.rs`     | 604   | ExtendedBan types, X-lines (K/G/Z/R/S), rate limiting | ⭐⭐⭐ Ready to adapt         |
+| `anti_abuse/service.rs`        | 634   | Full anti-abuse service with connection tracking      | ⭐⭐ Needs Matrix adaptation |
+| `anti_abuse/spam_detection.rs` | 395   | CTCP flood, repeat message detection                  | ⭐⭐ Needs Matrix adaptation |
 
 ### 🔧 Services (`services/`)
 
-| Module | Lines | Description | Reusability |
-|--------|-------|-------------|-------------|
-| `nickserv.rs` | 699 | REGISTER, IDENTIFY, GHOST, DROP | ⭐⭐ Different architecture |
-| `chanserv.rs` | 906 | REGISTER, OP/DEOP, KICK, ACCESS LIST | ⭐⭐ Different architecture |
-| `routing.rs` | 142 | Service message routing | ⭐ Reference only |
-| `pseudo_client.rs` | 151 | Pseudo-client for service bots | ⭐ Reference only |
+| Module             | Lines | Description                          | Reusability               |
+| ------------------ | ----- | ------------------------------------ | ------------------------- |
+| `nickserv.rs`      | 699   | REGISTER, IDENTIFY, GHOST, DROP      | ⭐⭐ Different architecture |
+| `chanserv.rs`      | 906   | REGISTER, OP/DEOP, KICK, ACCESS LIST | ⭐⭐ Different architecture |
+| `routing.rs`       | 142   | Service message routing              | ⭐ Reference only          |
+| `pseudo_client.rs` | 151   | Pseudo-client for service bots       | ⭐ Reference only          |
 
 ### 📊 Observability (`prometheus/`)
 
-| Module | Lines | Description | Reusability |
-|--------|-------|-------------|-------------|
-| `mod.rs` | 164 | Plugin interface, config parsing | ⭐⭐ Needs adaptation |
-| `server.rs` | 552 | HTTP /metrics endpoint with axum | ⭐⭐⭐ Ready to adapt |
+| Module      | Lines | Description                      | Reusability         |
+| ----------- | ----- | -------------------------------- | ------------------- |
+| `mod.rs`    | 164   | Plugin interface, config parsing | ⭐⭐ Needs adaptation |
+| `server.rs` | 552   | HTTP /metrics endpoint with axum | ⭐⭐⭐ Ready to adapt  |
 
 ### 🗄️ Infrastructure (`infrastructure/`)
 
-| Module | Lines | Description | Reusability |
-|--------|-------|-------------|-------------|
-| `persistence/database.rs` | ~1000 | SQLx + SQLite, account storage | ⭐⭐ Same SQLx stack |
-| `persistence/history.rs` | ~500 | Chat history with message search | ⭐⭐ Needs schema adaptation |
-| `config/` | ~400 | TOML config parsing | ⭐ Already have in slircd-ng |
+| Module                    | Lines | Description                      | Reusability                 |
+| ------------------------- | ----- | -------------------------------- | --------------------------- |
+| `persistence/database.rs` | ~1000 | SQLx + SQLite, account storage   | ⭐⭐ Same SQLx stack          |
+| `persistence/history.rs`  | ~500  | Chat history with message search | ⭐⭐ Needs schema adaptation  |
+| `config/`                 | ~400  | TOML config parsing              | ⭐ Already have in slircd-ng |
 
 ### 📝 Commands (`commands/`)
 
-| Module | Lines | Description | Reusability |
-|--------|-------|-------------|-------------|
-| `core/mode.rs` | 192 | User/channel mode handling | ⭐ Reference for edge cases |
-| `core/nick.rs` | 137 | Nick collision handling | ⭐ Reference only |
-| `core/privmsg.rs` | 141 | Message routing logic | ⭐ Reference only |
-| `registry.rs` | 92 | Command registration pattern | ⭐ Reference only |
+| Module            | Lines | Description                  | Reusability                |
+| ----------------- | ----- | ---------------------------- | -------------------------- |
+| `core/mode.rs`    | 192   | User/channel mode handling   | ⭐ Reference for edge cases |
+| `core/nick.rs`    | 137   | Nick collision handling      | ⭐ Reference only           |
+| `core/privmsg.rs` | 141   | Message routing logic        | ⭐ Reference only           |
+| `registry.rs`     | 92    | Command registration pattern | ⭐ Reference only           |
 
 ## Adaptation Priority
 
