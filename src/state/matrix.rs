@@ -3,13 +3,16 @@
 //! The Matrix holds all users, channels, and server state in concurrent
 //! data structures accessible from any async task.
 
+use super::channel::{Channel, ListEntry, MemberModes, Topic};
+use super::user::{User, WhowasEntry};
+
 use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
 use crate::db::Shun;
 use crate::security::{RateLimitManager, XLine};
 use crate::state::UidGenerator;
 use dashmap::{DashMap, DashSet};
 use slirc_proto::Message;
-use std::collections::{HashMap, HashSet};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{RwLock, mpsc};
@@ -19,7 +22,6 @@ pub type Uid = String;
 
 /// Server identifier (TS6 format: 3 characters).
 pub type Sid = String;
-use std::collections::VecDeque;
 
 /// Maximum number of WHOWAS entries to keep per nickname.
 const MAX_WHOWAS_PER_NICK: usize = 10;
@@ -86,23 +88,6 @@ pub struct Matrix {
     pub monitoring: DashMap<String, DashSet<Uid>>,
 }
 
-/// An entry in the WHOWAS history for a disconnected user.
-#[derive(Debug, Clone)]
-pub struct WhowasEntry {
-    /// The user's nickname (case-preserved).
-    pub nick: String,
-    /// The user's username.
-    pub user: String,
-    /// The user's hostname.
-    pub host: String,
-    /// The user's realname.
-    pub realname: String,
-    /// Server name they were connected to.
-    pub server: String,
-    /// When they logged out (Unix timestamp).
-    pub logout_time: i64,
-}
-
 /// Configuration accessible to handlers via Matrix.
 #[derive(Debug, Clone)]
 pub struct MatrixConfig {
@@ -124,246 +109,6 @@ pub struct ServerInfo {
     pub network: String,
     pub description: String,
     pub created: i64,
-}
-
-/// A connected user.
-#[derive(Debug)]
-pub struct User {
-    pub uid: Uid,
-    pub nick: String,
-    pub user: String,
-    pub realname: String,
-    pub host: String,
-    /// Visible hostname shown to other users (cloaked for privacy).
-    pub visible_host: String,
-    /// Channels this user is in (lowercase names).
-    pub channels: HashSet<String>,
-    /// User modes.
-    pub modes: UserModes,
-    /// Account name if identified to NickServ.
-    pub account: Option<String>,
-    /// Away message if user is marked away (RFC 2812).
-    pub away: Option<String>,
-}
-
-/// User modes.
-#[derive(Debug, Default, Clone)]
-pub struct UserModes {
-    pub invisible: bool,  // +i
-    pub wallops: bool,    // +w
-    pub oper: bool,       // +o (IRC operator)
-    pub registered: bool, // +r (identified to NickServ)
-    pub secure: bool,     // +Z (TLS connection)
-}
-
-impl UserModes {
-    /// Convert modes to a string like "+iw".
-    pub fn as_mode_string(&self) -> String {
-        let mut s = String::from("+");
-        if self.invisible {
-            s.push('i');
-        }
-        if self.wallops {
-            s.push('w');
-        }
-        if self.oper {
-            s.push('o');
-        }
-        if self.registered {
-            s.push('r');
-        }
-        if self.secure {
-            s.push('Z');
-        }
-        if s == "+" { "+".to_string() } else { s }
-    }
-}
-
-impl User {
-    /// Create a new user.
-    ///
-    /// The `host` is cloaked using HMAC-SHA256 with the provided secret.
-    pub fn new(
-        uid: Uid,
-        nick: String,
-        user: String,
-        realname: String,
-        host: String,
-        cloak_secret: &str,
-        cloak_suffix: &str,
-    ) -> Self {
-        // Try to parse as IP for proper cloaking, fall back to hostname cloaking
-        let visible_host = if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-            crate::security::cloaking::cloak_ip_hmac_with_suffix(&ip, cloak_secret, cloak_suffix)
-        } else {
-            crate::security::cloaking::cloak_hostname(&host, cloak_secret)
-        };
-        Self {
-            uid,
-            nick,
-            user,
-            realname,
-            host,
-            visible_host,
-            channels: HashSet::new(),
-            modes: UserModes::default(),
-            account: None,
-            away: None,
-        }
-    }
-}
-
-/// An IRC channel.
-#[derive(Debug)]
-pub struct Channel {
-    pub name: String,
-    pub topic: Option<Topic>,
-    pub created: i64,
-    /// Members: UID -> MemberModes
-    pub members: HashMap<Uid, MemberModes>,
-    /// Channel modes.
-    pub modes: ChannelModes,
-    /// Ban list (+b).
-    pub bans: Vec<ListEntry>,
-    /// Ban exception list (+e).
-    pub excepts: Vec<ListEntry>,
-    /// Invite exception list (+I).
-    pub invex: Vec<ListEntry>,
-    /// Quiet list (+q).
-    pub quiets: Vec<ListEntry>,
-    /// Extended ban list (bans with $ prefix like $a:account).
-    pub extended_bans: Vec<ListEntry>,
-}
-
-/// Channel modes.
-#[derive(Debug, Default, Clone)]
-pub struct ChannelModes {
-    pub invite_only: bool,     // +i
-    pub moderated: bool,       // +m
-    pub no_external: bool,     // +n
-    pub secret: bool,          // +s
-    pub topic_lock: bool,      // +t
-    pub registered_only: bool, // +r
-    pub key: Option<String>,   // +k
-    pub limit: Option<u32>,    // +l
-}
-
-impl ChannelModes {
-    /// Convert modes to a string like "+nt".
-    pub fn as_mode_string(&self) -> String {
-        let mut s = String::from("+");
-        if self.invite_only {
-            s.push('i');
-        }
-        if self.moderated {
-            s.push('m');
-        }
-        if self.no_external {
-            s.push('n');
-        }
-        if self.secret {
-            s.push('s');
-        }
-        if self.topic_lock {
-            s.push('t');
-        }
-        if self.registered_only {
-            s.push('r');
-        }
-        if self.key.is_some() {
-            s.push('k');
-        }
-        if self.limit.is_some() {
-            s.push('l');
-        }
-        if s == "+" { "+".to_string() } else { s }
-    }
-}
-
-/// An entry in a list (bans, excepts, invex).
-#[derive(Debug, Clone)]
-pub struct ListEntry {
-    pub mask: String,
-    pub set_by: String,
-    pub set_at: i64,
-}
-
-/// Channel topic with metadata.
-#[derive(Debug, Clone)]
-pub struct Topic {
-    pub text: String,
-    pub set_by: String,
-    pub set_at: i64,
-}
-
-/// Member modes (op, voice, etc.).
-#[derive(Debug, Default, Clone)]
-pub struct MemberModes {
-    pub op: bool,    // +o
-    pub voice: bool, // +v
-}
-
-impl MemberModes {
-    /// Get the highest prefix character for this member.
-    pub fn prefix_char(&self) -> Option<char> {
-        if self.op {
-            Some('@')
-        } else if self.voice {
-            Some('+')
-        } else {
-            None
-        }
-    }
-}
-
-impl Channel {
-    /// Create a new channel.
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            topic: None,
-            created: chrono::Utc::now().timestamp(),
-            members: HashMap::new(),
-            modes: ChannelModes::default(),
-            bans: Vec::new(),
-            excepts: Vec::new(),
-            invex: Vec::new(),
-            quiets: Vec::new(),
-            extended_bans: Vec::new(),
-        }
-    }
-
-    /// Add a member to the channel.
-    pub fn add_member(&mut self, uid: Uid, modes: MemberModes) {
-        self.members.insert(uid, modes);
-    }
-
-    /// Remove a member from the channel.
-    pub fn remove_member(&mut self, uid: &str) -> bool {
-        self.members.remove(uid).is_some()
-    }
-
-    /// Check if user is a member.
-    pub fn is_member(&self, uid: &str) -> bool {
-        self.members.contains_key(uid)
-    }
-
-    /// Check if user has op.
-    pub fn is_op(&self, uid: &str) -> bool {
-        self.members.get(uid).is_some_and(|m| m.op)
-    }
-
-    /// Check if user has voice or higher.
-    #[allow(dead_code)] // TODO: Use for +m moderated channel enforcement
-    pub fn can_speak(&self, uid: &str) -> bool {
-        self.members.get(uid).is_some_and(|m| m.op || m.voice)
-    }
-
-    /// Get list of member UIDs.
-    #[allow(dead_code)] // TODO: Use for WHO #channel and NAMES
-    pub fn member_uids(&self) -> Vec<Uid> {
-        self.members.keys().cloned().collect()
-    }
 }
 
 /// A linked server (for future use).
