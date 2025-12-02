@@ -25,6 +25,7 @@ const SUPPORTED_CAPS: &[&str] = &[
     "invite-notify",
     "chghost",
     "monitor",
+    "cap-notify",
 ];
 
 /// Handler for CAP command.
@@ -76,6 +77,12 @@ async fn handle_ls(ctx: &mut Context<'_>, nick: &str, version_arg: Option<&str>)
     // Set CAP negotiation flag
     ctx.handshake.cap_negotiating = true;
     ctx.handshake.cap_version = version;
+
+    // CAP LS 302+ implicitly enables cap-notify per IRCv3 spec
+    // https://ircv3.net/specs/extensions/capability-negotiation#cap-notify
+    if version >= 302 {
+        ctx.handshake.capabilities.insert("cap-notify".to_string());
+    }
 
     // Build capability list
     let cap_list = build_cap_list(version);
