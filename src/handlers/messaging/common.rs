@@ -45,6 +45,7 @@ pub async fn is_shunned(ctx: &Context<'_>) -> bool {
 // ============================================================================
 
 /// Result of attempting to route a message to a channel.
+#[allow(dead_code)] // BlockedCTCP reserved for future use
 pub enum ChannelRouteResult {
     /// Message was successfully broadcast to channel members.
     Sent,
@@ -58,6 +59,10 @@ pub enum ChannelRouteResult {
     BlockedSpam,
     /// Sender is blocked by +r (registered-only channel).
     BlockedRegisteredOnly,
+    /// Blocked by +C (no CTCP except ACTION).
+    BlockedCTCP,
+    /// Blocked by +T (no channel NOTICE).
+    BlockedNotice,
 }
 
 /// Options for message routing behavior.
@@ -66,6 +71,13 @@ pub struct RouteOptions {
     pub check_moderated: bool,
     /// Whether to send RPL_AWAY for user targets (only PRIVMSG).
     pub send_away_reply: bool,
+    /// Whether this is a NOTICE (for +T check).
+    pub is_notice: bool,
+    /// Whether to strip colors (+c mode).
+    pub strip_colors: bool,
+    /// Whether to block CTCP (+C mode, except ACTION).
+    #[allow(dead_code)] // Reserved for future use
+    pub block_ctcp: bool,
 }
 
 // ============================================================================
@@ -192,6 +204,11 @@ pub async fn route_to_channel(
         }
     }
 
+    // Check +T (no channel NOTICE)
+    if opts.is_notice && channel.modes.no_channel_notice {
+        return ChannelRouteResult::BlockedNotice;
+    }
+
     // Check +m (moderated) - only if option enabled
     if opts.check_moderated && channel.modes.moderated {
         let can_speak = channel
@@ -203,13 +220,40 @@ pub async fn route_to_channel(
         }
     }
 
+    // Prepare final message: potentially strip colors (+c) or modify text
+    let final_msg = if opts.strip_colors && channel.modes.no_colors {
+        // Strip IRC formatting codes from message text
+        use slirc_proto::colors::FormattedStringExt;
+        match &msg.command {
+            Command::PRIVMSG(target, text) => {
+                let stripped = text.as_str().strip_formatting();
+                Message {
+                    tags: msg.tags.clone(),
+                    prefix: msg.prefix.clone(),
+                    command: Command::PRIVMSG(target.clone(), stripped.into_owned()),
+                }
+            }
+            Command::NOTICE(target, text) => {
+                let stripped = text.as_str().strip_formatting();
+                Message {
+                    tags: msg.tags.clone(),
+                    prefix: msg.prefix.clone(),
+                    command: Command::NOTICE(target.clone(), stripped.into_owned()),
+                }
+            }
+            _ => msg,
+        }
+    } else {
+        msg
+    };
+
     // Broadcast to all channel members except sender
     for uid in channel.members.keys() {
         if uid.as_str() == ctx.uid {
             continue;
         }
         if let Some(sender) = ctx.matrix.senders.get(uid) {
-            let _ = sender.send(msg.clone()).await;
+            let _ = sender.send(final_msg.clone()).await;
             crate::metrics::MESSAGES_SENT.inc();
         }
     }

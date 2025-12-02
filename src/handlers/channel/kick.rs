@@ -71,6 +71,31 @@ impl Handler for KickHandler {
             return Ok(());
         }
 
+        // Check +u (no kick / peace mode) - only opers can kick
+        if channel_guard.modes.no_kick {
+            // Check if user is an IRC operator
+            let is_oper = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let user = user_ref.read().await;
+                user.modes.oper
+            } else {
+                false
+            };
+
+            if !is_oper {
+                let reply = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::ERR_CHANOPRIVSNEEDED,
+                    vec![
+                        nick.clone(),
+                        channel_guard.name.clone(),
+                        "Cannot kick users while channel is in peace mode (+u)".to_string(),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+        }
+
         // Find target user
         let target_lower = irc_to_lower(target_nick);
         let target_uid = match ctx.matrix.nicks.get(&target_lower) {

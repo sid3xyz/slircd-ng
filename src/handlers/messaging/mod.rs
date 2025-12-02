@@ -100,6 +100,9 @@ impl Handler for TagmsgHandler {
         let opts = RouteOptions {
             check_moderated: false,
             send_away_reply: false,
+            is_notice: false,
+            strip_colors: false,
+            block_ctcp: false,
         };
 
         if is_channel(target) {
@@ -124,6 +127,14 @@ impl Handler for TagmsgHandler {
                 }
                 ChannelRouteResult::BlockedRegisteredOnly => {
                     send_cannot_send(ctx, nick, target, "Cannot send to channel (+r)").await?;
+                }
+                ChannelRouteResult::BlockedCTCP => {
+                    // TAGMSG has no CTCP, so this shouldn't happen
+                    unreachable!("TAGMSG has no CTCP content");
+                }
+                ChannelRouteResult::BlockedNotice => {
+                    // TAGMSG is not a NOTICE, so this shouldn't happen
+                    unreachable!("TAGMSG is not a NOTICE");
                 }
             }
         } else {

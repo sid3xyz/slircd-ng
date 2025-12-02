@@ -86,8 +86,23 @@ impl Handler for InviteHandler {
                 return Ok(());
             }
 
-            // If channel is +i, check if user is op
-            if channel.modes.invite_only && !channel.is_op(ctx.uid) {
+            // If channel is +V (no invite), block invite
+            if channel.modes.no_invite {
+                let reply = server_reply(
+                    server_name,
+                    Response::ERR_CHANOPRIVSNEEDED,
+                    vec![
+                        nick.clone(),
+                        channel_name.to_string(),
+                        "Invites are disabled on this channel (+V)".to_string(),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+
+            // If channel is +i but not +g, check if user is op
+            if channel.modes.invite_only && !channel.modes.free_invite && !channel.is_op(ctx.uid) {
                 ctx.sender
                     .send(err_chanoprivsneeded(server_name, nick, channel_name))
                     .await?;

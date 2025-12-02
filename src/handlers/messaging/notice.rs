@@ -68,6 +68,9 @@ impl Handler for NoticeHandler {
         let opts = RouteOptions {
             check_moderated: true,
             send_away_reply: false,
+            is_notice: true,
+            strip_colors: true,
+            block_ctcp: true,
         };
 
         if is_channel(target) {
