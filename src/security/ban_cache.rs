@@ -55,6 +55,12 @@ impl BanType {
     }
 }
 
+impl std::fmt::Display for BanType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// In-memory cache of active bans for fast lookup.
 ///
 /// All ban types are stored in DashMaps keyed by their mask pattern.
@@ -223,7 +229,6 @@ impl BanCache {
     /// Check if a user@host is banned (G-line or K-line).
     ///
     /// Called after USER command when we have the full user@host.
-    #[allow(dead_code)] // Phase 2.5: Will be called during registration
     pub fn check_user_host(&self, user: &str, host: &str) -> Option<BanResult> {
         let user_host = format!("{}@{}", user, host);
 
