@@ -26,7 +26,13 @@ const SUPPORTED_CAPS: &[&str] = &[
     "chghost",
     "monitor",
     "cap-notify",
+    "draft/multiline",
 ];
+
+/// Maximum bytes allowed in a multiline batch message.
+const MULTILINE_MAX_BYTES: u32 = 40000;
+/// Maximum lines allowed in a multiline batch.
+const MULTILINE_MAX_LINES: u32 = 100;
 
 /// Handler for CAP command.
 pub struct CapHandler;
@@ -230,6 +236,12 @@ fn build_cap_list(version: u32, has_cert: bool) -> String {
                         } else {
                             "sasl=PLAIN".to_string()
                         }
+                    }
+                    "draft/multiline" => {
+                        format!(
+                            "draft/multiline=max-bytes={},max-lines={}",
+                            MULTILINE_MAX_BYTES, MULTILINE_MAX_LINES
+                        )
                     }
                     _ => cap.to_string(),
                 }

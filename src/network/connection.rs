@@ -24,7 +24,7 @@
 //! ```
 
 use crate::db::Database;
-use crate::handlers::{Context, HandshakeState, Registry, cleanup_monitors, notify_monitors_offline};
+use crate::handlers::{Context, HandshakeState, Registry, cleanup_monitors, notify_monitors_offline, process_batch_message};
 use crate::state::Matrix;
 use slirc_proto::error::ProtocolError;
 use slirc_proto::transport::{TransportReadError, ZeroCopyTransportEnum};
@@ -376,6 +376,30 @@ impl Connection {
                             }
 
                             debug!(raw = ?msg_ref, "Received message (zero-copy)");
+
+                            // Check if message should be absorbed into an active batch
+                            // (draft/multiline: PRIVMSG/NOTICE with batch=ref tag)
+                            match process_batch_message(&mut handshake, &msg_ref, &self.matrix.server_info.name) {
+                                Ok(Some(_batch_ref)) => {
+                                    // Message was consumed by the batch, don't dispatch
+                                    debug!("Message absorbed into active batch");
+                                    continue;
+                                }
+                                Ok(None) => {
+                                    // Not a batch message, proceed with normal dispatch
+                                }
+                                Err(fail_msg) => {
+                                    // Batch error - send FAIL and abort the batch
+                                    warn!(error = %fail_msg, "Batch processing error");
+                                    handshake.active_batch = None;
+                                    handshake.active_batch_ref = None;
+                                    // Parse and send the FAIL message
+                                    if let Ok(fail) = fail_msg.parse::<Message>() {
+                                        let _ = outgoing_tx.send(fail).await;
+                                    }
+                                    continue;
+                                }
+                            }
 
                             // Extract label tag for labeled-response (IRCv3)
                             let label = if handshake.capabilities.contains("labeled-response") {

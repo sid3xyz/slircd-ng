@@ -3,6 +3,7 @@
 use super::super::common::{BanType, disconnect_matching_ban};
 use crate::handlers::{err_needmoreparams, require_oper, server_notice, Context, Handler, HandlerResult};
 use async_trait::async_trait;
+use ipnet::IpNet;
 use slirc_proto::MessageRef;
 
 /// Handler for ZLINE command.
@@ -33,12 +34,32 @@ impl Handler for ZlineHandler {
         };
         let reason = msg.arg(1).unwrap_or("No reason given");
 
-        // Store Z-line in database
+        // Parse IP/CIDR for the high-performance deny list
+        let ip_net: Option<IpNet> = ip.parse().ok().or_else(|| {
+            // Try parsing as single IP and convert to /32 or /128
+            ip.parse::<std::net::IpAddr>().ok().map(|addr| match addr {
+                std::net::IpAddr::V4(v4) => IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
+                std::net::IpAddr::V6(v6) => IpNet::V6(ipnet::Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
+            })
+        });
+
+        // Add to high-performance IP deny list (Roaring Bitmap)
+        if let Some(net) = ip_net {
+            if let Ok(mut deny_list) = ctx.matrix.ip_deny_list.write()
+                && let Err(e) = deny_list.add_ban(net, reason.to_string(), None, nick.clone())
+            {
+                tracing::error!(error = %e, "Failed to add Z-line to IP deny list");
+            }
+        } else {
+            tracing::warn!(ip = %ip, "Z-line IP could not be parsed as IP/CIDR");
+        }
+
+        // Store Z-line in database (audit trail)
         if let Err(e) = ctx.db.bans().add_zline(ip, Some(reason), &nick, None).await {
             tracing::error!(error = %e, "Failed to add Z-line to database");
         }
 
-        // Update in-memory cache for immediate effect
+        // Update legacy ban cache for backward compatibility
         ctx.matrix.ban_cache.add_zline(
             ip.to_string(),
             reason.to_string(),
@@ -95,8 +116,27 @@ impl Handler for UnzlineHandler {
             }
         };
 
+        // Parse IP/CIDR for the high-performance deny list
+        let ip_net: Option<IpNet> = ip.parse().ok().or_else(|| {
+            ip.parse::<std::net::IpAddr>().ok().map(|addr| match addr {
+                std::net::IpAddr::V4(v4) => IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
+                std::net::IpAddr::V6(v6) => IpNet::V6(ipnet::Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
+            })
+        });
+
+        // Remove from high-performance IP deny list
+        let deny_removed = if let Some(net) = ip_net {
+            if let Ok(mut deny_list) = ctx.matrix.ip_deny_list.write() {
+                deny_list.remove_ban(net).unwrap_or(false)
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
         // Remove Z-line from database
-        let removed = match ctx.db.bans().remove_zline(ip).await {
+        let db_removed = match ctx.db.bans().remove_zline(ip).await {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!(error = %e, "Failed to remove Z-line from database");
@@ -104,9 +144,10 @@ impl Handler for UnzlineHandler {
             }
         };
 
-        // Remove from in-memory cache
+        // Remove from legacy ban cache
         ctx.matrix.ban_cache.remove_zline(ip);
 
+        let removed = deny_removed || db_removed;
         if removed {
             tracing::info!(oper = %nick, ip = %ip, "UNZLINE removed");
         }

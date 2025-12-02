@@ -1,5 +1,6 @@
 //! NickServ command handlers.
 
+pub mod cert;
 pub mod register;
 pub mod identify;
 pub mod drop;
@@ -130,6 +131,17 @@ impl NickServ {
                 )
                 .await
             }
+            "CERT" => {
+                cert::handle_cert(
+                    &self.db,
+                    matrix,
+                    uid,
+                    args,
+                    |u, t| self.reply_effect(u, t),
+                    |u, ts| self.reply_effects(u, ts),
+                )
+                .await
+            }
             "HELP" => self.help_reply(uid),
             _ => self.unknown_command(uid, &command),
         }
@@ -198,6 +210,10 @@ impl NickServ {
             self.reply_effect(
                 uid,
                 "  \x02SET\x02 <option> <value>        - Configure account settings",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02CERT\x02 <ADD|DEL|LIST>         - Manage TLS certificate",
             ),
             self.reply_effect(
                 uid,

@@ -418,14 +418,58 @@ impl<'a> AccountRepository<'a> {
     ///
     /// Returns None if no account has this certificate registered.
     /// Certificate fingerprints are SHA-256 hashes in hex format.
+    pub async fn find_by_certfp(&self, certfp: &str) -> Result<Option<Account>, DbError> {
+        let row = sqlx::query_as::<_, (i64, String, Option<String>, i64, i64, bool, bool)>(
+            r#"
+            SELECT id, name, email, registered_at, last_seen_at, enforce, hide_email
+            FROM accounts
+            WHERE certfp = ? COLLATE NOCASE
+            "#,
+        )
+        .bind(certfp)
+        .fetch_optional(self.pool)
+        .await?;
+
+        Ok(row.map(
+            |(id, name, email, registered_at, last_seen_at, enforce, hide_email)| Account {
+                id,
+                name,
+                email,
+                registered_at,
+                last_seen_at,
+                enforce,
+                hide_email,
+            },
+        ))
+    }
+
+    /// Get the certificate fingerprint for an account.
+    pub async fn get_certfp(&self, account_id: i64) -> Result<Option<String>, DbError> {
+        let certfp = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT certfp FROM accounts WHERE id = ?",
+        )
+        .bind(account_id)
+        .fetch_one(self.pool)
+        .await?;
+
+        Ok(certfp)
+    }
+
+    /// Set or clear the certificate fingerprint for an account.
     ///
-    /// TODO: Implement when account_certfps table is added.
-    /// For now, returns None as cert storage is not yet implemented.
-    pub async fn find_by_certfp(&self, _certfp: &str) -> Result<Option<Account>, DbError> {
-        // Future implementation:
-        // SELECT account_id FROM account_certfps WHERE fingerprint = ? COLLATE NOCASE
-        // Then find_by_id(account_id)
-        Ok(None)
+    /// Pass `None` to remove the certificate.
+    pub async fn set_certfp(
+        &self,
+        account_id: i64,
+        certfp: Option<&str>,
+    ) -> Result<(), DbError> {
+        sqlx::query("UPDATE accounts SET certfp = ? WHERE id = ?")
+            .bind(certfp)
+            .bind(account_id)
+            .execute(self.pool)
+            .await?;
+
+        Ok(())
     }
 }
 

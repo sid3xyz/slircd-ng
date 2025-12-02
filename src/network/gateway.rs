@@ -122,6 +122,16 @@ impl Gateway {
                 loop {
                     match tls_listener.accept().await {
                         Ok((stream, addr)) => {
+                            // HOT PATH: Nanosecond-scale IP denial check (Roaring Bitmap)
+                            // This runs BEFORE any other checks for maximum efficiency
+                            if let Ok(deny_list) = matrix_tls.ip_deny_list.read()
+                                && let Some(reason) = deny_list.check_ip(&addr.ip())
+                            {
+                                info!(%addr, %reason, "TLS connection rejected by IP deny list");
+                                drop(stream);
+                                continue;
+                            }
+
                             // Check connection rate limit before accepting
                             if !matrix_tls.rate_limiter.check_connection_rate(addr.ip()) {
                                 warn!(%addr, "TLS connection rate limit exceeded - rejecting");
@@ -191,6 +201,16 @@ impl Gateway {
                 loop {
                     match ws_listener.accept().await {
                         Ok((stream, addr)) => {
+                            // HOT PATH: Nanosecond-scale IP denial check (Roaring Bitmap)
+                            // This runs BEFORE any other checks for maximum efficiency
+                            if let Ok(deny_list) = matrix_ws.ip_deny_list.read()
+                                && let Some(reason) = deny_list.check_ip(&addr.ip())
+                            {
+                                info!(%addr, %reason, "WebSocket connection rejected by IP deny list");
+                                drop(stream);
+                                continue;
+                            }
+
                             // Check connection rate limit before accepting
                             if !matrix_ws.rate_limiter.check_connection_rate(addr.ip()) {
                                 warn!(%addr, "WebSocket connection rate limit exceeded - rejecting");
@@ -278,6 +298,16 @@ impl Gateway {
         loop {
             match self.plaintext_listener.accept().await {
                 Ok((stream, addr)) => {
+                    // HOT PATH: Nanosecond-scale IP denial check (Roaring Bitmap)
+                    // This runs BEFORE any other checks for maximum efficiency
+                    if let Ok(deny_list) = matrix.ip_deny_list.read()
+                        && let Some(reason) = deny_list.check_ip(&addr.ip())
+                    {
+                        info!(%addr, %reason, "Plaintext connection rejected by IP deny list");
+                        drop(stream);
+                        continue;
+                    }
+
                     // Check connection rate limit before accepting
                     if !matrix.rate_limiter.check_connection_rate(addr.ip()) {
                         warn!(%addr, "Plaintext connection rate limit exceeded - rejecting");

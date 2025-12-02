@@ -22,6 +22,8 @@ pub struct User {
     pub away: Option<String>,
     /// IRCv3 capabilities negotiated by this client.
     pub caps: HashSet<String>,
+    /// TLS certificate fingerprint (SHA-256 hex) if client presented one.
+    pub certfp: Option<String>,
 }
 
 /// User modes.
@@ -66,6 +68,7 @@ impl User {
     ///
     /// The `host` is cloaked using HMAC-SHA256 with the provided secret.
     /// `caps` is the set of IRCv3 capabilities negotiated during handshake.
+    /// `certfp` is the TLS client certificate fingerprint, if any.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         uid: String,
@@ -76,6 +79,7 @@ impl User {
         cloak_secret: &str,
         cloak_suffix: &str,
         caps: HashSet<String>,
+        certfp: Option<String>,
     ) -> Self {
         // Try to parse as IP for proper cloaking, fall back to hostname cloaking
         let visible_host = if let Ok(ip) = host.parse::<std::net::IpAddr>() {
@@ -95,6 +99,7 @@ impl User {
             account: None,
             away: None,
             caps,
+            certfp,
         }
     }
 }

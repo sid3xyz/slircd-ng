@@ -11,6 +11,7 @@
 
 mod admin;
 mod bans;
+mod batch;
 mod cap;
 mod channel;
 mod chathistory;
@@ -37,6 +38,7 @@ pub use bans::{
     DlineHandler, GlineHandler, KlineHandler, RlineHandler, ShunHandler, UndlineHandler,
     UnglineHandler, UnklineHandler, UnrlineHandler, UnshunHandler, UnzlineHandler, ZlineHandler,
 };
+pub use batch::{BatchHandler, BatchState, process_batch_message};
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
 pub use channel::{InviteHandler, JoinHandler, KickHandler, KnockHandler, NamesHandler, PartHandler, TopicHandler};
 pub use chathistory::ChatHistoryHandler;
@@ -120,6 +122,10 @@ pub struct HandshakeState {
     pub webirc_ip: Option<String>,
     /// Real hostname from WEBIRC (overrides reverse DNS).
     pub webirc_host: Option<String>,
+    /// Active batch state for client-to-server batches (e.g., draft/multiline).
+    pub active_batch: Option<BatchState>,
+    /// Reference tag for the active batch.
+    pub active_batch_ref: Option<String>,
 }
 
 impl HandshakeState {
@@ -238,6 +244,9 @@ impl Registry {
         handlers.insert("SETNAME", Box::new(SetnameHandler));
         handlers.insert("MONITOR", Box::new(MonitorHandler));
         handlers.insert("CHATHISTORY", Box::new(ChatHistoryHandler));
+
+        // Batch handler for IRCv3 message batching (draft/multiline)
+        handlers.insert("BATCH", Box::new(BatchHandler));
 
         // Service aliases
         handlers.insert("NICKSERV", Box::new(NsHandler));

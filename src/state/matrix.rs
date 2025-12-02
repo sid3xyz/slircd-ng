@@ -8,7 +8,7 @@ use super::user::{User, WhowasEntry};
 
 use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
 use crate::db::{Dline, Gline, Kline, Shun, Zline};
-use crate::security::{BanCache, RateLimitManager};
+use crate::security::{BanCache, IpDenyList, RateLimitManager};
 use crate::state::UidGenerator;
 use dashmap::{DashMap, DashSet};
 use slirc_proto::Message;
@@ -85,6 +85,10 @@ pub struct Matrix {
 
     /// In-memory ban cache for fast connection-time ban checks.
     pub ban_cache: BanCache,
+
+    /// High-performance IP deny list (Roaring Bitmap engine).
+    /// Used for nanosecond-scale IP rejection in the gateway accept loop.
+    pub ip_deny_list: std::sync::RwLock<IpDenyList>,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -124,14 +128,17 @@ impl Matrix {
     ///
     /// # Arguments
     /// - `config`: Server configuration
+    /// - `data_dir`: Directory for data files (IP deny list, etc.)
     /// - `registered_channels`: Channel names registered with ChanServ (stored lowercase)
     /// - `shuns`: Active shuns loaded from database
     /// - `klines`: Active K-lines loaded from database
     /// - `dlines`: Active D-lines loaded from database
     /// - `glines`: Active G-lines loaded from database
     /// - `zlines`: Active Z-lines loaded from database
+    #[allow(clippy::too_many_arguments)] // Startup initialization requires many data sources
     pub fn new(
         config: &Config,
+        data_dir: Option<&std::path::Path>,
         registered_channels: Vec<String>,
         shuns: Vec<Shun>,
         klines: Vec<Kline>,
@@ -157,6 +164,12 @@ impl Matrix {
 
         // Build the ban cache
         let ban_cache = BanCache::load(klines, dlines, glines, zlines);
+
+        // Load IP deny list from data directory
+        let ip_deny_path = data_dir
+            .map(|d| d.join("ip_bans.msgpack"))
+            .unwrap_or_else(|| std::path::PathBuf::from("ip_bans.msgpack"));
+        let ip_deny_list = IpDenyList::load(&ip_deny_path);
 
         Self {
             users: DashMap::new(),
@@ -190,6 +203,7 @@ impl Matrix {
             monitors: DashMap::new(),
             monitoring: DashMap::new(),
             ban_cache,
+            ip_deny_list: std::sync::RwLock::new(ip_deny_list),
         }
     }
 
