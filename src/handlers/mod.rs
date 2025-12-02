@@ -46,10 +46,10 @@ pub use connection::{
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
 pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
 pub use monitor::{MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online};
-pub use oper::{ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, TraceHandler, WallopsHandler};
+pub use oper::{ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, RestartHandler, TraceHandler, WallopsHandler};
 pub use server_query::{
-    AdminHandler, InfoHandler, LinksHandler, ListHandler, LusersHandler, MapHandler, MotdHandler,
-    RulesHandler, StatsHandler, TimeHandler, UseripHandler, VersionHandler,
+    AdminHandler, HelpHandler, InfoHandler, LinksHandler, ListHandler, LusersHandler, MapHandler, MotdHandler,
+    RulesHandler, ServiceHandler, ServlistHandler, SqueryHandler, StatsHandler, TimeHandler, UseripHandler, VersionHandler,
 };
 pub use service_aliases::{CsHandler, NsHandler};
 pub use user_query::{IsonHandler, UserhostHandler, WhoHandler, WhoisHandler, WhowasHandler};
@@ -107,6 +107,9 @@ pub struct HandshakeState {
     pub account: Option<String>,
     /// Whether this is a TLS connection.
     pub is_tls: bool,
+    /// TLS client certificate fingerprint (SHA-256, hex-encoded).
+    /// Set by the network layer when a client presents a certificate.
+    pub certfp: Option<String>,
     /// Failed OPER attempts counter (brute-force protection).
     pub failed_oper_attempts: u8,
     /// Timestamp of last OPER attempt (for rate limiting).
@@ -220,6 +223,12 @@ impl Registry {
         handlers.insert("RULES", Box::new(RulesHandler));
         handlers.insert("USERIP", Box::new(UseripHandler));
         handlers.insert("LINKS", Box::new(LinksHandler));
+        handlers.insert("HELP", Box::new(HelpHandler));
+
+        // Service query handlers (RFC 2812 §3.5)
+        handlers.insert("SERVICE", Box::new(ServiceHandler));
+        handlers.insert("SERVLIST", Box::new(ServlistHandler));
+        handlers.insert("SQUERY", Box::new(SqueryHandler));
 
         // Misc handlers
         handlers.insert("AWAY", Box::new(AwayHandler));
@@ -242,6 +251,7 @@ impl Registry {
         handlers.insert("WALLOPS", Box::new(WallopsHandler));
         handlers.insert("DIE", Box::new(DieHandler));
         handlers.insert("REHASH", Box::new(RehashHandler));
+        handlers.insert("RESTART", Box::new(RestartHandler));
         handlers.insert("CHGHOST", Box::new(ChghostHandler));
         handlers.insert("TRACE", Box::new(TraceHandler));
 
@@ -314,6 +324,37 @@ pub async fn get_nick_or_star(ctx: &Context<'_>) -> String {
     }
 }
 
+/// Get nick and user from handshake state.
+///
+/// Returns `Ok((nick, user))` if both are set, `Err(HandlerError::NickOrUserMissing)` otherwise.
+/// Use this in handlers that require registration to be complete.
+#[inline]
+#[allow(clippy::result_large_err)]
+pub fn get_nick_user<'a>(ctx: &'a Context<'_>) -> Result<(&'a str, &'a str), HandlerError> {
+    let nick = ctx.handshake.nick.as_deref().ok_or(HandlerError::NickOrUserMissing)?;
+    let user = ctx.handshake.user.as_deref().ok_or(HandlerError::NickOrUserMissing)?;
+    Ok((nick, user))
+}
+
+/// Check registration and get nick/user in one call.
+///
+/// Returns `Err(HandlerError::NotRegistered)` if not registered,
+/// `Err(HandlerError::NickOrUserMissing)` if nick/user missing (bug),
+/// or `Ok((nick, user))` on success.
+///
+/// This is the recommended way to start post-registration handlers:
+/// ```ignore
+/// let (nick, user) = require_registered(ctx)?;
+/// ```
+#[inline]
+#[allow(clippy::result_large_err)]
+pub fn require_registered<'a>(ctx: &'a Context<'_>) -> Result<(&'a str, &'a str), HandlerError> {
+    if !ctx.handshake.registered {
+        return Err(HandlerError::NotRegistered);
+    }
+    get_nick_user(ctx)
+}
+
 /// Get the current user's nick and oper status. Returns None if user not found.
 pub async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
     let user_ref = ctx.matrix.users.get(ctx.uid)?;
@@ -338,3 +379,4 @@ pub async fn require_oper(ctx: &mut Context<'_>) -> Result<String, ()> {
 
     Ok(nick)
 }
+

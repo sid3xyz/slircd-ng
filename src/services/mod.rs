@@ -89,6 +89,40 @@ pub enum ServiceEffect {
     },
 }
 
+use crate::db::Database;
+
+/// Unified service message router.
+///
+/// Routes PRIVMSG/SQUERY to NickServ or ChanServ based on target.
+/// Returns true if the message was handled by a service.
+pub async fn route_service_message(
+    matrix: &Arc<Matrix>,
+    db: &Database,
+    uid: &str,
+    nick: &str,
+    target: &str,
+    text: &str,
+    sender: &mpsc::Sender<Message>,
+) -> bool {
+    let target_lower = irc_to_lower(target);
+
+    match target_lower.as_str() {
+        "nickserv" | "ns" => {
+            let ns = nickserv::NickServ::new(db.clone());
+            let effects = ns.handle(matrix, uid, nick, text).await;
+            apply_effects(matrix, nick, sender, effects).await;
+            true
+        }
+        "chanserv" | "cs" => {
+            let cs = chanserv::ChanServ::new(db.clone());
+            let effects = cs.handle(matrix, uid, nick, text).await;
+            apply_effects(matrix, nick, sender, effects).await;
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Apply a list of service effects sequentially.
 ///
 /// Convenience wrapper for applying multiple effects in one go.

@@ -408,6 +408,34 @@ impl Handler for RehashHandler {
     }
 }
 
+/// Handler for RESTART command.
+///
+/// RESTART
+/// Restarts the server. Requires operator privileges.
+pub struct RestartHandler;
+
+#[async_trait]
+impl Handler for RestartHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+        let server_name = &ctx.matrix.server_info.name;
+
+        let Ok(nick) = require_oper(ctx).await else {
+            return Ok(());
+        };
+
+        // TODO: Implement actual restart (e.g., exec() to re-run process)
+        ctx.sender.send(server_notice(
+            server_name,
+            &nick,
+            "RESTART command received (not implemented - use process supervisor)",
+        )).await?;
+
+        tracing::warn!(oper = %nick, "RESTART command received (stub)");
+
+        Ok(())
+    }
+}
+
 /// Handler for CHGHOST command.
 ///
 /// `CHGHOST <nick> <new_user> <new_host>`

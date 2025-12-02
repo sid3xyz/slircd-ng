@@ -1,6 +1,6 @@
 //! TOPIC command handler.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, err_notonchannel, server_reply, user_prefix};
+use super::super::{Context, Handler, HandlerError, HandlerResult, err_notonchannel, require_registered, server_reply, user_prefix};
 use crate::state::Topic;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
@@ -12,24 +12,12 @@ pub struct TopicHandler;
 #[async_trait]
 impl Handler for TopicHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            return Err(HandlerError::NotRegistered);
-        }
+        let (nick, user_name) = require_registered(ctx)?;
 
         // TOPIC <channel> [new_topic]
         let channel_name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let new_topic = msg.arg(1);
 
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
-        let user_name = ctx
-            .handshake
-            .user
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
         let channel_lower = irc_to_lower(channel_name);
 
         // Get channel
