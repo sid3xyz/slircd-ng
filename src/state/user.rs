@@ -27,11 +27,12 @@ pub struct User {
 /// User modes.
 #[derive(Debug, Default, Clone)]
 pub struct UserModes {
-    pub invisible: bool,  // +i
-    pub wallops: bool,    // +w
-    pub oper: bool,       // +o (IRC operator)
-    pub registered: bool, // +r (identified to NickServ)
-    pub secure: bool,     // +Z (TLS connection)
+    pub invisible: bool,       // +i
+    pub wallops: bool,         // +w
+    pub oper: bool,            // +o (IRC operator)
+    pub registered: bool,      // +r (identified to NickServ)
+    pub secure: bool,          // +Z (TLS connection)
+    pub registered_only: bool, // +R (only registered users can PM)
 }
 
 impl UserModes {
@@ -52,6 +53,9 @@ impl UserModes {
         }
         if self.secure {
             s.push('Z');
+        }
+        if self.registered_only {
+            s.push('R');
         }
         if s == "+" { "+".to_string() } else { s }
     }
