@@ -1,10 +1,10 @@
 //! Security module for slircd-ng.
 //!
 //! Provides core security features:
-//! - **Ban Cache**: In-memory cache for fast connection-time ban checks
+//! - **Ban Cache**: In-memory cache for fast connection-time ban checks (K/G/Z/D-lines)
 //! - **Cloaking**: HMAC-SHA256 based IP/hostname privacy protection
 //! - **Rate Limiting**: Governor-based flood protection for messages, connections, joins
-//! - **X-Lines**: Extended ban types (K/G/Z/R/S-lines) for server-level moderation
+//! - **Extended Bans**: Pattern matching beyond nick!user@host for channel bans
 //! - **Spam Detection**: Multi-layer content analysis for spam prevention
 //!
 //! # Architecture
@@ -13,9 +13,9 @@
 //! ┌───────────────────────────────────────────────────────────────────┐
 //! │                       Security Module                            │
 //! ├──────────┬─────────────┬────────────────┬──────────────┬─────────┤
-//! │ BanCache │  Cloaking   │ Rate Limiting  │   X-Lines    │  Spam   │
-//! │ DashMap  │ HMAC-SHA256 │   Governor     │ K/G/Z/R/S    │ Entropy │
-//! │ K/D/G/Z  │ IP+Hostname │ Token Bucket   │ ExtendedBans │ URL/Rep │
+//! │ BanCache │  Cloaking   │ Rate Limiting  │ ExtendedBans │  Spam   │
+//! │ DashMap  │ HMAC-SHA256 │   Governor     │ $a:/$r:/$U   │ Entropy │
+//! │ K/D/G/Z  │ IP+Hostname │ Token Bucket   │ Channel +b   │ URL/Rep │
 //! └──────────┴─────────────┴────────────────┴──────────────┴─────────┘
 //! ```
 
@@ -32,4 +32,4 @@ pub use ban_cache::{BanResult, BanType};
 #[allow(unused_imports)]
 pub use cloaking::{cloak_hostname, cloak_ip_hmac};
 pub use rate_limit::RateLimitManager;
-pub use xlines::{ExtendedBan, UserContext, XLine, matches_extended_ban, matches_xline};
+pub use xlines::{ExtendedBan, UserContext, matches_extended_ban};

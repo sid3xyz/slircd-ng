@@ -190,7 +190,7 @@ async fn main() -> anyhow::Result<()> {
     }
     info!("Shun expiry cleanup task started");
 
-    // Start ban cache pruning task (runs every 5 minutes)
+    // Start ban cache and rate limiter pruning task (runs every 5 minutes)
     {
         let matrix = Arc::clone(&matrix);
         tokio::spawn(async move {
@@ -201,10 +201,12 @@ async fn main() -> anyhow::Result<()> {
                 if removed > 0 {
                     info!(removed = removed, "Expired bans pruned from cache");
                 }
+                // Cleanup rate limiters (connection_limiters keyed by IP grow unbounded)
+                matrix.rate_limiter.cleanup();
             }
         });
     }
-    info!("Ban cache pruning task started");
+    info!("Ban cache and rate limiter pruning task started");
 
     // Start message history pruning task (runs daily, retains 30 days)
     {

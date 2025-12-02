@@ -92,44 +92,6 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         return Err(HandlerError::NotRegistered);
     }
 
-    // Check in-memory X-lines (for real-time updates without DB query)
-    let user_context = crate::security::UserContext::for_registration(
-        ctx.remote_addr.ip(),
-        host.clone(),
-        nick.clone(),
-        user.clone(),
-        realname.clone(),
-        server_name.clone(),
-        ctx.handshake.account.clone(),
-    );
-
-    for xline_entry in ctx.matrix.xlines.iter() {
-        if crate::security::matches_xline(xline_entry.value(), &user_context) {
-            let xline = xline_entry.value();
-            let ban_reason = format!("{}: {}", xline.type_name(), xline.reason());
-
-            let reply = server_reply(
-                server_name,
-                Response::ERR_YOUREBANNEDCREEP,
-                vec![
-                    nick.clone(),
-                    format!("You are banned from this server: {}", ban_reason),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-
-            let error = Message::from(Command::ERROR(format!(
-                "Closing Link: {} ({})",
-                host, ban_reason
-            )));
-            ctx.sender.send(error).await?;
-
-            crate::metrics::XLINES_ENFORCED.inc();
-
-            return Err(HandlerError::NotRegistered);
-        }
-    }
-
     ctx.handshake.registered = true;
 
     // Create user in Matrix with cloaking from security config
