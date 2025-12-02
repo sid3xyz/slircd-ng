@@ -130,8 +130,11 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Create the Matrix (shared state)
+    // Use database directory for data files (IP deny list, etc.)
+    let data_dir = std::path::Path::new(db_path).parent();
     let matrix = Arc::new(Matrix::new(
         &config,
+        data_dir,
         registered_channels,
         active_shuns,
         active_klines,

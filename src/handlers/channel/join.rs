@@ -341,6 +341,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             &security_config.cloak_secret,
             &security_config.cloak_suffix,
             ctx.handshake.capabilities.clone(),
+            ctx.handshake.certfp.clone(),
         );
         let user = Arc::new(RwLock::new(user));
         ctx.matrix.users.insert(ctx.uid.to_string(), user.clone());

@@ -105,6 +105,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         &security_config.cloak_secret,
         &security_config.cloak_suffix,
         ctx.handshake.capabilities.clone(),
+        ctx.handshake.certfp.clone(),
     );
 
     // Set account and +r if authenticated via SASL
