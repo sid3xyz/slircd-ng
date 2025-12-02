@@ -129,6 +129,18 @@ impl Gateway {
                                 continue;
                             }
 
+                            // Check IP bans (Z-lines and D-lines)
+                            if let Some(ban) = matrix_tls.ban_cache.check_ip(&addr.ip()) {
+                                warn!(
+                                    %addr,
+                                    ban_type = ban.ban_type.name(),
+                                    reason = %ban.reason,
+                                    "TLS connection rejected - IP banned"
+                                );
+                                drop(stream);
+                                continue;
+                            }
+
                             info!(%addr, "TLS connection accepted");
 
                             let matrix = Arc::clone(&matrix_tls);
@@ -182,6 +194,18 @@ impl Gateway {
                             // Check connection rate limit before accepting
                             if !matrix_ws.rate_limiter.check_connection_rate(addr.ip()) {
                                 warn!(%addr, "WebSocket connection rate limit exceeded - rejecting");
+                                drop(stream);
+                                continue;
+                            }
+
+                            // Check IP bans (Z-lines and D-lines)
+                            if let Some(ban) = matrix_ws.ban_cache.check_ip(&addr.ip()) {
+                                warn!(
+                                    %addr,
+                                    ban_type = ban.ban_type.name(),
+                                    reason = %ban.reason,
+                                    "WebSocket connection rejected - IP banned"
+                                );
                                 drop(stream);
                                 continue;
                             }
@@ -257,6 +281,18 @@ impl Gateway {
                     // Check connection rate limit before accepting
                     if !matrix.rate_limiter.check_connection_rate(addr.ip()) {
                         warn!(%addr, "Plaintext connection rate limit exceeded - rejecting");
+                        drop(stream);
+                        continue;
+                    }
+
+                    // Check IP bans (Z-lines and D-lines)
+                    if let Some(ban) = matrix.ban_cache.check_ip(&addr.ip()) {
+                        warn!(
+                            %addr,
+                            ban_type = ban.ban_type.name(),
+                            reason = %ban.reason,
+                            "Plaintext connection rejected - IP banned"
+                        );
                         drop(stream);
                         continue;
                     }

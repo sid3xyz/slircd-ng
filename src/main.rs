@@ -88,8 +88,57 @@ async fn main() -> anyhow::Result<()> {
         });
     info!(count = active_shuns.len(), "Loaded active shuns");
 
+    // Load active bans from database for connection-time checks
+    let active_klines = db
+        .bans()
+        .get_active_klines()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "Failed to load K-lines from database");
+            Vec::new()
+        });
+    let active_dlines = db
+        .bans()
+        .get_active_dlines()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "Failed to load D-lines from database");
+            Vec::new()
+        });
+    let active_glines = db
+        .bans()
+        .get_active_glines()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "Failed to load G-lines from database");
+            Vec::new()
+        });
+    let active_zlines = db
+        .bans()
+        .get_active_zlines()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "Failed to load Z-lines from database");
+            Vec::new()
+        });
+    info!(
+        klines = active_klines.len(),
+        dlines = active_dlines.len(),
+        glines = active_glines.len(),
+        zlines = active_zlines.len(),
+        "Loaded active bans into cache"
+    );
+
     // Create the Matrix (shared state)
-    let matrix = Arc::new(Matrix::new(&config, registered_channels, active_shuns));
+    let matrix = Arc::new(Matrix::new(
+        &config,
+        registered_channels,
+        active_shuns,
+        active_klines,
+        active_dlines,
+        active_glines,
+        active_zlines,
+    ));
 
     // Initialize Prometheus metrics
     metrics::init();
