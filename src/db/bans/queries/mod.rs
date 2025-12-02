@@ -44,6 +44,11 @@ impl<'a> BanRepository<'a> {
         kline::matches_kline(self.pool, user_host).await
     }
 
+    /// Get all active K-lines (not expired).
+    pub async fn get_active_klines(&self) -> Result<Vec<super::models::Kline>, DbError> {
+        kline::get_active_klines(self.pool).await
+    }
+
     // ========== D-line operations ==========
 
     /// Add a D-line.
@@ -92,6 +97,11 @@ impl<'a> BanRepository<'a> {
         gline::matches_gline(self.pool, user_host).await
     }
 
+    /// Get all active G-lines (not expired).
+    pub async fn get_active_glines(&self) -> Result<Vec<super::models::Gline>, DbError> {
+        gline::get_active_glines(self.pool).await
+    }
+
     // ========== Z-line operations ==========
 
     /// Add a Z-line.
@@ -115,6 +125,11 @@ impl<'a> BanRepository<'a> {
     /// Check if an IP matches any active Z-line.
     pub async fn matches_zline(&self, ip: &str) -> Result<Option<super::models::Zline>, DbError> {
         zline::matches_zline(self.pool, ip).await
+    }
+
+    /// Get all active Z-lines (not expired).
+    pub async fn get_active_zlines(&self) -> Result<Vec<super::models::Zline>, DbError> {
+        zline::get_active_zlines(self.pool).await
     }
 
     // ========== R-line operations ==========
