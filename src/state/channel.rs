@@ -35,12 +35,26 @@ pub struct ChannelModes {
     pub registered_only: bool, // +r
     pub key: Option<String>,   // +k
     pub limit: Option<u32>,    // +l
+    // Advanced channel protection modes
+    /// +f - Flood protection: (max_lines, window_seconds)
+    /// Kicks users who send more than max_lines in window_seconds
+    pub flood_limit: Option<(u32, u32)>,
+    /// +L - Channel redirect target when +l limit is reached
+    pub redirect: Option<String>,
+    /// +j - Join throttle: (max_joins, window_seconds)
+    /// Limits joins to max_joins per window_seconds
+    pub join_throttle: Option<(u32, u32)>,
+    /// +J - Join delay in seconds before user can speak
+    pub join_delay: Option<u32>,
 }
 
 impl ChannelModes {
     /// Convert modes to a string like "+nt".
+    /// Also returns mode parameters in order.
     pub fn as_mode_string(&self) -> String {
         let mut s = String::from("+");
+        let mut params = Vec::new();
+
         if self.invite_only {
             s.push('i');
         }
@@ -62,10 +76,34 @@ impl ChannelModes {
         if self.key.is_some() {
             s.push('k');
         }
-        if self.limit.is_some() {
+        if let Some(limit) = self.limit {
             s.push('l');
+            params.push(limit.to_string());
         }
-        if s == "+" { "+".to_string() } else { s }
+        if let Some((lines, secs)) = self.flood_limit {
+            s.push('f');
+            params.push(format!("{}:{}", lines, secs));
+        }
+        if let Some(ref target) = self.redirect {
+            s.push('L');
+            params.push(target.clone());
+        }
+        if let Some((count, secs)) = self.join_throttle {
+            s.push('j');
+            params.push(format!("{}:{}", count, secs));
+        }
+        if let Some(delay) = self.join_delay {
+            s.push('J');
+            params.push(delay.to_string());
+        }
+
+        if s == "+" {
+            "+".to_string()
+        } else if params.is_empty() {
+            s
+        } else {
+            format!("{} {}", s, params.join(" "))
+        }
     }
 }
 
@@ -90,6 +128,8 @@ pub struct Topic {
 pub struct MemberModes {
     pub op: bool,    // +o
     pub voice: bool, // +v
+    /// Timestamp when user joined the channel (for +J enforcement)
+    pub join_time: Option<i64>,
 }
 
 impl MemberModes {
