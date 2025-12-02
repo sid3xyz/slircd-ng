@@ -5,5 +5,5 @@
 pub mod models;
 pub mod queries;
 
-pub use models::{ChannelAccess, ChannelAkick, ChannelRecord};
+pub use models::{ChannelAkick, ChannelRecord};
 pub use queries::ChannelRepository;
