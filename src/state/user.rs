@@ -20,6 +20,8 @@ pub struct User {
     pub account: Option<String>,
     /// Away message if user is marked away (RFC 2812).
     pub away: Option<String>,
+    /// IRCv3 capabilities negotiated by this client.
+    pub caps: HashSet<String>,
 }
 
 /// User modes.
@@ -59,6 +61,8 @@ impl User {
     /// Create a new user.
     ///
     /// The `host` is cloaked using HMAC-SHA256 with the provided secret.
+    /// `caps` is the set of IRCv3 capabilities negotiated during handshake.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         uid: String,
         nick: String,
@@ -67,6 +71,7 @@ impl User {
         host: String,
         cloak_secret: &str,
         cloak_suffix: &str,
+        caps: HashSet<String>,
     ) -> Self {
         // Try to parse as IP for proper cloaking, fall back to hostname cloaking
         let visible_host = if let Ok(ip) = host.parse::<std::net::IpAddr>() {
@@ -85,6 +90,7 @@ impl User {
             modes: UserModes::default(),
             account: None,
             away: None,
+            caps,
         }
     }
 }

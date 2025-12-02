@@ -53,7 +53,7 @@ impl Handler for AwayHandler {
                 user.away = Some(away_text.to_string());
             }
 
-            // Broadcast AWAY to channels with away-notify capability (IRCv3)
+            // Broadcast AWAY to channels - only to clients with away-notify capability (IRCv3)
             let away_broadcast = slirc_proto::Message {
                 tags: None,
                 prefix: Some(slirc_proto::Prefix::new(
@@ -69,7 +69,13 @@ impl Handler for AwayHandler {
 
             for channel_name in &channels {
                 ctx.matrix
-                    .broadcast_to_channel(channel_name, away_broadcast.clone(), None)
+                    .broadcast_to_channel_with_cap(
+                        channel_name,
+                        away_broadcast.clone(),
+                        None,
+                        Some("away-notify"),
+                        None, // No fallback - clients without away-notify get nothing
+                    )
                     .await;
             }
 
@@ -101,7 +107,7 @@ impl Handler for AwayHandler {
             user.away = None;
         }
 
-        // Broadcast AWAY (no message) to channels with away-notify capability (IRCv3)
+        // Broadcast AWAY (no message) to channels - only to clients with away-notify capability (IRCv3)
         let away_broadcast = slirc_proto::Message {
             tags: None,
             prefix: Some(slirc_proto::Prefix::new(
@@ -117,7 +123,13 @@ impl Handler for AwayHandler {
 
         for channel_name in &channels {
             ctx.matrix
-                .broadcast_to_channel(channel_name, away_broadcast.clone(), None)
+                .broadcast_to_channel_with_cap(
+                    channel_name,
+                    away_broadcast.clone(),
+                    None,
+                    Some("away-notify"),
+                    None, // No fallback - clients without away-notify get nothing
+                )
                 .await;
         }
 

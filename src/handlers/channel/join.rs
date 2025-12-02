@@ -297,6 +297,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             "localhost".to_string(),
             &security_config.cloak_secret,
             &security_config.cloak_suffix,
+            ctx.handshake.capabilities.clone(),
         );
         let user = Arc::new(RwLock::new(user));
         ctx.matrix.users.insert(ctx.uid.to_string(), user.clone());
@@ -305,36 +306,42 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     }
 
     // Broadcast JOIN to all channel members (including self)
-    // Use extended-join format if capability is enabled
-    let join_msg = if ctx.handshake.capabilities.contains("extended-join") {
-        // Get account name for extended join
-        let account = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_ref.read().await;
-            user.account.clone()
-        } else {
-            None
-        };
-        let account_name = account.as_deref().unwrap_or("*");
-
-        Message {
-            tags: None,
-            prefix: Some(user_prefix(nick, user_name, "localhost")),
-            command: Command::JOIN(
-                canonical_name.clone(),
-                Some(account_name.to_string()),
-                Some(realname.clone()),
-            ),
-        }
+    // For extended-join: recipients with the capability get the extended format,
+    // recipients without get the standard format
+    let account = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+        let user = user_ref.read().await;
+        user.account.clone()
     } else {
-        Message {
-            tags: None,
-            prefix: Some(user_prefix(nick, user_name, "localhost")),
-            command: Command::JOIN(canonical_name.clone(), None, None),
-        }
+        None
+    };
+    let account_name = account.as_deref().unwrap_or("*");
+
+    // Extended JOIN format: :nick!user@host JOIN #channel account :realname
+    let extended_join_msg = Message {
+        tags: None,
+        prefix: Some(user_prefix(nick, user_name, "localhost")),
+        command: Command::JOIN(
+            canonical_name.clone(),
+            Some(account_name.to_string()),
+            Some(realname.clone()),
+        ),
+    };
+
+    // Standard JOIN format: :nick!user@host JOIN #channel
+    let standard_join_msg = Message {
+        tags: None,
+        prefix: Some(user_prefix(nick, user_name, "localhost")),
+        command: Command::JOIN(canonical_name.clone(), None, None),
     };
 
     ctx.matrix
-        .broadcast_to_channel(&channel_lower, join_msg, None)
+        .broadcast_to_channel_with_cap(
+            &channel_lower,
+            extended_join_msg,
+            None,
+            Some("extended-join"),
+            Some(standard_join_msg),
+        )
         .await;
 
     // If auto-op/voice was applied, broadcast the MODE change using typed modes

@@ -3,7 +3,7 @@
 //! The Matrix holds all users, channels, and server state in concurrent
 //! data structures accessible from any async task.
 
-use super::channel::{Channel, ListEntry, MemberModes, Topic};
+use super::channel::Channel;
 use super::user::{User, WhowasEntry};
 
 use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
@@ -223,6 +223,66 @@ impl Matrix {
                 }
             }
         }
+    }
+
+    /// Broadcast to channel members filtered by IRCv3 capability.
+    ///
+    /// - If `required_cap` is Some, only sends `msg` to members who have that capability enabled
+    /// - If `fallback_msg` is Some, sends that to members without the capability
+    /// - If `fallback_msg` is None, members without the capability receive nothing
+    ///
+    /// Returns count of messages sent.
+    pub async fn broadcast_to_channel_with_cap(
+        &self,
+        channel_name: &str,
+        msg: Message,
+        exclude: Option<&str>,
+        required_cap: Option<&str>,
+        fallback_msg: Option<Message>,
+    ) -> usize {
+        let Some(channel) = self.channels.get(channel_name) else {
+            return 0;
+        };
+
+        let channel = channel.read().await;
+        let msg = Arc::new(msg);
+        let fallback_msg = fallback_msg.map(Arc::new);
+        let mut sent = 0;
+
+        for uid in channel.members.keys() {
+            if exclude.is_some_and(|e| e == uid.as_str()) {
+                continue;
+            }
+
+            // Determine which message to send based on user's capabilities
+            let msg_to_send = if let Some(cap) = required_cap {
+                // Check if user has the required capability
+                let has_cap = if let Some(user_ref) = self.users.get(uid) {
+                    let user = user_ref.read().await;
+                    user.caps.contains(cap)
+                } else {
+                    false
+                };
+
+                if has_cap {
+                    Some(msg.clone())
+                } else {
+                    fallback_msg.clone()
+                }
+            } else {
+                // No capability filter, send to everyone
+                Some(msg.clone())
+            };
+
+            if let Some(m) = msg_to_send
+                && let Some(sender) = self.senders.get(uid)
+                && sender.send((*m).clone()).await.is_ok()
+            {
+                sent += 1;
+            }
+        }
+
+        sent
     }
 
     /// Disconnect a user from the server.
