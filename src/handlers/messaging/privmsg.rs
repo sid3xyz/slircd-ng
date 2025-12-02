@@ -3,7 +3,7 @@
 //! Handles private messages to users and channels, with support for CTCP.
 
 use super::common::{
-    is_shunned, is_channel, route_to_channel, route_to_user, send_cannot_send,
+    is_shunned, route_to_channel, route_to_user, send_cannot_send,
     send_no_such_channel, send_no_such_nick, ChannelRouteResult, RouteOptions,
 };
 use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply, user_prefix};
@@ -13,7 +13,7 @@ use crate::services::nickserv::route_service_message;
 use async_trait::async_trait;
 use chrono::Local;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
-use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
+use slirc_proto::{ChannelExt, Command, Message, MessageRef, Response, irc_to_lower};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -197,7 +197,7 @@ impl Handler for PrivmsgHandler {
 
         // Handle CTCP requests (only for user-to-user, not channels)
         // CTCP messages start and end with \x01
-        if !is_channel(target)
+        if !target.is_channel_name()
             && Ctcp::is_ctcp(text)
             && let Some(ctcp) = Ctcp::parse(text)
         {
@@ -219,7 +219,7 @@ impl Handler for PrivmsgHandler {
             block_ctcp: true,
         };
 
-        if is_channel(target) {
+        if target.is_channel_name() {
             let channel_lower = irc_to_lower(target);
 
             // Check +C mode (no CTCP except ACTION) for channel messages

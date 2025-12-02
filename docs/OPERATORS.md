@@ -19,49 +19,49 @@ On success, you receive user mode `+o` and a server notice.
 
 ### Server Control
 
-| Command | Usage | Description |
-|---------|-------|-------------|
-| `DIE` | `/die` | Shutdown the server |
-| `REHASH` | `/rehash` | Reload configuration |
+| Command   | Usage                | Description               |
+| --------- | -------------------- | ------------------------- |
+| `DIE`     | `/die`               | Shutdown the server       |
+| `REHASH`  | `/rehash`            | Reload configuration      |
 | `WALLOPS` | `/wallops <message>` | Send to all users with +w |
 
 ### User Management
 
-| Command | Usage | Description |
-|---------|-------|-------------|
-| `KILL` | `/kill <nick> <reason>` | Disconnect a user |
+| Command   | Usage                       | Description                    |
+| --------- | --------------------------- | ------------------------------ |
+| `KILL`    | `/kill <nick> <reason>`     | Disconnect a user              |
 | `CHGHOST` | `/chghost <nick> <newhost>` | Change user's visible hostname |
 
 ### Server-Wide Actions
 
-| Command | Usage | Description |
-|---------|-------|-------------|
-| `SAJOIN` | `/sajoin <nick> <#channel>` | Force user into channel |
-| `SAPART` | `/sapart <nick> <#channel>` | Force user out of channel |
-| `SAMODE` | `/samode <#channel> <modes>` | Set modes without op |
-| `SANICK` | `/sanick <nick> <newnick>` | Force nick change |
+| Command  | Usage                        | Description               |
+| -------- | ---------------------------- | ------------------------- |
+| `SAJOIN` | `/sajoin <nick> <#channel>`  | Force user into channel   |
+| `SAPART` | `/sapart <nick> <#channel>`  | Force user out of channel |
+| `SAMODE` | `/samode <#channel> <modes>` | Set modes without op      |
+| `SANICK` | `/sanick <nick> <newnick>`   | Force nick change         |
 
 ### Server Information
 
-| Command | Usage | Description |
-|---------|-------|-------------|
+| Command | Usage             | Description                 |
+| ------- | ----------------- | --------------------------- |
 | `TRACE` | `/trace [target]` | Show connection information |
-| `STATS` | `/stats <letter>` | Server statistics |
-| `MAP` | `/map` | Show server map |
-| `LINKS` | `/links` | Show linked servers |
+| `STATS` | `/stats <letter>` | Server statistics           |
+| `MAP`   | `/map`            | Show server map             |
+| `LINKS` | `/links`          | Show linked servers         |
 
 ## Server Bans (X-Lines)
 
 ### Ban Types
 
-| Type | Command | Target | Duration |
-|------|---------|--------|----------|
-| K-Line | `KLINE` | user@host (local) | Temporary/permanent |
+| Type   | Command | Target              | Duration            |
+| ------ | ------- | ------------------- | ------------------- |
+| K-Line | `KLINE` | user@host (local)   | Temporary/permanent |
 | G-Line | `GLINE` | user@host (network) | Temporary/permanent |
-| D-Line | `DLINE` | IP address | Temporary/permanent |
-| Z-Line | `ZLINE` | IP (no DNS lookup) | Temporary/permanent |
-| R-Line | `RLINE` | Realname pattern | Temporary/permanent |
-| SHUN | `SHUN` | user@host (silent) | Temporary/permanent |
+| D-Line | `DLINE` | IP address          | Temporary/permanent |
+| Z-Line | `ZLINE` | IP (no DNS lookup)  | Temporary/permanent |
+| R-Line | `RLINE` | Realname pattern    | Temporary/permanent |
+| SHUN   | `SHUN`  | user@host (silent)  | Temporary/permanent |
 
 ### Adding Bans
 
@@ -83,7 +83,7 @@ Temporary ban (with duration):
 
 Duration formats:
 - `30s` - 30 seconds
-- `5m` - 5 minutes  
+- `5m` - 5 minutes
 - `2h` - 2 hours
 - `7d` - 7 days
 
@@ -116,14 +116,14 @@ Shuns are stored in memory only (not persisted to database).
 
 ## STATS Command
 
-| Letter | Information |
-|--------|-------------|
-| `u` | Server uptime |
-| `o` | Configured operators |
-| `k` | K-Lines |
-| `g` | G-Lines |
-| `d` | D-Lines |
-| `z` | Z-Lines |
+| Letter | Information          |
+| ------ | -------------------- |
+| `u`    | Server uptime        |
+| `o`    | Configured operators |
+| `k`    | K-Lines              |
+| `g`    | G-Lines              |
+| `d`    | D-Lines              |
+| `z`    | Z-Lines              |
 
 Example:
 ```
@@ -156,28 +156,28 @@ curl http://localhost:9090/metrics
 
 Key metrics:
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `irc_connected_users` | gauge | Currently connected users |
-| `irc_active_channels` | gauge | Active channels |
-| `irc_messages_sent_total` | counter | Total messages sent |
-| `irc_spam_blocked_total` | counter | Messages blocked as spam |
-| `irc_bans_triggered_total` | counter | Ban enforcement events |
+| Metric                      | Type    | Description               |
+| --------------------------- | ------- | ------------------------- |
+| `irc_connected_users`       | gauge   | Currently connected users |
+| `irc_active_channels`       | gauge   | Active channels           |
+| `irc_messages_sent_total`   | counter | Total messages sent       |
+| `irc_spam_blocked_total`    | counter | Messages blocked as spam  |
+| `irc_bans_triggered_total`  | counter | Ban enforcement events    |
 | `irc_xlines_enforced_total` | counter | X-line enforcement events |
-| `irc_rate_limited_total` | counter | Rate limit hits |
+| `irc_rate_limited_total`    | counter | Rate limit hits           |
 
 ## Background Tasks
 
 The server runs automatic maintenance:
 
-| Task | Interval | Action |
-|------|----------|--------|
-| Nick enforcement | 100ms | Force nick changes |
-| WHOWAS cleanup | 1 hour | Prune old entries |
-| Shun expiry | 1 minute | Remove expired shuns |
-| Ban cache prune | 5 minutes | Remove expired X-lines |
-| Rate limiter cleanup | 5 minutes | Clean old buckets |
-| History prune | 24 hours | Remove old messages |
+| Task                 | Interval  | Action                 |
+| -------------------- | --------- | ---------------------- |
+| Nick enforcement     | 100ms     | Force nick changes     |
+| WHOWAS cleanup       | 1 hour    | Prune old entries      |
+| Shun expiry          | 1 minute  | Remove expired shuns   |
+| Ban cache prune      | 5 minutes | Remove expired X-lines |
+| Rate limiter cleanup | 5 minutes | Clean old buckets      |
+| History prune        | 24 hours  | Remove old messages    |
 
 ## Logging
 

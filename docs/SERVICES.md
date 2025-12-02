@@ -8,13 +8,13 @@ NickServ handles nickname registration and account management.
 
 ### Commands
 
-| Command | Usage | Description |
-|---------|-------|-------------|
-| `REGISTER` | `REGISTER <password> [email]` | Register your current nickname |
-| `IDENTIFY` | `IDENTIFY <password>` | Log in to your account |
-| `GHOST` | `GHOST <nick>` | Disconnect a session using your nick |
-| `INFO` | `INFO <nick>` | View account information |
-| `SET` | `SET <option> <value>` | Configure account settings |
+| Command    | Usage                         | Description                          |
+| ---------- | ----------------------------- | ------------------------------------ |
+| `REGISTER` | `REGISTER <password> [email]` | Register your current nickname       |
+| `IDENTIFY` | `IDENTIFY <password>`         | Log in to your account               |
+| `GHOST`    | `GHOST <nick>`                | Disconnect a session using your nick |
+| `INFO`     | `INFO <nick>`                 | View account information             |
+| `SET`      | `SET <option> <value>`        | Configure account settings           |
 
 ### Registration
 
@@ -49,10 +49,10 @@ This disconnects the other session if you provide the correct password.
 /msg NickServ SET HIDE EMAIL ON
 ```
 
-| Option | Values | Description |
-|--------|--------|-------------|
-| `ENFORCE` | ON/OFF | Force nick change if not identified |
-| `HIDE EMAIL` | ON/OFF | Hide email in INFO output |
+| Option       | Values | Description                         |
+| ------------ | ------ | ----------------------------------- |
+| `ENFORCE`    | ON/OFF | Force nick change if not identified |
+| `HIDE EMAIL` | ON/OFF | Hide email in INFO output           |
 
 ### Nick Enforcement
 
@@ -67,16 +67,16 @@ ChanServ handles channel registration and access control.
 
 ### Commands
 
-| Command | Usage | Description |
-|---------|-------|-------------|
-| `REGISTER` | `REGISTER #channel` | Register a channel you're op in |
-| `INFO` | `INFO #channel` | View channel information |
-| `OP` | `OP #channel [nick]` | Grant operator status |
-| `DEOP` | `DEOP #channel [nick]` | Remove operator status |
-| `VOICE` | `VOICE #channel [nick]` | Grant voice |
-| `DEVOICE` | `DEVOICE #channel [nick]` | Remove voice |
-| `ACCESS` | `ACCESS #channel <subcommand>` | Manage access list |
-| `AKICK` | `AKICK #channel <subcommand>` | Manage auto-kick list |
+| Command    | Usage                          | Description                     |
+| ---------- | ------------------------------ | ------------------------------- |
+| `REGISTER` | `REGISTER #channel`            | Register a channel you're op in |
+| `INFO`     | `INFO #channel`                | View channel information        |
+| `OP`       | `OP #channel [nick]`           | Grant operator status           |
+| `DEOP`     | `DEOP #channel [nick]`         | Remove operator status          |
+| `VOICE`    | `VOICE #channel [nick]`        | Grant voice                     |
+| `DEVOICE`  | `DEVOICE #channel [nick]`      | Remove voice                    |
+| `ACCESS`   | `ACCESS #channel <subcommand>` | Manage access list              |
+| `AKICK`    | `AKICK #channel <subcommand>`  | Manage auto-kick list           |
 
 ### Channel Registration
 
@@ -96,14 +96,14 @@ You become the channel founder with full control.
 
 ChanServ uses a flags-based access system:
 
-| Flag | Meaning |
-|------|---------|
-| `+o` | Can be auto-opped |
-| `+v` | Can be auto-voiced |
-| `+O` | Can use OP/DEOP commands |
+| Flag | Meaning                        |
+| ---- | ------------------------------ |
+| `+o` | Can be auto-opped              |
+| `+v` | Can be auto-voiced             |
+| `+O` | Can use OP/DEOP commands       |
 | `+V` | Can use VOICE/DEVOICE commands |
-| `+A` | Can modify access list |
-| `+F` | Founder (full control) |
+| `+A` | Can modify access list         |
+| `+F` | Founder (full control)         |
 
 ### Managing Access
 
@@ -151,8 +151,8 @@ Remove AKICK:
 
 For convenience, you can use short aliases:
 
-| Alias | Target |
-|-------|--------|
+| Alias | Target   |
+| ----- | -------- |
 | `/ns` | NickServ |
 | `/cs` | ChanServ |
 
@@ -166,18 +166,18 @@ Example:
 
 ChanServ and channel modes support extended bans that match beyond `nick!user@host`:
 
-| Pattern | Matches |
-|---------|---------|
-| `$a:account` | Users logged into specific account |
-| `$a` | Any logged-in user (inverted: `$~a` = unregistered) |
-| `$r:realname*` | Users with matching realname (GECOS) |
-| `$U` | Unregistered users |
-| `$o` | IRC operators |
-| `$O:opertype` | Specific operator type |
-| `$c:#channel` | Users in specific channel |
-| `$z` | TLS users |
-| `$s:servername` | Users on specific server |
-| `$j:#channel` | Users matching ban in another channel |
+| Pattern         | Matches                                             |
+| --------------- | --------------------------------------------------- |
+| `$a:account`    | Users logged into specific account                  |
+| `$a`            | Any logged-in user (inverted: `$~a` = unregistered) |
+| `$r:realname*`  | Users with matching realname (GECOS)                |
+| `$U`            | Unregistered users                                  |
+| `$o`            | IRC operators                                       |
+| `$O:opertype`   | Specific operator type                              |
+| `$c:#channel`   | Users in specific channel                           |
+| `$z`            | TLS users                                           |
+| `$s:servername` | Users on specific server                            |
+| `$j:#channel`   | Users matching ban in another channel               |
 
 Examples:
 ```
