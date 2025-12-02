@@ -72,6 +72,11 @@ impl<'a> BanRepository<'a> {
         dline::matches_dline(self.pool, ip).await
     }
 
+    /// Get all active D-lines (not expired).
+    pub async fn get_active_dlines(&self) -> Result<Vec<super::models::Dline>, DbError> {
+        dline::get_active_dlines(self.pool).await
+    }
+
     // ========== G-line operations ==========
 
     /// Add a G-line.

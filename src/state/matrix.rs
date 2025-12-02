@@ -7,8 +7,8 @@ use super::channel::Channel;
 use super::user::{User, WhowasEntry};
 
 use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
-use crate::db::Shun;
-use crate::security::{RateLimitManager, XLine};
+use crate::db::{Dline, Gline, Kline, Shun, Zline};
+use crate::security::{BanCache, RateLimitManager, XLine};
 use crate::state::UidGenerator;
 use dashmap::{DashMap, DashSet};
 use slirc_proto::Message;
@@ -86,6 +86,9 @@ pub struct Matrix {
     /// MONITOR: Reverse mapping - who is monitoring each nickname.
     /// Key is lowercase nickname, value is set of UIDs monitoring it.
     pub monitoring: DashMap<String, DashSet<Uid>>,
+
+    /// In-memory ban cache for fast connection-time ban checks.
+    pub ban_cache: BanCache,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -123,10 +126,23 @@ pub struct Server {
 impl Matrix {
     /// Create a new Matrix with the given server configuration.
     ///
-    /// `registered_channels` is a list of channel names that are registered with ChanServ.
-    /// These are stored in lowercase for fast lookup.
-    /// `shuns` is a list of active shuns loaded from the database.
-    pub fn new(config: &Config, registered_channels: Vec<String>, shuns: Vec<Shun>) -> Self {
+    /// # Arguments
+    /// - `config`: Server configuration
+    /// - `registered_channels`: Channel names registered with ChanServ (stored lowercase)
+    /// - `shuns`: Active shuns loaded from database
+    /// - `klines`: Active K-lines loaded from database
+    /// - `dlines`: Active D-lines loaded from database
+    /// - `glines`: Active G-lines loaded from database
+    /// - `zlines`: Active Z-lines loaded from database
+    pub fn new(
+        config: &Config,
+        registered_channels: Vec<String>,
+        shuns: Vec<Shun>,
+        klines: Vec<Kline>,
+        dlines: Vec<Dline>,
+        glines: Vec<Gline>,
+        zlines: Vec<Zline>,
+    ) -> Self {
         use slirc_proto::irc_to_lower;
 
         let now = chrono::Utc::now().timestamp();
@@ -142,6 +158,9 @@ impl Matrix {
         for shun in shuns {
             shuns_map.insert(shun.mask.clone(), shun);
         }
+
+        // Build the ban cache
+        let ban_cache = BanCache::load(klines, dlines, glines, zlines);
 
         Self {
             users: DashMap::new(),
@@ -175,6 +194,7 @@ impl Matrix {
             shuns: shuns_map,
             monitors: DashMap::new(),
             monitoring: DashMap::new(),
+            ban_cache,
         }
     }
 
