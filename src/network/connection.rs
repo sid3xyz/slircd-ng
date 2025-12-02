@@ -73,6 +73,78 @@ fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
     }
 }
 
+/// Convert a HandlerError to an appropriate IRC error reply.
+///
+/// Returns None for errors that don't warrant a client-visible reply
+/// (e.g., internal errors, send failures).
+fn handler_error_to_reply(
+    server_name: &str,
+    error: &crate::handlers::HandlerError,
+    msg: &slirc_proto::MessageRef<'_>,
+) -> Option<Message> {
+    use crate::handlers::HandlerError;
+    use slirc_proto::{Command, Prefix, Response};
+
+    let cmd_name = msg.command_name();
+
+    match error {
+        HandlerError::NotRegistered => Some(Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.to_string())),
+            command: Command::Response(
+                Response::ERR_NOTREGISTERED,
+                vec!["*".to_string(), "You have not registered".to_string()],
+            ),
+        }),
+        HandlerError::NeedMoreParams => Some(Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.to_string())),
+            command: Command::Response(
+                Response::ERR_NEEDMOREPARAMS,
+                vec![
+                    "*".to_string(),
+                    cmd_name.to_string(),
+                    "Not enough parameters".to_string(),
+                ],
+            ),
+        }),
+        HandlerError::NicknameInUse(nick) => Some(Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.to_string())),
+            command: Command::Response(
+                Response::ERR_NICKNAMEINUSE,
+                vec![
+                    "*".to_string(),
+                    nick.clone(),
+                    "Nickname is already in use".to_string(),
+                ],
+            ),
+        }),
+        HandlerError::ErroneousNickname(nick) => Some(Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.to_string())),
+            command: Command::Response(
+                Response::ERR_ERRONEOUSNICKNAME,
+                vec![
+                    "*".to_string(),
+                    nick.clone(),
+                    "Erroneous nickname".to_string(),
+                ],
+            ),
+        }),
+        HandlerError::AlreadyRegistered => Some(Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.to_string())),
+            command: Command::Response(
+                Response::ERR_ALREADYREGISTERED,
+                vec!["*".to_string(), "You may not reregister".to_string()],
+            ),
+        }),
+        // Internal errors - don't expose to client
+        HandlerError::NickOrUserMissing | HandlerError::Send(_) => None,
+    }
+}
+
 /// A client connection handler.
 pub struct Connection {
     uid: String,
@@ -201,10 +273,13 @@ impl Connection {
                     };
 
                     if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
-                        debug!(error = ?e, "Handler error");
-                        if matches!(e, crate::handlers::HandlerError::NotRegistered) {
-                            break;
+                        debug!(error = ?e, "Handler error during handshake");
+                        // Send appropriate error reply based on error type
+                        if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, &e, &msg_ref) {
+                            let _ = self.transport.write_message(&reply).await;
                         }
+                        // NotRegistered during handshake shouldn't break - client may just be
+                        // trying commands before completing registration, which is common
                     }
 
                     // Drain and write queued responses synchronously
@@ -324,8 +399,13 @@ impl Connection {
 
                             if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
                                 debug!(error = ?e, "Handler error");
+                                // Send appropriate error reply based on error type
+                                if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, &e, &msg_ref) {
+                                    let _ = outgoing_tx.send(reply).await;
+                                }
+                                // NotRegistered post-handshake indicates a bug - should not happen
                                 if matches!(e, crate::handlers::HandlerError::NotRegistered) {
-                                    break;
+                                    warn!("NotRegistered error after handshake completed - this is a bug");
                                 }
                             }
                         }

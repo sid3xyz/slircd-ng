@@ -3,8 +3,7 @@
 //! Provides shortcut commands for interacting with IRC services.
 
 use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered};
-use crate::services::chanserv::route_chanserv_message;
-use crate::services::nickserv::route_service_message;
+use crate::services::route_service_message;
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -33,20 +32,13 @@ impl Handler for NsHandler {
 
         // Join all args into the command text
         let text = msg.args().join(" ");
+        let cmd_text = if text.is_empty() { "HELP" } else { &text };
 
-        if text.is_empty() {
-            // Show help
-            route_service_message(
-                ctx.matrix, ctx.db, ctx.uid, nick, "NickServ", "HELP", ctx.sender,
-            )
-            .await;
-        } else {
-            // Route to NickServ
-            route_service_message(
-                ctx.matrix, ctx.db, ctx.uid, nick, "NickServ", &text, ctx.sender,
-            )
-            .await;
-        }
+        // Route to NickServ via unified service router
+        route_service_message(
+            ctx.matrix, ctx.db, ctx.uid, nick, "NickServ", cmd_text, ctx.sender,
+        )
+        .await;
 
         Ok(())
     }
@@ -77,20 +69,13 @@ impl Handler for CsHandler {
 
         // Join all args into the command text
         let text = msg.args().join(" ");
+        let cmd_text = if text.is_empty() { "HELP" } else { &text };
 
-        if text.is_empty() {
-            // Show help
-            route_chanserv_message(
-                ctx.matrix, ctx.db, ctx.uid, nick, "ChanServ", "HELP", ctx.sender,
-            )
-            .await;
-        } else {
-            // Route to ChanServ
-            route_chanserv_message(
-                ctx.matrix, ctx.db, ctx.uid, nick, "ChanServ", &text, ctx.sender,
-            )
-            .await;
-        }
+        // Route to ChanServ via unified service router
+        route_service_message(
+            ctx.matrix, ctx.db, ctx.uid, nick, "ChanServ", cmd_text, ctx.sender,
+        )
+        .await;
 
         Ok(())
     }

@@ -413,6 +413,20 @@ impl<'a> AccountRepository<'a> {
 
         Ok(())
     }
+
+    /// Find account by TLS certificate fingerprint.
+    ///
+    /// Returns None if no account has this certificate registered.
+    /// Certificate fingerprints are SHA-256 hashes in hex format.
+    ///
+    /// TODO: Implement when account_certfps table is added.
+    /// For now, returns None as cert storage is not yet implemented.
+    pub async fn find_by_certfp(&self, _certfp: &str) -> Result<Option<Account>, DbError> {
+        // Future implementation:
+        // SELECT account_id FROM account_certfps WHERE fingerprint = ? COLLATE NOCASE
+        // Then find_by_id(account_id)
+        Ok(None)
+    }
 }
 
 /// Hash a password using Argon2.

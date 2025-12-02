@@ -84,8 +84,8 @@ async fn handle_ls(ctx: &mut Context<'_>, nick: &str, version_arg: Option<&str>)
         ctx.handshake.capabilities.insert("cap-notify".to_string());
     }
 
-    // Build capability list
-    let cap_list = build_cap_list(version);
+    // Build capability list (include EXTERNAL if TLS with cert)
+    let cap_list = build_cap_list(version, ctx.handshake.is_tls && ctx.handshake.certfp.is_some());
 
     // Send CAP LS response
     // Format: CAP <nick> LS [* ] :<caps>
@@ -214,14 +214,23 @@ async fn handle_end(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
 }
 
 /// Build capability list string for CAP LS response.
-fn build_cap_list(version: u32) -> String {
+///
+/// `has_cert` indicates whether the client presented a TLS certificate,
+/// which enables SASL EXTERNAL.
+fn build_cap_list(version: u32, has_cert: bool) -> String {
     let caps: Vec<String> = SUPPORTED_CAPS
         .iter()
         .map(|&cap| {
             // For CAP 302+, add values for caps that have them
             if version >= 302 {
                 match cap {
-                    "sasl" => "sasl=PLAIN".to_string(),
+                    "sasl" => {
+                        if has_cert {
+                            "sasl=PLAIN,EXTERNAL".to_string()
+                        } else {
+                            "sasl=PLAIN".to_string()
+                        }
+                    }
                     _ => cap.to_string(),
                 }
             } else {
@@ -270,10 +279,89 @@ impl Handler for AuthenticateHandler {
                     };
                     ctx.sender.send(reply).await?;
                     debug!(nick = %nick, "SASL PLAIN: sent challenge");
+                } else if data.eq_ignore_ascii_case("EXTERNAL") {
+                    // EXTERNAL uses TLS client certificate
+                    if !ctx.handshake.is_tls {
+                        send_sasl_fail(ctx, &nick, "EXTERNAL requires TLS connection").await?;
+                        ctx.handshake.sasl_state = SaslState::None;
+                        return Ok(());
+                    }
+
+                    let Some(certfp) = ctx.handshake.certfp.as_ref() else {
+                        send_sasl_fail(ctx, &nick, "No client certificate presented").await?;
+                        ctx.handshake.sasl_state = SaslState::None;
+                        return Ok(());
+                    };
+
+                    // Send empty challenge to get optional authzid
+                    ctx.handshake.sasl_state = SaslState::WaitingForExternal;
+                    let reply = Message {
+                        tags: None,
+                        prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
+                        command: Command::AUTHENTICATE("+".to_string()),
+                    };
+                    ctx.sender.send(reply).await?;
+                    debug!(nick = %nick, certfp = %certfp, "SASL EXTERNAL: sent challenge");
                 } else {
                     // Unsupported mechanism
                     send_sasl_fail(ctx, &nick, "Unsupported SASL mechanism").await?;
                     ctx.handshake.sasl_state = SaslState::None;
+                }
+            }
+            SaslState::WaitingForExternal => {
+                // Client sending empty response or authzid for EXTERNAL
+                if data == "*" {
+                    // Client aborting
+                    send_sasl_fail(ctx, &nick, "SASL authentication aborted").await?;
+                    ctx.handshake.sasl_state = SaslState::None;
+                } else {
+                    // data is either "+" (empty) or base64-encoded authzid
+                    let authzid = if data == "+" {
+                        None
+                    } else {
+                        slirc_proto::sasl::decode_base64(data)
+                            .ok()
+                            .and_then(|b| String::from_utf8(b).ok())
+                    };
+
+                    let certfp = ctx.handshake.certfp.as_ref().expect("checked above").clone();
+
+                    // Look up account by certificate fingerprint
+                    match ctx.db.accounts().find_by_certfp(&certfp).await {
+                        Ok(Some(account)) => {
+                            // If authzid provided, verify it matches
+                            if let Some(ref az) = authzid
+                                && !az.eq_ignore_ascii_case(&account.name)
+                            {
+                                warn!(nick = %nick, authzid = %az, account = %account.name, "SASL EXTERNAL authzid mismatch");
+                                send_sasl_fail(ctx, &nick, "Authorization identity mismatch").await?;
+                                ctx.handshake.sasl_state = SaslState::None;
+                                return Ok(());
+                            }
+
+                            info!(
+                                nick = %nick,
+                                account = %account.name,
+                                certfp = %certfp,
+                                "SASL EXTERNAL authentication successful"
+                            );
+
+                            let user = ctx.handshake.user.clone().unwrap_or_else(|| "*".to_string());
+                            send_sasl_success(ctx, &nick, &user, &account.name).await?;
+                            ctx.handshake.sasl_state = SaslState::Authenticated;
+                            ctx.handshake.account = Some(account.name);
+                        }
+                        Ok(None) => {
+                            warn!(nick = %nick, certfp = %certfp, "SASL EXTERNAL: no account with this certificate");
+                            send_sasl_fail(ctx, &nick, "Certificate not registered to any account").await?;
+                            ctx.handshake.sasl_state = SaslState::None;
+                        }
+                        Err(e) => {
+                            warn!(nick = %nick, certfp = %certfp, error = ?e, "SASL EXTERNAL database error");
+                            send_sasl_fail(ctx, &nick, "Authentication failed").await?;
+                            ctx.handshake.sasl_state = SaslState::None;
+                        }
+                    }
                 }
             }
             SaslState::WaitingForData => {
@@ -340,7 +428,10 @@ impl Handler for AuthenticateHandler {
 pub enum SaslState {
     #[default]
     None,
+    /// Waiting for PLAIN credentials (base64-encoded).
     WaitingForData,
+    /// Waiting for EXTERNAL response (empty or authzid).
+    WaitingForExternal,
     Authenticated,
 }
 

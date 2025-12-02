@@ -1,6 +1,6 @@
 //! NAMES command handler.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply};
+use super::super::{Context, Handler, HandlerResult, require_registered, server_reply};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 
@@ -10,18 +10,10 @@ pub struct NamesHandler;
 #[async_trait]
 impl Handler for NamesHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            return Err(HandlerError::NotRegistered);
-        }
+        let (nick, _user) = require_registered(ctx)?;
 
         // NAMES [channel [target]]
         let channel_name = msg.arg(0).unwrap_or("");
-
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
 
         if channel_name.is_empty() {
             // NAMES without channel - not implemented

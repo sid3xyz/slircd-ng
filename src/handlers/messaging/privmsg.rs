@@ -8,8 +8,7 @@ use super::common::{
 };
 use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply, user_prefix};
 use crate::db::StoreMessageParams;
-use crate::services::chanserv::route_chanserv_message;
-use crate::services::nickserv::route_service_message;
+use crate::services::route_service_message;
 use async_trait::async_trait;
 use chrono::Local;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
@@ -181,16 +180,8 @@ impl Handler for PrivmsgHandler {
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Check if this is a service message (NickServ, ChanServ, etc.)
-        let target_lower = irc_to_lower(target);
-        if (target_lower == "nickserv" || target_lower == "ns")
-            && route_service_message(ctx.matrix, ctx.db, ctx.uid, nick, target, text, ctx.sender)
-                .await
-        {
-            return Ok(());
-        }
-        if (target_lower == "chanserv" || target_lower == "cs")
-            && route_chanserv_message(ctx.matrix, ctx.db, ctx.uid, nick, target, text, ctx.sender)
-                .await
+        if route_service_message(ctx.matrix, ctx.db, ctx.uid, nick, target, text, ctx.sender)
+            .await
         {
             return Ok(());
         }
@@ -280,7 +271,7 @@ impl Handler for PrivmsgHandler {
                     send_cannot_send(ctx, nick, target, "Cannot send NOTICE to channel (+T)").await?;
                 }
             }
-        } else if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {
+        } else if route_to_user(ctx, &irc_to_lower(target), out_msg, &opts, nick).await {
             debug!(from = %nick, to = %target, "PRIVMSG to user");
         } else {
             send_no_such_nick(ctx, nick, target).await?;
