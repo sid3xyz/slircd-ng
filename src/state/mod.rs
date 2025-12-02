@@ -2,11 +2,20 @@
 //!
 //! Contains the Matrix (shared server state) and related entities.
 
+mod channel;
 mod matrix;
 mod mode_builder;
 mod uid;
+mod user;
 
-pub use matrix::{Channel, ListEntry, Matrix, MemberModes, Topic, User, UserModes};
+pub use channel::{Channel, ListEntry, MemberModes, Topic};
+pub use matrix::Matrix;
+pub use user::{User, UserModes};
+// Exports used by matrix.rs internally
+#[allow(unused_imports)]
+pub(crate) use channel::ChannelModes;
+#[allow(unused_imports)]
+pub(crate) use user::WhowasEntry;
 // Uid is used in security/rate_limit.rs - allow for now
 #[allow(unused_imports)]
 pub use matrix::Uid;
