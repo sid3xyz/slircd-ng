@@ -107,6 +107,9 @@ async fn handle_ctcp_request(
         let opts = RouteOptions {
             check_moderated: true,
             send_away_reply: true,
+            is_notice: false,
+            strip_colors: false,
+            block_ctcp: false,
         };
 
         if route_to_user(ctx, &target_lower, out_msg, &opts, sender_nick).await {
@@ -209,10 +212,27 @@ impl Handler for PrivmsgHandler {
         let opts = RouteOptions {
             check_moderated: true,
             send_away_reply: true,
+            is_notice: false,
+            strip_colors: true,
+            block_ctcp: true,
         };
 
         if is_channel(target) {
             let channel_lower = irc_to_lower(target);
+
+            // Check +C mode (no CTCP except ACTION) for channel messages
+            if let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) {
+                let channel = channel_ref.read().await;
+                if channel.modes.no_ctcp
+                    && Ctcp::is_ctcp(text)
+                    && let Some(ctcp) = Ctcp::parse(text)
+                    && !matches!(ctcp.kind, CtcpKind::Action)
+                {
+                    send_cannot_send(ctx, nick, target, "Cannot send CTCP to channel (+C)").await?;
+                    return Ok(());
+                }
+            }
+
             match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
                 ChannelRouteResult::Sent => {
                     debug!(from = %nick, to = %target, "PRIVMSG to channel");
@@ -231,6 +251,13 @@ impl Handler for PrivmsgHandler {
                 }
                 ChannelRouteResult::BlockedRegisteredOnly => {
                     send_cannot_send(ctx, nick, target, "Cannot send to channel (+r)").await?;
+                }
+                ChannelRouteResult::BlockedCTCP => {
+                    send_cannot_send(ctx, nick, target, "Cannot send CTCP to channel (+C)").await?;
+                }
+                ChannelRouteResult::BlockedNotice => {
+                    // Should not happen for PRIVMSG, but handle anyway
+                    send_cannot_send(ctx, nick, target, "Cannot send NOTICE to channel (+T)").await?;
                 }
             }
         } else if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {

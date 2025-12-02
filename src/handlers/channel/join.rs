@@ -218,6 +218,31 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         }
     }
 
+    // 1c. Check Oper-Only (+O) mode
+    if channel_guard.modes.oper_only {
+        let is_oper = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let user = user_ref.read().await;
+            user.modes.oper
+        } else {
+            false
+        };
+
+        if !is_oper {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_INVITEONLYCHAN,
+                vec![
+                    nick.clone(),
+                    channel_name.to_string(),
+                    "Cannot join channel (+O) - Oper only".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            drop(channel_guard);
+            info!(nick = %nick, channel = %channel_name, "JOIN denied: +O oper-only");
+            return Ok(());
+        }
+    }
     // 2. Check ban list (+b) and ban exceptions (+e) - supports extended bans
     let is_banned = channel_guard
         .bans

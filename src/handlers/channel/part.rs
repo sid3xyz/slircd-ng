@@ -105,6 +105,7 @@ pub(super) async fn leave_channel_internal(
     // Remove user from channel
     channel_guard.remove_member(ctx.uid);
     let is_empty = channel_guard.members.is_empty();
+    let is_permanent = channel_guard.modes.permanent;
 
     drop(channel_guard);
 
@@ -114,11 +115,13 @@ pub(super) async fn leave_channel_internal(
         user.channels.remove(channel_lower);
     }
 
-    // If channel is now empty, remove it
-    if is_empty {
+    // If channel is now empty and not permanent (+P), remove it
+    if is_empty && !is_permanent {
         ctx.matrix.channels.remove(channel_lower);
         crate::metrics::ACTIVE_CHANNELS.dec();
         debug!(channel = %canonical_name, "Channel removed (empty)");
+    } else if is_empty && is_permanent {
+        debug!(channel = %canonical_name, "Channel kept alive (+P permanent)");
     }
 
     info!(nick = %nick, channel = %canonical_name, "User left channel");

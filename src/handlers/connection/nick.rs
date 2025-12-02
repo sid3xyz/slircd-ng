@@ -81,6 +81,32 @@ impl Handler for NickHandler {
             return Ok(());
         }
 
+        // Check +N (no nick change) on any channel the user is in
+        // Only applies to registered (connected) users changing their nick
+        if ctx.handshake.registered
+            && let Some(user_ref) = ctx.matrix.users.get(ctx.uid)
+        {
+            let user = user_ref.read().await;
+            for channel_lower in &user.channels {
+                if let Some(channel_ref) = ctx.matrix.channels.get(channel_lower) {
+                    let channel = channel_ref.read().await;
+                    if channel.modes.no_nick_change {
+                        let reply = server_reply(
+                            &ctx.matrix.server_info.name,
+                            Response::ERR_NONICKCHANGE,
+                            vec![
+                                ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string()),
+                                channel.name.clone(),
+                                "Cannot change nickname while in this channel (+N)".to_string(),
+                            ],
+                        );
+                        ctx.sender.send(reply).await?;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
         // Remove old nick from index if changing
         if let Some(old_nick) = &ctx.handshake.nick {
             // Notify MONITOR watchers that old nick is going offline

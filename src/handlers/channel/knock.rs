@@ -98,6 +98,21 @@ impl Handler for KnockHandler {
                 ctx.sender.send(reply).await?;
                 return Ok(());
             }
+
+            // Check +K (no knock)
+            if channel.modes.no_knock {
+                let reply = server_reply(
+                    server_name,
+                    Response::ERR_CHANOPRIVSNEEDED,
+                    vec![
+                        nick,
+                        channel_name.to_string(),
+                        "Knocking is disabled on this channel (+K)".to_string(),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
             // Check if channel is +i (invite only)
             if !channel.modes.invite_only {
                 // ERR_CHANOPEN (713) - channel not invite-only
