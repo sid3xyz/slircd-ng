@@ -8,6 +8,7 @@ mod join;
 mod kick;
 mod knock;
 mod names;
+mod ops;
 mod part;
 mod topic;
 
@@ -17,6 +18,7 @@ pub use join::JoinHandler;
 pub use kick::KickHandler;
 pub use knock::KnockHandler;
 pub use names::NamesHandler;
+pub use ops::{force_join_channel, force_part_channel, TargetUser};
 pub use part::PartHandler;
 pub use topic::TopicHandler;
 
