@@ -84,7 +84,7 @@ impl Handler for PrivmsgHandler {
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Check if this is a service message (NickServ, ChanServ, etc.)
-        if route_service_message(ctx.matrix, ctx.db, ctx.uid, nick, target, text, ctx.sender)
+        if route_service_message(ctx.matrix, ctx.uid, nick, target, text, ctx.sender)
             .await
         {
             return Ok(());
