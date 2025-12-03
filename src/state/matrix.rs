@@ -162,14 +162,18 @@ impl Matrix {
             shuns_map.insert(shun.mask.clone(), shun);
         }
 
-        // Build the ban cache
-        let ban_cache = BanCache::load(klines, dlines, glines, zlines);
-
         // Load IP deny list from data directory
         let ip_deny_path = data_dir
             .map(|d| d.join("ip_bans.msgpack"))
             .unwrap_or_else(|| std::path::PathBuf::from("ip_bans.msgpack"));
-        let ip_deny_list = IpDenyList::load(&ip_deny_path);
+        let mut ip_deny_list = IpDenyList::load(&ip_deny_path);
+
+        // Sync IpDenyList with database D-lines and Z-lines
+        // This ensures any bans added via database admin tools are in the bitmap
+        ip_deny_list.sync_from_database_bans(&dlines, &zlines);
+
+        // Build the ban cache (takes ownership of vectors)
+        let ban_cache = BanCache::load(klines, dlines, glines, zlines);
 
         Self {
             users: DashMap::new(),
