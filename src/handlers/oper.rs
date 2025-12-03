@@ -15,6 +15,7 @@ use super::{
     server_reply,
 };
 use async_trait::async_trait;
+use slirc_proto::mode::{Mode, UserMode};
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 use tokio::sync::mpsc;
 
@@ -23,7 +24,7 @@ fn is_valid_hostname(hostname: &str) -> bool {
     if hostname.is_empty() || hostname.len() > 253 {
         return false;
     }
-    
+
     // Must not start or end with a dot
     if hostname.starts_with('.') || hostname.ends_with('.') {
         return false;
@@ -31,25 +32,25 @@ fn is_valid_hostname(hostname: &str) -> bool {
 
     // Split into labels
     let labels: Vec<&str> = hostname.split('.').collect();
-    
+
     // Each label must be valid
     for label in labels {
         // Reject empty labels (catches consecutive dots)
         if label.is_empty() || label.len() > 63 {
             return false;
         }
-        
+
         // Must not start or end with hyphen
         if label.starts_with('-') || label.ends_with('-') {
             return false;
         }
-        
+
         // Must contain only alphanumeric and hyphens
         if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
             return false;
         }
     }
-    
+
     true
 }
 
@@ -227,6 +228,14 @@ impl Handler for OperHandler {
         // Success - reset attempt counter
         ctx.handshake.failed_oper_attempts = 0;
 
+        // Get user info for MODE message before setting oper mode
+        let (user_nick, user_user, user_host) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let user = user_ref.read().await;
+            (user.nick.clone(), user.user.clone(), user.host.clone())
+        } else {
+            (nick.clone(), "unknown".to_string(), ctx.remote_addr.ip().to_string())
+        };
+
         // Set +o mode on user
         if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
             let mut user = user_ref.write().await;
@@ -238,9 +247,17 @@ impl Handler for OperHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_YOUREOPER,
-            vec![nick, "You are now an IRC operator".to_string()],
+            vec![nick.clone(), "You are now an IRC operator".to_string()],
         );
         ctx.sender.send(reply).await?;
+
+        // Send MODE message to confirm +o
+        let mode_msg = Message {
+            tags: None,
+            prefix: Some(Prefix::Nickname(user_nick, user_user, user_host)),
+            command: Command::UserMODE(nick, vec![Mode::Plus(UserMode::Oper, None)]),
+        };
+        ctx.sender.send(mode_msg).await?;
 
         Ok(())
     }
@@ -292,7 +309,26 @@ impl Handler for KillHandler {
             return Ok(());
         };
 
-        // Build KILL message for confirmation
+        // Build quit reason for KILL
+        let quit_reason = format!("Killed by {killer_nick} ({reason})");
+
+        // Send ERROR to target before disconnecting
+        if let Some(target_sender) = ctx.matrix.senders.get(&target_uid) {
+            let error_msg = Message {
+                tags: None,
+                prefix: None,
+                command: Command::ERROR(format!("Closing Link: {} ({})", target_nick, quit_reason)),
+            };
+            let _ = target_sender.send(error_msg).await;
+        }
+
+        // Use centralized disconnect logic
+        // This removes from channels, broadcasts QUIT, updates WHOWAS, and drops the sender
+        ctx.matrix.disconnect_user(&target_uid, &quit_reason).await;
+
+        tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
+
+        // Build KILL message for confirmation to killer
         let kill_msg = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(
@@ -302,15 +338,9 @@ impl Handler for KillHandler {
             )),
             command: Command::KILL(
                 target_nick.to_string(),
-                format!("Killed by {killer_nick} ({reason})"),
+                quit_reason,
             ),
         };
-
-        tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
-
-        // Use centralized disconnect logic
-        let quit_reason = format!("Killed by {killer_nick} ({reason})");
-        ctx.matrix.disconnect_user(&target_uid, &quit_reason).await;
 
         // Send confirmation to killer
         let _ = ctx.sender.send(kill_msg).await;
@@ -381,7 +411,7 @@ impl Handler for WallopsHandler {
 ///
 /// DIE
 /// Shuts down the server gracefully. Requires operator privileges.
-/// 
+///
 /// Sends a shutdown signal that will cause the server to terminate
 /// after completing in-progress operations.
 pub struct DieHandler;
@@ -420,7 +450,7 @@ impl Handler for DieHandler {
 ///
 /// REHASH
 /// Reloads server configuration. Requires operator privileges.
-/// 
+///
 /// Currently reloads:
 /// - IP deny list (D-lines and Z-lines from database)
 pub struct RehashHandler;
@@ -490,7 +520,7 @@ impl Handler for RehashHandler {
 ///
 /// RESTART
 /// Restarts the server using exec. Requires operator privileges.
-/// 
+///
 /// This uses exec(2) to replace the current process with a new instance,
 /// preserving the PID. This is useful for applying updates without
 /// changing the process ID tracked by systemd or other supervisors.
@@ -814,7 +844,7 @@ impl Handler for VhostHandler {
             ctx.sender.send(reply).await?;
             return Ok(());
         }
-        
+
         // Check for valid hostname characters and structure
         if !is_valid_hostname(new_vhost) {
             let reply = server_notice(server_name, &oper_nick, "Invalid vhost: use alphanumeric, hyphens, dots only");

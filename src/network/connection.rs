@@ -79,6 +79,7 @@ fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
 /// (e.g., internal errors, send failures).
 fn handler_error_to_reply(
     server_name: &str,
+    nick: &str,
     error: &crate::handlers::HandlerError,
     msg: &slirc_proto::MessageRef<'_>,
 ) -> Option<Message> {
@@ -102,10 +103,18 @@ fn handler_error_to_reply(
             command: Command::Response(
                 Response::ERR_NEEDMOREPARAMS,
                 vec![
-                    "*".to_string(),
+                    nick.to_string(),
                     cmd_name.to_string(),
                     "Not enough parameters".to_string(),
                 ],
+            ),
+        }),
+        HandlerError::NoTextToSend => Some(Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.to_string())),
+            command: Command::Response(
+                Response::ERR_NOTEXTTOSEND,
+                vec![nick.to_string(), "No text to send".to_string()],
             ),
         }),
         HandlerError::NicknameInUse(nick) => Some(Message {
@@ -280,7 +289,8 @@ impl Connection {
                     if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
                         debug!(error = ?e, "Handler error during handshake");
                         // Send appropriate error reply based on error type
-                        if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, &e, &msg_ref) {
+                        let nick = handshake.nick.as_deref().unwrap_or("*");
+                        if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, nick, &e, &msg_ref) {
                             let _ = self.transport.write_message(&reply).await;
                         }
                         // NotRegistered during handshake shouldn't break - client may just be
@@ -451,7 +461,8 @@ impl Connection {
                                 }
 
                                 // Send appropriate error reply based on error type
-                                if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, &e, &msg_ref) {
+                                let nick = handshake.nick.as_deref().unwrap_or("*");
+                                if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, nick, &e, &msg_ref) {
                                     let _ = outgoing_tx.send(reply).await;
                                 }
                                 // NotRegistered post-handshake indicates a bug - should not happen
@@ -488,8 +499,18 @@ impl Connection {
                 // BRANCH B: Outgoing Messages
                 // Handles responses queued by handlers AND messages routed from other users
                 Some(msg) = outgoing_rx.recv() => {
+                    // Check if this is an ERROR message indicating we've been killed/disconnected
+                    let is_error_disconnect = matches!(&msg.command, Command::ERROR(_));
+
                     if let Err(e) = self.transport.write_message(&msg).await {
                         warn!(error = ?e, "Write error");
+                        break;
+                    }
+
+                    // If we received an ERROR message and we're no longer in the Matrix,
+                    // it means we were killed/disconnected by an external source
+                    if is_error_disconnect && !self.matrix.users.contains_key(&self.uid) {
+                        info!("Received disconnect signal - user removed from Matrix");
                         break;
                     }
                 }
