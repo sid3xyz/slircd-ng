@@ -40,7 +40,7 @@ pub use bans::{
 };
 pub use batch::{BatchHandler, BatchState, process_batch_message};
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
-pub use channel::{CycleHandler, InviteHandler, JoinHandler, KickHandler, KnockHandler, NamesHandler, PartHandler, TopicHandler};
+pub use channel::{CycleHandler, InviteHandler, JoinHandler, KickHandler, KnockHandler, NamesHandler, PartHandler, TopicHandler, force_join_channel, force_part_channel, TargetUser};
 pub use chathistory::ChatHistoryHandler;
 pub use connection::{
     NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,

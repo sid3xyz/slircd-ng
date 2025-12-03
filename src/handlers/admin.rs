@@ -7,15 +7,13 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    Context, Handler, HandlerResult, apply_channel_modes_typed, err_needmoreparams,
-    err_nosuchchannel, err_nosuchnick, format_modes_for_log, require_oper, resolve_nick_to_uid,
-    server_notice, server_reply,
+    Context, Handler, HandlerResult, TargetUser, apply_channel_modes_typed, err_needmoreparams,
+    err_nosuchchannel, err_nosuchnick, force_join_channel, force_part_channel,
+    format_modes_for_log, require_oper, resolve_nick_to_uid, server_notice, server_reply,
 };
 use crate::state::MemberModes;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower};
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 /// Get user prefix info (user, host, nick) for message construction.
 async fn get_user_prefix(ctx: &Context<'_>, uid: &str) -> Option<(String, String, String)> {
@@ -76,20 +74,6 @@ impl Handler for SajoinHandler {
             return Ok(());
         }
 
-        let channel_lower = irc_to_lower(channel_name);
-
-        // Get or create channel
-        let channel_ref = ctx
-            .matrix
-            .channels
-            .entry(channel_lower.clone())
-            .or_insert_with(|| {
-                Arc::new(RwLock::new(crate::state::Channel::new(
-                    channel_name.to_string(),
-                )))
-            })
-            .clone();
-
         // Get target user info for JOIN message
         let Some((target_user, target_host, target_realname)) =
             get_user_prefix(ctx, &target_uid).await
@@ -97,29 +81,24 @@ impl Handler for SajoinHandler {
             return Ok(());
         };
 
-        // Add target to channel
-        {
-            let mut channel = channel_ref.write().await;
-            if !channel.is_member(&target_uid) {
-                channel.add_member(target_uid.clone(), MemberModes::default());
-            }
-        }
+        // Get sender for the target user to send topic/names
+        let target_sender = ctx.matrix.senders.get(&target_uid).map(|r| r.clone());
 
-        // Add channel to user's list
-        if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-            let mut user = user_ref.write().await;
-            user.channels.insert(channel_lower.clone());
-        }
-
-        // Build and broadcast JOIN message
-        let join_msg = Message {
-            tags: None,
-            prefix: Some(Prefix::Nickname(target_realname, target_user, target_host)),
-            command: Command::JOIN(channel_name.to_string(), None, None),
+        // Use shared force_join_channel helper
+        let target = TargetUser {
+            uid: &target_uid,
+            nick: &target_realname,
+            user: &target_user,
+            host: &target_host,
         };
-        ctx.matrix
-            .broadcast_to_channel(&channel_lower, join_msg, None)
-            .await;
+        force_join_channel(
+            ctx,
+            &target,
+            channel_name,
+            MemberModes::default(),
+            target_sender.as_ref(),
+        )
+        .await?;
 
         tracing::info!(
             oper = %oper_nick,
@@ -185,14 +164,6 @@ impl Handler for SapartHandler {
 
         let channel_lower = irc_to_lower(channel_name);
 
-        // Check if channel exists
-        let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) else {
-            ctx.sender
-                .send(err_nosuchchannel(server_name, &oper_nick, channel_name))
-                .await?;
-            return Ok(());
-        };
-
         // Get target user info for PART message
         let Some((target_user, target_host, target_realname)) =
             get_user_prefix(ctx, &target_uid).await
@@ -200,27 +171,26 @@ impl Handler for SapartHandler {
             return Ok(());
         };
 
-        // Build and broadcast PART message (before removing member)
-        let part_msg = Message {
-            tags: None,
-            prefix: Some(Prefix::Nickname(target_realname, target_user, target_host)),
-            command: Command::PART(channel_name.to_string(), None),
+        // Use shared force_part_channel helper
+        let target = TargetUser {
+            uid: &target_uid,
+            nick: &target_realname,
+            user: &target_user,
+            host: &target_host,
         };
-        ctx.matrix
-            .broadcast_to_channel(&channel_lower, part_msg, None)
-            .await;
+        let was_in_channel = force_part_channel(
+            ctx,
+            &target,
+            &channel_lower,
+            None,
+        )
+        .await?;
 
-        // Remove from channel
-        {
-            let channel = channel_ref.clone();
-            let mut channel = channel.write().await;
-            channel.remove_member(&target_uid);
-        }
-
-        // Remove channel from user's list
-        if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-            let mut user = user_ref.write().await;
-            user.channels.remove(&channel_lower);
+        if !was_in_channel {
+            ctx.sender
+                .send(err_nosuchchannel(server_name, &oper_nick, channel_name))
+                .await?;
+            return Ok(());
         }
 
         tracing::info!(
