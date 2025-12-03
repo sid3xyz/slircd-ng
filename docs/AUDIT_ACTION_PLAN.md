@@ -66,11 +66,17 @@ Each task is prioritized by impact and effort.
 
 ### Q1: Activate ChannelModeBuilder
 
-- **Status:** TODO
+- **Status:** DEFERRED
 - **Files:** `src/state/mode_builder.rs`, `src/handlers/mode/channel.rs`
 - **Effort:** High
 - **Impact:** Medium
 - **Description:** `mode_builder.rs` is dead code. Use it to clean up 809-line `channel.rs`.
+- **Analysis:** The ChannelModeBuilder is designed for *constructing* mode change requests
+  (e.g., for admin commands or batching), while the 809 lines in channel.rs are primarily
+  for *applying* mode changes to channel state. These are different concerns. The large
+  match statement in `apply_channel_modes_typed` is necessary to handle all mode types.
+  A full ModeRegistry trait refactor would require significant changes and testing.
+  The current code is well-structured despite its length. Recommend deferring to Phase 3+.
 
 ### Q2: Audit `.to_string()` in Hot Paths
 
