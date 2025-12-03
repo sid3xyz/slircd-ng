@@ -489,6 +489,126 @@ impl IpDenyList {
     pub fn get_metadata(&self, key: &str) -> Option<&BanMetadata> {
         self.metadata.get(key)
     }
+
+    /// Synchronize with database D-lines and Z-lines at startup.
+    ///
+    /// Ensures any bans added via database admin tools (outside IRC handlers)
+    /// are present in the IpDenyList for O(1) gateway checks.
+    ///
+    /// Called once at startup after loading from disk.
+    /// Does NOT remove bans that are in IpDenyList but not in database
+    /// (to preserve bans added via IRC commands).
+    pub fn sync_from_database_bans(
+        &mut self,
+        dlines: &[crate::db::Dline],
+        zlines: &[crate::db::Zline],
+    ) -> usize {
+        let mut added = 0;
+
+        // Helper to calculate duration from expires_at timestamp
+        let duration_from_expires = |expires_at: Option<i64>| -> Option<Duration> {
+            expires_at.and_then(|exp| {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                if exp > now {
+                    Some(Duration::from_secs((exp - now) as u64))
+                } else {
+                    None // Already expired
+                }
+            })
+        };
+
+        // Sync D-lines
+        for dline in dlines {
+            // Skip if already expired
+            if let Some(expires) = dline.expires_at {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                if expires <= now {
+                    continue;
+                }
+            }
+
+            // Skip if already in IpDenyList
+            if self.metadata.contains_key(&dline.mask) {
+                continue;
+            }
+
+            // Try to parse as IpNet
+            if let Ok(net) = dline.mask.parse::<IpNet>() {
+                let reason = dline.reason.clone().unwrap_or_else(|| "D-lined".to_string());
+                let duration = duration_from_expires(dline.expires_at);
+                if self.add_ban(net, reason, duration, dline.set_by.clone()).is_ok() {
+                    added += 1;
+                }
+            } else if let Ok(ip) = dline.mask.parse::<IpAddr>() {
+                // Single IP without /prefix
+                let net = match ip {
+                    IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
+                    IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
+                };
+                let reason = dline.reason.clone().unwrap_or_else(|| "D-lined".to_string());
+                let duration = duration_from_expires(dline.expires_at);
+                if self.add_ban(net, reason, duration, dline.set_by.clone()).is_ok() {
+                    added += 1;
+                }
+            }
+        }
+
+        // Sync Z-lines
+        for zline in zlines {
+            // Skip if already expired
+            if let Some(expires) = zline.expires_at {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                if expires <= now {
+                    continue;
+                }
+            }
+
+            // Skip if already in IpDenyList
+            if self.metadata.contains_key(&zline.mask) {
+                continue;
+            }
+
+            // Try to parse as IpNet
+            if let Ok(net) = zline.mask.parse::<IpNet>() {
+                let reason = zline.reason.clone().unwrap_or_else(|| "Z-lined".to_string());
+                let duration = duration_from_expires(zline.expires_at);
+                if self.add_ban(net, reason, duration, zline.set_by.clone()).is_ok() {
+                    added += 1;
+                }
+            } else if let Ok(ip) = zline.mask.parse::<IpAddr>() {
+                // Single IP without /prefix
+                let net = match ip {
+                    IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
+                    IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
+                };
+                let reason = zline.reason.clone().unwrap_or_else(|| "Z-lined".to_string());
+                let duration = duration_from_expires(zline.expires_at);
+                if self.add_ban(net, reason, duration, zline.set_by.clone()).is_ok() {
+                    added += 1;
+                }
+            }
+        }
+
+        if added > 0 {
+            info!(
+                dlines = dlines.len(),
+                zlines = zlines.len(),
+                added,
+                "Synced database IP bans to IpDenyList"
+            );
+        }
+
+        added
+    }
 }
 
 impl Default for IpDenyList {
