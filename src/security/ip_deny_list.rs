@@ -499,7 +499,12 @@ impl IpDenyList {
         dlines: &[crate::db::Dline],
         zlines: &[crate::db::Zline],
     ) {
-        // Clear current state
+        // Clear current state - these operations are infallible for these types
+        // RoaringBitmap::clear, Vec::clear, and HashMap::clear never panic
+        let old_ipv4_count = self.ipv4_bitmap.len();
+        let old_ipv4_cidr_count = self.ipv4_cidrs.len();
+        let old_ipv6_count = self.ipv6_cidrs.len();
+        
         self.ipv4_bitmap.clear();
         self.ipv4_cidrs.clear();
         self.ipv6_cidrs.clear();
@@ -509,9 +514,12 @@ impl IpDenyList {
         let added = self.sync_from_database_bans(dlines, zlines);
         
         info!(
-            ipv4_singles = self.ipv4_bitmap.len(),
-            ipv4_cidrs = self.ipv4_cidrs.len(),
-            ipv6_cidrs = self.ipv6_cidrs.len(),
+            cleared_ipv4 = old_ipv4_count,
+            cleared_ipv4_cidrs = old_ipv4_cidr_count,
+            cleared_ipv6 = old_ipv6_count,
+            reloaded_ipv4 = self.ipv4_bitmap.len(),
+            reloaded_ipv4_cidrs = self.ipv4_cidrs.len(),
+            reloaded_ipv6 = self.ipv6_cidrs.len(),
             total = added,
             "IP deny list reloaded from database"
         );

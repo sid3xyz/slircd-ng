@@ -465,10 +465,15 @@ impl Handler for RehashHandler {
                 tracing::info!(oper = %nick, "REHASH completed successfully");
             }
             Err(e) => {
+                let error_msg = if e.to_string().contains("write lock") {
+                    format!("REHASH warning: Failed to acquire write lock on IP deny list - {}", e)
+                } else {
+                    format!("REHASH warning: {}", e)
+                };
                 ctx.sender.send(server_notice(
                     server_name,
                     &nick,
-                    &format!("REHASH warning: {}", e),
+                    &error_msg,
                 )).await?;
                 tracing::warn!(oper = %nick, error = %e, "REHASH completed with errors");
             }
