@@ -197,16 +197,36 @@ impl Handler for StatsHandler {
             }
             'm' | 'M' => {
                 // RPL_STATSCOMMANDS (212): Command usage statistics
-                // Placeholder - command tracking not yet implemented
-                let reply = server_reply(
-                    server_name,
-                    Response::RPL_STATSCOMMANDS,
-                    vec![
-                        nick.clone(),
-                        "Command statistics not yet implemented".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                let stats = ctx.registry.get_command_stats();
+                
+                if stats.is_empty() {
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_STATSCOMMANDS,
+                        vec![
+                            nick.clone(),
+                            "No commands have been used yet".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                } else {
+                    for (cmd, count) in stats {
+                        // :server 212 nick <command> <count> <byte_count> <remote_count>
+                        // We don't track byte_count and remote_count, so use 0
+                        let reply = server_reply(
+                            server_name,
+                            Response::RPL_STATSCOMMANDS,
+                            vec![
+                                nick.clone(),
+                                cmd.to_string(),
+                                count.to_string(),
+                                "0".to_string(),
+                                "0".to_string(),
+                            ],
+                        );
+                        ctx.sender.send(reply).await?;
+                    }
+                }
             }
             '?' => {
                 // Help - list available queries

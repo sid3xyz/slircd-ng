@@ -64,6 +64,7 @@ use slirc_proto::{Message, MessageRef};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 use tokio::sync::mpsc;
 
@@ -84,6 +85,8 @@ pub struct Context<'a> {
     /// Label from incoming message for labeled-response (IRCv3).
     /// If present, should be echoed back on all responses.
     pub label: Option<String>,
+    /// Command registry (for STATS m command usage tracking).
+    pub registry: &'a Arc<Registry>,
 }
 
 /// State tracked during client registration handshake.
@@ -177,6 +180,8 @@ pub trait Handler: Send + Sync {
 /// Registry of command handlers.
 pub struct Registry {
     handlers: HashMap<&'static str, Box<dyn Handler>>,
+    /// Command usage counters for STATS m
+    command_counts: HashMap<&'static str, Arc<AtomicU64>>,
 }
 
 impl Registry {
@@ -289,7 +294,26 @@ impl Registry {
         handlers.insert("SANICK", Box::new(SanickHandler));
         handlers.insert("SAMODE", Box::new(SamodeHandler));
 
-        Self { handlers }
+        // Initialize command counters for all registered commands
+        let mut command_counts = HashMap::new();
+        for &cmd in handlers.keys() {
+            command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
+        }
+
+        Self { handlers, command_counts }
+    }
+
+    /// Get command usage statistics for STATS m.
+    pub fn get_command_stats(&self) -> Vec<(&'static str, u64)> {
+        let mut stats: Vec<_> = self.command_counts
+            .iter()
+            .map(|(cmd, count)| (*cmd, count.load(Ordering::Relaxed)))
+            .filter(|(_, count)| *count > 0) // Only include used commands
+            .collect();
+        
+        // Sort by usage count (descending)
+        stats.sort_by(|a, b| b.1.cmp(&a.1));
+        stats
     }
 
     /// Dispatch a message to the appropriate handler.
@@ -300,6 +324,13 @@ impl Registry {
         let cmd_name = msg.command_name().to_ascii_uppercase();
 
         if let Some(handler) = self.handlers.get(cmd_name.as_str()) {
+            // Increment command counter (counters are created for all handlers in new())
+            // We use expect() here because the invariant is that all handlers have counters.
+            // If this fails, it indicates a logic error in Registry::new().
+            let counter = self.command_counts.get(cmd_name.as_str())
+                .expect("Command counter missing for registered handler");
+            counter.fetch_add(1, Ordering::Relaxed);
+            
             handler.handle(ctx, msg).await
         } else {
             // Send ERR_UNKNOWNCOMMAND for unrecognized commands

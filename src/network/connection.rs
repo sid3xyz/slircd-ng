@@ -272,6 +272,7 @@ impl Connection {
                         db: &self.db,
                         remote_addr: self.addr,
                         label,
+                        registry: &self.registry,
                     };
 
                     if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
@@ -421,6 +422,7 @@ impl Connection {
                                 db: &self.db,
                                 remote_addr: self.addr,
                                 label,
+                                registry: &self.registry,
                             };
 
                             if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
