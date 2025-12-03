@@ -43,7 +43,7 @@ pub struct QuitHandler;
 #[async_trait]
 impl Handler for QuitHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let quit_msg = msg.arg(0);
+        let quit_msg = msg.arg(0).map(|s| s.to_string());
 
         tracing::info!(
             uid = %ctx.uid,
@@ -52,7 +52,7 @@ impl Handler for QuitHandler {
             "Client quit"
         );
 
-        // Signal quit by returning an error that connection loop will handle
-        Err(super::super::HandlerError::NotRegistered) // We'll use a custom error type later
+        // Signal quit by returning Quit error that connection loop will handle
+        Err(super::super::HandlerError::Quit(quit_msg))
     }
 }

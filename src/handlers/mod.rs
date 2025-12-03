@@ -157,6 +157,8 @@ pub enum HandlerError {
     NickOrUserMissing,
     #[error("send error: {0}")]
     Send(#[from] mpsc::error::SendError<Message>),
+    #[error("client quit: {0:?}")]
+    Quit(Option<String>),
 }
 
 /// Result type for command handlers.

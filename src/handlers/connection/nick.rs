@@ -85,6 +85,13 @@ impl Handler for NickHandler {
             }
         }
 
+        // Save old nick for NICK change notification (before removing from index)
+        let old_nick_for_change = if ctx.handshake.registered {
+            ctx.handshake.nick.clone()
+        } else {
+            None
+        };
+
         // Remove old nick from index if changing
         if let Some(old_nick) = &ctx.handshake.nick {
             // Notify MONITOR watchers that old nick is going offline
@@ -103,6 +110,45 @@ impl Handler for NickHandler {
             .nicks
             .insert(nick_lower.clone(), ctx.uid.to_string());
         ctx.handshake.nick = Some(nick.to_string());
+
+        // Send NICK change message for registered users
+        if let Some(old_nick) = old_nick_for_change {
+            // Get user info for the prefix
+            let nick_msg = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let user = user_ref.read().await;
+                Message {
+                    tags: None,
+                    prefix: Some(Prefix::Nickname(
+                        old_nick.clone(),
+                        user.user.clone(),
+                        user.visible_host.clone(),
+                    )),
+                    command: Command::NICK(nick.to_string()),
+                }
+            } else {
+                // Fallback without full user info
+                Message {
+                    tags: None,
+                    prefix: Some(Prefix::Nickname(
+                        old_nick.clone(),
+                        "user".to_string(),
+                        "host".to_string(),
+                    )),
+                    command: Command::NICK(nick.to_string()),
+                }
+            };
+
+            // Send to the user themselves
+            ctx.sender.send(nick_msg.clone()).await?;
+
+            // Also update the User state with the new nick
+            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let mut user = user_ref.write().await;
+                user.nick = nick.to_string();
+            }
+
+            // TODO: Broadcast to channels the user is in
+        }
 
         // Notify MONITOR watchers that new nick is online (only for already-registered users)
         if ctx.handshake.registered {
