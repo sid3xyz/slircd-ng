@@ -1,7 +1,7 @@
 # slircd-ng Audit Action Plan
 
-**Generated:** 2024-12-03  
-**Updated:** 2024-12-03  
+**Generated:** 2024-12-03
+**Updated:** 2024-12-03
 **Status:** High-priority items complete
 
 ## Overview
