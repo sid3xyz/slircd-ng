@@ -6,7 +6,7 @@ use super::super::{
 use super::matches_ban;
 use crate::db::ChannelRepository;
 use crate::security::UserContext;
-use crate::state::{Channel, MemberModes, User};
+use crate::state::{parse_mlock, Channel, MemberModes, User};
 use async_trait::async_trait;
 use slirc_proto::{
     ChannelExt, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower,
@@ -17,6 +17,47 @@ use tracing::info;
 
 /// Handler for JOIN command.
 pub struct JoinHandler;
+
+/// Apply MLOCK modes to a channel's mode struct.
+///
+/// MLOCK (mode lock) ensures certain modes are always set or unset on a channel.
+/// This is typically configured via ChanServ and enforced when the channel is created.
+fn apply_mlock_to_channel(channel: &mut Channel, modes: &[Mode<ChannelMode>]) {
+    for mode in modes {
+        match mode {
+            // Simple flags (Type D - no parameters)
+            Mode::Plus(ChannelMode::NoExternalMessages, _) => channel.modes.no_external = true,
+            Mode::Minus(ChannelMode::NoExternalMessages, _) => channel.modes.no_external = false,
+            Mode::Plus(ChannelMode::ProtectedTopic, _) => channel.modes.topic_lock = true,
+            Mode::Minus(ChannelMode::ProtectedTopic, _) => channel.modes.topic_lock = false,
+            Mode::Plus(ChannelMode::Secret, _) => channel.modes.secret = true,
+            Mode::Minus(ChannelMode::Secret, _) => channel.modes.secret = false,
+            Mode::Plus(ChannelMode::InviteOnly, _) => channel.modes.invite_only = true,
+            Mode::Minus(ChannelMode::InviteOnly, _) => channel.modes.invite_only = false,
+            Mode::Plus(ChannelMode::Moderated, _) => channel.modes.moderated = true,
+            Mode::Minus(ChannelMode::Moderated, _) => channel.modes.moderated = false,
+            Mode::Plus(ChannelMode::RegisteredOnly, _) => channel.modes.registered_only = true,
+            Mode::Minus(ChannelMode::RegisteredOnly, _) => channel.modes.registered_only = false,
+            Mode::Plus(ChannelMode::NoColors, _) => channel.modes.no_colors = true,
+            Mode::Minus(ChannelMode::NoColors, _) => channel.modes.no_colors = false,
+            Mode::Plus(ChannelMode::NoCTCP, _) => channel.modes.no_ctcp = true,
+            Mode::Minus(ChannelMode::NoCTCP, _) => channel.modes.no_ctcp = false,
+            Mode::Plus(ChannelMode::NoNickChange, _) => channel.modes.no_nick_change = true,
+            Mode::Minus(ChannelMode::NoNickChange, _) => channel.modes.no_nick_change = false,
+            // Parameter modes (Type B/C)
+            Mode::Plus(ChannelMode::Key, Some(key)) => channel.modes.key = Some(key.clone()),
+            Mode::Minus(ChannelMode::Key, _) => channel.modes.key = None,
+            Mode::Plus(ChannelMode::Limit, Some(limit_str)) => {
+                if let Ok(limit) = limit_str.parse::<u32>() {
+                    channel.modes.limit = Some(limit);
+                }
+            }
+            Mode::Minus(ChannelMode::Limit, _) => channel.modes.limit = None,
+            // Skip list modes (bans, etc.) and prefix modes - not applicable for MLOCK
+            _ => {}
+        }
+    }
+}
 
 #[async_trait]
 impl Handler for JoinHandler {
@@ -154,6 +195,30 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         .clone();
 
     let mut channel_guard = channel.write().await;
+
+    // Apply MLOCK for newly created registered channels
+    // A channel is "new" if it has no members yet
+    if channel_guard.members.is_empty()
+        && ctx.matrix.registered_channels.contains(&channel_lower)
+    {
+        // Fetch the channel record to get MLOCK settings
+        let mlock_str = ctx
+            .db
+            .channels()
+            .find_by_name(&channel_lower)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|r| r.mlock);
+
+        if let Some(mlock_str) = mlock_str {
+            let mlock_modes = parse_mlock(&mlock_str);
+            apply_mlock_to_channel(&mut channel_guard, &mlock_modes);
+            if !mlock_modes.is_empty() {
+                info!(channel = %channel_name, mlock = %mlock_str, "Applied MLOCK to new channel");
+            }
+        }
+    }
 
     // Check if already in channel
     if channel_guard.is_member(ctx.uid) {

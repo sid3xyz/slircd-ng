@@ -20,5 +20,5 @@ pub(crate) use user::WhowasEntry;
 #[allow(unused_imports)]
 pub use matrix::Uid;
 #[allow(unused_imports)] // Will be used when we implement multi-mode commands
-pub use mode_builder::{ChannelModeBuilder, ModeChangeResult};
+pub use mode_builder::{parse_mlock, ChannelModeBuilder, ModeChangeResult};
 pub use uid::UidGenerator;

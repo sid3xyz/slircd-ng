@@ -60,6 +60,13 @@ pub enum ServiceEffect {
         adding: bool,
     },
 
+    /// Apply multiple channel mode changes at once (ChanServ MLOCK, auto-modes).
+    #[allow(dead_code)] // Ready for CLEAR MODES and batch mode commands
+    ChannelModes {
+        channel: String,
+        modes: Vec<Mode<ChannelMode>>,
+    },
+
     /// Force nick change (enforcement).
     ForceNick {
         target_uid: String,
@@ -365,6 +372,128 @@ pub async fn apply_effect(
             matrix.broadcast_to_channel(&channel, mode_msg, None).await;
 
             info!(channel = %canonical_name, target = %target_nick, mode = %mode_str, "ChanServ mode change");
+        }
+
+        ServiceEffect::ChannelModes { channel, modes } => {
+            if modes.is_empty() {
+                return;
+            }
+
+            // Get canonical channel name
+            let channel_lower = irc_to_lower(&channel);
+            let canonical_name = if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
+                channel_ref.read().await.name.clone()
+            } else {
+                return;
+            };
+
+            // Apply mode changes to channel state
+            if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
+                let mut channel_guard = channel_ref.write().await;
+                for mode in &modes {
+                    match mode.mode() {
+                        ChannelMode::Oper | ChannelMode::Voice | ChannelMode::Halfop => {
+                            // User modes - need to find the UID for the nick
+                            if let Some(nick) = mode.arg() {
+                                let nick_lower = irc_to_lower(nick);
+                                if let Some(uid) = matrix.nicks.get(&nick_lower).map(|r| r.clone())
+                                    && let Some(member) = channel_guard.members.get_mut(&uid)
+                                {
+                                    match mode.mode() {
+                                        ChannelMode::Oper => member.op = mode.is_plus(),
+                                        ChannelMode::Voice => member.voice = mode.is_plus(),
+                                        ChannelMode::Halfop => member.halfop = mode.is_plus(),
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                        ChannelMode::InviteOnly => {
+                            channel_guard.modes.invite_only = mode.is_plus();
+                        }
+                        ChannelMode::Moderated => {
+                            channel_guard.modes.moderated = mode.is_plus();
+                        }
+                        ChannelMode::NoExternalMessages => {
+                            channel_guard.modes.no_external = mode.is_plus();
+                        }
+                        ChannelMode::ProtectedTopic => {
+                            channel_guard.modes.topic_lock = mode.is_plus();
+                        }
+                        ChannelMode::Secret => {
+                            channel_guard.modes.secret = mode.is_plus();
+                        }
+                        ChannelMode::Key => {
+                            if mode.is_plus() {
+                                channel_guard.modes.key = mode.arg().map(|s| s.to_string());
+                            } else {
+                                channel_guard.modes.key = None;
+                            }
+                        }
+                        ChannelMode::Limit => {
+                            if mode.is_plus() {
+                                channel_guard.modes.limit = mode.arg().and_then(|s| s.parse().ok());
+                            } else {
+                                channel_guard.modes.limit = None;
+                            }
+                        }
+                        ChannelMode::RegisteredOnly => {
+                            channel_guard.modes.registered_only = mode.is_plus();
+                        }
+                        ChannelMode::NoColors => {
+                            channel_guard.modes.no_colors = mode.is_plus();
+                        }
+                        ChannelMode::NoCTCP => {
+                            channel_guard.modes.no_ctcp = mode.is_plus();
+                        }
+                        ChannelMode::NoNickChange => {
+                            channel_guard.modes.no_nick_change = mode.is_plus();
+                        }
+                        ChannelMode::NoKnock => {
+                            channel_guard.modes.no_knock = mode.is_plus();
+                        }
+                        ChannelMode::NoInvite => {
+                            channel_guard.modes.no_invite = mode.is_plus();
+                        }
+                        ChannelMode::NoChannelNotice => {
+                            channel_guard.modes.no_channel_notice = mode.is_plus();
+                        }
+                        ChannelMode::NoKick => {
+                            channel_guard.modes.no_kick = mode.is_plus();
+                        }
+                        ChannelMode::Permanent => {
+                            channel_guard.modes.permanent = mode.is_plus();
+                        }
+                        ChannelMode::OperOnly => {
+                            channel_guard.modes.oper_only = mode.is_plus();
+                        }
+                        ChannelMode::FreeInvite => {
+                            channel_guard.modes.free_invite = mode.is_plus();
+                        }
+                        ChannelMode::TlsOnly => {
+                            channel_guard.modes.tls_only = mode.is_plus();
+                        }
+                        // List modes (ban, except, invex, quiet) and other modes not handled here
+                        _ => {}
+                    }
+                }
+            }
+
+            // Build typed MODE message from ChanServ
+            let mode_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::Nickname(
+                    "ChanServ".to_string(),
+                    "ChanServ".to_string(),
+                    "services.".to_string(),
+                )),
+                command: Command::ChannelMODE(canonical_name.clone(), modes.clone()),
+            };
+
+            // Broadcast MODE change to channel members
+            matrix.broadcast_to_channel(&channel, mode_msg, None).await;
+
+            info!(channel = %canonical_name, modes = ?modes, "ChanServ batch mode change");
         }
 
         ServiceEffect::Kick {
