@@ -28,17 +28,17 @@ use slirc_proto::{ChannelMode, Mode};
 ///
 /// Generates a `Vec<Mode<ChannelMode>>` that can be passed to the mode application layer.
 /// Metadata (set_by, set_at) should be passed separately when applying the modes.
-#[allow(dead_code)] // Will be used when we implement multi-mode commands
+#[allow(dead_code)] // Ready for use by ChanServ batch mode commands
 #[derive(Debug, Clone, Default)]
 pub struct ChannelModeBuilder {
     modes: Vec<Mode<ChannelMode>>,
 }
 
 /// Result from building modes - the modes vector.
-#[allow(dead_code)] // Will be used when we implement multi-mode commands
+#[allow(dead_code)] // Used by ChannelModeBuilder
 pub type ModeChangeResult = Vec<Mode<ChannelMode>>;
 
-#[allow(dead_code)] // Will be used when we implement multi-mode commands
+#[allow(dead_code)] // Ready for ChanServ batch mode commands
 impl ChannelModeBuilder {
     /// Create a new empty mode builder.
     pub fn new() -> Self {
@@ -273,6 +273,153 @@ impl ChannelModeBuilder {
     }
 }
 
+/// Parse an MLOCK string like "+nt-s" or "+ntk-il secretkey" into a Mode vector.
+///
+/// MLOCK format:
+/// - Flags switch between add (+) and remove (-)
+/// - Parameter modes (k, l) consume arguments from the remaining string
+///
+/// # Example
+/// ```ignore
+/// let modes = parse_mlock("+nt-s");
+/// // Returns [+n, +t, -s]
+///
+/// let modes = parse_mlock("+ntk secretkey");
+/// // Returns [+n, +t, +k secretkey]
+/// ```
+pub fn parse_mlock(mlock: &str) -> Vec<Mode<ChannelMode>> {
+    let trimmed = mlock.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+
+    let mut result = Vec::new();
+    let mut adding = true; // Start assuming + if no prefix given
+
+    // Split into mode chars and remaining args
+    let parts: Vec<&str> = trimmed.splitn(2, ' ').collect();
+    let mode_chars = parts[0];
+    let args: Vec<&str> = if parts.len() > 1 {
+        parts[1].split_whitespace().collect()
+    } else {
+        Vec::new()
+    };
+    let mut arg_idx = 0;
+
+    for ch in mode_chars.chars() {
+        match ch {
+            '+' => adding = true,
+            '-' => adding = false,
+            'n' => {
+                let mode = if adding {
+                    Mode::plus(ChannelMode::NoExternalMessages, None)
+                } else {
+                    Mode::minus(ChannelMode::NoExternalMessages, None)
+                };
+                result.push(mode);
+            }
+            't' => {
+                let mode = if adding {
+                    Mode::plus(ChannelMode::ProtectedTopic, None)
+                } else {
+                    Mode::minus(ChannelMode::ProtectedTopic, None)
+                };
+                result.push(mode);
+            }
+            's' => {
+                let mode = if adding {
+                    Mode::plus(ChannelMode::Secret, None)
+                } else {
+                    Mode::minus(ChannelMode::Secret, None)
+                };
+                result.push(mode);
+            }
+            'i' => {
+                let mode = if adding {
+                    Mode::plus(ChannelMode::InviteOnly, None)
+                } else {
+                    Mode::minus(ChannelMode::InviteOnly, None)
+                };
+                result.push(mode);
+            }
+            'm' => {
+                let mode = if adding {
+                    Mode::plus(ChannelMode::Moderated, None)
+                } else {
+                    Mode::minus(ChannelMode::Moderated, None)
+                };
+                result.push(mode);
+            }
+            'r' => {
+                let mode = if adding {
+                    Mode::plus(ChannelMode::RegisteredOnly, None)
+                } else {
+                    Mode::minus(ChannelMode::RegisteredOnly, None)
+                };
+                result.push(mode);
+            }
+            'c' => {
+                let mode = if adding {
+                    Mode::plus(ChannelMode::NoColors, None)
+                } else {
+                    Mode::minus(ChannelMode::NoColors, None)
+                };
+                result.push(mode);
+            }
+            'C' => {
+                let mode = if adding {
+                    Mode::plus(ChannelMode::NoCTCP, None)
+                } else {
+                    Mode::minus(ChannelMode::NoCTCP, None)
+                };
+                result.push(mode);
+            }
+            'N' => {
+                let mode = if adding {
+                    Mode::plus(ChannelMode::NoNickChange, None)
+                } else {
+                    Mode::minus(ChannelMode::NoNickChange, None)
+                };
+                result.push(mode);
+            }
+            'k' => {
+                // Key mode requires a parameter when adding
+                if adding {
+                    if arg_idx < args.len() {
+                        let key = args[arg_idx].to_string();
+                        arg_idx += 1;
+                        result.push(Mode::plus(ChannelMode::Key, Some(&key)));
+                    }
+                    // If no param, skip (graceful handling)
+                } else {
+                    result.push(Mode::minus(ChannelMode::Key, None));
+                }
+            }
+            'l' => {
+                // Limit mode requires a parameter when adding
+                if adding {
+                    if arg_idx < args.len() {
+                        if let Ok(limit) = args[arg_idx].parse::<u32>() {
+                            arg_idx += 1;
+                            result.push(Mode::plus(ChannelMode::Limit, Some(&limit.to_string())));
+                        } else {
+                            arg_idx += 1; // Consume invalid arg, skip mode
+                        }
+                    }
+                    // If no param, skip (graceful handling)
+                } else {
+                    result.push(Mode::minus(ChannelMode::Limit, None));
+                }
+            }
+            _ => {
+                // Unknown mode char, skip gracefully
+            }
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,5 +476,101 @@ mod tests {
 
         let builder = builder.set_secret();
         assert!(!builder.is_empty());
+    }
+
+    #[test]
+    fn test_parse_mlock_simple() {
+        let modes = super::parse_mlock("+nt-s");
+        assert_eq!(modes.len(), 3);
+        // +n
+        assert!(modes[0].is_plus());
+        assert_eq!(*modes[0].mode(), ChannelMode::NoExternalMessages);
+        // +t
+        assert!(modes[1].is_plus());
+        assert_eq!(*modes[1].mode(), ChannelMode::ProtectedTopic);
+        // -s
+        assert!(modes[2].is_minus());
+        assert_eq!(*modes[2].mode(), ChannelMode::Secret);
+    }
+
+    #[test]
+    fn test_parse_mlock_with_key() {
+        let modes = super::parse_mlock("+ntk secretkey");
+        assert_eq!(modes.len(), 3);
+        // +n
+        assert!(modes[0].is_plus());
+        assert_eq!(*modes[0].mode(), ChannelMode::NoExternalMessages);
+        // +t
+        assert!(modes[1].is_plus());
+        assert_eq!(*modes[1].mode(), ChannelMode::ProtectedTopic);
+        // +k with param
+        assert!(modes[2].is_plus());
+        assert_eq!(*modes[2].mode(), ChannelMode::Key);
+        assert_eq!(modes[2].arg(), Some("secretkey"));
+    }
+
+    #[test]
+    fn test_parse_mlock_with_limit() {
+        let modes = super::parse_mlock("+ntl 50");
+        assert_eq!(modes.len(), 3);
+        // +l with param
+        assert!(modes[2].is_plus());
+        assert_eq!(*modes[2].mode(), ChannelMode::Limit);
+        assert_eq!(modes[2].arg(), Some("50"));
+    }
+
+    #[test]
+    fn test_parse_mlock_remove_key_limit() {
+        let modes = super::parse_mlock("-kl");
+        assert_eq!(modes.len(), 2);
+        // -k (no param needed for removal)
+        assert!(modes[0].is_minus());
+        assert_eq!(*modes[0].mode(), ChannelMode::Key);
+        assert!(modes[0].arg().is_none());
+        // -l
+        assert!(modes[1].is_minus());
+        assert_eq!(*modes[1].mode(), ChannelMode::Limit);
+    }
+
+    #[test]
+    fn test_parse_mlock_empty() {
+        let modes = super::parse_mlock("");
+        assert!(modes.is_empty());
+
+        let modes = super::parse_mlock("   ");
+        assert!(modes.is_empty());
+    }
+
+    #[test]
+    fn test_parse_mlock_complex() {
+        let modes = super::parse_mlock("+ntk-il secretkey 100");
+        assert_eq!(modes.len(), 5);
+        // +n, +t, +k secretkey, -i, -l
+        assert!(modes[0].is_plus());
+        assert_eq!(*modes[0].mode(), ChannelMode::NoExternalMessages);
+        assert!(modes[1].is_plus());
+        assert_eq!(*modes[1].mode(), ChannelMode::ProtectedTopic);
+        assert!(modes[2].is_plus());
+        assert_eq!(*modes[2].mode(), ChannelMode::Key);
+        assert_eq!(modes[2].arg(), Some("secretkey"));
+        assert!(modes[3].is_minus());
+        assert_eq!(*modes[3].mode(), ChannelMode::InviteOnly);
+        assert!(modes[4].is_minus());
+        assert_eq!(*modes[4].mode(), ChannelMode::Limit);
+    }
+
+    #[test]
+    fn test_parse_mlock_all_simple_flags() {
+        let modes = super::parse_mlock("+ntsimrcCN");
+        assert_eq!(modes.len(), 9);
+        assert_eq!(*modes[0].mode(), ChannelMode::NoExternalMessages);
+        assert_eq!(*modes[1].mode(), ChannelMode::ProtectedTopic);
+        assert_eq!(*modes[2].mode(), ChannelMode::Secret);
+        assert_eq!(*modes[3].mode(), ChannelMode::InviteOnly);
+        assert_eq!(*modes[4].mode(), ChannelMode::Moderated);
+        assert_eq!(*modes[5].mode(), ChannelMode::RegisteredOnly);
+        assert_eq!(*modes[6].mode(), ChannelMode::NoColors);
+        assert_eq!(*modes[7].mode(), ChannelMode::NoCTCP);
+        assert_eq!(*modes[8].mode(), ChannelMode::NoNickChange);
     }
 }
