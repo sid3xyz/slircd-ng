@@ -157,6 +157,9 @@ pub enum HandlerError {
     ErroneousNickname(String),
     #[error("not registered")]
     NotRegistered,
+    /// Disconnect the client silently (error message already sent)
+    #[error("access denied")]
+    AccessDenied,
     #[allow(dead_code)] // TODO: Return from USER handler for re-registration attempts
     #[error("already registered")]
     AlreadyRegistered,
