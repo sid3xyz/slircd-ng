@@ -24,6 +24,43 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     let network = &ctx.matrix.server_info.network;
     let host = ctx.remote_addr.ip().to_string();
 
+    // Check server password if configured
+    if let Some(required_password) = &ctx.matrix.config.server.password {
+        match &ctx.handshake.pass_received {
+            None => {
+                // No password provided but one is required
+                let reply = server_reply(
+                    server_name,
+                    Response::ERR_PASSWDMISMATCH,
+                    vec![nick.clone(), "Password required".to_string()],
+                );
+                ctx.sender.send(reply).await?;
+                let error = Message::from(Command::ERROR(
+                    "Closing Link: Access denied (password required)".to_string(),
+                ));
+                ctx.sender.send(error).await?;
+                return Err(HandlerError::AccessDenied);
+            }
+            Some(provided) if provided != required_password => {
+                // Wrong password
+                let reply = server_reply(
+                    server_name,
+                    Response::ERR_PASSWDMISMATCH,
+                    vec![nick.clone(), "Password incorrect".to_string()],
+                );
+                ctx.sender.send(reply).await?;
+                let error = Message::from(Command::ERROR(
+                    "Closing Link: Access denied (bad password)".to_string(),
+                ));
+                ctx.sender.send(error).await?;
+                return Err(HandlerError::AccessDenied);
+            }
+            Some(_) => {
+                // Password correct, continue
+            }
+        }
+    }
+
     // Check BanCache for user@host bans (G-lines, K-lines) - fast in-memory check
     if let Some(ban_result) = ctx.matrix.ban_cache.check_user_host(user, &host) {
         let ban_reason = format!("{}: {}", ban_result.ban_type, ban_result.reason);

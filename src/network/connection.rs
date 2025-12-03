@@ -140,6 +140,8 @@ fn handler_error_to_reply(
                 vec!["*".to_string(), "You may not reregister".to_string()],
             ),
         }),
+        // Access denied - error already sent to client, don't add another message
+        HandlerError::AccessDenied => None,
         // Internal errors - don't expose to client
         HandlerError::NickOrUserMissing | HandlerError::Send(_) => None,
         // Quit is handled specially by the connection loop, not as an error reply
@@ -440,6 +442,11 @@ impl Connection {
                                         command: Command::ERROR(error_text),
                                     };
                                     let _ = self.transport.write_message(&error_reply).await;
+                                    break;
+                                }
+
+                                // Handle AccessDenied - error already sent, just disconnect
+                                if matches!(e, crate::handlers::HandlerError::AccessDenied) {
                                     break;
                                 }
 
