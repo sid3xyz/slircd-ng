@@ -59,13 +59,6 @@ impl Handler for DlineHandler {
             tracing::error!(error = %e, "Failed to add D-line to database");
         }
 
-        // Update legacy ban cache for backward compatibility
-        ctx.matrix.ban_cache.add_dline(
-            ip.to_string(),
-            reason.to_string(),
-            None, // No expiration for now
-        );
-
         // Disconnect any matching users
         let disconnected = disconnect_matching_ban(ctx, BanType::Dline, ip, reason).await;
 
@@ -143,9 +136,6 @@ impl Handler for UndlineHandler {
                 false
             }
         };
-
-        // Remove from legacy ban cache
-        ctx.matrix.ban_cache.remove_dline(ip);
 
         let removed = deny_removed || db_removed;
         if removed {

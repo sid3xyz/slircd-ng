@@ -1,7 +1,7 @@
 //! In-memory ban cache for fast connection-time ban checks.
 //!
-//! Caches K-lines, D-lines, G-lines, and Z-lines from the database for
-//! O(n) pattern matching without database queries on every connection.
+//! Caches K-lines and G-lines from the database for O(n) pattern matching
+//! without database queries on every connection.
 //!
 //! # Architecture
 //!
@@ -9,11 +9,15 @@
 //! - Updated when admin commands add/remove bans
 //! - Checked at connection time before handshake completes
 //! - Expired bans are lazily filtered during checks
+//!
+//! # Note on IP Bans
+//!
+//! Z-lines and D-lines (IP-based bans) are handled by `IpDenyList` which
+//! provides O(1) Roaring Bitmap lookups in the gateway hot path.
 
-use crate::db::{Dline, Gline, Kline, Zline};
+use crate::db::{Gline, Kline};
 use dashmap::DashMap;
 use slirc_proto::wildcard_match;
-use std::net::IpAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 
@@ -33,14 +37,6 @@ pub struct BanResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::enum_variant_names)] // Traditional IRC naming: K-Line, G-Line, etc.
 pub enum BanType {
-    /// Z-line: IP ban (no DNS lookup).
-    /// NOTE: IP bans now use IpDenyList for O(1) checking; this is kept for API compatibility.
-    #[allow(dead_code)]
-    ZLine,
-    /// D-line: IP ban.
-    /// NOTE: IP bans now use IpDenyList for O(1) checking; this is kept for API compatibility.
-    #[allow(dead_code)]
-    DLine,
     /// G-line: Global user@host ban.
     GLine,
     /// K-line: Local user@host ban.
@@ -51,8 +47,6 @@ impl BanType {
     /// Get the display name for this ban type.
     pub fn name(&self) -> &'static str {
         match self {
-            BanType::ZLine => "Z-lined",
-            BanType::DLine => "D-lined",
             BanType::GLine => "G-lined",
             BanType::KLine => "K-lined",
         }
@@ -67,18 +61,16 @@ impl std::fmt::Display for BanType {
 
 /// In-memory cache of active bans for fast lookup.
 ///
-/// All ban types are stored in DashMaps keyed by their mask pattern.
+/// Stores K-lines and G-lines in DashMaps keyed by their mask pattern.
 /// Expiration is checked at lookup time (lazy expiration).
+///
+/// IP-based bans (Z-lines, D-lines) are handled by `IpDenyList`.
 #[derive(Debug)]
 pub struct BanCache {
     /// K-lines: user@host local bans.
     klines: DashMap<String, CachedBan>,
-    /// D-lines: IP bans.
-    dlines: DashMap<String, CachedBan>,
     /// G-lines: user@host global bans.
     glines: DashMap<String, CachedBan>,
-    /// Z-lines: IP bans (no DNS).
-    zlines: DashMap<String, CachedBan>,
 }
 
 /// A cached ban entry with expiration tracking.
@@ -118,21 +110,15 @@ impl BanCache {
     pub fn new() -> Self {
         Self {
             klines: DashMap::new(),
-            dlines: DashMap::new(),
             glines: DashMap::new(),
-            zlines: DashMap::new(),
         }
     }
 
     /// Load bans from database models into the cache.
     ///
     /// Called on startup to populate the cache.
-    pub fn load(
-        klines: Vec<Kline>,
-        dlines: Vec<Dline>,
-        glines: Vec<Gline>,
-        zlines: Vec<Zline>,
-    ) -> Self {
+    /// Only loads K-lines and G-lines; IP bans are handled by IpDenyList.
+    pub fn load(klines: Vec<Kline>, glines: Vec<Gline>) -> Self {
         let cache = Self::new();
 
         for k in klines {
@@ -142,17 +128,6 @@ impl BanCache {
                     mask: k.mask,
                     reason: k.reason.unwrap_or_else(|| "Banned".to_string()),
                     expires_at: k.expires_at,
-                },
-            );
-        }
-
-        for d in dlines {
-            cache.dlines.insert(
-                d.mask.clone(),
-                CachedBan {
-                    mask: d.mask,
-                    reason: d.reason.unwrap_or_else(|| "Banned".to_string()),
-                    expires_at: d.expires_at,
                 },
             );
         }
@@ -168,70 +143,13 @@ impl BanCache {
             );
         }
 
-        for z in zlines {
-            cache.zlines.insert(
-                z.mask.clone(),
-                CachedBan {
-                    mask: z.mask,
-                    reason: z.reason.unwrap_or_else(|| "Banned".to_string()),
-                    expires_at: z.expires_at,
-                },
-            );
-        }
-
         debug!(
             klines = cache.klines.len(),
-            dlines = cache.dlines.len(),
             glines = cache.glines.len(),
-            zlines = cache.zlines.len(),
             "Ban cache loaded"
         );
 
         cache
-    }
-
-    /// Check if an IP is banned (Z-line or D-line).
-    ///
-    /// Called at connection time before any handshake.
-    /// Checks Z-lines first (IP ban, skips DNS), then D-lines.
-    ///
-    /// NOTE: Superseded by `IpDenyList::check_ip()` for O(1) gateway checks.
-    /// Kept for API compatibility and potential fallback.
-    #[allow(dead_code)]
-    pub fn check_ip(&self, ip: &IpAddr) -> Option<BanResult> {
-        let ip_str = ip.to_string();
-
-        // Check Z-lines first (IP ban, no DNS lookup)
-        for entry in self.zlines.iter() {
-            let ban = entry.value();
-            if ban.is_expired() {
-                continue;
-            }
-            if self.matches_ip_pattern(&ban.mask, &ip_str) {
-                return Some(BanResult {
-                    ban_type: BanType::ZLine,
-                    pattern: ban.mask.clone(),
-                    reason: ban.reason.clone(),
-                });
-            }
-        }
-
-        // Check D-lines
-        for entry in self.dlines.iter() {
-            let ban = entry.value();
-            if ban.is_expired() {
-                continue;
-            }
-            if self.matches_ip_pattern(&ban.mask, &ip_str) {
-                return Some(BanResult {
-                    ban_type: BanType::DLine,
-                    pattern: ban.mask.clone(),
-                    reason: ban.reason.clone(),
-                });
-            }
-        }
-
-        None
     }
 
     /// Check if a user@host is banned (G-line or K-line).
@@ -285,33 +203,9 @@ impl BanCache {
         );
     }
 
-    /// Add a D-line to the cache.
-    pub fn add_dline(&self, mask: String, reason: String, expires_at: Option<i64>) {
-        self.dlines.insert(
-            mask.clone(),
-            CachedBan {
-                mask,
-                reason,
-                expires_at,
-            },
-        );
-    }
-
     /// Add a G-line to the cache.
     pub fn add_gline(&self, mask: String, reason: String, expires_at: Option<i64>) {
         self.glines.insert(
-            mask.clone(),
-            CachedBan {
-                mask,
-                reason,
-                expires_at,
-            },
-        );
-    }
-
-    /// Add a Z-line to the cache.
-    pub fn add_zline(&self, mask: String, reason: String, expires_at: Option<i64>) {
-        self.zlines.insert(
             mask.clone(),
             CachedBan {
                 mask,
@@ -326,19 +220,9 @@ impl BanCache {
         self.klines.remove(mask);
     }
 
-    /// Remove a D-line from the cache.
-    pub fn remove_dline(&self, mask: &str) {
-        self.dlines.remove(mask);
-    }
-
     /// Remove a G-line from the cache.
     pub fn remove_gline(&self, mask: &str) {
         self.glines.remove(mask);
-    }
-
-    /// Remove a Z-line from the cache.
-    pub fn remove_zline(&self, mask: &str) {
-        self.zlines.remove(mask);
     }
 
     /// Prune expired bans from all caches.
@@ -356,25 +240,7 @@ impl BanCache {
             }
         });
 
-        self.dlines.retain(|_, ban| {
-            if ban.is_expired() {
-                removed += 1;
-                false
-            } else {
-                true
-            }
-        });
-
         self.glines.retain(|_, ban| {
-            if ban.is_expired() {
-                removed += 1;
-                false
-            } else {
-                true
-            }
-        });
-
-        self.zlines.retain(|_, ban| {
             if ban.is_expired() {
                 removed += 1;
                 false
@@ -389,89 +255,11 @@ impl BanCache {
 
         removed
     }
-
-    /// Match an IP pattern (supports wildcards and CIDR notation).
-    ///
-    /// NOTE: Superseded by IpDenyList's Roaring Bitmap for IP bans.
-    #[allow(dead_code)]
-    fn matches_ip_pattern(&self, pattern: &str, ip: &str) -> bool {
-        // Check for CIDR notation
-        if pattern.contains('/') {
-            return cidr_match(pattern, ip);
-        }
-
-        // Otherwise use wildcard matching
-        wildcard_match(pattern, ip)
-    }
-}
-
-/// Match IP against CIDR notation (e.g., "192.168.1.0/24").
-///
-/// NOTE: Superseded by IpDenyList's Roaring Bitmap for IP bans.
-#[allow(dead_code)]
-fn cidr_match(cidr: &str, ip: &str) -> bool {
-    let parts: Vec<&str> = cidr.split('/').collect();
-    if parts.len() != 2 {
-        return false;
-    }
-
-    let network = parts[0];
-    let prefix_len: u32 = match parts[1].parse() {
-        Ok(p) if p <= 32 => p,
-        _ => return false,
-    };
-
-    // Parse network IP
-    let network_parts: Vec<u8> = network.split('.').filter_map(|s| s.parse().ok()).collect();
-    if network_parts.len() != 4 {
-        return false;
-    }
-
-    // Parse target IP
-    let ip_parts: Vec<u8> = ip.split('.').filter_map(|s| s.parse().ok()).collect();
-    if ip_parts.len() != 4 {
-        return false;
-    }
-
-    // Convert to u32
-    let network_u32 = u32::from_be_bytes([
-        network_parts[0],
-        network_parts[1],
-        network_parts[2],
-        network_parts[3],
-    ]);
-    let ip_u32 = u32::from_be_bytes([ip_parts[0], ip_parts[1], ip_parts[2], ip_parts[3]]);
-
-    // Create mask and compare
-    let mask = if prefix_len == 0 {
-        0
-    } else {
-        !0u32 << (32 - prefix_len)
-    };
-
-    (network_u32 & mask) == (ip_u32 & mask)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_cidr_match() {
-        assert!(cidr_match("192.168.1.0/24", "192.168.1.100"));
-        assert!(cidr_match("192.168.1.0/24", "192.168.1.1"));
-        assert!(!cidr_match("192.168.1.0/24", "192.168.2.1"));
-        assert!(cidr_match("10.0.0.0/8", "10.255.255.255"));
-        assert!(!cidr_match("10.0.0.0/8", "11.0.0.1"));
-    }
-
-    #[test]
-    fn test_wildcard_ip_match() {
-        let cache = BanCache::new();
-        assert!(cache.matches_ip_pattern("192.168.*.*", "192.168.1.100"));
-        assert!(cache.matches_ip_pattern("192.168.1.*", "192.168.1.50"));
-        assert!(!cache.matches_ip_pattern("192.168.1.*", "192.168.2.50"));
-    }
 
     #[test]
     fn test_ban_expiration() {
@@ -503,5 +291,26 @@ mod tests {
             expires_at: None,
         };
         assert!(!permanent.is_expired());
+    }
+
+    #[test]
+    fn test_user_host_matching() {
+        let cache = BanCache::new();
+        cache.add_kline("*@*.badhost.com".to_string(), "Bad host".to_string(), None);
+        cache.add_gline("baduser@*".to_string(), "Bad user".to_string(), None);
+
+        // Should match K-line
+        let result = cache.check_user_host("anyone", "server.badhost.com");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().ban_type, BanType::KLine);
+
+        // Should match G-line
+        let result = cache.check_user_host("baduser", "anyhost.com");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().ban_type, BanType::GLine);
+
+        // Should not match
+        let result = cache.check_user_host("gooduser", "goodhost.com");
+        assert!(result.is_none());
     }
 }
