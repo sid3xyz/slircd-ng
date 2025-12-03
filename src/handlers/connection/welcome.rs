@@ -47,9 +47,9 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         return Err(HandlerError::NotRegistered);
     }
 
-    // Fallback: Check database bans (K-lines, D-lines, G-lines, Z-lines)
-    // This catches any bans not yet in the cache (e.g., added via DB admin tools)
-    if let Ok(Some(ban_reason)) = ctx.db.bans().check_all_bans(&host, user, &host).await {
+    // Fallback: Check database for user@host bans (G-lines, K-lines)
+    // IP bans (Z-lines, D-lines) already checked at gateway by IpDenyList
+    if let Ok(Some(ban_reason)) = ctx.db.bans().check_user_host_bans(user, &host).await {
         // ERR_YOUREBANNEDCREEP (465)
         let reply = server_reply(
             server_name,
