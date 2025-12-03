@@ -12,6 +12,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -110,6 +111,47 @@ class ManualServerProcess:
         return True
 
 
+def kill_stale_servers(port: int) -> None:
+    """Kill any stale slircd processes that might be running."""
+    # First, check if anything is listening on our port
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.stdout.strip():
+            pids = result.stdout.strip().split('\n')
+            for pid in pids:
+                try:
+                    os.kill(int(pid), signal.SIGTERM)
+                    time.sleep(0.1)
+                except (ValueError, OSError):
+                    pass
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+    # Also kill any slircd processes in target directory
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "target/.*slircd"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.stdout.strip():
+            pids = result.stdout.strip().split('\n')
+            for pid in pids:
+                try:
+                    os.kill(int(pid), signal.SIGTERM)
+                except (ValueError, OSError):
+                    pass
+            time.sleep(0.2)  # Give processes time to exit
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+
 class ServerProcess:
     """Manages a slircd-ng server process for testing."""
 
@@ -122,9 +164,13 @@ class ServerProcess:
 
     async def start(self) -> None:
         """Start the server."""
+        # Kill any stale server processes first
+        kill_stale_servers(self.port)
+
         self.config_path = generate_test_config(self.tmpdir, self.port)
 
-        # Build first if needed
+        # Always rebuild to ensure we test current code
+        print(f"Building slircd-ng...", file=sys.stderr)
         build_result = subprocess.run(
             ["cargo", "build", "-p", "slircd-ng"],
             cwd=str(WORKSPACE_ROOT),
