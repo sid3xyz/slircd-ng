@@ -1,5 +1,7 @@
 //! Configuration loading and management.
 
+use rand::distributions::Alphanumeric;
+use rand::Rng;
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -168,7 +170,17 @@ impl Default for SecurityConfig {
 }
 
 fn default_cloak_secret() -> String {
-    "slircd-default-secret-CHANGE-ME-IN-PRODUCTION".to_string()
+    let secret: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+    tracing::warn!(
+        "No cloak_secret configured - using ephemeral random secret. \
+         Cloaked hostnames will NOT be consistent across server restarts. \
+         Set [security].cloak_secret in config.toml for production use."
+    );
+    secret
 }
 
 fn default_cloak_suffix() -> String {
