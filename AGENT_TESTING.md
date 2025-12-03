@@ -1,209 +1,117 @@
 # AI Agent Testing Instructions for slircd-ng
 
-**Goal:** Test the `slircd-ng` IRC server using native tools that an AI agent can easily control.
+**Goal:** Test the `slircd-ng` IRC server using **third-party tools only**.
 
-**Tools:**
-1.  `ii` (Interactive/Manual Testing) - Treated as a filesystem interface.
-2.  `python + pytest` (Automated/Regression Testing) - Using the existing `tests/e2e` suite.
-3.  `netcat` (Protocol Fuzzing) - For raw socket injection.
+## CRITICAL RULE
+
+**DO NOT use custom Python test suites (tests/e2e).** Custom E2E tests waste time debugging the test code itself. Real third-party clients and tools expose real bugs.
+
+**Approved testing tools (third-party only):**
+1. `ii` — Filesystem-based IRC client for interactive testing
+2. `irctest` — Official RFC compliance suite (used by Ergo, Solanum, InspIRCd)
+3. `irssi` / `weechat` — Real IRC clients for manual verification
+4. `netcat` — Raw protocol verification (quick checks only)
 
 ---
 
 ## 1. Interactive Testing with `ii` (Recommended)
 
-The `ii` client maps IRC channels to directories and messages to files. This is the best way for an AI to "use" the IRC server interactively.
+The `ii` client maps IRC channels to directories and messages to files. This is the best way for an AI to test the IRC server interactively.
 
-### Setup (Run once)
-If `ii` is not installed, ask the user to install it (`sudo apt install ii` or build from source).
+### Setup
+```bash
+# Install if needed
+sudo apt install ii
+```
 
 ### Connection
-To connect to the local development server:
 ```bash
-# Create a temporary directory for this session
-mkdir -p /tmp/irc_test_session
-cd /tmp/irc_test_session
-
-# Connect (runs in background)
+# Connect to local test server (runs in background)
 ii -s localhost -p 6667 -n AgentBot -f "AI Test Agent" &
 ```
 
-### How to Control the Client
+### Usage
 
-The client creates a directory tree. The server control file is at `~/irc/localhost/in`.
-
-**Join a Channel:**
+ii creates files at `~/irc/localhost/`. Write commands to `in`, read responses from `out`.
 
 ```bash
-echo "/j #test" > /tmp/irc_test_session/localhost/in
+# Join a channel
+echo "/j #test" > ~/irc/localhost/in
+
+# Send a message (after joining)
+echo "Hello World" > ~/irc/localhost/'#test'/in
+
+# Read channel output
+cat ~/irc/localhost/'#test'/out
+
+# Leave channel
+echo "/l" > ~/irc/localhost/'#test'/in
+
+# Disconnect
+echo "/quit" > ~/irc/localhost/in
 ```
 
-**Send a Message:**
+---
 
+## 2. RFC Compliance Testing with `irctest` (Required for Validation)
+
+Use irctest for authoritative protocol compliance testing. This is the same suite used by production IRC servers.
+
+### Setup (one-time)
 ```bash
-# Wait for join to complete, then:
-echo "Hello World" > /tmp/irc_test_session/localhost/#test/in
-```
-
-**Read Chat Logs (Verify Output):**
-
-```bash
-cat /tmp/irc_test_session/localhost/#test/out
-```
-
-**Leave/Part:**
-
-```bash
-echo "/l" > /tmp/irc_test_session/localhost/#test/in
-```
-
-### Example Agent Prompt
-
-> *"Join channel \#dev, say 'connection test', and check the output file to verify the server echoed the message back."*
-
------
-
-## 2\. Automated Testing (Python E2E Suite)
-
-Your project already contains a robust E2E test suite. Use this for regression testing or checking specific logic.
-
-### Setup
-
-```bash
-cd tests/e2e
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+cd /tmp && git clone https://github.com/ergochat/irctest.git
+cd irctest && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 ### Running Tests
+```bash
+export IRCTEST_SERVER_HOSTNAME=localhost IRCTEST_SERVER_PORT=6667
+cd /tmp/irctest
 
-Run the full suite to ensure no regressions:
+# Single test (preferred for debugging):
+timeout 15 .venv/bin/pytest --controller irctest.controllers.external_server \
+  -k "testNickCollision" -v 2>&1 | tail -30
+
+# Test suite (e.g., AWAY tests):
+timeout 60 .venv/bin/pytest --controller irctest.controllers.external_server \
+  irctest/server_tests/away.py --tb=no -q 2>&1 | tail -20
+```
+
+**ALWAYS use timeout and limit output.**
+
+---
+
+## 3. Raw Protocol Verification (Netcat)
+
+Use netcat for quick protocol-level checks only.
 
 ```bash
-# Auto-starts the server and runs tests
-pytest -v
+# Basic handshake test
+echo -e "NICK test$$\r\nUSER t 0 * :Test\r\n" | timeout 3 nc localhost 6667 | head -15
+
+# Test specific command
+printf "NICK t$$\r\nUSER t 0 * :T\r\nJOIN #test\r\nQUIT\r" | timeout 5 nc localhost 6667 | head -20
 ```
 
-### Writing New Tests on the Fly
+---
 
-To test a specific bug or feature, write a temporary test file using the `client` fixture.
+## 4. Real Client Testing (irssi/weechat)
 
-**Pattern:**
-Create `tests/e2e/temp_agent_test.py`:
-
-```python
-import pytest
-
-@pytest.mark.asyncio
-async def test_agent_scenario(client):
-    # Scenario: Check if NICK change is enforced
-    await client.send("NICK new_nick")
-    response = await client.expect("NICK")
-    assert "new_nick" in response.raw
-```
-
-Run it:
+For manual verification or complex scenarios:
 
 ```bash
-pytest tests/e2e/temp_agent_test.py
+# Connect with irssi
+irssi -c localhost -p 6667 -n testuser
 ```
 
------
+---
 
-## 3\. Raw Protocol Testing (Netcat)
+## Summary Checklist
 
-Use this to test handshake edge cases or invalid UTF-8 handling.
+1. **Is server running?** `nc -z localhost 6667`
+2. **Interactive testing?** Use `ii` — write to `in`, read from `out`
+3. **RFC compliance?** Use `irctest` — the authoritative third-party suite
+4. **Quick protocol check?** Use `netcat` with timeout
+5. **Manual verification?** Use `irssi` or `weechat`
 
-**Handshake Test:**
-
-```bash
-echo -e "NICK rawbot\r\nUSER raw 0 * :Raw Bot\r\n" | nc -C localhost 6667
-```
-
-**Crash Test (Fuzzing):**
-
-```bash
-# Send garbage data to see if server panics
-echo -e ":invalid_prefix COMMAND parameter\r\n" | nc -C localhost 6667
-```
-
------
-
-## 4. Server Control (serverctl.sh)
-
-Use the workspace-provided helper to safely start/stop/restart the test server without affecting unrelated processes.
-
-- Script: `slircd-ng/scripts/serverctl.sh`
-- Commands: `start`, `stop`, `restart`, `status`, `verify`, `tail`
-- Defaults: `PORT=6667`, `PIDFILE=/tmp/slircd-test.pid`, `LOGFILE=/tmp/slircd-test.log`, `CONFIG=slircd-ng/config.test.toml`
-
-Quick start:
-
-```bash
-# From workspace root
-./slircd-ng/scripts/serverctl.sh restart
-./slircd-ng/scripts/serverctl.sh verify   # Expect 001 welcome
-./slircd-ng/scripts/serverctl.sh status   # Show PID listening on :6667
-```
-
-Follow the safe flow for agent sessions:
-
-```bash
-# Stop only the managed server (PID+binary checked)
-./slircd-ng/scripts/serverctl.sh stop
-
-# Start fresh build with test config
-./slircd-ng/scripts/serverctl.sh start
-
-# Tail logs live
-./slircd-ng/scripts/serverctl.sh tail
-```
-
-Environment overrides (optional):
-
-```bash
-PORT=6667 PIDFILE=/tmp/slircd-test.pid LOGFILE=/tmp/slircd-test.log \
-    CONFIG=/home/straylight/slircd-ng/config.test.toml \
-    ./slircd-ng/scripts/serverctl.sh restart
-```
-
-### Real-World Scenarios (copy/paste)
-
-CAP + SETNAME + WHOIS:
-
-```bash
-(printf "CAP LS 302\r\nNICK realtest\r\nUSER real 0 * :Real User\r\n";
- printf "CAP REQ :setname\r\nCAP END\r\nSETNAME :New Realname\r\nWHOIS realtest\r\nQUIT\r\n") |
-    timeout 6 nc -C localhost 6667
-```
-
-MODE +kl and query (expect 324 with separate params):
-
-```bash
-chan="#test$(tr -dc a-z0-9 </dev/urandom | head -c 6)";
-(printf "NICK modecase\r\nUSER modecase 0 * :Mode Case\r\nJOIN ${chan}\r\n";
- printf "MODE ${chan} +kl key123 21\r\nMODE ${chan}\r\nQUIT\r\n") |
-    timeout 7 nc -C localhost 6667
-```
-
-PING and TIME:
-
-```bash
-(printf "NICK echoer\r\nUSER echoer 0 * :Echoer\r\nPING token123\r\nTIME\r\nQUIT\r\n") |
-    timeout 6 nc -C localhost 6667
-```
-
-LIST channels (may be empty on fresh server):
-
-```bash
-(printf "NICK lister\r\nUSER lister 0 * :Lister\r\nLIST\r\nQUIT\r\n") |
-    timeout 6 nc -C localhost 6667
-```
-
-
-## Summary Checklist for Agent
-
-1. **Is the server running?** Check with `nc -z localhost 6667`.
-2. **Interactive?** Use `ii`. Write to `in` files, read from `out` files.
-3. **Regression?** Use `pytest` in `tests/e2e`.
-4. **Debug?** Check server logs: `./slircd-ng/scripts/serverctl.sh tail` (or set `RUST_LOG=debug`).
+**NEVER use custom Python tests (tests/e2e) for server validation.**

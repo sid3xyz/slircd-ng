@@ -1,1 +1,0 @@
-"""slircd-ng irctest controller."""
