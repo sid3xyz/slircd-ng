@@ -673,3 +673,113 @@ impl Handler for TraceHandler {
         Ok(())
     }
 }
+
+/// Handler for VHOST command.
+///
+/// `VHOST <nick> <vhost>`
+///
+/// Sets a virtual hostname for a user (operator only).
+/// This updates the user's visible_host field.
+pub struct VhostHandler;
+
+#[async_trait]
+impl Handler for VhostHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        let server_name = &ctx.matrix.server_info.name;
+        let Ok(oper_nick) = require_oper(ctx).await else {
+            return Ok(());
+        };
+
+        // VHOST <nick> <vhost>
+        let target_nick = match msg.arg(0) {
+            Some(n) if !n.is_empty() => n,
+            _ => {
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "VHOST"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let new_vhost = match msg.arg(1) {
+            Some(h) if !h.is_empty() => h,
+            _ => {
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "VHOST"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Validate vhost (basic checks)
+        if new_vhost.len() > 64 || new_vhost.contains(' ') || new_vhost.contains('\0') {
+            let reply = server_notice(server_name, &oper_nick, "Invalid vhost format");
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        // Resolve target nick to UID
+        let target_uid = match resolve_nick_to_uid(ctx, target_nick) {
+            Some(uid) => uid,
+            None => {
+                ctx.sender
+                    .send(err_nosuchnick(server_name, &oper_nick, target_nick))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Update the target user's visible_host
+        if let Some(target_user_ref) = ctx.matrix.users.get(&target_uid) {
+            let mut target_user = target_user_ref.write().await;
+            let old_vhost = target_user.visible_host.clone();
+            target_user.visible_host = new_vhost.to_string();
+
+            // Notify operator
+            let reply = server_notice(
+                server_name,
+                &oper_nick,
+                format!(
+                    "Changed vhost for {} from {} to {}",
+                    target_user.nick, old_vhost, new_vhost
+                ),
+            );
+            ctx.sender.send(reply).await?;
+
+            // Optionally broadcast CHGHOST to channels (if chghost cap is negotiated)
+            let channels: Vec<String> = target_user.channels.iter().cloned().collect();
+            let target_nick_clone = target_user.nick.clone();
+            let target_user_clone = target_user.user.clone();
+            drop(target_user); // Release lock before broadcasting
+
+            let chghost_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::new(&target_nick_clone, &target_user_clone, &old_vhost)),
+                command: Command::CHGHOST(target_user_clone.clone(), new_vhost.to_string()),
+            };
+
+            for channel_name in &channels {
+                ctx.matrix
+                    .broadcast_to_channel_with_cap(
+                        channel_name,
+                        chghost_msg.clone(),
+                        None,
+                        Some("chghost"),
+                        None,
+                    )
+                    .await;
+            }
+
+            tracing::info!(
+                oper = %oper_nick,
+                target = %target_nick,
+                old_vhost = %old_vhost,
+                new_vhost = %new_vhost,
+                "VHOST changed"
+            );
+        }
+
+        Ok(())
+    }
+}
+
