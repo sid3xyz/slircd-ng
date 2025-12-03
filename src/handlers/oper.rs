@@ -22,12 +22,18 @@ fn is_valid_hostname(hostname: &str) -> bool {
     if hostname.is_empty() || hostname.len() > 253 {
         return false;
     }
+    
+    // Must not start or end with a dot
+    if hostname.starts_with('.') || hostname.ends_with('.') {
+        return false;
+    }
 
     // Split into labels
     let labels: Vec<&str> = hostname.split('.').collect();
     
     // Each label must be valid
     for label in labels {
+        // Reject empty labels (catches consecutive dots)
         if label.is_empty() || label.len() > 63 {
             return false;
         }
@@ -749,7 +755,7 @@ impl Handler for VhostHandler {
         
         // Check for valid hostname characters and structure
         if !is_valid_hostname(new_vhost) {
-            let reply = server_notice(server_name, &oper_nick, "Invalid vhost format (use alphanumeric, hyphens, dots only; no leading/trailing hyphens or dots)");
+            let reply = server_notice(server_name, &oper_nick, "Invalid vhost: use alphanumeric, hyphens, dots only");
             ctx.sender.send(reply).await?;
             return Ok(());
         }
