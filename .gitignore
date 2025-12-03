@@ -6,3 +6,6 @@ Cargo.lock
 *.db-journal
 *.db-shm
 *.db-wal
+
+# Test artifacts
+slircd.log

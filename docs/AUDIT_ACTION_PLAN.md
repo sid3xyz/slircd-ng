@@ -137,6 +137,19 @@ Each task is prioritized by impact and effort.
 10. ✅ Q4 - STATS m command (Already implemented)
 11. ⬜ P1 - Live ban reload (Nice to have)
 12. ⬜ Q2 - Audit .to_string() in hot paths
+13. ✅ D1 - Documentation Overhaul (Industry parity)
+
+---
+
+## 🔵 Documentation
+
+### D1: Documentation Overhaul
+
+- **Status:** DONE
+- **Files:** `docs/COMMANDS.md`, `docs/MODES.md`, `docs/CONFIGURATION.md`
+- **Effort:** High
+- **Impact:** High
+- **Change:** Created comprehensive command reference (70+ commands), mode reference (all user/channel modes), verified CONFIGURATION.md covers all sections.
 
 ---
 
@@ -145,3 +158,4 @@ Each task is prioritized by impact and effort.
 - 2024-12-03: Initial plan created from audit findings
 - 2024-12-03: Completed C1, C2, A1, A2, A3, A4, P2 (7 of 11 items)
 - 2024-12-03: Completed Q1 (MLOCK enforcement), verified Q3/Q4 already done (10 of 12 items)
+- 2024-12-03: Completed D1 (Documentation Overhaul) - created COMMANDS.md, MODES.md (11 of 13 items)
