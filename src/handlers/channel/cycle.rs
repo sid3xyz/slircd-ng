@@ -3,6 +3,7 @@
 //! Implements the CYCLE command (Part + Join in one command).
 
 use super::super::{Context, Handler, HandlerError, HandlerResult};
+use super::part::leave_channel_internal;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, irc_to_lower};
 
@@ -23,8 +24,18 @@ impl Handler for CycleHandler {
 
         // CYCLE <channel> [message]
         let channels_str = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        // Note: part_message is arg(1) but not used in current implementation
-        // since we're not actually sending PART messages, just removing from state
+        let part_message = msg.arg(1); // Optional part message
+
+        let nick = ctx
+            .handshake
+            .nick
+            .clone()
+            .ok_or(HandlerError::NickOrUserMissing)?;
+        let user_name = ctx
+            .handshake
+            .user
+            .clone()
+            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Process each channel
         let channels: Vec<&str> = channels_str.split(',').collect();
@@ -36,29 +47,8 @@ impl Handler for CycleHandler {
 
             let channel_lower = irc_to_lower(channel_name);
 
-            // Check if user is in the channel
-            if let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) {
-                let channel = channel_ref.read().await;
-                if !channel.is_member(ctx.uid) {
-                    continue; // Skip if not in channel
-                }
-            } else {
-                continue; // Channel doesn't exist
-            }
-
-            // Part from channel
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let mut user = user_ref.write().await;
-                user.channels.remove(&channel_lower);
-            }
-
-            if let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) {
-                let mut channel = channel_ref.write().await;
-                channel.remove_member(ctx.uid);
-            }
-
-            // Now use JOIN handler to rejoin
-            // This is simpler than duplicating all the JOIN logic
+            // Use leave_channel_internal to properly broadcast PART
+            leave_channel_internal(ctx, &channel_lower, &nick, &user_name, part_message).await?;
         }
 
         // After parting all channels, rejoin them using the original channels_str

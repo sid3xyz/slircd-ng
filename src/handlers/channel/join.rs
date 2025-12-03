@@ -248,7 +248,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     if channel_guard.modes.tls_only && !ctx.handshake.is_tls {
         let reply = server_reply(
             &ctx.matrix.server_info.name,
-            Response::ERR_INVITEONLYCHAN, // Using this as closest match, could use custom numeric
+            Response::ERR_SECUREONLYCHAN,
             vec![
                 nick.clone(),
                 channel_name.to_string(),

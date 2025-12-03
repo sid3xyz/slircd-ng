@@ -277,34 +277,28 @@ impl Handler for SilenceHandler {
             if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
                 let user = user_ref.read().await;
                 
-                // 271 RPL_SILELIST for each entry
+                // RPL_SILELIST (271) for each entry
                 for mask in &user.silence_list {
-                    let reply = slirc_proto::Message {
-                        tags: None,
-                        prefix: Some(slirc_proto::Prefix::new_from_str(server_name)),
-                        command: Command::Raw(
-                            "271".to_string(),
-                            vec![
-                                nick.clone(),
-                                mask.clone(),
-                            ],
-                        ),
-                    };
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_SILELIST,
+                        vec![
+                            nick.clone(),
+                            mask.clone(),
+                        ],
+                    );
                     ctx.sender.send(reply).await?;
                 }
                 
-                // 272 RPL_ENDOFSILELIST
-                let end_reply = slirc_proto::Message {
-                    tags: None,
-                    prefix: Some(slirc_proto::Prefix::new_from_str(server_name)),
-                    command: Command::Raw(
-                        "272".to_string(),
-                        vec![
-                            nick.clone(),
-                            "End of Silence List".to_string(),
-                        ],
-                    ),
-                };
+                // RPL_ENDOFSILELIST (272)
+                let end_reply = server_reply(
+                    server_name,
+                    Response::RPL_ENDOFSILELIST,
+                    vec![
+                        nick.clone(),
+                        "End of Silence List".to_string(),
+                    ],
+                );
                 ctx.sender.send(end_reply).await?;
             }
             return Ok(());
@@ -338,19 +332,16 @@ impl Handler for SilenceHandler {
                 // Add to silence list (limit to reasonable size)
                 const MAX_SILENCE_ENTRIES: usize = 50;
                 if user.silence_list.len() >= MAX_SILENCE_ENTRIES {
-                    // 511 ERR_SILELISTFULL
-                    let reply = slirc_proto::Message {
-                        tags: None,
-                        prefix: Some(slirc_proto::Prefix::new_from_str(server_name)),
-                        command: Command::Raw(
-                            "511".to_string(),
-                            vec![
-                                nick.clone(),
-                                mask.to_string(),
-                                format!("Your silence list is full (max {})", MAX_SILENCE_ENTRIES),
-                            ],
-                        ),
-                    };
+                    // ERR_SILELISTFULL (511)
+                    let reply = server_reply(
+                        server_name,
+                        Response::ERR_SILELISTFULL,
+                        vec![
+                            nick.clone(),
+                            mask.to_string(),
+                            format!("Your silence list is full (max {})", MAX_SILENCE_ENTRIES),
+                        ],
+                    );
                     ctx.sender.send(reply).await?;
                     return Ok(());
                 }

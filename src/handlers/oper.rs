@@ -17,6 +17,35 @@ use super::{
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
+/// Validate hostname per RFC 952/1123 rules.
+fn is_valid_hostname(hostname: &str) -> bool {
+    if hostname.is_empty() || hostname.len() > 253 {
+        return false;
+    }
+
+    // Split into labels
+    let labels: Vec<&str> = hostname.split('.').collect();
+    
+    // Each label must be valid
+    for label in labels {
+        if label.is_empty() || label.len() > 63 {
+            return false;
+        }
+        
+        // Must not start or end with hyphen
+        if label.starts_with('-') || label.ends_with('-') {
+            return false;
+        }
+        
+        // Must contain only alphanumeric and hyphens
+        if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return false;
+        }
+    }
+    
+    true
+}
+
 /// Get full user info for message construction.
 async fn get_user_full_info(ctx: &Context<'_>) -> Option<(String, String, String, bool)> {
     let user_ref = ctx.matrix.users.get(ctx.uid)?;
@@ -711,9 +740,16 @@ impl Handler for VhostHandler {
             }
         };
 
-        // Validate vhost (basic checks)
-        if new_vhost.len() > 64 || new_vhost.contains(' ') || new_vhost.contains('\0') {
-            let reply = server_notice(server_name, &oper_nick, "Invalid vhost format");
+        // Validate vhost (RFC 952/1123 hostname rules)
+        if new_vhost.len() > 64 {
+            let reply = server_notice(server_name, &oper_nick, "Vhost too long (max 64 chars)");
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+        
+        // Check for valid hostname characters and structure
+        if !is_valid_hostname(new_vhost) {
+            let reply = server_notice(server_name, &oper_nick, "Invalid vhost format (use alphanumeric, hyphens, dots only; no leading/trailing hyphens or dots)");
             ctx.sender.send(reply).await?;
             return Ok(());
         }
