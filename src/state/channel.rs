@@ -299,8 +299,12 @@ impl Channel {
     }
 
     /// Check if user_uid can modify target_uid's modes.
-    /// A user can only modify users with lower rank.
+    /// A user can only modify users with lower rank, or themselves.
     pub fn can_modify(&self, user_uid: &str, target_uid: &str) -> bool {
+        // Users can always modify their own modes
+        if user_uid == target_uid {
+            return true;
+        }
         let user_rank = self.get_rank(user_uid);
         let target_rank = self.get_rank(target_uid);
         user_rank > target_rank

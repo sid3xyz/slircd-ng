@@ -23,7 +23,8 @@ impl Handler for CycleHandler {
 
         // CYCLE <channel> [message]
         let channels_str = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let part_message = msg.arg(1).map(|s| s.to_string());
+        // Note: part_message is arg(1) but not used in current implementation
+        // since we're not actually sending PART messages, just removing from state
 
         // Process each channel
         let channels: Vec<&str> = channels_str.split(',').collect();
