@@ -1,29 +1,34 @@
 # slircd-ng E2E Test Configuration
-# This config has relaxed rate limits for automated testing
+# 
+# Minimal config for pytest E2E tests. For manual testing, use config.test.toml
+# in the project root which has more realistic settings.
+#
+# Rate limits are effectively unlimited for automated test reliability.
 
 [server]
 name = "irc.test.local"
 network = "TestNet"
 sid = "001"
 description = "slircd-ng E2E Test Server"
-metrics_port = 0                          # Disable metrics during tests
+metrics_port = 0  # Disable metrics during tests
 
 [listen]
 address = "0.0.0.0:6667"
 
 [database]
-path = ":memory:" # In-memory database for tests
+path = ":memory:"  # In-memory database for tests
 
 [limits]
-rate = 100.0
-burst = 50.0
+rate = 1000.0
+burst = 500.0
 
 [security]
-cloak_secret = "test-secret-for-e2e-testing"
+cloak_secret = "e2e-test-secret"
 cloak_suffix = "test"
 spam_detection_enabled = false
 
 [security.rate_limits]
-message_rate_per_second = 100
-connection_burst_per_ip = 100
-join_burst_per_client = 100
+# Unlimited for E2E tests
+message_rate_per_second = 10000
+connection_burst_per_ip = 10000
+join_burst_per_client = 10000

@@ -310,6 +310,59 @@ The server runs several background maintenance tasks:
 | `+Z` | TLS connection          |
 | `+R` | Registered-only PMs     |
 
+## Testing
+
+### Quick Start
+
+```bash
+# Start test server with relaxed rate limits
+cargo run -p slircd-ng -- config.test.toml
+
+# In another terminal, connect with any IRC client
+irssi -c localhost -p 6667
+```
+
+### Test Configurations
+
+| Config | Purpose | Rate Limits |
+|--------|---------|-------------|
+| `config.toml` | Production | Normal (2 msg/s) |
+| `config.test.toml` | Manual testing | Relaxed (1000 msg/s) |
+| `tests/e2e/test_config.toml` | Automated tests | Unlimited |
+
+### irctest (RFC Compliance)
+
+Test against the official IRC protocol test suite:
+
+```bash
+# Install irctest (one-time)
+cd /tmp && git clone https://github.com/ergochat/irctest.git
+cd irctest && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+
+# Start slircd-ng in one terminal
+cargo run -p slircd-ng -- tests/e2e/test_config.toml
+
+# Run irctest in another terminal
+export IRCTEST_SERVER_HOSTNAME=localhost IRCTEST_SERVER_PORT=6667
+cd /tmp/irctest
+.venv/bin/pytest --controller irctest.controllers.external_server \
+  -k "not deprecated and not strict and not Ergo" -v
+```
+
+### E2E Tests (Python)
+
+```bash
+cd tests/e2e
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/pytest -v
+```
+
+### Unit Tests
+
+```bash
+cargo test -p slircd-ng
+```
+
 ## License
 
 This project is released into the public domain under the [Unlicense](LICENSE).
