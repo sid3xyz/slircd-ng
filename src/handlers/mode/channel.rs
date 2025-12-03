@@ -466,8 +466,15 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        // Check if issuer can modify target (must have higher rank or be self)
-                        if channel.can_modify(ctx.uid, &target_uid) {
+                        // Check if issuer can modify target
+                        // For self-modification: only allow removing privileges, not granting
+                        let can_modify = if ctx.uid == target_uid {
+                            !adding // Can only de-op yourself
+                        } else {
+                            channel.can_modify(ctx.uid, &target_uid)
+                        };
+                        
+                        if can_modify {
                             if let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.op = adding;
                                 applied_modes.push(if adding {
@@ -487,8 +494,15 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        // Check if issuer can modify target (must have higher rank or be self)
-                        if channel.can_modify(ctx.uid, &target_uid) {
+                        // Check if issuer can modify target
+                        // For self-modification: only allow removing privileges, not granting
+                        let can_modify = if ctx.uid == target_uid {
+                            !adding // Can only devoice yourself
+                        } else {
+                            channel.can_modify(ctx.uid, &target_uid)
+                        };
+                        
+                        if can_modify {
                             if let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.voice = adding;
                                 applied_modes.push(if adding {
@@ -508,8 +522,15 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        // Check if issuer can modify target (must have higher rank or be self)
-                        if channel.can_modify(ctx.uid, &target_uid) {
+                        // Check if issuer can modify target
+                        // For self-modification: only allow removing privileges, not granting
+                        let can_modify = if ctx.uid == target_uid {
+                            !adding // Can only de-halfop yourself
+                        } else {
+                            channel.can_modify(ctx.uid, &target_uid)
+                        };
+                        
+                        if can_modify {
                             if let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.halfop = adding;
                                 applied_modes.push(if adding {
@@ -529,8 +550,15 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        // Check if issuer can modify target (must have higher rank or be self)
-                        if channel.can_modify(ctx.uid, &target_uid) {
+                        // Check if issuer can modify target
+                        // For self-modification: only allow removing privileges, not granting
+                        let can_modify = if ctx.uid == target_uid {
+                            !adding // Can only de-admin yourself
+                        } else {
+                            channel.can_modify(ctx.uid, &target_uid)
+                        };
+                        
+                        if can_modify {
                             if let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.admin = adding;
                                 applied_modes.push(if adding {
@@ -550,8 +578,15 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        // Check if issuer can modify target (must have higher rank or be self)
-                        if channel.can_modify(ctx.uid, &target_uid) {
+                        // Check if issuer can modify target
+                        // For self-modification: only allow removing privileges, not granting
+                        let can_modify = if ctx.uid == target_uid {
+                            !adding // Can only de-owner yourself
+                        } else {
+                            channel.can_modify(ctx.uid, &target_uid)
+                        };
+                        
+                        if can_modify {
                             if let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.owner = adding;
                                 applied_modes.push(if adding {
@@ -721,12 +756,12 @@ pub fn apply_channel_modes_typed(
                 });
             }
             // TLS-only channel (+z)
-            ChannelMode::Unknown('z') => {
+            ChannelMode::TlsOnly => {
                 channel.modes.tls_only = adding;
                 applied_modes.push(if adding {
-                    Mode::Plus(ChannelMode::Unknown('z'), None)
+                    Mode::Plus(ChannelMode::TlsOnly, None)
                 } else {
-                    Mode::Minus(ChannelMode::Unknown('z'), None)
+                    Mode::Minus(ChannelMode::TlsOnly, None)
                 });
             }
             _ => {
