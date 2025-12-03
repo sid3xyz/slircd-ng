@@ -5,6 +5,7 @@
 
 use super::connection::send_welcome_burst;
 use super::{Context, Handler, HandlerResult, server_reply};
+use crate::config::AccountRegistrationConfig;
 use async_trait::async_trait;
 use slirc_proto::{CapSubCommand, Command, Message, MessageRef, Prefix, Response};
 use tracing::{debug, info, warn};
@@ -28,6 +29,7 @@ const SUPPORTED_CAPS: &[&str] = &[
     "monitor",
     "cap-notify",
     "draft/multiline",
+    "draft/account-registration",
 ];
 
 /// Maximum bytes allowed in a multiline batch message.
@@ -92,7 +94,11 @@ async fn handle_ls(ctx: &mut Context<'_>, nick: &str, version_arg: Option<&str>)
     }
 
     // Build capability list (include EXTERNAL if TLS with cert)
-    let cap_list = build_cap_list(version, ctx.handshake.is_tls && ctx.handshake.certfp.is_some());
+    let cap_list = build_cap_list(
+        version,
+        ctx.handshake.is_tls && ctx.handshake.certfp.is_some(),
+        &ctx.matrix.config.account_registration,
+    );
 
     // Send CAP LS response
     // Format: CAP <nick> LS [* ] :<caps>
@@ -225,7 +231,7 @@ async fn handle_end(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
 ///
 /// `has_cert` indicates whether the client presented a TLS certificate,
 /// which enables SASL EXTERNAL.
-fn build_cap_list(version: u32, has_cert: bool) -> String {
+fn build_cap_list(version: u32, has_cert: bool, acct_cfg: &AccountRegistrationConfig) -> String {
     let caps: Vec<String> = SUPPORTED_CAPS
         .iter()
         .map(|&cap| {
@@ -244,6 +250,24 @@ fn build_cap_list(version: u32, has_cert: bool) -> String {
                             "draft/multiline=max-bytes={},max-lines={}",
                             MULTILINE_MAX_BYTES, MULTILINE_MAX_LINES
                         )
+                    }
+                    "draft/account-registration" => {
+                        // Build flags based on server configuration
+                        let mut flags = Vec::new();
+                        if acct_cfg.custom_account_name {
+                            flags.push("custom-account-name");
+                        }
+                        if acct_cfg.before_connect {
+                            flags.push("before-connect");
+                        }
+                        if acct_cfg.email_required {
+                            flags.push("email-required");
+                        }
+                        if flags.is_empty() {
+                            "draft/account-registration".to_string()
+                        } else {
+                            format!("draft/account-registration={}", flags.join(","))
+                        }
                     }
                     _ => cap.to_string(),
                 }

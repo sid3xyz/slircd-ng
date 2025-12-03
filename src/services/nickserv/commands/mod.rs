@@ -30,6 +30,14 @@ impl NickServ {
         Self { db }
     }
 
+    /// Check if an account with the given name exists.
+    pub async fn account_exists(&self, name: &str) -> bool {
+        match self.db.accounts().find_by_name(name).await {
+            Ok(Some(_)) => true,
+            _ => false,
+        }
+    }
+
     /// Handle a PRIVMSG to NickServ.
     /// Returns a list of effects that the caller should apply.
     pub async fn handle(

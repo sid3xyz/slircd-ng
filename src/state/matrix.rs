@@ -24,7 +24,7 @@ use super::user::{User, WhowasEntry};
 use crate::db::Database;
 use crate::services::{chanserv, nickserv};
 
-use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
+use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig, ServerConfig};
 use crate::db::{Dline, Gline, Kline, Shun, Zline};
 use crate::security::{BanCache, IpDenyList, RateLimitManager};
 use crate::state::UidGenerator;
@@ -122,6 +122,8 @@ pub struct Matrix {
 /// Configuration accessible to handlers via Matrix.
 #[derive(Debug, Clone)]
 pub struct MatrixConfig {
+    /// Server configuration (name, network, password, etc.).
+    pub server: ServerConfig,
     /// Operator blocks.
     pub oper_blocks: Vec<OperBlock>,
     /// Rate limits (legacy - being replaced by security.rate_limits).
@@ -129,6 +131,8 @@ pub struct MatrixConfig {
     pub limits: LimitsConfig,
     /// Security configuration (cloaking, rate limiting).
     pub security: SecurityConfig,
+    /// Account registration configuration.
+    pub account_registration: crate::config::AccountRegistrationConfig,
 }
 
 /// This server's identity information.
@@ -225,9 +229,11 @@ impl Matrix {
             },
             uid_gen: UidGenerator::new(config.server.sid.clone()),
             config: MatrixConfig {
+                server: config.server.clone(),
                 oper_blocks: config.oper.clone(),
                 limits: config.limits.clone(),
                 security: config.security.clone(),
+                account_registration: config.account_registration.clone(),
             },
             rate_limiter: RateLimitManager::new(config.security.rate_limits.clone()),
             spam_detector: if config.security.spam_detection_enabled {

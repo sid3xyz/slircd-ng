@@ -41,6 +41,41 @@ pub struct Config {
     /// Security configuration (cloaking, rate limiting, anti-abuse).
     #[serde(default)]
     pub security: SecurityConfig,
+    /// Account registration (draft/account-registration) configuration.
+    #[serde(default)]
+    pub account_registration: AccountRegistrationConfig,
+}
+
+/// Account registration configuration (draft/account-registration).
+#[derive(Debug, Clone, Deserialize)]
+pub struct AccountRegistrationConfig {
+    /// Whether account registration is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Allow registration before connection is complete (before CAP END).
+    #[serde(default = "default_true")]
+    pub before_connect: bool,
+    /// Require email address for registration.
+    #[serde(default)]
+    pub email_required: bool,
+    /// Allow custom account names (different from nick).
+    #[serde(default = "default_true")]
+    pub custom_account_name: bool,
+}
+
+impl Default for AccountRegistrationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            before_connect: true,
+            email_required: false,
+            custom_account_name: true,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Database configuration.
@@ -107,6 +142,8 @@ pub struct ServerConfig {
     pub sid: String,
     /// Server description.
     pub description: String,
+    /// Global connection password (optional).
+    pub password: Option<String>,
     /// Prometheus metrics HTTP port (default: 9090).
     pub metrics_port: Option<u16>,
 }
