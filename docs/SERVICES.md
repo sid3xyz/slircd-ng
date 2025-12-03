@@ -67,16 +67,18 @@ ChanServ handles channel registration and access control.
 
 ### Commands
 
-| Command    | Usage                          | Description                     |
-| ---------- | ------------------------------ | ------------------------------- |
-| `REGISTER` | `REGISTER #channel`            | Register a channel you're op in |
-| `INFO`     | `INFO #channel`                | View channel information        |
-| `OP`       | `OP #channel [nick]`           | Grant operator status           |
-| `DEOP`     | `DEOP #channel [nick]`         | Remove operator status          |
-| `VOICE`    | `VOICE #channel [nick]`        | Grant voice                     |
-| `DEVOICE`  | `DEVOICE #channel [nick]`      | Remove voice                    |
-| `ACCESS`   | `ACCESS #channel <subcommand>` | Manage access list              |
-| `AKICK`    | `AKICK #channel <subcommand>`  | Manage auto-kick list           |
+| Command    | Usage                            | Description                     |
+| ---------- | -------------------------------- | ------------------------------- |
+| `REGISTER` | `REGISTER #channel`              | Register a channel you're op in |
+| `DROP`     | `DROP #channel`                  | Unregister a channel            |
+| `INFO`     | `INFO #channel`                  | View channel information        |
+| `SET`      | `SET #channel <option> <value>`  | Change channel settings         |
+| `OP`       | `OP #channel [nick]`             | Grant operator status           |
+| `DEOP`     | `DEOP #channel [nick]`           | Remove operator status          |
+| `VOICE`    | `VOICE #channel [nick]`          | Grant voice                     |
+| `DEVOICE`  | `DEVOICE #channel [nick]`        | Remove voice                    |
+| `ACCESS`   | `ACCESS #channel <subcommand>`   | Manage access list              |
+| `AKICK`    | `AKICK #channel <subcommand>`    | Manage auto-kick list           |
 
 ### Channel Registration
 
@@ -147,6 +149,44 @@ Remove AKICK:
 /msg ChanServ VOICE #channel           # Voice yourself
 ```
 
+### Channel Settings (SET)
+
+Configure channel options with the SET command:
+
+```
+/msg ChanServ SET #channel <option> <value>
+```
+
+| Option        | Values      | Description                              |
+| ------------- | ----------- | ---------------------------------------- |
+| `DESCRIPTION` | text        | Channel description shown in INFO        |
+| `MLOCK`       | mode string | Modes to lock (e.g., `+nt-s`)            |
+| `KEEPTOPIC`   | ON/OFF      | Preserve topic when channel empties      |
+
+### Mode Lock (MLOCK)
+
+MLOCK forces certain modes to always be set or unset on a channel:
+
+```
+/msg ChanServ SET #channel MLOCK +nt-s
+```
+
+This ensures:
+- `+n` (no external messages) is always set
+- `+t` (topic lock) is always set  
+- `-s` (secret) is always unset
+
+MLOCK is enforced when the channel is created (first user joins a registered channel).
+
+Supported MLOCK modes:
+- Simple flags: `n`, `t`, `s`, `i`, `m`, `r`, `c`, `C`, `N`
+- Parameter modes: `k` (key), `l` (limit)
+
+Example with key:
+```
+/msg ChanServ SET #channel MLOCK +ntk secretkey
+```
+
 ## Service Aliases
 
 For convenience, you can use short aliases:
@@ -166,18 +206,17 @@ Example:
 
 ChanServ and channel modes support extended bans that match beyond `nick!user@host`:
 
-| Pattern         | Matches                                             |
-| --------------- | --------------------------------------------------- |
-| `$a:account`    | Users logged into specific account                  |
-| `$a`            | Any logged-in user (inverted: `$~a` = unregistered) |
-| `$r:realname*`  | Users with matching realname (GECOS)                |
-| `$U`            | Unregistered users                                  |
-| `$o`            | IRC operators                                       |
-| `$O:opertype`   | Specific operator type                              |
-| `$c:#channel`   | Users in specific channel                           |
-| `$z`            | TLS users                                           |
-| `$s:servername` | Users on specific server                            |
-| `$j:#channel`   | Users matching ban in another channel               |
+| Pattern          | Matches                                  |
+| ---------------- | ---------------------------------------- |
+| `$a:account`     | Users logged into specific account       |
+| `$U`             | Unregistered (not identified) users      |
+| `$r:pattern`     | Users with matching realname (GECOS)     |
+| `$s:servername`  | Users on specific server                 |
+| `$c:#channel`    | Users in specific channel                |
+| `$o:opertype`    | IRC operators of specific type           |
+| `$x:fingerprint` | Users with matching TLS certificate      |
+| `$z:mechanism`   | Users authenticated via SASL mechanism   |
+| `$j:pattern`     | Users matching join pattern              |
 
 Examples:
 ```
