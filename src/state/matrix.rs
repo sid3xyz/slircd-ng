@@ -33,7 +33,7 @@ use slirc_proto::Message;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{RwLock, mpsc, broadcast};
 
 /// Unique user identifier (TS6 format: 9 characters).
 pub type Uid = String;
@@ -113,6 +113,10 @@ pub struct Matrix {
 
     /// ChanServ service singleton.
     pub chanserv: chanserv::ChanServ,
+
+    /// Shutdown signal broadcaster.
+    /// When DIE command is issued, a message is sent on this channel.
+    pub shutdown_tx: broadcast::Sender<()>,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -201,6 +205,9 @@ impl Matrix {
         // Build the ban cache (K-lines and G-lines only; IP bans handled by IpDenyList)
         let ban_cache = BanCache::load(klines, glines);
 
+        // Create shutdown broadcast channel
+        let (shutdown_tx, _) = broadcast::channel(1);
+
         Self {
             users: DashMap::new(),
             channels: DashMap::new(),
@@ -236,6 +243,7 @@ impl Matrix {
             ip_deny_list: std::sync::RwLock::new(ip_deny_list),
             nickserv: nickserv::NickServ::new(db.clone()),
             chanserv: chanserv::ChanServ::new(db),
+            shutdown_tx,
         }
     }
 
