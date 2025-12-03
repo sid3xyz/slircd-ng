@@ -24,6 +24,8 @@ pub struct User {
     pub caps: HashSet<String>,
     /// TLS certificate fingerprint (SHA-256 hex) if client presented one.
     pub certfp: Option<String>,
+    /// SILENCE list: masks of users to ignore (server-side ignore).
+    pub silence_list: HashSet<String>,
 }
 
 /// User modes.
@@ -35,6 +37,9 @@ pub struct UserModes {
     pub registered: bool,      // +r (identified to NickServ)
     pub secure: bool,          // +Z (TLS connection)
     pub registered_only: bool, // +R (only registered users can PM)
+    /// +s - Server notices with granular snomasks (c, r, k, o, etc.)
+    /// Empty set means no server notices
+    pub snomasks: HashSet<char>,
 }
 
 impl UserModes {
@@ -59,7 +64,25 @@ impl UserModes {
         if self.registered_only {
             s.push('R');
         }
+        if !self.snomasks.is_empty() {
+            s.push('s');
+        }
         if s == "+" { "+".to_string() } else { s }
+    }
+
+    /// Check if user has a specific snomask.
+    pub fn has_snomask(&self, mask: char) -> bool {
+        self.snomasks.contains(&mask)
+    }
+
+    /// Add a snomask.
+    pub fn add_snomask(&mut self, mask: char) {
+        self.snomasks.insert(mask);
+    }
+
+    /// Remove a snomask.
+    pub fn remove_snomask(&mut self, mask: char) {
+        self.snomasks.remove(&mask);
     }
 }
 
@@ -100,6 +123,7 @@ impl User {
             away: None,
             caps,
             certfp,
+            silence_list: HashSet::new(),
         }
     }
 }
