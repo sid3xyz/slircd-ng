@@ -142,6 +142,8 @@ fn handler_error_to_reply(
         }),
         // Internal errors - don't expose to client
         HandlerError::NickOrUserMissing | HandlerError::Send(_) => None,
+        // Quit is handled specially by the connection loop, not as an error reply
+        HandlerError::Quit(_) => None,
     }
 }
 
@@ -423,6 +425,22 @@ impl Connection {
 
                             if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
                                 debug!(error = ?e, "Handler error");
+
+                                // Handle QUIT specially - send ERROR and disconnect
+                                if let crate::handlers::HandlerError::Quit(quit_msg) = e {
+                                    let error_text = match quit_msg {
+                                        Some(msg) => format!("Closing Link: {} (Quit: {})", self.addr.ip(), msg),
+                                        None => format!("Closing Link: {} (Client Quit)", self.addr.ip()),
+                                    };
+                                    let error_reply = Message {
+                                        tags: None,
+                                        prefix: None,
+                                        command: Command::ERROR(error_text),
+                                    };
+                                    let _ = self.transport.write_message(&error_reply).await;
+                                    break;
+                                }
+
                                 // Send appropriate error reply based on error type
                                 if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, &e, &msg_ref) {
                                     let _ = outgoing_tx.send(reply).await;

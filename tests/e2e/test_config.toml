@@ -1,0 +1,29 @@
+# slircd-ng E2E Test Configuration
+# This config has relaxed rate limits for automated testing
+
+[server]
+name = "irc.test.local"
+network = "TestNet"
+sid = "001"
+description = "slircd-ng E2E Test Server"
+metrics_port = 0                          # Disable metrics during tests
+
+[listen]
+address = "0.0.0.0:6667"
+
+[database]
+path = ":memory:" # In-memory database for tests
+
+[limits]
+rate = 100.0
+burst = 50.0
+
+[security]
+cloak_secret = "test-secret-for-e2e-testing"
+cloak_suffix = "test"
+spam_detection_enabled = false
+
+[security.rate_limits]
+message_rate_per_second = 100
+connection_burst_per_ip = 100
+join_burst_per_client = 100

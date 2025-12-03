@@ -1,6 +1,18 @@
 //! PRIVMSG command handler.
 //!
 //! Handles private messages to users and channels, with support for CTCP.
+//!
+//! ## CTCP Handling (per RFC/IRCv3)
+//!
+//! CTCP messages are simply PRIVMSG/NOTICE with special `\x01...\x01` delimiters.
+//! The IRC server RELAYS these messages to the target; it does NOT intercept or
+//! respond to CTCP requests. The target CLIENT is responsible for responding.
+//!
+//! - CTCP requests are sent via PRIVMSG
+//! - CTCP replies are sent via NOTICE
+//! - The server only enforces +C channel mode (no CTCP except ACTION)
+//!
+//! See: https://modern.ircdocs.horse/ctcp.html
 
 use super::common::{
     is_shunned, route_to_channel, route_to_user, send_cannot_send,
@@ -10,118 +22,10 @@ use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply, 
 use crate::db::StoreMessageParams;
 use crate::services::route_service_message;
 use async_trait::async_trait;
-use chrono::Local;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Response, irc_to_lower};
 use tracing::debug;
 use uuid::Uuid;
-
-// ============================================================================
-// CTCP Handling
-// ============================================================================
-
-/// Server version string for CTCP VERSION replies.
-const SERVER_VERSION: &str = concat!("slircd-ng ", env!("CARGO_PKG_VERSION"));
-
-/// Handle a CTCP request and send appropriate reply via NOTICE.
-///
-/// CTCP requests come in PRIVMSG, replies go out as NOTICE per spec.
-/// See: https://modern.ircdocs.horse/ctcp.html
-async fn handle_ctcp_request(
-    ctx: &Context<'_>,
-    sender_nick: &str,
-    sender_user: &str,
-    target: &str,
-    ctcp: &Ctcp<'_>,
-) -> HandlerResult {
-    // Build the reply text based on CTCP type
-    let reply_text = match &ctcp.kind {
-        CtcpKind::Version => {
-            // Reply with server version info
-            Some(format!("\x01VERSION {}\x01", SERVER_VERSION))
-        }
-        CtcpKind::Ping => {
-            // Echo back the ping timestamp
-            if let Some(timestamp) = ctcp.params {
-                Some(format!("\x01PING {}\x01", timestamp))
-            } else {
-                Some("\x01PING\x01".to_string())
-            }
-        }
-        CtcpKind::Time => {
-            // Reply with current server time
-            let now = Local::now();
-            Some(format!("\x01TIME {}\x01", now.format("%a %b %d %H:%M:%S %Y")))
-        }
-        CtcpKind::Clientinfo => {
-            // List supported CTCP commands
-            Some("\x01CLIENTINFO ACTION PING TIME VERSION\x01".to_string())
-        }
-        CtcpKind::Action => {
-            // ACTION is not a request - it's a message type, relay it normally
-            // Return None to fall through to normal message routing
-            None
-        }
-        _ => {
-            // Unknown CTCP - ignore silently
-            debug!(ctcp = ?ctcp.kind, "Ignoring unknown CTCP request");
-            return Ok(());
-        }
-    };
-
-    // If we have a reply, send it via NOTICE
-    if let Some(text) = reply_text {
-        let target_lower = irc_to_lower(target);
-
-        // Find target UID to send reply to
-        if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower)
-            && let Some(sender) = ctx.matrix.senders.get(target_uid.value())
-        {
-            let reply_msg = Message {
-                tags: None,
-                prefix: Some(user_prefix(sender_nick, sender_user, "localhost")),
-                command: Command::NOTICE(target.to_string(), text),
-            };
-            let _ = sender.send(reply_msg).await;
-            debug!(from = %sender_nick, to = %target, ctcp = ?ctcp.kind, "CTCP reply sent");
-        }
-        return Ok(());
-    }
-
-    // For ACTION, we need to relay the message normally
-    // Return a special indicator that we should continue processing
-    // Actually, we'll handle ACTION by NOT matching it above and letting it fall through
-    // But since we're in this function, we need to handle it here
-
-    // For ACTION messages, route them as normal PRIVMSG
-    if matches!(ctcp.kind, CtcpKind::Action) {
-        let action_text = ctcp.params.unwrap_or("");
-        let full_text = format!("\x01ACTION {}\x01", action_text);
-
-        let out_msg = Message {
-            tags: None,
-            prefix: Some(user_prefix(sender_nick, sender_user, "localhost")),
-            command: Command::PRIVMSG(target.to_string(), full_text),
-        };
-
-        let target_lower = irc_to_lower(target);
-        let opts = RouteOptions {
-            check_moderated: true,
-            send_away_reply: true,
-            is_notice: false,
-            strip_colors: false,
-            block_ctcp: false,
-        };
-
-        if route_to_user(ctx, &target_lower, out_msg, &opts, sender_nick).await {
-            debug!(from = %sender_nick, to = %target, "CTCP ACTION to user");
-        } else {
-            send_no_such_nick(ctx, sender_nick, target).await?;
-        }
-    }
-
-    Ok(())
-}
 
 // ============================================================================
 // PRIVMSG Handler
@@ -186,14 +90,9 @@ impl Handler for PrivmsgHandler {
             return Ok(());
         }
 
-        // Handle CTCP requests (only for user-to-user, not channels)
-        // CTCP messages start and end with \x01
-        if !target.is_channel_name()
-            && Ctcp::is_ctcp(text)
-            && let Some(ctcp) = Ctcp::parse(text)
-        {
-            return handle_ctcp_request(ctx, nick, user_name, target, &ctcp).await;
-        }
+        // CTCP messages (VERSION, PING, ACTION, etc.) are just forwarded as PRIVMSG.
+        // The IRC server relays them; the target's CLIENT sends NOTICE replies.
+        // See: https://modern.ircdocs.horse/ctcp.html
 
         // Build the outgoing message
         let out_msg = Message {
@@ -327,12 +226,5 @@ mod tests {
         // and parse() accepts messages without trailing \x01 (real-world tolerance)
         assert!(Ctcp::is_ctcp("\x01incomplete"));
         assert!(Ctcp::parse("\x01incomplete").is_some()); // Lenient parsing
-    }
-
-    #[test]
-    fn test_server_version_constant() {
-        // Ensure SERVER_VERSION is set correctly
-        assert!(SERVER_VERSION.starts_with("slircd-ng "));
-        assert!(SERVER_VERSION.contains(env!("CARGO_PKG_VERSION")));
     }
 }
