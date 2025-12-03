@@ -324,7 +324,13 @@ impl Registry {
         let cmd_name = msg.command_name().to_ascii_uppercase();
 
         if let Some(handler) = self.handlers.get(cmd_name.as_str()) {
-            // Increment command counter
+            // Increment command counter (counters are created for all handlers in new())
+            debug_assert!(
+                self.command_counts.contains_key(cmd_name.as_str()),
+                "Command counter missing for registered handler: {}",
+                cmd_name
+            );
+            
             if let Some(counter) = self.command_counts.get(cmd_name.as_str()) {
                 counter.fetch_add(1, Ordering::Relaxed);
             }
