@@ -324,11 +324,11 @@ irssi -c localhost -p 6667
 
 ### Test Configurations
 
-| Config | Purpose | Rate Limits |
-|--------|---------|-------------|
-| `config.toml` | Production | Normal (2 msg/s) |
-| `config.test.toml` | Manual testing | Relaxed (1000 msg/s) |
-| `tests/e2e/test_config.toml` | Automated tests | Unlimited |
+| Config                       | Purpose         | Rate Limits          |
+| ---------------------------- | --------------- | -------------------- |
+| `config.toml`                | Production      | Normal (2 msg/s)     |
+| `config.test.toml`           | Manual testing  | Relaxed (1000 msg/s) |
+| `tests/e2e/test_config.toml` | Automated tests | Unlimited            |
 
 ### irctest (RFC Compliance)
 

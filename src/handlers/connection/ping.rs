@@ -10,10 +10,12 @@ pub struct PingHandler;
 #[async_trait]
 impl Handler for PingHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        // PING <server>
-        let server = msg.arg(0).unwrap_or("");
+        // PING <token>
+        // Response: PONG <server> <token>
+        let token = msg.arg(0).unwrap_or("");
+        let server_name = &ctx.matrix.server_info.name;
 
-        let pong = Message::pong(server);
+        let pong = Message::pong_with_token(server_name, token);
         ctx.sender.send(pong).await?;
 
         Ok(())
