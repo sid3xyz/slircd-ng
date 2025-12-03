@@ -196,6 +196,10 @@ impl<'a> BanRepository<'a> {
     ///
     /// Checks in order: Z-line (IP), D-line (IP), G-line (user@host), K-line (user@host).
     /// Returns the ban reason if banned, None if allowed.
+    ///
+    /// NOTE: Consider using `check_user_host_bans()` if IP bans were already checked
+    /// by IpDenyList at connection time.
+    #[allow(dead_code)] // Kept for completeness; prefer check_user_host_bans()
     pub async fn check_all_bans(
         &self,
         ip: &str,
@@ -216,6 +220,36 @@ impl<'a> BanRepository<'a> {
 
         // Check G-lines (global user@host)
         let user_host = format!("{}@{}", user, host);
+        if let Some(gline) = self.matches_gline(&user_host).await? {
+            let reason = gline.reason.unwrap_or_else(|| "Banned".to_string());
+            return Ok(Some(format!("G-lined: {}", reason)));
+        }
+
+        // Check K-lines (local user@host)
+        if let Some(kline) = self.matches_kline(&user_host).await? {
+            let reason = kline.reason.unwrap_or_else(|| "Banned".to_string());
+            return Ok(Some(format!("K-lined: {}", reason)));
+        }
+
+        Ok(None)
+    }
+
+    /// Check for user@host bans (G-lines and K-lines only).
+    ///
+    /// This is an optimized version of `check_all_bans()` that skips IP-based
+    /// ban checks (Z-lines and D-lines) since those are handled at connection
+    /// time by `IpDenyList` with O(1) Roaring Bitmap lookups.
+    ///
+    /// Use this for registration-time checks after the connection has already
+    /// passed gateway IP filtering.
+    pub async fn check_user_host_bans(
+        &self,
+        user: &str,
+        host: &str,
+    ) -> Result<Option<String>, DbError> {
+        let user_host = format!("{}@{}", user, host);
+
+        // Check G-lines (global user@host)
         if let Some(gline) = self.matches_gline(&user_host).await? {
             let reason = gline.reason.unwrap_or_else(|| "Banned".to_string());
             return Ok(Some(format!("G-lined: {}", reason)));
