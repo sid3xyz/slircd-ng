@@ -299,7 +299,8 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     // Access checks passed, proceed with join
 
     // Determine member modes:
-    // 1. First user gets owner
+    // 1. First user of an unregistered channel gets owner
+    //    (for registered channels, owner may be granted via check_auto_modes)
     // 2. If channel is registered, check access list for auto-op/voice
     let now = chrono::Utc::now().timestamp();
     let modes = if channel_guard.members.is_empty() {
