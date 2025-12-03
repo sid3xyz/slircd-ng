@@ -10,12 +10,13 @@
 //! - TRACE: Trace route to server/user
 
 use super::{
-    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, err_nosuchnick,
+    Context, Handler, HandlerError, HandlerResult, err_needmoreparams, err_noprivileges, err_nosuchnick,
     get_nick_or_star, matches_hostmask, require_oper, resolve_nick_to_uid, server_notice,
     server_reply,
 };
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use tokio::sync::mpsc;
 
 /// Validate hostname per RFC 952/1123 rules.
 fn is_valid_hostname(hostname: &str) -> bool {
@@ -402,10 +403,14 @@ impl Handler for DieHandler {
 
         tracing::warn!(oper = %nick, "DIE command issued - initiating shutdown");
 
-        // Broadcast shutdown signal
-        if let Err(e) = ctx.matrix.shutdown_tx.send(()) {
-            tracing::error!(error = ?e, "Failed to send shutdown signal");
-        }
+        // Broadcast shutdown signal - fail if no receivers
+        ctx.matrix.shutdown_tx.send(()).map_err(|_| {
+            tracing::error!("Failed to send shutdown signal - no receivers");
+            // Convert to mpsc SendError to match HandlerError::Send variant
+            HandlerError::Send(mpsc::error::SendError(
+                Message::notice("*", "Shutdown signal failed")
+            ))
+        })?;
 
         Ok(())
     }
@@ -446,12 +451,15 @@ impl Handler for RehashHandler {
             let dlines = ctx.db.bans().get_active_dlines().await?;
             let zlines = ctx.db.bans().get_active_zlines().await?;
 
-            // Reload IP deny list
-            if let Ok(mut deny_list) = ctx.matrix.ip_deny_list.write() {
-                deny_list.reload_from_database(&dlines, &zlines);
-                Ok::<_, anyhow::Error>(())
-            } else {
-                anyhow::bail!("Failed to acquire write lock on IP deny list")
+            // Reload IP deny list - handle poisoned lock explicitly
+            match ctx.matrix.ip_deny_list.write() {
+                Ok(mut deny_list) => {
+                    deny_list.reload_from_database(&dlines, &zlines);
+                    Ok::<_, anyhow::Error>(())
+                }
+                Err(e) => {
+                    anyhow::bail!("Failed to acquire write lock on IP deny list: {}", e)
+                }
             }
         }.await;
 
@@ -465,15 +473,10 @@ impl Handler for RehashHandler {
                 tracing::info!(oper = %nick, "REHASH completed successfully");
             }
             Err(e) => {
-                let error_msg = if e.to_string().contains("write lock") {
-                    format!("REHASH warning: Failed to acquire write lock on IP deny list - {}", e)
-                } else {
-                    format!("REHASH warning: {}", e)
-                };
                 ctx.sender.send(server_notice(
                     server_name,
                     &nick,
-                    &error_msg,
+                    &format!("REHASH warning: {}", e),
                 )).await?;
                 tracing::warn!(oper = %nick, error = %e, "REHASH completed with errors");
             }
@@ -513,9 +516,13 @@ impl Handler for RestartHandler {
         // Note: exec() replaces the current process, so this never returns
         // The actual exec happens in main.rs after receiving shutdown signal
         // with restart flag
-        if let Err(e) = ctx.matrix.shutdown_tx.send(()) {
-            tracing::error!(error = ?e, "Failed to send shutdown signal");
-        }
+        ctx.matrix.shutdown_tx.send(()).map_err(|_| {
+            tracing::error!("Failed to send shutdown signal - no receivers");
+            // Convert to mpsc SendError to match HandlerError::Send variant
+            HandlerError::Send(mpsc::error::SendError(
+                Message::notice("*", "Shutdown signal failed")
+            ))
+        })?;
 
         // For now, we just shut down. Full exec restart requires additional
         // plumbing to pass restart flag through shutdown channel

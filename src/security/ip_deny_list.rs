@@ -492,41 +492,35 @@ impl IpDenyList {
 
     /// Reload the deny list from database (for REHASH command).
     ///
-    /// This replaces the current in-memory state with fresh data from the database.
+    /// This merges database bans with the current in-memory state.
+    /// Runtime-added bans (via DLINE/ZLINE IRC commands) are preserved.
     /// Called when the REHASH command is issued by an operator.
     pub fn reload_from_database(
         &mut self,
         dlines: &[crate::db::Dline],
         zlines: &[crate::db::Zline],
     ) {
-        // Clear current state - these operations are infallible for these types
-        // RoaringBitmap::clear, Vec::clear, and HashMap::clear never panic
         let old_ipv4_count = self.ipv4_bitmap.len();
         let old_ipv4_cidr_count = self.ipv4_cidrs.len();
         let old_ipv6_count = self.ipv6_cidrs.len();
-        
-        self.ipv4_bitmap.clear();
-        self.ipv4_cidrs.clear();
-        self.ipv6_cidrs.clear();
-        self.metadata.clear();
 
-        // Reload from database
+        // Merge database bans into current state (preserves runtime bans)
         let added = self.sync_from_database_bans(dlines, zlines);
         
         info!(
-            cleared_ipv4 = old_ipv4_count,
-            cleared_ipv4_cidrs = old_ipv4_cidr_count,
-            cleared_ipv6 = old_ipv6_count,
-            reloaded_ipv4 = self.ipv4_bitmap.len(),
-            reloaded_ipv4_cidrs = self.ipv4_cidrs.len(),
-            reloaded_ipv6 = self.ipv6_cidrs.len(),
-            total = added,
-            "IP deny list reloaded from database"
+            previous_ipv4 = old_ipv4_count,
+            previous_ipv4_cidrs = old_ipv4_cidr_count,
+            previous_ipv6 = old_ipv6_count,
+            merged_ipv4 = self.ipv4_bitmap.len(),
+            merged_ipv4_cidrs = self.ipv4_cidrs.len(),
+            merged_ipv6 = self.ipv6_cidrs.len(),
+            total_added = added,
+            "IP deny list merged with database bans (runtime bans preserved)"
         );
 
         // Save to disk
         if let Err(e) = self.save() {
-            error!(error = %e, "Failed to persist reloaded IP deny list");
+            error!(error = %e, "Failed to persist merged IP deny list");
         }
     }
 
