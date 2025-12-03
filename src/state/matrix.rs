@@ -2,6 +2,22 @@
 //!
 //! The Matrix holds all users, channels, and server state in concurrent
 //! data structures accessible from any async task.
+//!
+//! # Lock Order (Deadlock Prevention)
+//!
+//! When acquiring multiple locks, always follow this order:
+//!
+//! 1. DashMap shard lock (acquired during `.get()` / `.iter()`)
+//! 2. Channel `RwLock` (read or write)
+//! 3. User `RwLock` (read or write)
+//!
+//! **Never acquire locks in reverse order.** For example, never hold a User
+//! write lock and then try to access a Channel or iterate the DashMap.
+//!
+//! Safe patterns used throughout the codebase:
+//! - **Read-only iteration**: Iterate DashMap, acquire read locks inside loop
+//! - **Collect-then-mutate**: Collect UIDs/keys to Vec, release iteration, then mutate
+//! - **Lock-copy-release**: Acquire lock, copy needed data, release before next operation
 
 use super::channel::Channel;
 use super::user::{User, WhowasEntry};
