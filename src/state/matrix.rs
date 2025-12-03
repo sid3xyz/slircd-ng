@@ -21,6 +21,8 @@
 
 use super::channel::Channel;
 use super::user::{User, WhowasEntry};
+use crate::db::Database;
+use crate::services::{chanserv, nickserv};
 
 use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig};
 use crate::db::{Dline, Gline, Kline, Shun, Zline};
@@ -105,6 +107,12 @@ pub struct Matrix {
     /// High-performance IP deny list (Roaring Bitmap engine).
     /// Used for nanosecond-scale IP rejection in the gateway accept loop.
     pub ip_deny_list: std::sync::RwLock<IpDenyList>,
+
+    /// NickServ service singleton.
+    pub nickserv: nickserv::NickServ,
+
+    /// ChanServ service singleton.
+    pub chanserv: chanserv::ChanServ,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -145,6 +153,7 @@ impl Matrix {
     /// # Arguments
     /// - `config`: Server configuration
     /// - `data_dir`: Directory for data files (IP deny list, etc.)
+    /// - `db`: Database handle for services
     /// - `registered_channels`: Channel names registered with ChanServ (stored lowercase)
     /// - `shuns`: Active shuns loaded from database
     /// - `klines`: Active K-lines loaded from database
@@ -155,6 +164,7 @@ impl Matrix {
     pub fn new(
         config: &Config,
         data_dir: Option<&std::path::Path>,
+        db: Database,
         registered_channels: Vec<String>,
         shuns: Vec<Shun>,
         klines: Vec<Kline>,
@@ -224,6 +234,8 @@ impl Matrix {
             monitoring: DashMap::new(),
             ban_cache,
             ip_deny_list: std::sync::RwLock::new(ip_deny_list),
+            nickserv: nickserv::NickServ::new(db.clone()),
+            chanserv: chanserv::ChanServ::new(db),
         }
     }
 

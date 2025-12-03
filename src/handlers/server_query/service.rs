@@ -139,7 +139,6 @@ impl Handler for SqueryHandler {
         // Route to NickServ or ChanServ using unified service router
         let handled = crate::services::route_service_message(
             ctx.matrix,
-            ctx.db,
             ctx.uid,
             nick,
             service_name,

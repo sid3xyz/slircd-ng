@@ -135,6 +135,7 @@ async fn main() -> anyhow::Result<()> {
     let matrix = Arc::new(Matrix::new(
         &config,
         data_dir,
+        db.clone(),
         registered_channels,
         active_shuns,
         active_klines,
