@@ -211,11 +211,22 @@ async fn main() -> anyhow::Result<()> {
     }
     info!("Ban cache and rate limiter pruning task started");
 
-    // Start message history pruning task (runs daily, retains 30 days)
+    // Start message history pruning task (runs at startup + daily, retains 30 days)
     {
         let db = db.clone();
         tokio::spawn(async move {
-            // Run daily (86400 seconds)
+            // Run immediately at startup
+            match db.history().prune_old_messages(30).await {
+                Ok(removed) if removed > 0 => {
+                    info!(removed = removed, "Startup: Old messages pruned from history");
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "Startup: Failed to prune message history");
+                }
+            }
+
+            // Then run daily (86400 seconds)
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(86400));
             loop {
                 interval.tick().await;
