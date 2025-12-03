@@ -140,6 +140,11 @@ pub async fn route_to_channel(
         return ChannelRouteResult::BlockedRegisteredOnly;
     }
 
+    // Check +z (TLS-only channel)
+    if channel.modes.tls_only && !ctx.handshake.is_tls {
+        return ChannelRouteResult::BlockedExternal; // Reuse error type
+    }
+
     // Check +b (bans) - banned users cannot speak even if in channel
     // Supports both hostmask and extended bans ($a:account, $r:realname, etc.)
     let is_banned = channel
@@ -304,6 +309,29 @@ pub async fn route_to_user(
                 // Silently drop or send error - most servers silently drop
                 // to avoid information leakage about +R status
                 return false;
+            }
+        }
+
+        // Check SILENCE list - if sender matches any mask in target's silence list, drop silently
+        if !target_user.silence_list.is_empty() {
+            let sender_mask = if let Some(sender_ref) = ctx.matrix.users.get(ctx.uid) {
+                let sender_user = sender_ref.read().await;
+                format!("{}!{}@{}", sender_user.nick, sender_user.user, sender_user.visible_host)
+            } else {
+                String::from("*!*@*")
+            };
+
+            for silence_mask in &target_user.silence_list {
+                if super::super::matches_hostmask(silence_mask, &sender_mask) {
+                    // Silently drop the message
+                    debug!(
+                        target = %target_user.nick,
+                        sender = %sender_mask,
+                        mask = %silence_mask,
+                        "Message blocked by SILENCE"
+                    );
+                    return false;
+                }
             }
         }
     }

@@ -17,6 +17,41 @@ use super::{
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
+/// Validate hostname per RFC 952/1123 rules.
+fn is_valid_hostname(hostname: &str) -> bool {
+    if hostname.is_empty() || hostname.len() > 253 {
+        return false;
+    }
+    
+    // Must not start or end with a dot
+    if hostname.starts_with('.') || hostname.ends_with('.') {
+        return false;
+    }
+
+    // Split into labels
+    let labels: Vec<&str> = hostname.split('.').collect();
+    
+    // Each label must be valid
+    for label in labels {
+        // Reject empty labels (catches consecutive dots)
+        if label.is_empty() || label.len() > 63 {
+            return false;
+        }
+        
+        // Must not start or end with hyphen
+        if label.starts_with('-') || label.ends_with('-') {
+            return false;
+        }
+        
+        // Must contain only alphanumeric and hyphens
+        if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return false;
+        }
+    }
+    
+    true
+}
+
 /// Get full user info for message construction.
 async fn get_user_full_info(ctx: &Context<'_>) -> Option<(String, String, String, bool)> {
     let user_ref = ctx.matrix.users.get(ctx.uid)?;
@@ -673,3 +708,120 @@ impl Handler for TraceHandler {
         Ok(())
     }
 }
+
+/// Handler for VHOST command.
+///
+/// `VHOST <nick> <vhost>`
+///
+/// Sets a virtual hostname for a user (operator only).
+/// This updates the user's visible_host field.
+pub struct VhostHandler;
+
+#[async_trait]
+impl Handler for VhostHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        let server_name = &ctx.matrix.server_info.name;
+        let Ok(oper_nick) = require_oper(ctx).await else {
+            return Ok(());
+        };
+
+        // VHOST <nick> <vhost>
+        let target_nick = match msg.arg(0) {
+            Some(n) if !n.is_empty() => n,
+            _ => {
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "VHOST"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        let new_vhost = match msg.arg(1) {
+            Some(h) if !h.is_empty() => h,
+            _ => {
+                ctx.sender
+                    .send(err_needmoreparams(server_name, &oper_nick, "VHOST"))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Validate vhost (RFC 952/1123 hostname rules)
+        if new_vhost.len() > 64 {
+            let reply = server_notice(server_name, &oper_nick, "Vhost too long (max 64 chars)");
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+        
+        // Check for valid hostname characters and structure
+        if !is_valid_hostname(new_vhost) {
+            let reply = server_notice(server_name, &oper_nick, "Invalid vhost: use alphanumeric, hyphens, dots only");
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        // Resolve target nick to UID
+        let target_uid = match resolve_nick_to_uid(ctx, target_nick) {
+            Some(uid) => uid,
+            None => {
+                ctx.sender
+                    .send(err_nosuchnick(server_name, &oper_nick, target_nick))
+                    .await?;
+                return Ok(());
+            }
+        };
+
+        // Update the target user's visible_host
+        if let Some(target_user_ref) = ctx.matrix.users.get(&target_uid) {
+            let mut target_user = target_user_ref.write().await;
+            let old_vhost = target_user.visible_host.clone();
+            target_user.visible_host = new_vhost.to_string();
+
+            // Notify operator
+            let reply = server_notice(
+                server_name,
+                &oper_nick,
+                format!(
+                    "Changed vhost for {} from {} to {}",
+                    target_user.nick, old_vhost, new_vhost
+                ),
+            );
+            ctx.sender.send(reply).await?;
+
+            // Optionally broadcast CHGHOST to channels (if chghost cap is negotiated)
+            let channels: Vec<String> = target_user.channels.iter().cloned().collect();
+            let target_nick_clone = target_user.nick.clone();
+            let target_user_clone = target_user.user.clone();
+            drop(target_user); // Release lock before broadcasting
+
+            let chghost_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::new(&target_nick_clone, &target_user_clone, &old_vhost)),
+                command: Command::CHGHOST(target_user_clone.clone(), new_vhost.to_string()),
+            };
+
+            for channel_name in &channels {
+                ctx.matrix
+                    .broadcast_to_channel_with_cap(
+                        channel_name,
+                        chghost_msg.clone(),
+                        None,
+                        Some("chghost"),
+                        None,
+                    )
+                    .await;
+            }
+
+            tracing::info!(
+                oper = %oper_nick,
+                target = %target_nick,
+                old_vhost = %old_vhost,
+                new_vhost = %new_vhost,
+                "VHOST changed"
+            );
+        }
+
+        Ok(())
+    }
+}
+
