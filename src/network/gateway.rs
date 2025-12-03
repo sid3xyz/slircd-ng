@@ -134,11 +134,15 @@ impl Gateway {
     }
 
     /// Run the gateway, accepting connections forever.
+    /// Returns when a shutdown signal is received.
     #[instrument(skip(self), name = "gateway")]
     pub async fn run(self) -> anyhow::Result<()> {
         let matrix = Arc::clone(&self.matrix);
         let registry = Arc::clone(&self.registry);
         let db = self.db.clone();
+
+        // Subscribe to shutdown signal
+        let mut shutdown_rx = matrix.shutdown_tx.subscribe();
 
         // If TLS is configured, spawn a separate task for the TLS listener
         if let Some((tls_listener, tls_acceptor)) = self.tls_listener {
@@ -270,36 +274,48 @@ impl Gateway {
 
         // Main plaintext listener loop
         loop {
-            match self.plaintext_listener.accept().await {
-                Ok((stream, addr)) => {
-                    let Some(uid) = validate_connection(&addr, &matrix, "Plaintext") else {
-                        drop(stream);
-                        continue;
-                    };
+            tokio::select! {
+                // Handle incoming connections
+                result = self.plaintext_listener.accept() => {
+                    match result {
+                        Ok((stream, addr)) => {
+                            let Some(uid) = validate_connection(&addr, &matrix, "Plaintext") else {
+                                drop(stream);
+                                continue;
+                            };
 
-                    let matrix = Arc::clone(&matrix);
-                    let registry = Arc::clone(&registry);
-                    let db = self.db.clone();
+                            let matrix = Arc::clone(&matrix);
+                            let registry = Arc::clone(&registry);
+                            let db = self.db.clone();
 
-                    tokio::spawn(async move {
-                        let connection = Connection::new_plaintext(
-                            uid.clone(),
-                            stream,
-                            addr,
-                            matrix,
-                            registry,
-                            db,
-                        );
-                        if let Err(e) = connection.run().await {
-                            error!(%uid, %addr, error = %e, "Plaintext connection error");
+                            tokio::spawn(async move {
+                                let connection = Connection::new_plaintext(
+                                    uid.clone(),
+                                    stream,
+                                    addr,
+                                    matrix,
+                                    registry,
+                                    db,
+                                );
+                                if let Err(e) = connection.run().await {
+                                    error!(%uid, %addr, error = %e, "Plaintext connection error");
+                                }
+                                info!(%uid, %addr, "Plaintext connection closed");
+                            });
                         }
-                        info!(%uid, %addr, "Plaintext connection closed");
-                    });
+                        Err(e) => {
+                            error!(error = %e, "Failed to accept plaintext connection");
+                        }
+                    }
                 }
-                Err(e) => {
-                    error!(error = %e, "Failed to accept plaintext connection");
+                // Handle shutdown signal
+                _ = shutdown_rx.recv() => {
+                    info!("Shutdown signal received - stopping gateway");
+                    break;
                 }
             }
         }
+
+        Ok(())
     }
 }
