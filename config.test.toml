@@ -1,0 +1,65 @@
+# slircd-ng Test Configuration
+# 
+# This configuration simulates a real IRC server but with relaxed rate limits
+# for localhost connections to enable automated testing.
+#
+# Usage:
+#   cargo run -p slircd-ng -- config.test.toml
+#
+# This server runs on:
+#   - IRC: localhost:6667 (plaintext)
+#   - Metrics: disabled (set metrics_port = 9090 to enable)
+
+[server]
+name = "irc.test.local"
+network = "TestNet"
+sid = "001"
+description = "slircd-ng Test Server"
+metrics_port = 0  # Set to 9090 to enable Prometheus metrics
+
+[listen]
+address = "0.0.0.0:6667"
+# For TLS testing, uncomment and provide certs:
+# tls_address = "0.0.0.0:6697"
+# tls_cert = "certs/server.crt"
+# tls_key = "certs/server.key"
+
+[database]
+path = ":memory:"  # In-memory for tests, or use "slircd-test.db" for persistence
+
+[limits]
+# Standard limits - these affect all connections
+rate = 10.0   # Token bucket rate (tokens per second)
+burst = 20.0  # Token bucket burst size
+
+[security]
+# Cloaking disabled for easier test debugging
+cloak_secret = "test-secret-do-not-use-in-production"
+cloak_suffix = "test"
+spam_detection_enabled = false  # Disable spam filtering for tests
+
+[security.rate_limits]
+# Relaxed rate limits for automated testing
+# In production, use much lower values (e.g., 2, 3, 5)
+message_rate_per_second = 1000    # Messages per second per client
+connection_burst_per_ip = 1000    # Connections per IP in burst window
+join_burst_per_client = 1000      # Channel joins per client in burst window
+
+[motd]
+# MOTD can be set inline or from a file
+lines = [
+    "Welcome to the slircd-ng Test Server!",
+    "",
+    "This server is configured for testing purposes.",
+    "Rate limits are relaxed for localhost connections.",
+    "",
+    "For production use, please use appropriate security settings."
+]
+
+[opers]
+# Test operator account - DO NOT USE IN PRODUCTION
+# Password: "testpass" (in production, use hashed passwords)
+[opers.testoper]
+password = "testpass"
+hostmask = "*@*"
+flags = ["global_kill", "rehash", "die", "restart", "kline", "unkline"]
