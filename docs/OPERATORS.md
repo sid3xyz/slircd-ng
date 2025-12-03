@@ -116,14 +116,17 @@ Shuns are stored in memory only (not persisted to database).
 
 ## STATS Command
 
-| Letter | Information          |
-| ------ | -------------------- |
-| `u`    | Server uptime        |
-| `o`    | Configured operators |
-| `k`    | K-Lines              |
-| `g`    | G-Lines              |
-| `d`    | D-Lines              |
-| `z`    | Z-Lines              |
+| Letter | Information            |
+| ------ | ---------------------- |
+| `u`    | Server uptime          |
+| `o`    | Configured operators   |
+| `k`    | K-Lines                |
+| `g`    | G-Lines                |
+| `d`    | D-Lines                |
+| `z`    | Z-Lines                |
+| `c`    | Connection statistics  |
+| `m`    | Command usage counts   |
+| `?`    | Help (list all stats)  |
 
 Example:
 ```

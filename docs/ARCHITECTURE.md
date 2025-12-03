@@ -142,10 +142,15 @@ Services (NickServ, ChanServ) don't mutate state directly. They return effects:
 pub enum ServiceEffect {
     Reply { target_uid: String, msg: Message },
     AccountIdentify { target_uid: String, account: String },
+    AccountClear { target_uid: String },
+    ClearEnforceTimer { target_uid: String },
     Kill { target_uid: String, killer: String, reason: String },
     Kick { channel: String, target_uid: String, kicker: String, reason: String },
     ChannelMode { channel: String, target_uid: String, mode_char: char, adding: bool },
+    ChannelModes { channel: String, modes: Vec<Mode<ChannelMode>> },
     ForceNick { target_uid: String, old_nick: String, new_nick: String },
+    BroadcastAccount { target_uid: String, new_account: String },
+    BroadcastChghost { target_uid: String, new_user: String, new_host: String },
 }
 ```
 
