@@ -1,7 +1,8 @@
 # slircd-ng Audit Action Plan
 
 **Generated:** 2024-12-03  
-**Status:** In Progress
+**Updated:** 2024-12-03  
+**Status:** High-priority items complete
 
 ## Overview
 
@@ -12,50 +13,48 @@ Each task is prioritized by impact and effort.
 
 ## 🔴 Critical (High Impact, Security/Correctness)
 
-### C1: Fix Default Cloak Secret
-- **Status:** TODO
-- **Files:** `src/config.rs:174`
+### C1: Fix Default Cloak Secret ✅
+- **Status:** DONE (commit 5136147)
+- **Files:** `src/config.rs`
 - **Effort:** Low
 - **Impact:** HIGH
-- **Description:** Current implementation falls back to static `"slircd-default-secret-CHANGE-ME-IN-PRODUCTION"`. 
-- **Fix:** Panic at startup if not explicitly set, OR generate random ephemeral secret with warning.
+- **Change:** Generate random 32-char secret at runtime with warning log.
 
-### C2: Run History Prune at Startup
-- **Status:** TODO
-- **Files:** `src/main.rs:204-220`
+### C2: Run History Prune at Startup ✅
+- **Status:** DONE (commit ec39347)
+- **Files:** `src/main.rs`
 - **Effort:** Low
 - **Impact:** Medium
-- **Description:** Only runs on 24h interval. If server restarts frequently or crashes, pruning never happens.
-- **Fix:** Call `db.history().prune_old_messages(30)` once before starting the interval.
+- **Change:** Added immediate prune before interval timer starts.
 
 ---
 
 ## 🟠 Architecture Improvements (DRY Violations)
 
-### A1: Refactor Gateway Triplication
-- **Status:** TODO
+### A1: Refactor Gateway Triplication ✅
+- **Status:** DONE (commit 52e5042)
 - **Files:** `src/network/gateway.rs`
 - **Effort:** Medium
 - **Impact:** HIGH
-- **Description:** Lines 105-329 contain near-identical logic 3x (TLS/WebSocket/Plaintext).
-- **Fix:** Extract to generic `accept_connection<S: Stream>()` function.
+- **Change:** Extracted `validate_and_prepare_connection()` helper, reduced 44 lines.
 
-### A2: Generic X-line Handler
-- **Status:** TODO
-- **Files:** `src/handlers/bans/xlines/*.rs`
+### A2: Generic X-line Handler ✅
+- **Status:** DONE (commit 9c42f2a)
+- **Files:** `src/handlers/bans/xlines/`
 - **Effort:** Medium
 - **Impact:** HIGH
-- **Description:** 6 files with identical structure. Create `GenericBanHandler<B: BanStrategy>` trait.
+- **Change:** Created `BanConfig` trait system, consolidated 6 files into 1, reduced 113 lines.
 
-### A3: Unify SAJOIN/SAPART with Core Logic
-- **Status:** TODO
-- **Files:** `src/handlers/admin.rs`, `src/handlers/channel/join.rs`
+### A3: Unify SAJOIN/SAPART with Core Logic ✅
+- **Status:** DONE (commit 23867ac)
+- **Files:** `src/handlers/admin.rs`, `src/handlers/channel/ops.rs`
 - **Effort:** Medium
 - **Impact:** Medium
-- **Description:** SAJOIN duplicates join logic. Refactor to accept `bypass_checks: bool`.
+- **Change:** Created reusable `force_join_channel()` and `force_part_channel()` helpers.
 
 ### A4: Singleton NickServ/ChanServ
-- **Status:** TODO
+
+- **Status:** TODO (low priority)
 - **Files:** `src/services/mod.rs:110-121`
 - **Effort:** Low
 - **Impact:** Low
@@ -66,6 +65,7 @@ Each task is prioritized by impact and effort.
 ## 🟡 Code Quality (Overcomplication/Hacks)
 
 ### Q1: Activate ChannelModeBuilder
+
 - **Status:** TODO
 - **Files:** `src/state/mode_builder.rs`, `src/handlers/mode/channel.rs`
 - **Effort:** High
@@ -73,6 +73,7 @@ Each task is prioritized by impact and effort.
 - **Description:** `mode_builder.rs` is dead code. Use it to clean up 809-line `channel.rs`.
 
 ### Q2: Audit `.to_string()` in Hot Paths
+
 - **Status:** TODO
 - **Files:** `src/handlers/**/*.rs`
 - **Effort:** Medium
@@ -80,6 +81,7 @@ Each task is prioritized by impact and effort.
 - **Description:** Keep `&str` for lookups, only allocate when storing.
 
 ### Q3: Implement DIE/REHASH/RESTART
+
 - **Status:** TODO
 - **Files:** `src/handlers/oper.rs`
 - **Effort:** Medium
@@ -87,6 +89,7 @@ Each task is prioritized by impact and effort.
 - **Description:** Commands exported but appear to be stubs.
 
 ### Q4: Complete STATS 'm' Command
+
 - **Status:** TODO
 - **Files:** `src/handlers/server_query/stats.rs`
 - **Effort:** Low
@@ -98,30 +101,32 @@ Each task is prioritized by impact and effort.
 ## 🟣 Persistence/State (Database Issues)
 
 ### P1: Live Ban Reload Mechanism
+
 - **Status:** TODO
 - **Files:** `src/security/ip_deny_list.rs`, `src/main.rs`
 - **Effort:** Medium
 - **Impact:** Medium
 - **Description:** IP deny list loaded only at startup. Add SIGHUP/REHASH reload.
 
-### P2: Verify Matrix Locking Patterns
-- **Status:** TODO
+### P2: Verify Matrix Locking Patterns ✅
+
+- **Status:** DONE (commit 1c74060)
 - **Files:** `src/state/matrix.rs`
 - **Effort:** Medium
 - **Impact:** HIGH
-- **Description:** Nested locking with `DashMap<Uid, Arc<RwLock<User>>>`. Audit for deadlocks.
+- **Change:** Audited locking patterns - no deadlocks found. Added lock order documentation.
 
 ---
 
 ## Execution Order
 
-1. ✅ C1 - Default cloak secret (Security, 15 min)
-2. ✅ C2 - Startup prune (Correctness, 10 min)
-3. ⬜ A1 - Gateway refactor (Biggest DRY win)
-4. ⬜ A2 - X-line generic (Second biggest DRY win)
-5. ⬜ P2 - Matrix locking audit (Deadlock risk)
-6. ⬜ A3 - SAJOIN/SAPART (State corruption prevention)
-7. ⬜ Q1 - Mode builder (Large cleanup)
+1. ✅ C1 - Default cloak secret (Security)
+2. ✅ C2 - Startup prune (Correctness)
+3. ✅ A1 - Gateway refactor (Biggest DRY win)
+4. ✅ A2 - X-line generic (Second biggest DRY win)
+5. ✅ P2 - Matrix locking audit (Verified safe)
+6. ✅ A3 - SAJOIN/SAPART (State corruption prevention)
+7. ⬜ Q1 - Mode builder (Large cleanup - deferred)
 8. ⬜ P1 - Live ban reload (Nice to have)
 9. ⬜ A4/Q2/Q3/Q4 - Lower priority polish
 
@@ -130,3 +135,4 @@ Each task is prioritized by impact and effort.
 ## Changelog
 
 - 2024-12-03: Initial plan created from audit findings
+- 2024-12-03: Completed C1, C2, A1, A2, A3, P2 (6 of 11 items)
