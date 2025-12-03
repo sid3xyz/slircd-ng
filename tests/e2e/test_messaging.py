@@ -404,18 +404,64 @@ class TestSetname:
     """SETNAME command tests."""
 
     @pytest.mark.asyncio
-    async def test_setname(self, client):
-        """Test changing realname with SETNAME."""
-        await client.send("SETNAME :My New Realname")
+    async def test_setname_with_cap(self, server):
+        """Test changing realname with SETNAME after CAP negotiation."""
+        from irc_client import IrcClient
+        import time
 
-        messages = await client.recv_all(timeout=2)
+        # Create a client that negotiates setname cap
+        c = IrcClient(
+            host=server.host,
+            port=server.port,
+            nick=f"setname{int(time.time()) % 10000}",
+            realname="Original Realname"
+        )
 
-        # Check for SETNAME echo or FAIL
-        # If we get a SETNAME back, the command was processed
-        setname_response = any("SETNAME" in m.raw for m in messages)
-        fail_response = any("FAIL" in m.raw for m in messages)
+        await c.connect()
 
-        # Either SETNAME processed or explicitly failed is acceptable
-        # (some servers may not support SETNAME)
-        if not setname_response and not fail_response:
-            pytest.skip("Server doesn't echo SETNAME response")
+        # Negotiate capabilities including setname
+        caps = await c.cap_ls()
+        if "setname" not in caps:
+            await c.disconnect()
+            pytest.skip("Server doesn't advertise setname capability")
+
+        await c.cap_req("setname")
+        await c.cap_end()
+
+        # Complete registration
+        await c.send(f"NICK {c.nick}")
+        await c.send(f"USER {c.username} 0 * :{c.realname}")
+
+        # Wait for registration
+        await c.expect_numeric("001", timeout=5)
+
+        # Now use SETNAME
+        await c.send("SETNAME :My New Realname")
+
+        messages = await c.recv_all(timeout=2)
+
+        # Should get SETNAME echo back
+        setname_echo = any("SETNAME" in m.raw for m in messages)
+        assert setname_echo, "SETNAME should echo back after CAP negotiation"
+
+        # Verify with WHOIS
+        await c.send(f"WHOIS {c.nick}")
+        whois_msgs = await c.recv_all(timeout=2)
+
+        whois_user = next((m for m in whois_msgs if m.command == "311"), None)
+        assert whois_user is not None, "Should get WHOIS reply"
+        assert "My New Realname" in whois_user.raw, "WHOIS should show new realname"
+
+        await c.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_setname_without_cap(self, client):
+        """Test SETNAME without capability negotiation is silently ignored."""
+        await client.send("SETNAME :Should Be Ignored")
+
+        messages = await client.recv_all(timeout=1)
+
+        # Should NOT get a SETNAME echo (cap not negotiated)
+        setname_echo = any("SETNAME" in m.raw for m in messages)
+        # This is expected - no echo means server correctly rejected it
+        assert not setname_echo, "SETNAME without cap should not echo"

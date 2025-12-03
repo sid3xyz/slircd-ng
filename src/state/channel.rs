@@ -94,8 +94,9 @@ impl ChannelModes {
         if self.registered_only {
             s.push('r');
         }
-        if self.key.is_some() {
+        if let Some(ref key) = self.key {
             s.push('k');
+            params.push(key.clone());
         }
         if let Some(limit) = self.limit {
             s.push('l');
