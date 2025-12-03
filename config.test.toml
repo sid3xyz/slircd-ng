@@ -56,10 +56,9 @@ lines = [
     "For production use, please use appropriate security settings.",
 ]
 
-[opers]
 # Test operator account - DO NOT USE IN PRODUCTION
 # Password: "testpass" (in production, use hashed passwords)
-[opers.testoper]
+[[oper]]
+name = "testoper"
 password = "testpass"
 hostmask = "*@*"
-flags = ["global_kill", "rehash", "die", "restart", "kline", "unkline"]
