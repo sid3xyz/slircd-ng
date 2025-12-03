@@ -270,17 +270,17 @@ impl Registry {
         handlers.insert("TRACE", Box::new(TraceHandler));
 
         // Ban handlers
-        handlers.insert("KLINE", Box::new(KlineHandler));
-        handlers.insert("DLINE", Box::new(DlineHandler));
-        handlers.insert("GLINE", Box::new(GlineHandler));
-        handlers.insert("ZLINE", Box::new(ZlineHandler));
-        handlers.insert("RLINE", Box::new(RlineHandler));
+        handlers.insert("KLINE", Box::new(KlineHandler::kline()));
+        handlers.insert("DLINE", Box::new(DlineHandler::dline()));
+        handlers.insert("GLINE", Box::new(GlineHandler::gline()));
+        handlers.insert("ZLINE", Box::new(ZlineHandler::zline()));
+        handlers.insert("RLINE", Box::new(RlineHandler::rline()));
         handlers.insert("SHUN", Box::new(ShunHandler));
-        handlers.insert("UNKLINE", Box::new(UnklineHandler));
-        handlers.insert("UNDLINE", Box::new(UndlineHandler));
-        handlers.insert("UNGLINE", Box::new(UnglineHandler));
-        handlers.insert("UNZLINE", Box::new(UnzlineHandler));
-        handlers.insert("UNRLINE", Box::new(UnrlineHandler));
+        handlers.insert("UNKLINE", Box::new(UnklineHandler::unkline()));
+        handlers.insert("UNDLINE", Box::new(UndlineHandler::undline()));
+        handlers.insert("UNGLINE", Box::new(UnglineHandler::ungline()));
+        handlers.insert("UNZLINE", Box::new(UnzlineHandler::unzline()));
+        handlers.insert("UNRLINE", Box::new(UnrlineHandler::unrline()));
         handlers.insert("UNSHUN", Box::new(UnshunHandler));
 
         // Admin SA* handlers
