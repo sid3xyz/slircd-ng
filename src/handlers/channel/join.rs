@@ -243,6 +243,24 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             return Ok(());
         }
     }
+
+    // 1d. Check TLS-Only (+z) mode
+    if channel_guard.modes.tls_only && !ctx.handshake.is_tls {
+        let reply = server_reply(
+            &ctx.matrix.server_info.name,
+            Response::ERR_INVITEONLYCHAN, // Using this as closest match, could use custom numeric
+            vec![
+                nick.clone(),
+                channel_name.to_string(),
+                "Cannot join channel (+z) - TLS connection required".to_string(),
+            ],
+        );
+        ctx.sender.send(reply).await?;
+        drop(channel_guard);
+        info!(nick = %nick, channel = %channel_name, "JOIN denied: +z TLS-only");
+        return Ok(());
+    }
+
     // 2. Check ban list (+b) and ban exceptions (+e) - supports extended bans
     let is_banned = channel_guard
         .bans
