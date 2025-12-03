@@ -132,9 +132,9 @@ impl Matrix {
     /// - `registered_channels`: Channel names registered with ChanServ (stored lowercase)
     /// - `shuns`: Active shuns loaded from database
     /// - `klines`: Active K-lines loaded from database
-    /// - `dlines`: Active D-lines loaded from database
+    /// - `dlines`: Active D-lines loaded from database (synced to IpDenyList)
     /// - `glines`: Active G-lines loaded from database
-    /// - `zlines`: Active Z-lines loaded from database
+    /// - `zlines`: Active Z-lines loaded from database (synced to IpDenyList)
     #[allow(clippy::too_many_arguments)] // Startup initialization requires many data sources
     pub fn new(
         config: &Config,
@@ -172,8 +172,8 @@ impl Matrix {
         // This ensures any bans added via database admin tools are in the bitmap
         ip_deny_list.sync_from_database_bans(&dlines, &zlines);
 
-        // Build the ban cache (takes ownership of vectors)
-        let ban_cache = BanCache::load(klines, dlines, glines, zlines);
+        // Build the ban cache (K-lines and G-lines only; IP bans handled by IpDenyList)
+        let ban_cache = BanCache::load(klines, glines);
 
         Self {
             users: DashMap::new(),
