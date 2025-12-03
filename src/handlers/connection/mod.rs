@@ -15,3 +15,4 @@ pub use user::UserHandler;
 pub use pass::PassHandler;
 pub use webirc::WebircHandler;
 pub use ping::{PingHandler, PongHandler, QuitHandler};
+pub use welcome::send_welcome_burst;

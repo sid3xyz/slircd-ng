@@ -65,12 +65,21 @@ pub async fn handle_channel_mode(
 
     if modes.is_empty() {
         // Query: return current modes - attach label for labeled-response
+        // Send modes and parameters as separate IRC params (no combined trailing)
         let mode_string = channel_guard.modes.as_mode_string();
+        let mut params = vec![nick.clone(), canonical_name.clone()];
+        if let Some((flags, rest)) = mode_string.split_once(' ') {
+            params.push(flags.to_string());
+            params.extend(rest.split(' ').map(|s| s.to_string()));
+        } else {
+            params.push(mode_string);
+        }
+
         let reply = with_label(
             server_reply(
                 &ctx.matrix.server_info.name,
                 Response::RPL_CHANNELMODEIS,
-                vec![nick.clone(), canonical_name.clone(), mode_string],
+                params,
             ),
             ctx.label.as_deref(),
         );

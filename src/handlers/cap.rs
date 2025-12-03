@@ -3,6 +3,7 @@
 //! Implements CAP LS, LIST, REQ, ACK, NAK, END subcommands.
 //! Reference: <https://ircv3.net/specs/extensions/capability-negotiation>
 
+use super::connection::send_welcome_burst;
 use super::{Context, Handler, HandlerResult, server_reply};
 use async_trait::async_trait;
 use slirc_proto::{CapSubCommand, Command, Message, MessageRef, Prefix, Response};
@@ -212,9 +213,10 @@ async fn handle_end(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
         "CAP negotiation complete"
     );
 
-    // If registration is pending, complete it now
-    // The connection handler will send welcome burst
-    // We just mark that CAP is done
+    // If registration is pending (both NICK and USER received), complete it now
+    if ctx.handshake.can_register() {
+        send_welcome_burst(ctx).await?;
+    }
 
     Ok(())
 }
