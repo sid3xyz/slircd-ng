@@ -27,7 +27,7 @@ impl Handler for PassHandler {
         }
 
         // PASS <password>
-        let _password = match msg.arg(0) {
+        let password = match msg.arg(0) {
             Some(p) if !p.is_empty() => p,
             _ => {
                 let reply = server_reply(
@@ -44,10 +44,8 @@ impl Handler for PassHandler {
             }
         };
 
-        // TODO: Store password in handshake state for later validation
-        // For now, we accept any password (no server password configured)
-
-        debug!("PASS received (not validated - server password not implemented)");
+        ctx.handshake.pass_received = Some(password.to_string());
+        debug!("PASS received");
 
         Ok(())
     }

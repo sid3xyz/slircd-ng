@@ -33,7 +33,7 @@ impl Handler for UserHandler {
         // arg(1) is mode, arg(2) is unused
         let realname = msg.arg(3).unwrap_or("");
 
-        if username.is_empty() {
+        if username.is_empty() || realname.is_empty() {
             return Err(HandlerError::NeedMoreParams);
         }
 

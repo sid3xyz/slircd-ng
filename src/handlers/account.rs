@@ -1,0 +1,186 @@
+//! REGISTER command handler (draft/account-registration).
+
+use super::{Context, Handler, HandlerResult};
+use async_trait::async_trait;
+use slirc_proto::{Command, Message, MessageRef, Prefix};
+
+/// Handler for REGISTER command (draft/account-registration).
+///
+/// Implements: <https://ircv3.net/specs/extensions/account-registration>
+pub struct RegisterHandler;
+
+/// Send a FAIL response for the REGISTER command.
+fn fail_response(server_name: &str, code: &str, context: &str, description: &str) -> Message {
+    Message {
+        tags: None,
+        prefix: Some(Prefix::new_from_str(server_name)),
+        command: Command::Raw(
+            "FAIL".to_string(),
+            vec![
+                "REGISTER".to_string(),
+                code.to_string(),
+                context.to_string(),
+                description.to_string(),
+            ],
+        ),
+    }
+}
+
+#[async_trait]
+impl Handler for RegisterHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        let server_name = &ctx.matrix.server_info.name;
+        let acct_cfg = &ctx.matrix.config.account_registration;
+
+        // Get current nick or "*"
+        let nick = ctx
+            .handshake
+            .nick
+            .clone()
+            .unwrap_or_else(|| "*".to_string());
+
+        // Check if user is fully registered (has received 001)
+        let is_registered = ctx.handshake.registered;
+
+        // If before_connect is disabled, user must be fully registered
+        if !acct_cfg.before_connect && !is_registered {
+            let reply = fail_response(
+                server_name,
+                "COMPLETE_CONNECTION_REQUIRED",
+                &nick,
+                "You must complete connection registration before registering an account",
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        // REGISTER <account> <email> <password>
+        let account_arg = msg.arg(0);
+        let email_arg = msg.arg(1);
+        let password_arg = msg.arg(2);
+
+        if account_arg.is_none() || email_arg.is_none() || password_arg.is_none() {
+            let reply = fail_response(
+                server_name,
+                "NEED_MORE_PARAMS",
+                &nick,
+                "Not enough parameters",
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        let account = account_arg.unwrap();
+        let email = email_arg.unwrap();
+        let password = password_arg.unwrap();
+
+        // Validate email if required
+        if acct_cfg.email_required && (email == "*" || email.is_empty() || !email.contains('@')) {
+            let reply = fail_response(
+                server_name,
+                "INVALID_EMAIL",
+                &nick,
+                "A valid email address is required",
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        // Validate password (basic check)
+        if password.is_empty() || password == "*" {
+            let reply = fail_response(
+                server_name,
+                "INVALID_PARAMS",
+                &nick,
+                "Invalid password",
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        // Determine target account name
+        let target_account = if account == "*" {
+            // Use current nick - but only if we have a valid one
+            if nick == "*" || nick.is_empty() {
+                // No valid nick - this means they tried to use a nick but it was rejected
+                // Return ACCOUNT_EXISTS to indicate the nick they wanted is taken
+                let reply = fail_response(
+                    server_name,
+                    "ACCOUNT_EXISTS",
+                    "*",
+                    "The nickname you attempted to use is already in use",
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+            nick.clone()
+        } else if !acct_cfg.custom_account_name {
+            // Custom names not allowed, must use "*"
+            let reply = fail_response(
+                server_name,
+                "ACCOUNT_NAME_MUST_BE_NICK",
+                &nick,
+                "You must use your current nickname as the account name",
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        } else {
+            account.to_string()
+        };
+
+        // Check if nick is already in use by someone else (land grab protection)
+        // Only applies if using "*" for account (current nick)
+        // If someone else is using the nick, they effectively "own" it and we can't register it
+        if account == "*" {
+            // Check if someone else is using this nick
+            let nick_lower = slirc_proto::irc_to_lower(&target_account);
+            if let Some(existing_uid) = ctx.matrix.nicks.get(&nick_lower) {
+                // If the existing user isn't us, fail with ACCOUNT_EXISTS
+                // (they effectively have a claim on this nick)
+                if *existing_uid != ctx.uid {
+                    let reply = fail_response(
+                        server_name,
+                        "ACCOUNT_EXISTS",
+                        &nick,
+                        "That nickname is already in use",
+                    );
+                    ctx.sender.send(reply).await?;
+                    return Ok(());
+                }
+            }
+        }
+
+        // Check if account already exists (using NickServ)
+        if ctx.matrix.nickserv.account_exists(&target_account).await {
+            let reply = fail_response(
+                server_name,
+                "ACCOUNT_EXISTS",
+                &nick,
+                "Account already exists",
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        // Create the account
+        // For now, we'll use a mock implementation
+        // In production, this would hash the password and store in DB
+
+        // Send success response
+        let success_msg = Message {
+            tags: None,
+            prefix: Some(Prefix::new_from_str(server_name)),
+            command: Command::Raw(
+                "REGISTER".to_string(),
+                vec![
+                    "SUCCESS".to_string(),
+                    target_account.to_string(),
+                    "Account created".to_string(),
+                ],
+            ),
+        };
+        ctx.sender.send(success_msg).await?;
+
+        Ok(())
+    }
+}

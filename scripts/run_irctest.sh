@@ -6,7 +6,12 @@ WORKSPACE_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SLIRCD_DIR="$WORKSPACE_ROOT/slircd-ng"
 IRCTEST_DIR="$WORKSPACE_ROOT/irctest"
 CONFIG_FILE="$SLIRCD_DIR/config.test.toml"
-SERVER_BIN="$WORKSPACE_ROOT/target/release/slircd"
+BUILD_MODE="${BUILD_MODE:-debug}"
+if [ "$BUILD_MODE" = "release" ]; then
+    SERVER_BIN="$WORKSPACE_ROOT/target/release/slircd"
+else
+    SERVER_BIN="$WORKSPACE_ROOT/target/debug/slircd"
+fi
 PORT=6667
 
 # Colors
@@ -18,9 +23,13 @@ echo -e "${GREEN}Starting irctest integration run...${NC}"
 
 # 1. Build slircd-ng
 if [ -z "$SKIP_BUILD" ]; then
-    echo -e "${GREEN}Building slircd-ng (release)...${NC}"
+    echo -e "${GREEN}Building slircd-ng ($BUILD_MODE)...${NC}"
     cd "$SLIRCD_DIR"
-    cargo build --release
+    if [ "$BUILD_MODE" = "release" ]; then
+        cargo build --release
+    else
+        cargo build
+    fi
 else
     echo -e "${GREEN}Skipping build (SKIP_BUILD is set)...${NC}"
 fi
@@ -74,6 +83,7 @@ export IRCTEST_SERVER_HOSTNAME=localhost
 export IRCTEST_SERVER_PORT=$PORT
 
 TEST_TARGET="${1:-irctest/server_tests/}"
+shift || true # Shift the first argument (target) so the rest can be passed to pytest
 
 # Run a subset of tests first to verify integration
 # Using timeout to prevent hanging
@@ -82,6 +92,7 @@ timeout "$TIMEOUT" .venv/bin/pytest --controller irctest.controllers.external_se
     "$TEST_TARGET" \
     -v \
     --tb=short \
+    "$@" \
     || TEST_EXIT_CODE=$?
 
 # 5. Cleanup

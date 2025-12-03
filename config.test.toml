@@ -11,7 +11,7 @@
 #   - Metrics: disabled (set metrics_port = 9090 to enable)
 
 [server]
-name = "irc.test.local"
+name = "My.Little.Server"
 network = "TestNet"
 sid = "001"
 description = "slircd-ng Test Server"

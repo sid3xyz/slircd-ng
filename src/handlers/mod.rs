@@ -10,6 +10,7 @@
 //! arguments as `&str` slices.
 
 mod admin;
+mod account;
 mod bans;
 mod batch;
 mod cap;
@@ -34,6 +35,7 @@ pub use helpers::{
 };
 
 pub use admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler};
+pub use account::RegisterHandler;
 pub use bans::{
     DlineHandler, GlineHandler, KlineHandler, RlineHandler, ShunHandler, UndlineHandler,
     UnglineHandler, UnklineHandler, UnrlineHandler, UnshunHandler, UnzlineHandler, ZlineHandler,
@@ -125,6 +127,8 @@ pub struct HandshakeState {
     pub webirc_ip: Option<String>,
     /// Real hostname from WEBIRC (overrides reverse DNS).
     pub webirc_host: Option<String>,
+    /// Password received via PASS command.
+    pub pass_received: Option<String>,
     /// Active batch state for client-to-server batches (e.g., draft/multiline).
     pub active_batch: Option<BatchState>,
     /// Reference tag for the active batch.
@@ -203,6 +207,7 @@ impl Registry {
         handlers.insert("QUIT", Box::new(QuitHandler));
         handlers.insert("CAP", Box::new(CapHandler));
         handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
+        handlers.insert("REGISTER", Box::new(RegisterHandler));
 
         // Channel handlers
         handlers.insert("JOIN", Box::new(JoinHandler));
@@ -310,7 +315,7 @@ impl Registry {
             .map(|(cmd, count)| (*cmd, count.load(Ordering::Relaxed)))
             .filter(|(_, count)| *count > 0) // Only include used commands
             .collect();
-        
+
         // Sort by usage count (descending)
         stats.sort_by(|a, b| b.1.cmp(&a.1));
         stats
@@ -330,7 +335,7 @@ impl Registry {
             let counter = self.command_counts.get(cmd_name.as_str())
                 .expect("Command counter missing for registered handler");
             counter.fetch_add(1, Ordering::Relaxed);
-            
+
             handler.handle(ctx, msg).await
         } else {
             // Send ERR_UNKNOWNCOMMAND for unrecognized commands
