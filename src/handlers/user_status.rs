@@ -1,8 +1,8 @@
-//! User status and profile handlers: AWAY, SETNAME
+//! User status and profile handlers: AWAY, SETNAME, SILENCE
 //!
 //! Handles user status management and IRCv3 profile updates.
 
-use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
+use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply, matches_hostmask};
 use async_trait::async_trait;
 use slirc_proto::{Command, MessageRef, Response};
 use tracing::debug;
@@ -239,3 +239,134 @@ impl Handler for SetnameHandler {
         Ok(())
     }
 }
+
+/// Handler for SILENCE command.
+///
+/// `SILENCE [+/-mask]`
+///
+/// Server-side ignore list. Allows users to block messages from matching masks.
+/// - Without parameters: Lists the current silence list
+/// - With +mask: Adds a mask to the silence list
+/// - With -mask: Removes a mask from the silence list
+///
+/// Masks use standard IRC wildcard syntax: * and ?
+pub struct SilenceHandler;
+
+#[async_trait]
+impl Handler for SilenceHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        if !ctx.handshake.registered {
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
+            return Ok(());
+        }
+
+        let server_name = &ctx.matrix.server_info.name;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
+
+        // SILENCE [+/-mask]
+        let mask_arg = msg.arg(0);
+
+        if mask_arg.is_none() {
+            // List silence entries
+            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let user = user_ref.read().await;
+                
+                // 271 RPL_SILELIST for each entry
+                for mask in &user.silence_list {
+                    let reply = slirc_proto::Message {
+                        tags: None,
+                        prefix: Some(slirc_proto::Prefix::new_from_str(server_name)),
+                        command: Command::Raw(
+                            "271".to_string(),
+                            vec![
+                                nick.clone(),
+                                mask.clone(),
+                            ],
+                        ),
+                    };
+                    ctx.sender.send(reply).await?;
+                }
+                
+                // 272 RPL_ENDOFSILELIST
+                let end_reply = slirc_proto::Message {
+                    tags: None,
+                    prefix: Some(slirc_proto::Prefix::new_from_str(server_name)),
+                    command: Command::Raw(
+                        "272".to_string(),
+                        vec![
+                            nick.clone(),
+                            "End of Silence List".to_string(),
+                        ],
+                    ),
+                };
+                ctx.sender.send(end_reply).await?;
+            }
+            return Ok(());
+        }
+
+        let mask_str = mask_arg.unwrap();
+        
+        // Check for +/- prefix
+        if mask_str.is_empty() {
+            return Err(HandlerError::NeedMoreParams);
+        }
+
+        let (adding, mask) = if mask_str.starts_with('+') {
+            (true, &mask_str[1..])
+        } else if mask_str.starts_with('-') {
+            (false, &mask_str[1..])
+        } else {
+            // No prefix, treat as add
+            (true, mask_str)
+        };
+
+        if mask.is_empty() {
+            return Err(HandlerError::NeedMoreParams);
+        }
+
+        // Update silence list
+        if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let mut user = user_ref.write().await;
+            
+            if adding {
+                // Add to silence list (limit to reasonable size)
+                const MAX_SILENCE_ENTRIES: usize = 50;
+                if user.silence_list.len() >= MAX_SILENCE_ENTRIES {
+                    // 511 ERR_SILELISTFULL
+                    let reply = slirc_proto::Message {
+                        tags: None,
+                        prefix: Some(slirc_proto::Prefix::new_from_str(server_name)),
+                        command: Command::Raw(
+                            "511".to_string(),
+                            vec![
+                                nick.clone(),
+                                mask.to_string(),
+                                format!("Your silence list is full (max {})", MAX_SILENCE_ENTRIES),
+                            ],
+                        ),
+                    };
+                    ctx.sender.send(reply).await?;
+                    return Ok(());
+                }
+                
+                if user.silence_list.insert(mask.to_string()) {
+                    debug!(nick = %nick, mask = %mask, "Added to silence list");
+                }
+            } else {
+                // Remove from silence list
+                if user.silence_list.remove(mask) {
+                    debug!(nick = %nick, mask = %mask, "Removed from silence list");
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+

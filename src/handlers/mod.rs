@@ -55,7 +55,7 @@ pub use server_query::{
 };
 pub use service_aliases::{CsHandler, NsHandler};
 pub use user_query::{IsonHandler, UserhostHandler, WhoHandler, WhoisHandler, WhowasHandler};
-pub use user_status::{AwayHandler, SetnameHandler};
+pub use user_status::{AwayHandler, SetnameHandler, SilenceHandler};
 
 use crate::db::Database;
 use crate::state::Matrix;
@@ -244,6 +244,7 @@ impl Registry {
         handlers.insert("ISON", Box::new(IsonHandler));
         handlers.insert("KNOCK", Box::new(KnockHandler));
         handlers.insert("SETNAME", Box::new(SetnameHandler));
+        handlers.insert("SILENCE", Box::new(SilenceHandler));
         handlers.insert("MONITOR", Box::new(MonitorHandler));
         handlers.insert("CHATHISTORY", Box::new(ChatHistoryHandler));
 
