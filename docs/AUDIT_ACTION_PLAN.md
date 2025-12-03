@@ -52,13 +52,13 @@ Each task is prioritized by impact and effort.
 - **Impact:** Medium
 - **Change:** Created reusable `force_join_channel()` and `force_part_channel()` helpers.
 
-### A4: Singleton NickServ/ChanServ
+### A4: Singleton NickServ/ChanServ ✅
 
-- **Status:** TODO (low priority)
-- **Files:** `src/services/mod.rs:110-121`
+- **Status:** DONE (commit 09a6c51)
+- **Files:** `src/services/mod.rs`, `src/state/matrix.rs`
 - **Effort:** Low
 - **Impact:** Low
-- **Description:** Services instantiated per-message. Pre-instantiate and inject via Context.
+- **Change:** Services created once at startup, stored in Matrix, reused for all messages.
 
 ---
 
@@ -126,13 +126,14 @@ Each task is prioritized by impact and effort.
 4. ✅ A2 - X-line generic (Second biggest DRY win)
 5. ✅ P2 - Matrix locking audit (Verified safe)
 6. ✅ A3 - SAJOIN/SAPART (State corruption prevention)
-7. ⬜ Q1 - Mode builder (Large cleanup - deferred)
-8. ⬜ P1 - Live ban reload (Nice to have)
-9. ⬜ A4/Q2/Q3/Q4 - Lower priority polish
+7. ✅ A4 - Service singletons (Minor optimization)
+8. ⬜ Q1 - Mode builder (Large cleanup - deferred)
+9. ⬜ P1 - Live ban reload (Nice to have)
+10. ⬜ Q2/Q3/Q4 - Lower priority polish
 
 ---
 
 ## Changelog
 
 - 2024-12-03: Initial plan created from audit findings
-- 2024-12-03: Completed C1, C2, A1, A2, A3, P2 (6 of 11 items)
+- 2024-12-03: Completed C1, C2, A1, A2, A3, A4, P2 (7 of 11 items)
