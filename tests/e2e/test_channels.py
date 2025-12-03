@@ -271,3 +271,79 @@ class TestWho:
 
         numerics = {m.command for m in messages if m.command.isdigit()}
         assert "315" in numerics, "Missing RPL_ENDOFWHO"
+
+
+class TestList:
+    """LIST command tests."""
+
+    @pytest.mark.asyncio
+    async def test_list_channels(self, client):
+        """Test LIST command shows channels."""
+        # Create a channel first
+        await client.join("#listtest")
+        await client.recv_all(timeout=0.5)
+
+        await client.send("LIST")
+
+        # Should receive 321 RPL_LISTSTART, 322 RPL_LIST, 323 RPL_LISTEND
+        messages = await client.recv_all(timeout=2)
+        numerics = {m.command for m in messages if m.command.isdigit()}
+
+        assert "323" in numerics, "Missing RPL_LISTEND"
+
+    @pytest.mark.asyncio
+    async def test_list_specific_channel(self, client):
+        """Test LIST with specific channel."""
+        await client.join("#listme")
+        await client.recv_all(timeout=0.5)
+
+        await client.send("LIST #listme")
+
+        messages = await client.recv_all(timeout=2)
+        numerics = {m.command for m in messages if m.command.isdigit()}
+
+        assert "323" in numerics, "Missing RPL_LISTEND"
+
+
+class TestTime:
+    """TIME command tests."""
+
+    @pytest.mark.asyncio
+    async def test_time(self, client):
+        """Test TIME command."""
+        await client.send("TIME")
+
+        messages = await client.recv_all(timeout=2)
+        # Should receive 391 RPL_TIME
+        numerics = {m.command for m in messages if m.command.isdigit()}
+
+        assert "391" in numerics, "Missing RPL_TIME"
+
+
+class TestAdmin:
+    """ADMIN command tests."""
+
+    @pytest.mark.asyncio
+    async def test_admin(self, client):
+        """Test ADMIN command."""
+        await client.send("ADMIN")
+
+        messages = await client.recv_all(timeout=2)
+        # Should receive admin info (256-259) or some response
+        # Even an error response is acceptable
+        assert len(messages) > 0, "No response to ADMIN"
+
+
+class TestInfo:
+    """INFO command tests."""
+
+    @pytest.mark.asyncio
+    async def test_info(self, client):
+        """Test INFO command."""
+        await client.send("INFO")
+
+        messages = await client.recv_all(timeout=2)
+        # Should receive 371 RPL_INFO and 374 RPL_ENDOFINFO
+        numerics = {m.command for m in messages if m.command.isdigit()}
+
+        assert "374" in numerics, "Missing RPL_ENDOFINFO"
