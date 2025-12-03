@@ -239,7 +239,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     );
     ctx.sender.send(isupport1).await?;
 
-    // Line 2: Limits
+    // Line 2: Limits and features
     let isupport2 = server_reply(
         server_name,
         Response::RPL_ISUPPORT,
@@ -252,6 +252,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             "AWAYLEN=200".to_string(),
             "MODES=6".to_string(),
             "MAXTARGETS=4".to_string(),
+            "MONITOR=100".to_string(), // Max monitored nicks per client
             "are supported by this server".to_string(),
         ],
     );
