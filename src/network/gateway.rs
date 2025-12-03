@@ -20,6 +20,34 @@ use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio_tungstenite::accept_hdr_async;
 use tracing::{error, info, instrument, warn};
 
+/// Validate an incoming connection against IP deny list and rate limits.
+///
+/// Returns `Some(uid)` if the connection should proceed, `None` if rejected.
+/// This centralizes the common accept logic for all listener types (TLS, WebSocket, plaintext).
+fn validate_connection(
+    addr: &SocketAddr,
+    matrix: &Matrix,
+    listener_type: &str,
+) -> Option<String> {
+    // HOT PATH: Nanosecond-scale IP denial check (Roaring Bitmap)
+    // This runs BEFORE any other checks for maximum efficiency
+    if let Ok(deny_list) = matrix.ip_deny_list.read()
+        && let Some(reason) = deny_list.check_ip(&addr.ip())
+    {
+        info!(%addr, %reason, "{} connection rejected by IP deny list", listener_type);
+        return None;
+    }
+
+    // Check connection rate limit before accepting
+    if !matrix.rate_limiter.check_connection_rate(addr.ip()) {
+        warn!(%addr, "{} connection rate limit exceeded - rejecting", listener_type);
+        return None;
+    }
+
+    info!(%addr, "{} connection accepted", listener_type);
+    Some(matrix.uid_gen.next())
+}
+
 /// The Gateway accepts incoming TCP/TLS connections and spawns handlers.
 pub struct Gateway {
     plaintext_listener: TcpListener,
@@ -122,31 +150,14 @@ impl Gateway {
                 loop {
                     match tls_listener.accept().await {
                         Ok((stream, addr)) => {
-                            // HOT PATH: Nanosecond-scale IP denial check (Roaring Bitmap)
-                            // This runs BEFORE any other checks for maximum efficiency
-                            if let Ok(deny_list) = matrix_tls.ip_deny_list.read()
-                                && let Some(reason) = deny_list.check_ip(&addr.ip())
-                            {
-                                info!(%addr, %reason, "TLS connection rejected by IP deny list");
+                            let Some(uid) = validate_connection(&addr, &matrix_tls, "TLS") else {
                                 drop(stream);
                                 continue;
-                            }
-
-                            // Check connection rate limit before accepting
-                            if !matrix_tls.rate_limiter.check_connection_rate(addr.ip()) {
-                                warn!(%addr, "TLS connection rate limit exceeded - rejecting");
-                                drop(stream);
-                                continue;
-                            }
-
-                            // NOTE: ban_cache.check_ip() removed - IpDenyList handles Z-lines/D-lines
-
-                            info!(%addr, "TLS connection accepted");
+                            };
 
                             let matrix = Arc::clone(&matrix_tls);
                             let registry = Arc::clone(&registry_tls);
                             let db = db_tls.clone();
-                            let uid = matrix.uid_gen.next();
                             let acceptor = tls_acceptor.clone();
 
                             tokio::spawn(async move {
@@ -191,31 +202,14 @@ impl Gateway {
                 loop {
                     match ws_listener.accept().await {
                         Ok((stream, addr)) => {
-                            // HOT PATH: Nanosecond-scale IP denial check (Roaring Bitmap)
-                            // This runs BEFORE any other checks for maximum efficiency
-                            if let Ok(deny_list) = matrix_ws.ip_deny_list.read()
-                                && let Some(reason) = deny_list.check_ip(&addr.ip())
-                            {
-                                info!(%addr, %reason, "WebSocket connection rejected by IP deny list");
+                            let Some(uid) = validate_connection(&addr, &matrix_ws, "WebSocket") else {
                                 drop(stream);
                                 continue;
-                            }
-
-                            // Check connection rate limit before accepting
-                            if !matrix_ws.rate_limiter.check_connection_rate(addr.ip()) {
-                                warn!(%addr, "WebSocket connection rate limit exceeded - rejecting");
-                                drop(stream);
-                                continue;
-                            }
-
-                            // NOTE: ban_cache.check_ip() removed - IpDenyList handles Z-lines/D-lines
-
-                            info!(%addr, "WebSocket connection attempt");
+                            };
 
                             let matrix = Arc::clone(&matrix_ws);
                             let registry = Arc::clone(&registry_ws);
                             let db = db_ws.clone();
-                            let uid = matrix.uid_gen.next();
                             let allowed = allow_origins.clone();
 
                             tokio::spawn(async move {
@@ -278,31 +272,14 @@ impl Gateway {
         loop {
             match self.plaintext_listener.accept().await {
                 Ok((stream, addr)) => {
-                    // HOT PATH: Nanosecond-scale IP denial check (Roaring Bitmap)
-                    // This runs BEFORE any other checks for maximum efficiency
-                    if let Ok(deny_list) = matrix.ip_deny_list.read()
-                        && let Some(reason) = deny_list.check_ip(&addr.ip())
-                    {
-                        info!(%addr, %reason, "Plaintext connection rejected by IP deny list");
+                    let Some(uid) = validate_connection(&addr, &matrix, "Plaintext") else {
                         drop(stream);
                         continue;
-                    }
-
-                    // Check connection rate limit before accepting
-                    if !matrix.rate_limiter.check_connection_rate(addr.ip()) {
-                        warn!(%addr, "Plaintext connection rate limit exceeded - rejecting");
-                        drop(stream);
-                        continue;
-                    }
-
-                    // NOTE: ban_cache.check_ip() removed - IpDenyList handles Z-lines/D-lines
-
-                    info!(%addr, "Plaintext connection accepted");
+                    };
 
                     let matrix = Arc::clone(&matrix);
                     let registry = Arc::clone(&registry);
                     let db = self.db.clone();
-                    let uid = matrix.uid_gen.next();
 
                     tokio::spawn(async move {
                         let connection = Connection::new_plaintext(
