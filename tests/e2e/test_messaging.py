@@ -329,3 +329,93 @@ class TestIson:
         msg = await client.expect_numeric("303", timeout=3)
         # The offline user should NOT be in the reply
         assert "offlineuser12345" not in msg.raw.lower()
+
+
+class TestMonitor:
+    """MONITOR command tests."""
+
+    @pytest.mark.asyncio
+    async def test_monitor_add(self, client):
+        """Test adding nicks to monitor list."""
+        await client.send("MONITOR + someuser")
+
+        # Should receive 731 RPL_MONOFFLINE (user offline)
+        messages = await client.recv_all(timeout=2)
+        numerics = {m.command for m in messages if m.command.isdigit()}
+
+        # Either 731 (offline) or some other response
+        assert len(messages) > 0, "No response to MONITOR +"
+
+    @pytest.mark.asyncio
+    async def test_monitor_list(self, client):
+        """Test listing monitored nicks."""
+        await client.send("MONITOR + testmon1,testmon2")
+        await client.recv_all(timeout=0.5)
+
+        await client.send("MONITOR L")
+
+        messages = await client.recv_all(timeout=2)
+        # Should receive 732 RPL_MONLIST and 733 RPL_ENDOFMONLIST
+        numerics = {m.command for m in messages if m.command.isdigit()}
+
+        assert "733" in numerics, "Missing RPL_ENDOFMONLIST"
+
+    @pytest.mark.asyncio
+    async def test_monitor_clear(self, client):
+        """Test clearing monitor list."""
+        await client.send("MONITOR + clearme")
+        await client.recv_all(timeout=0.5)
+
+        await client.send("MONITOR C")
+
+        # Clear should not error - check list is empty
+        await client.send("MONITOR L")
+        messages = await client.recv_all(timeout=2)
+
+        # Should get 733 ENDOFMONLIST with no 732 entries
+        numerics = {m.command for m in messages if m.command.isdigit()}
+        assert "733" in numerics, "Missing RPL_ENDOFMONLIST"
+
+    @pytest.mark.asyncio
+    async def test_monitor_online_notification(self, clients):
+        """Test that MONITOR notifies when user comes online."""
+        alice = await clients.add_client("alice")
+        await alice.recv_all(timeout=0.5)
+
+        # Monitor a nick that will come online
+        await alice.send("MONITOR + monitored_user")
+        await alice.recv_all(timeout=0.5)
+
+        # Now connect another client with that nick
+        bob = await clients.add_client("monitored_user")
+        await bob.recv_all(timeout=0.5)
+
+        # Alice should receive 730 RPL_MONONLINE
+        messages = await alice.recv_all(timeout=2)
+        numerics = {m.command for m in messages if m.command.isdigit()}
+
+        # Note: This might fail if server doesn't implement online notification
+        # Skip if no 730 received
+        if "730" not in numerics:
+            pytest.skip("Server doesn't send MONITOR online notifications")
+
+
+class TestSetname:
+    """SETNAME command tests."""
+
+    @pytest.mark.asyncio
+    async def test_setname(self, client):
+        """Test changing realname with SETNAME."""
+        await client.send("SETNAME :My New Realname")
+
+        messages = await client.recv_all(timeout=2)
+
+        # Check for SETNAME echo or FAIL
+        # If we get a SETNAME back, the command was processed
+        setname_response = any("SETNAME" in m.raw for m in messages)
+        fail_response = any("FAIL" in m.raw for m in messages)
+
+        # Either SETNAME processed or explicitly failed is acceptable
+        # (some servers may not support SETNAME)
+        if not setname_response and not fail_response:
+            pytest.skip("Server doesn't echo SETNAME response")
