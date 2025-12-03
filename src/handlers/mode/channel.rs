@@ -466,14 +466,18 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        if let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                            member_modes.op = adding;
-                            applied_modes.push(if adding {
-                                Mode::Plus(ChannelMode::Oper, Some(target_nick.to_string()))
-                            } else {
-                                Mode::Minus(ChannelMode::Oper, Some(target_nick.to_string()))
-                            });
+                        // Check if issuer can modify target (must have higher rank)
+                        if channel.can_modify(ctx.uid, &target_uid) || ctx.uid == target_uid {
+                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+                                member_modes.op = adding;
+                                applied_modes.push(if adding {
+                                    Mode::Plus(ChannelMode::Oper, Some(target_nick.to_string()))
+                                } else {
+                                    Mode::Minus(ChannelMode::Oper, Some(target_nick.to_string()))
+                                });
+                            }
                         }
+                        // Silently ignore if hierarchy check fails
                     }
                 }
             }
@@ -483,14 +487,18 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        if let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                            member_modes.voice = adding;
-                            applied_modes.push(if adding {
-                                Mode::Plus(ChannelMode::Voice, Some(target_nick.to_string()))
-                            } else {
-                                Mode::Minus(ChannelMode::Voice, Some(target_nick.to_string()))
-                            });
+                        // Check if issuer can modify target (must have higher rank)
+                        if channel.can_modify(ctx.uid, &target_uid) || ctx.uid == target_uid {
+                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+                                member_modes.voice = adding;
+                                applied_modes.push(if adding {
+                                    Mode::Plus(ChannelMode::Voice, Some(target_nick.to_string()))
+                                } else {
+                                    Mode::Minus(ChannelMode::Voice, Some(target_nick.to_string()))
+                                });
+                            }
                         }
+                        // Silently ignore if hierarchy check fails
                     }
                 }
             }
@@ -500,14 +508,18 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        if let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                            member_modes.halfop = adding;
-                            applied_modes.push(if adding {
-                                Mode::Plus(ChannelMode::Halfop, Some(target_nick.to_string()))
-                            } else {
-                                Mode::Minus(ChannelMode::Halfop, Some(target_nick.to_string()))
-                            });
+                        // Check if issuer can modify target (must have higher rank)
+                        if channel.can_modify(ctx.uid, &target_uid) || ctx.uid == target_uid {
+                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+                                member_modes.halfop = adding;
+                                applied_modes.push(if adding {
+                                    Mode::Plus(ChannelMode::Halfop, Some(target_nick.to_string()))
+                                } else {
+                                    Mode::Minus(ChannelMode::Halfop, Some(target_nick.to_string()))
+                                });
+                            }
                         }
+                        // Silently ignore if hierarchy check fails
                     }
                 }
             }
@@ -517,14 +529,18 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        if let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                            member_modes.admin = adding;
-                            applied_modes.push(if adding {
-                                Mode::Plus(ChannelMode::Admin, Some(target_nick.to_string()))
-                            } else {
-                                Mode::Minus(ChannelMode::Admin, Some(target_nick.to_string()))
-                            });
+                        // Check if issuer can modify target (must have higher rank)
+                        if channel.can_modify(ctx.uid, &target_uid) || ctx.uid == target_uid {
+                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+                                member_modes.admin = adding;
+                                applied_modes.push(if adding {
+                                    Mode::Plus(ChannelMode::Admin, Some(target_nick.to_string()))
+                                } else {
+                                    Mode::Minus(ChannelMode::Admin, Some(target_nick.to_string()))
+                                });
+                            }
                         }
+                        // Silently ignore if hierarchy check fails
                     }
                 }
             }
@@ -534,14 +550,18 @@ pub fn apply_channel_modes_typed(
                     let target_lower = irc_to_lower(target_nick);
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
-                        if let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                            member_modes.owner = adding;
-                            applied_modes.push(if adding {
-                                Mode::Plus(ChannelMode::Founder, Some(target_nick.to_string()))
-                            } else {
-                                Mode::Minus(ChannelMode::Founder, Some(target_nick.to_string()))
-                            });
+                        // Check if issuer can modify target (must have higher rank)
+                        if channel.can_modify(ctx.uid, &target_uid) || ctx.uid == target_uid {
+                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+                                member_modes.owner = adding;
+                                applied_modes.push(if adding {
+                                    Mode::Plus(ChannelMode::Founder, Some(target_nick.to_string()))
+                                } else {
+                                    Mode::Minus(ChannelMode::Founder, Some(target_nick.to_string()))
+                                });
+                            }
                         }
+                        // Silently ignore if hierarchy check fails
                     }
                 }
             }

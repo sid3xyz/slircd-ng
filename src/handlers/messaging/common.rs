@@ -140,6 +140,11 @@ pub async fn route_to_channel(
         return ChannelRouteResult::BlockedRegisteredOnly;
     }
 
+    // Check +z (TLS-only channel)
+    if channel.modes.tls_only && !ctx.handshake.is_tls {
+        return ChannelRouteResult::BlockedExternal; // Reuse error type
+    }
+
     // Check +b (bans) - banned users cannot speak even if in channel
     // Supports both hostmask and extended bans ($a:account, $r:realname, etc.)
     let is_banned = channel
