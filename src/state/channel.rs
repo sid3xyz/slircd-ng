@@ -67,6 +67,8 @@ pub struct ChannelModes {
     pub oper_only: bool,
     /// +g - Free INVITE (anyone can invite)
     pub free_invite: bool,
+    /// +z - TLS-only channel (only TLS clients can join)
+    pub tls_only: bool,
 }
 
 impl ChannelModes {
@@ -149,6 +151,9 @@ impl ChannelModes {
         if self.free_invite {
             s.push('g');
         }
+        if self.tls_only {
+            s.push('z');
+        }
 
         if s == "+" {
             "+".to_string()
@@ -179,22 +184,65 @@ pub struct Topic {
 /// Member modes (op, voice, etc.).
 #[derive(Debug, Default, Clone)]
 pub struct MemberModes {
-    pub op: bool,    // +o
-    pub voice: bool, // +v
+    pub owner: bool,   // +q (~)
+    pub admin: bool,   // +a (&)
+    pub op: bool,      // +o (@)
+    pub halfop: bool,  // +h (%)
+    pub voice: bool,   // +v (+)
     /// Timestamp when user joined the channel (for +J enforcement)
     pub join_time: Option<i64>,
 }
 
 impl MemberModes {
     /// Get the highest prefix character for this member.
+    /// Priority: ~ > & > @ > % > +
     pub fn prefix_char(&self) -> Option<char> {
-        if self.op {
+        if self.owner {
+            Some('~')
+        } else if self.admin {
+            Some('&')
+        } else if self.op {
             Some('@')
+        } else if self.halfop {
+            Some('%')
         } else if self.voice {
             Some('+')
         } else {
             None
         }
+    }
+
+    /// Get the privilege rank (higher number = more privileges).
+    /// Returns 0 if no privileges, 5 for owner, 4 for admin, etc.
+    pub fn rank(&self) -> u8 {
+        if self.owner {
+            5
+        } else if self.admin {
+            4
+        } else if self.op {
+            3
+        } else if self.halfop {
+            2
+        } else if self.voice {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// Check if this member has operator privileges (op or higher).
+    pub fn has_op_or_higher(&self) -> bool {
+        self.owner || self.admin || self.op
+    }
+
+    /// Check if this member has voice or higher (can speak in moderated channel).
+    pub fn has_voice_or_higher(&self) -> bool {
+        self.owner || self.admin || self.op || self.halfop || self.voice
+    }
+
+    /// Check if this member has halfop or higher (can kick, change some modes).
+    pub fn has_halfop_or_higher(&self) -> bool {
+        self.owner || self.admin || self.op || self.halfop
     }
 }
 
@@ -230,14 +278,32 @@ impl Channel {
         self.members.contains_key(uid)
     }
 
-    /// Check if user has op.
+    /// Check if user has op or higher privileges.
     pub fn is_op(&self, uid: &str) -> bool {
-        self.members.get(uid).is_some_and(|m| m.op)
+        self.members.get(uid).is_some_and(|m| m.has_op_or_higher())
     }
 
     /// Check if user has voice or higher (can speak in +m moderated channel).
     pub fn can_speak(&self, uid: &str) -> bool {
-        self.members.get(uid).is_some_and(|m| m.op || m.voice)
+        self.members.get(uid).is_some_and(|m| m.has_voice_or_higher())
+    }
+
+    /// Check if user has halfop or higher privileges.
+    pub fn has_halfop(&self, uid: &str) -> bool {
+        self.members.get(uid).is_some_and(|m| m.has_halfop_or_higher())
+    }
+
+    /// Get the privilege rank of a user (higher = more privileges).
+    pub fn get_rank(&self, uid: &str) -> u8 {
+        self.members.get(uid).map(|m| m.rank()).unwrap_or(0)
+    }
+
+    /// Check if user_uid can modify target_uid's modes.
+    /// A user can only modify users with lower rank.
+    pub fn can_modify(&self, user_uid: &str, target_uid: &str) -> bool {
+        let user_rank = self.get_rank(user_uid);
+        let target_rank = self.get_rank(target_uid);
+        user_rank > target_rank
     }
 
     /// Get list of member UIDs.

@@ -281,12 +281,15 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     // Access checks passed, proceed with join
 
     // Determine member modes:
-    // 1. First user gets ops
+    // 1. First user gets owner
     // 2. If channel is registered, check access list for auto-op/voice
     let now = chrono::Utc::now().timestamp();
     let modes = if channel_guard.members.is_empty() {
         MemberModes {
-            op: true,
+            owner: true,
+            admin: false,
+            op: false,
+            halfop: false,
             voice: false,
             join_time: Some(now),
         }
@@ -500,10 +503,13 @@ async fn check_auto_modes(ctx: &Context<'_>, channel_lower: &str) -> Option<Memb
     // Look up channel record
     let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
 
-    // Check if user is founder
+    // Check if user is founder - grant owner
     if account.id == channel_record.founder_account_id {
         return Some(MemberModes {
-            op: true,
+            owner: true,
+            admin: false,
+            op: false,
+            halfop: false,
             voice: false,
             join_time: None, // Will be set by caller
         });
@@ -521,7 +527,14 @@ async fn check_auto_modes(ctx: &Context<'_>, channel_lower: &str) -> Option<Memb
     let voice = ChannelRepository::has_voice_access(&access.flags);
 
     if op || voice {
-        Some(MemberModes { op, voice, join_time: None }) // join_time set by caller
+        Some(MemberModes {
+            owner: false,
+            admin: false,
+            op,
+            halfop: false,
+            voice,
+            join_time: None, // join_time set by caller
+        })
     } else {
         None
     }
