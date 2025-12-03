@@ -40,7 +40,7 @@ pub use bans::{
 };
 pub use batch::{BatchHandler, BatchState, process_batch_message};
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
-pub use channel::{InviteHandler, JoinHandler, KickHandler, KnockHandler, NamesHandler, PartHandler, TopicHandler};
+pub use channel::{CycleHandler, InviteHandler, JoinHandler, KickHandler, KnockHandler, NamesHandler, PartHandler, TopicHandler};
 pub use chathistory::ChatHistoryHandler;
 pub use connection::{
     NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,
@@ -48,14 +48,14 @@ pub use connection::{
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
 pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
 pub use monitor::{MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online};
-pub use oper::{ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, RestartHandler, TraceHandler, WallopsHandler};
+pub use oper::{ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, RestartHandler, TraceHandler, VhostHandler, WallopsHandler};
 pub use server_query::{
     AdminHandler, HelpHandler, InfoHandler, LinksHandler, ListHandler, LusersHandler, MapHandler, MotdHandler,
     RulesHandler, ServiceHandler, ServlistHandler, SqueryHandler, StatsHandler, TimeHandler, UseripHandler, VersionHandler,
 };
 pub use service_aliases::{CsHandler, NsHandler};
 pub use user_query::{IsonHandler, UserhostHandler, WhoHandler, WhoisHandler, WhowasHandler};
-pub use user_status::{AwayHandler, SetnameHandler};
+pub use user_status::{AwayHandler, SetnameHandler, SilenceHandler};
 
 use crate::db::Database;
 use crate::state::Matrix;
@@ -202,6 +202,7 @@ impl Registry {
         // Channel handlers
         handlers.insert("JOIN", Box::new(JoinHandler));
         handlers.insert("PART", Box::new(PartHandler));
+        handlers.insert("CYCLE", Box::new(CycleHandler));
         handlers.insert("TOPIC", Box::new(TopicHandler));
         handlers.insert("NAMES", Box::new(NamesHandler));
         handlers.insert("MODE", Box::new(ModeHandler));
@@ -244,6 +245,7 @@ impl Registry {
         handlers.insert("ISON", Box::new(IsonHandler));
         handlers.insert("KNOCK", Box::new(KnockHandler));
         handlers.insert("SETNAME", Box::new(SetnameHandler));
+        handlers.insert("SILENCE", Box::new(SilenceHandler));
         handlers.insert("MONITOR", Box::new(MonitorHandler));
         handlers.insert("CHATHISTORY", Box::new(ChatHistoryHandler));
 
@@ -264,6 +266,7 @@ impl Registry {
         handlers.insert("REHASH", Box::new(RehashHandler));
         handlers.insert("RESTART", Box::new(RestartHandler));
         handlers.insert("CHGHOST", Box::new(ChghostHandler));
+        handlers.insert("VHOST", Box::new(VhostHandler));
         handlers.insert("TRACE", Box::new(TraceHandler));
 
         // Ban handlers

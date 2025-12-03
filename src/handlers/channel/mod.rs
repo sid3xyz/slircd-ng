@@ -1,7 +1,8 @@
 //! Channel command handlers.
 //!
-//! Handles JOIN, PART, TOPIC, NAMES, KICK, INVITE, KNOCK commands.
+//! Handles JOIN, PART, TOPIC, NAMES, KICK, INVITE, KNOCK, CYCLE commands.
 
+mod cycle;
 mod invite;
 mod join;
 mod kick;
@@ -10,6 +11,7 @@ mod names;
 mod part;
 mod topic;
 
+pub use cycle::CycleHandler;
 pub use invite::InviteHandler;
 pub use join::JoinHandler;
 pub use kick::KickHandler;
