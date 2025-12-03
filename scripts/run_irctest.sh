@@ -17,9 +17,13 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}Starting irctest integration run...${NC}"
 
 # 1. Build slircd-ng
-echo -e "${GREEN}Building slircd-ng (release)...${NC}"
-cd "$SLIRCD_DIR"
-cargo build --release
+if [ -z "$SKIP_BUILD" ]; then
+    echo -e "${GREEN}Building slircd-ng (release)...${NC}"
+    cd "$SLIRCD_DIR"
+    cargo build --release
+else
+    echo -e "${GREEN}Skipping build (SKIP_BUILD is set)...${NC}"
+fi
 
 # 2. Setup irctest environment
 echo -e "${GREEN}Setting up irctest environment...${NC}"
@@ -69,10 +73,13 @@ echo -e "${GREEN}Running irctest...${NC}"
 export IRCTEST_SERVER_HOSTNAME=localhost
 export IRCTEST_SERVER_PORT=$PORT
 
+TEST_TARGET="${1:-irctest/server_tests/}"
+
 # Run a subset of tests first to verify integration
 # Using timeout to prevent hanging
-timeout 300 .venv/bin/pytest --controller irctest.controllers.external_server \
-    irctest/server_tests/ \
+TIMEOUT="${TIMEOUT:-300}"
+timeout "$TIMEOUT" .venv/bin/pytest --controller irctest.controllers.external_server \
+    "$TEST_TARGET" \
     -v \
     --tb=short \
     || TEST_EXIT_CODE=$?
