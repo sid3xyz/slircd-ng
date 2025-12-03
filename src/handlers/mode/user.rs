@@ -135,6 +135,11 @@ pub fn apply_user_modes_typed(
                 user_modes.registered_only = adding;
                 applied.push(mode.clone());
             }
+            UserMode::Unknown('T') => {
+                // +T - block CTCP messages (except ACTION)
+                user_modes.no_ctcp = adding;
+                applied.push(mode.clone());
+            }
             _ => {
                 // Unknown/unsupported modes
                 rejected.push(mode_type.clone());

@@ -6,6 +6,7 @@
 use super::super::{server_reply, Context, HandlerResult, matches_ban_or_except};
 use crate::security::spam::SpamVerdict;
 use crate::security::UserContext;
+use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use slirc_proto::{Command, Message, Response};
 use tracing::debug;
 
@@ -246,15 +247,46 @@ pub async fn route_to_channel(
         msg
     };
 
+    // Generate a timestamp once for server-time capability
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
     // Broadcast to all channel members except sender
     for uid in channel.members.keys() {
         if uid.as_str() == ctx.uid {
             continue;
         }
         if let Some(sender) = ctx.matrix.senders.get(uid) {
-            let _ = sender.send(final_msg.clone()).await;
+            // Check if recipient has server-time capability
+            let msg_for_recipient = if let Some(user_ref) = ctx.matrix.users.get(uid) {
+                let user = user_ref.read().await;
+                if user.caps.contains("server-time") {
+                    final_msg.clone().with_tag("time", Some(timestamp.clone()))
+                } else {
+                    final_msg.clone()
+                }
+            } else {
+                final_msg.clone()
+            };
+            let _ = sender.send(msg_for_recipient).await;
             crate::metrics::MESSAGES_SENT.inc();
         }
+    }
+
+    // Echo message back to sender if they have echo-message capability
+    if ctx.handshake.capabilities.contains("echo-message") {
+        // Add server-time tag if client has that capability
+        let echo_msg = if ctx.handshake.capabilities.contains("server-time") {
+            final_msg.clone().with_tag("time", Some(timestamp))
+        } else {
+            final_msg.clone()
+        };
+        // Preserve label if present
+        let echo_msg = if let Some(ref label) = ctx.label {
+            echo_msg.with_tag("label", Some(label.clone()))
+        } else {
+            echo_msg
+        };
+        let _ = ctx.sender.send(echo_msg).await;
     }
 
     ChannelRouteResult::Sent
@@ -334,12 +366,55 @@ pub async fn route_to_user(
                 }
             }
         }
+
+        // Check +T (no CTCP) - block CTCP messages except ACTION
+        if target_user.modes.no_ctcp {
+            // Extract text from command to check for CTCP
+            let text = match &msg.command {
+                Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
+                _ => None,
+            };
+            if let Some(text) = text {
+                if Ctcp::is_ctcp(text) {
+                    // Check if it's an ACTION (allowed even with +T)
+                    if let Some(ctcp) = Ctcp::parse(text) {
+                        if !matches!(ctcp.kind, CtcpKind::Action) {
+                            debug!(
+                                target = %target_user.nick,
+                                ctcp_type = ?ctcp.kind,
+                                "CTCP blocked by +T mode"
+                            );
+                            return false; // Silently drop non-ACTION CTCP
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Send to target user
     if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
-        let _ = sender.send(msg).await;
+        let _ = sender.send(msg.clone()).await;
         crate::metrics::MESSAGES_SENT.inc();
+
+        // Echo message back to sender if they have echo-message capability
+        if ctx.handshake.capabilities.contains("echo-message") {
+            // Add server-time tag if client has that capability
+            let echo_msg = if ctx.handshake.capabilities.contains("server-time") {
+                let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+                msg.with_tag("time", Some(timestamp))
+            } else {
+                msg
+            };
+            // Preserve label if present
+            let echo_msg = if let Some(ref label) = ctx.label {
+                echo_msg.with_tag("label", Some(label.clone()))
+            } else {
+                echo_msg
+            };
+            let _ = ctx.sender.send(echo_msg).await;
+        }
+
         true
     } else {
         false

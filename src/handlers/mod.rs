@@ -149,6 +149,8 @@ impl HandshakeState {
 pub enum HandlerError {
     #[error("not enough parameters")]
     NeedMoreParams,
+    #[error("no text to send")]
+    NoTextToSend,
     #[allow(dead_code)] // TODO: Return from NickHandler instead of sending reply directly
     #[error("nickname in use: {0}")]
     NicknameInUse(String),

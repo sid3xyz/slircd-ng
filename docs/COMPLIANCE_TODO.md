@@ -2,9 +2,9 @@
 
 ## Status Summary
 
-| Test File | Status | Notes |
-|-----------|--------|-------|
-| account_registration.py | ✅ 8/8 | Complete |
+| Test File                  | Status  | Notes                                                |
+| -------------------------- | ------- | ---------------------------------------------------- |
+| account_registration.py    | ✅ 8/8   | Complete                                             |
 | connection_registration.py | ✅ 11/12 | testNonutf8Realname needs proto layer UTF-8 handling |
 
 ## Tasks

@@ -37,6 +37,7 @@ pub struct UserModes {
     pub registered: bool,      // +r (identified to NickServ)
     pub secure: bool,          // +Z (TLS connection)
     pub registered_only: bool, // +R (only registered users can PM)
+    pub no_ctcp: bool,         // +T (block CTCP except ACTION)
     /// +s - Server notices with granular snomasks (c, r, k, o, etc.)
     /// Empty set means no server notices
     pub snomasks: HashSet<char>,
@@ -63,6 +64,9 @@ impl UserModes {
         }
         if self.registered_only {
             s.push('R');
+        }
+        if self.no_ctcp {
+            s.push('T');
         }
         if !self.snomasks.is_empty() {
             s.push('s');

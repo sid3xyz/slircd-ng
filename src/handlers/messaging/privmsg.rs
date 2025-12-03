@@ -68,8 +68,11 @@ impl Handler for PrivmsgHandler {
         let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
 
-        if target.is_empty() || text.is_empty() {
+        if target.is_empty() {
             return Err(HandlerError::NeedMoreParams);
+        }
+        if text.is_empty() {
+            return Err(HandlerError::NoTextToSend);
         }
 
         let nick = ctx
@@ -94,9 +97,18 @@ impl Handler for PrivmsgHandler {
         // The IRC server relays them; the target's CLIENT sends NOTICE replies.
         // See: https://modern.ircdocs.horse/ctcp.html
 
-        // Build the outgoing message
+        // Collect client-only tags (those starting with '+') to preserve them
+        use slirc_proto::message::Tag;
+        use std::borrow::Cow;
+        let client_tags: Vec<Tag> = msg
+            .tags_iter()
+            .filter(|(k, _)| k.starts_with('+'))
+            .map(|(k, v)| Tag(Cow::Owned(k.to_string()), if v.is_empty() { None } else { Some(v.to_string()) }))
+            .collect();
+
+        // Build the outgoing message with preserved client tags
         let out_msg = Message {
-            tags: None,
+            tags: if client_tags.is_empty() { None } else { Some(client_tags) },
             prefix: Some(user_prefix(nick, user_name, "localhost")),
             command: Command::PRIVMSG(target.to_string(), text.to_string()),
         };

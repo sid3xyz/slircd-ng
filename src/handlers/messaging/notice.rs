@@ -57,9 +57,18 @@ impl Handler for NoticeHandler {
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Build the outgoing message
+        // Collect client-only tags (those starting with '+') to preserve them
+        use slirc_proto::message::Tag;
+        use std::borrow::Cow;
+        let client_tags: Vec<Tag> = msg
+            .tags_iter()
+            .filter(|(k, _)| k.starts_with('+'))
+            .map(|(k, v)| Tag(Cow::Owned(k.to_string()), if v.is_empty() { None } else { Some(v.to_string()) }))
+            .collect();
+
+        // Build the outgoing message with preserved client tags
         let out_msg = Message {
-            tags: None,
+            tags: if client_tags.is_empty() { None } else { Some(client_tags) },
             prefix: Some(user_prefix(nick, user_name, "localhost")),
             command: Command::NOTICE(target.to_string(), text.to_string()),
         };
