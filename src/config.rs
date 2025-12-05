@@ -141,10 +141,22 @@ impl Default for LimitsConfig {
 pub struct OperBlock {
     /// Operator name (used in OPER command).
     pub name: String,
-    /// Password (plaintext for now, TODO: bcrypt support).
+    /// Password (plaintext or bcrypt hash).
     pub password: String,
     /// Optional hostmask restriction (e.g., "*!*@trusted.host").
     pub hostmask: Option<String>,
+}
+
+impl OperBlock {
+    /// Verify the provided password against the stored password (plaintext or bcrypt).
+    pub fn verify_password(&self, password: &str) -> bool {
+        if self.password.starts_with("$2") {
+            bcrypt::verify(password, &self.password).unwrap_or(false)
+        } else {
+            // Fallback to plaintext check
+            self.password == password
+        }
+    }
 }
 
 /// WEBIRC block configuration for trusted gateway clients.

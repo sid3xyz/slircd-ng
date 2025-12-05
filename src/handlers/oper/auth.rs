@@ -107,7 +107,7 @@ impl Handler for OperHandler {
             return Ok(());
         };
 
-        if oper_block.password != password {
+        if !oper_block.verify_password(password) {
             ctx.handshake.failed_oper_attempts += 1;
             tracing::warn!(
                 nick = %nick,

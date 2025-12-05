@@ -48,13 +48,32 @@ impl Handler for NoticeHandler {
             return Ok(());
         }
 
-        // Check for repetition spam
+        // Check for repetition spam (always check)
         if let Some(detector) = &ctx.matrix.spam_detector {
             if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
                 detector.check_message_repetition(&uid_string, text)
             {
                 debug!(uid = %uid_string, pattern = %pattern, "NOTICE blocked by spam detector");
                 return Ok(());
+            }
+        }
+
+        // Check for content spam (skip for trusted users)
+        let is_trusted = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let user = user_ref.read().await;
+            user.modes.oper || user.account.is_some()
+        } else {
+            false
+        };
+
+        if !is_trusted {
+            if let Some(detector) = &ctx.matrix.spam_detector {
+                if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
+                    detector.check_message(text)
+                {
+                    debug!(uid = %uid_string, pattern = %pattern, "NOTICE blocked by spam detector");
+                    return Ok(());
+                }
             }
         }
 

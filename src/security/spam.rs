@@ -15,6 +15,7 @@
 //! - **Configurability**: Thresholds tunable via config
 //! - **Extensibility**: Easy to add new detection mechanisms
 
+use aho_corasick::AhoCorasick;
 use dashmap::DashMap;
 use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
@@ -36,8 +37,10 @@ pub enum SpamVerdict {
 /// Analyzes message content for spam indicators.
 /// Designed to be called from message handlers before broadcasting.
 pub struct SpamDetectionService {
-    /// Known spam keywords (lowercase for case-insensitive matching)
-    spam_keywords: HashSet<String>,
+    /// Aho-Corasick automaton for O(N) keyword matching
+    keyword_matcher: AhoCorasick,
+    /// Raw keywords for management/rebuilding
+    raw_keywords: HashSet<String>,
     /// Suspicious URL shortener domains
     url_shorteners: HashSet<String>,
     /// Entropy threshold for gibberish detection (0.0-8.0, typical spam <3.5)
@@ -51,8 +54,15 @@ pub struct SpamDetectionService {
 impl SpamDetectionService {
     /// Create new spam detection service with default patterns
     pub fn new() -> Self {
+        let keywords = Self::default_spam_keywords();
+        let matcher = AhoCorasick::builder()
+            .ascii_case_insensitive(true)
+            .build(&keywords)
+            .unwrap(); // Should only fail if keywords are invalid (e.g. too large), which defaults aren't
+
         Self {
-            spam_keywords: Self::default_spam_keywords(),
+            keyword_matcher: matcher,
+            raw_keywords: keywords.into_iter().collect(),
             url_shorteners: Self::default_url_shorteners(),
             entropy_threshold: 3.0, // Tuned based on IRC spam corpus analysis
             max_char_repetition: 10,
@@ -237,14 +247,17 @@ impl SpamDetectionService {
     /// Check for spam keywords in message
     /// Returns first matched keyword if found
     fn check_keywords(&self, text: &str) -> Option<String> {
-        let lowercase_text = text.to_lowercase();
-
-        for keyword in &self.spam_keywords {
-            if lowercase_text.contains(keyword) {
-                return Some(keyword.clone());
-            }
+        // Use Aho-Corasick for O(N) matching
+        if let Some(mat) = self.keyword_matcher.find(text) {
+            // We need to return the pattern string.
+            // Since we don't have easy access to the pattern string from the match index
+            // without storing a separate vector, we can reconstruct it or just return a generic indicator.
+            // However, for logging, the actual keyword is useful.
+            // Let's look up the pattern from our raw_keywords if possible, or just return the matched text.
+            // Aho-Corasick match gives us start/end indices.
+            let matched_text = &text[mat.start()..mat.end()];
+            return Some(matched_text.to_string());
         }
-
         None
     }
 
@@ -335,13 +348,26 @@ impl SpamDetectionService {
     /// Add custom spam keyword
     #[allow(dead_code)] // Used in tests, available for runtime config
     pub fn add_keyword(&mut self, keyword: String) {
-        self.spam_keywords.insert(keyword.to_lowercase());
+        self.raw_keywords.insert(keyword.to_lowercase());
+        // Rebuild matcher
+        self.keyword_matcher = AhoCorasick::builder()
+            .ascii_case_insensitive(true)
+            .build(&self.raw_keywords)
+            .unwrap();
     }
 
     /// Remove spam keyword
     #[allow(dead_code)] // Available for runtime config
     pub fn remove_keyword(&mut self, keyword: &str) -> bool {
-        self.spam_keywords.remove(&keyword.to_lowercase())
+        let removed = self.raw_keywords.remove(&keyword.to_lowercase());
+        if removed {
+            // Rebuild matcher
+            self.keyword_matcher = AhoCorasick::builder()
+                .ascii_case_insensitive(true)
+                .build(&self.raw_keywords)
+                .unwrap();
+        }
+        removed
     }
 
     /// Add URL shortener domain

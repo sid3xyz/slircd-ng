@@ -375,18 +375,28 @@ pub async fn route_to_user(
             Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
             _ => None,
         } {
-            if let SpamVerdict::Spam { pattern, .. } = detector.check_message(text) {
-                if !opts.is_notice {
-                    let _ = send_cannot_send(
-                        ctx,
-                        sender_nick,
-                        target_lower,
-                        "Message rejected as spam",
-                    )
-                    .await;
+            // Check trust level
+            let is_trusted = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let user = user_ref.read().await;
+                user.modes.oper || user.account.is_some()
+            } else {
+                false
+            };
+
+            if !is_trusted {
+                if let SpamVerdict::Spam { pattern, .. } = detector.check_message(text) {
+                    if !opts.is_notice {
+                        let _ = send_cannot_send(
+                            ctx,
+                            sender_nick,
+                            target_lower,
+                            "Message rejected as spam",
+                        )
+                        .await;
+                    }
+                    debug!(pattern = %pattern, "Direct message blocked as spam");
+                    return false;
                 }
-                debug!(pattern = %pattern, "Direct message blocked as spam");
-                return false;
             }
         }
     }
