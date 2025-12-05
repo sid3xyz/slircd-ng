@@ -37,6 +37,10 @@ pub struct RateLimitManager {
     connection_limiters: DashMap<IpAddr, DirectRateLimiter>,
     /// Per-client channel join rate limiters.
     join_limiters: DashMap<Uid, DirectRateLimiter>,
+    /// Per-client CTCP rate limiters.
+    ctcp_limiters: DashMap<Uid, DirectRateLimiter>,
+    /// Active connection counters per IP.
+    active_connections: DashMap<IpAddr, u32>,
     /// Configuration values.
     config: Arc<RateLimitConfig>,
 }
@@ -48,6 +52,8 @@ impl RateLimitManager {
             message_limiters: DashMap::new(),
             connection_limiters: DashMap::new(),
             join_limiters: DashMap::new(),
+            ctcp_limiters: DashMap::new(),
+            active_connections: DashMap::new(),
             config: Arc::new(config),
         }
     }
@@ -109,6 +115,59 @@ impl RateLimitManager {
         allowed
     }
 
+    /// Check if a client can send a CTCP message.
+    pub fn check_ctcp_rate(&self, uid: &Uid) -> bool {
+        let limiter = self.ctcp_limiters.entry(uid.clone()).or_insert_with(|| {
+            let burst = NonZeroU32::new(self.config.ctcp_burst_per_client)
+                .unwrap_or(NonZeroU32::new(2).unwrap());
+            GovRateLimiter::direct(
+                Quota::per_second(
+                    NonZeroU32::new(self.config.ctcp_rate_per_second)
+                        .unwrap_or(NonZeroU32::new(1).unwrap()),
+                )
+                .allow_burst(burst),
+            )
+        });
+
+        let allowed = limiter.check().is_ok();
+        if !allowed {
+            debug!(uid = %uid, "ctcp rate limit exceeded");
+        }
+        allowed
+    }
+
+    /// Record that a connection has started for an IP.
+    /// Returns `true` if allowed, `false` if max connections per IP exceeded.
+    pub fn on_connection_start(&self, ip: IpAddr) -> bool {
+        let mut allowed = true;
+        self.active_connections
+            .entry(ip)
+            .and_modify(|count| {
+                if *count >= self.config.max_connections_per_ip {
+                    allowed = false;
+                } else {
+                    *count += 1;
+                }
+            })
+            .or_insert(1);
+
+        if !allowed {
+            debug!(ip = %ip, limit = self.config.max_connections_per_ip, "max connections per IP exceeded");
+        }
+        allowed
+    }
+
+    /// Record that a connection has ended for an IP.
+    pub fn on_connection_end(&self, ip: IpAddr) {
+        if let Some(mut entry) = self.active_connections.get_mut(&ip) {
+            if *entry > 1 {
+                *entry -= 1;
+            } else {
+                self.active_connections.remove(&ip);
+            }
+        }
+    }
+
     /// Record a message being sent (consumes a token).
     ///
     /// Use this when you want to always record the action, regardless of limit.
@@ -136,15 +195,37 @@ impl RateLimitManager {
 
         if self.message_limiters.len() > MAX_ENTRIES {
             self.message_limiters.clear();
-            debug!("cleared message rate limiters (exceeded {} entries)", MAX_ENTRIES);
+            debug!(
+                "cleared message rate limiters (exceeded {} entries)",
+                MAX_ENTRIES
+            );
         }
         if self.connection_limiters.len() > MAX_ENTRIES {
             self.connection_limiters.clear();
-            debug!("cleared connection rate limiters (exceeded {} entries)", MAX_ENTRIES);
+            debug!(
+                "cleared connection rate limiters (exceeded {} entries)",
+                MAX_ENTRIES
+            );
         }
         if self.join_limiters.len() > MAX_ENTRIES {
             self.join_limiters.clear();
-            debug!("cleared join rate limiters (exceeded {} entries)", MAX_ENTRIES);
+            debug!(
+                "cleared join rate limiters (exceeded {} entries)",
+                MAX_ENTRIES
+            );
+        }
+
+        if self.ctcp_limiters.len() > MAX_ENTRIES {
+            self.ctcp_limiters.clear();
+            debug!(
+                "cleared ctcp rate limiters (exceeded {} entries)",
+                MAX_ENTRIES
+            );
+        }
+
+        if self.active_connections.len() > MAX_ENTRIES {
+            self.active_connections.clear();
+            debug!("cleared active connection counters (exceeded {MAX_ENTRIES} entries)");
         }
     }
 
@@ -173,6 +254,8 @@ impl RateLimitManager {
             message_limiters: self.message_limiters.len(),
             connection_limiters: self.connection_limiters.len(),
             join_limiters: self.join_limiters.len(),
+            ctcp_limiters: self.ctcp_limiters.len(),
+            active_connections: self.active_connections.len(),
         }
     }
 }
@@ -194,6 +277,10 @@ pub struct RateLimitStats {
     pub connection_limiters: usize,
     /// Number of active join rate limiters.
     pub join_limiters: usize,
+    /// Number of active CTCP rate limiters.
+    pub ctcp_limiters: usize,
+    /// Number of tracked IPs with active connections.
+    pub active_connections: usize,
 }
 
 #[cfg(test)]
@@ -205,7 +292,30 @@ mod tests {
             message_rate_per_second: 2,
             connection_burst_per_ip: 3,
             join_burst_per_client: 5,
+            ctcp_rate_per_second: 1,
+            ctcp_burst_per_client: 2,
+            max_connections_per_ip: 3,
         }
+    }
+
+    #[test]
+    fn test_max_connections_per_ip() {
+        let manager = RateLimitManager::new(test_config());
+        let ip: IpAddr = "192.168.1.2".parse().unwrap();
+
+        // First 3 connections allowed (limit is 3)
+        assert!(manager.on_connection_start(ip));
+        assert!(manager.on_connection_start(ip));
+        assert!(manager.on_connection_start(ip));
+
+        // Fourth should be rejected
+        assert!(!manager.on_connection_start(ip));
+
+        // One disconnects
+        manager.on_connection_end(ip);
+
+        // Should be allowed again
+        assert!(manager.on_connection_start(ip));
     }
 
     #[test]
@@ -233,6 +343,18 @@ mod tests {
 
         // Fourth should be rate limited
         assert!(!manager.check_connection_rate(ip));
+    }
+
+    #[test]
+    fn test_ctcp_rate_limiting() {
+        let manager = RateLimitManager::new(test_config());
+        let uid = "000AAAAAA".to_string();
+
+        // Burst of 2 allowed
+        assert!(manager.check_ctcp_rate(&uid));
+        assert!(manager.check_ctcp_rate(&uid));
+        // Third should be rate limited
+        assert!(!manager.check_ctcp_rate(&uid));
     }
 
     #[test]

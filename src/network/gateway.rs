@@ -3,8 +3,8 @@
 //! The Gateway binds to sockets and spawns Connection tasks for each
 //! incoming client. Supports both plaintext and TLS connections.
 
-use crate::config::{TlsConfig, WebSocketConfig};
 use crate::config::WebircBlock;
+use crate::config::{TlsConfig, WebSocketConfig};
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::network::Connection;
@@ -24,11 +24,7 @@ use tracing::{error, info, instrument, warn};
 ///
 /// Returns `Some(uid)` if the connection should proceed, `None` if rejected.
 /// This centralizes the common accept logic for all listener types (TLS, WebSocket, plaintext).
-fn validate_connection(
-    addr: &SocketAddr,
-    matrix: &Matrix,
-    listener_type: &str,
-) -> Option<String> {
+fn validate_connection(addr: &SocketAddr, matrix: &Matrix, listener_type: &str) -> Option<String> {
     // HOT PATH: Nanosecond-scale IP denial check (Roaring Bitmap)
     // This runs BEFORE any other checks for maximum efficiency
     if let Ok(deny_list) = matrix.ip_deny_list.read()
@@ -162,10 +158,18 @@ impl Gateway {
                                         continue;
                                     };
 
-                                    let matrix = Arc::clone(&matrix_tls);
+                                    if !matrix_tls.rate_limiter.on_connection_start(addr.ip()) {
+                                        warn!(%addr, "Connection rejected: max connections per IP exceeded");
+                                        drop(stream);
+                                        continue;
+                                    }
+
+                                    let matrix_conn = Arc::clone(&matrix_tls);
+                                    let matrix_rl = Arc::clone(&matrix_tls);
                                     let registry = Arc::clone(&registry_tls);
                                     let db = db_tls.clone();
                                     let acceptor = tls_acceptor.clone();
+                                    let ip = addr.ip();
 
                                     tokio::spawn(async move {
                                         // Perform TLS handshake
@@ -175,17 +179,19 @@ impl Gateway {
                                                     uid.clone(),
                                                     tls_stream,
                                                     addr,
-                                                    matrix,
+                                                    matrix_conn,
                                                     registry,
                                                     db,
                                                 );
                                                 if let Err(e) = connection.run().await {
                                                     error!(%uid, %addr, error = %e, "TLS connection error");
                                                 }
+                                                matrix_rl.rate_limiter.on_connection_end(ip);
                                                 info!(%uid, %addr, "TLS connection closed");
                                             }
                                             Err(e) => {
                                                 warn!(%addr, error = %e, "TLS handshake failed");
+                                                matrix_rl.rate_limiter.on_connection_end(ip);
                                             }
                                         }
                                     });
@@ -223,10 +229,18 @@ impl Gateway {
                                         continue;
                                     };
 
-                                    let matrix = Arc::clone(&matrix_ws);
+                                    if !matrix_ws.rate_limiter.on_connection_start(addr.ip()) {
+                                        warn!(%addr, "Connection rejected: max connections per IP exceeded");
+                                        drop(stream);
+                                        continue;
+                                    }
+
+                                    let matrix_conn = Arc::clone(&matrix_ws);
+                                    let matrix_rl = Arc::clone(&matrix_ws);
                                     let registry = Arc::clone(&registry_ws);
                                     let db = db_ws.clone();
                                     let allowed = allow_origins.clone();
+                                    let ip = addr.ip();
 
                                     tokio::spawn(async move {
                                         // CORS validation callback for WebSocket handshake
@@ -261,17 +275,19 @@ impl Gateway {
                                                     uid.clone(),
                                                     ws_stream,
                                                     addr,
-                                                    matrix,
+                                                    matrix_conn,
                                                     registry,
                                                     db,
                                                 );
                                                 if let Err(e) = connection.run().await {
                                                     error!(%uid, %addr, error = %e, "WebSocket connection error");
                                                 }
+                                                matrix_rl.rate_limiter.on_connection_end(ip);
                                                 info!(%uid, %addr, "WebSocket connection closed");
                                             }
                                             Err(e) => {
                                                 warn!(%addr, error = %e, "WebSocket handshake failed");
+                                                matrix_rl.rate_limiter.on_connection_end(ip);
                                             }
                                         }
                                     });
@@ -302,22 +318,31 @@ impl Gateway {
                                 continue;
                             };
 
-                            let matrix = Arc::clone(&matrix);
+                            if !matrix.rate_limiter.on_connection_start(addr.ip()) {
+                                warn!(%addr, "Connection rejected: max connections per IP exceeded");
+                                drop(stream);
+                                continue;
+                            }
+
+                            let matrix_conn = Arc::clone(&matrix);
+                            let matrix_rl = Arc::clone(&matrix);
                             let registry = Arc::clone(&registry);
                             let db = self.db.clone();
+                            let ip = addr.ip();
 
                             tokio::spawn(async move {
                                 let connection = Connection::new_plaintext(
                                     uid.clone(),
                                     stream,
                                     addr,
-                                    matrix,
+                                    matrix_conn,
                                     registry,
                                     db,
                                 );
                                 if let Err(e) = connection.run().await {
                                     error!(%uid, %addr, error = %e, "Plaintext connection error");
                                 }
+                                matrix_rl.rate_limiter.on_connection_end(ip);
                                 info!(%uid, %addr, "Plaintext connection closed");
                             });
                         }

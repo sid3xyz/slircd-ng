@@ -15,7 +15,11 @@
 //! - **Configurability**: Thresholds tunable via config
 //! - **Extensibility**: Easy to add new detection mechanisms
 
-use std::collections::HashSet;
+use dashmap::DashMap;
+use std::collections::{HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+use std::time::{Duration, Instant};
 use tracing::debug;
 
 /// Spam detection result
@@ -40,6 +44,8 @@ pub struct SpamDetectionService {
     entropy_threshold: f32,
     /// Maximum allowed character repetition (e.g., "aaaaaaa")
     max_char_repetition: usize,
+    /// Recent message hashes per user for repetition detection.
+    recent_messages: DashMap<String, VecDeque<(Instant, u64)>>,
 }
 
 impl SpamDetectionService {
@@ -50,7 +56,50 @@ impl SpamDetectionService {
             url_shorteners: Self::default_url_shorteners(),
             entropy_threshold: 3.0, // Tuned based on IRC spam corpus analysis
             max_char_repetition: 10,
+            recent_messages: DashMap::new(),
         }
+    }
+
+    /// Check if a message is a repetition of recent messages.
+    pub fn check_message_repetition(&self, uid: &str, message: &str) -> SpamVerdict {
+        let mut hasher = DefaultHasher::new();
+        message.hash(&mut hasher);
+        let hash = hasher.finish();
+        let now = Instant::now();
+
+        let mut history = self
+            .recent_messages
+            .entry(uid.to_string())
+            .or_insert_with(VecDeque::new);
+
+        // Prune old messages (older than 10 seconds)
+        while let Some((time, _)) = history.front() {
+            if now.duration_since(*time) > Duration::from_secs(10) {
+                history.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        // Count repetitions
+        let count = history.iter().filter(|(_, h)| *h == hash).count();
+
+        // Add current message
+        history.push_back((now, hash));
+
+        // Limit history size
+        if history.len() > 20 {
+            history.pop_front();
+        }
+
+        if count >= 2 {
+            return SpamVerdict::Spam {
+                pattern: "message_repetition".to_string(),
+                confidence: 1.0,
+            };
+        }
+
+        SpamVerdict::Clean
     }
 
     /// Default spam keyword list
@@ -412,5 +461,28 @@ mod tests {
         service.set_max_repetition(5);
         let verdict = service.check_message("aaaaaa"); // 6 chars
         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
+    }
+
+    #[test]
+    fn test_message_repetition() {
+        let service = SpamDetectionService::new();
+        let uid = "000AAAAAA";
+        let msg = "Hello world";
+
+        // First 2 messages allowed
+        assert_eq!(service.check_message_repetition(uid, msg), SpamVerdict::Clean);
+        assert_eq!(service.check_message_repetition(uid, msg), SpamVerdict::Clean);
+
+        // Third message blocked
+        assert!(matches!(
+            service.check_message_repetition(uid, msg),
+            SpamVerdict::Spam { .. }
+        ));
+
+        // Different message allowed
+        assert_eq!(
+            service.check_message_repetition(uid, "Different"),
+            SpamVerdict::Clean
+        );
     }
 }

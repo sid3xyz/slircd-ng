@@ -2,10 +2,12 @@
 //!
 //! Per RFC 2812, NOTICE errors are silently ignored (no error replies).
 
-use super::common::{
-    is_shunned, route_to_channel, route_to_user, ChannelRouteResult, RouteOptions,
+use super::super::{
+    Context, Handler, HandlerError, HandlerResult, user_mask_from_state, user_prefix,
 };
-use super::super::{Context, Handler, HandlerError, HandlerResult, user_mask_from_state, user_prefix};
+use super::common::{
+    ChannelRouteResult, RouteOptions, is_shunned, route_to_channel, route_to_user,
+};
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
 use tracing::debug;
@@ -46,6 +48,23 @@ impl Handler for NoticeHandler {
             return Ok(());
         }
 
+        // Check for repetition spam
+        if let Some(detector) = &ctx.matrix.spam_detector {
+            if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
+                detector.check_message_repetition(&uid_string, text)
+            {
+                debug!(uid = %uid_string, pattern = %pattern, "NOTICE blocked by spam detector");
+                return Ok(());
+            }
+        }
+
+        // Rate-limit CTCP NOTICE floods (silent drop on limit).
+        if slirc_proto::ctcp::Ctcp::is_ctcp(text)
+            && !ctx.matrix.rate_limiter.check_ctcp_rate(&uid_string)
+        {
+            return Ok(());
+        }
+
         let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
@@ -56,12 +75,25 @@ impl Handler for NoticeHandler {
         let client_tags: Vec<Tag> = msg
             .tags_iter()
             .filter(|(k, _)| k.starts_with('+'))
-            .map(|(k, v)| Tag(Cow::Owned(k.to_string()), if v.is_empty() { None } else { Some(v.to_string()) }))
+            .map(|(k, v)| {
+                Tag(
+                    Cow::Owned(k.to_string()),
+                    if v.is_empty() {
+                        None
+                    } else {
+                        Some(v.to_string())
+                    },
+                )
+            })
             .collect();
 
         // Build the outgoing message with preserved client tags
         let out_msg = Message {
-            tags: if client_tags.is_empty() { None } else { Some(client_tags) },
+            tags: if client_tags.is_empty() {
+                None
+            } else {
+                Some(client_tags)
+            },
             prefix: Some(user_prefix(&nick, &user_name, &host)),
             command: Command::NOTICE(target.to_string(), text.to_string()),
         };
@@ -84,7 +116,14 @@ impl Handler for NoticeHandler {
 
             if let Some(prefix_char) = status_prefix {
                 // Route STATUSMSG
-                let _ = super::privmsg::route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char).await;
+                let _ = super::privmsg::route_statusmsg(
+                    ctx,
+                    &channel_lower,
+                    target,
+                    out_msg,
+                    prefix_char,
+                )
+                .await;
                 debug!(from = %nick, to = %target, prefix = %prefix_char, "NOTICE STATUSMSG");
             } else if let ChannelRouteResult::Sent =
                 route_to_channel(ctx, &channel_lower, out_msg, &opts).await
