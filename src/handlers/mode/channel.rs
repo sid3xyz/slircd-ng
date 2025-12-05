@@ -15,7 +15,7 @@
 //! (`send_list_mode`, `get_list_mode_query`) to a separate `channel_lists.rs`.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, user_prefix,
+    Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, user_mask_from_state, user_prefix,
     with_label,
 };
 use crate::security::ExtendedBan;
@@ -118,13 +118,94 @@ pub async fn handle_channel_mode(
         }
 
         let mut channel_guard = channel.write().await;
-        let applied_modes = apply_channel_modes_typed(ctx, &mut channel_guard, modes)?;
+
+        // Pre-validate modes that require argument validation before applying
+        // Filter out invalid modes and send appropriate error messages
+        let mut valid_modes = Vec::new();
+        for mode in modes {
+            match mode.mode() {
+                // Status modes (prefix modes) - validate target exists and is in channel
+                ChannelMode::Oper
+                | ChannelMode::Voice
+                | ChannelMode::Halfop
+                | ChannelMode::Admin
+                | ChannelMode::Founder => {
+                    if let Some(target_nick) = mode.arg() {
+                        let target_lower = irc_to_lower(target_nick);
+                        match ctx.matrix.nicks.get(&target_lower) {
+                            Some(target_uid) => {
+                                // Nick exists - check if they're in the channel
+                                if channel_guard.is_member(target_uid.value()) {
+                                    valid_modes.push(mode.clone());
+                                } else {
+                                    // ERR_USERNOTINCHANNEL (441)
+                                    let reply = server_reply(
+                                        &ctx.matrix.server_info.name,
+                                        Response::ERR_USERNOTINCHANNEL,
+                                        vec![
+                                            nick.clone(),
+                                            target_nick.to_string(),
+                                            canonical_name.clone(),
+                                            "They aren't on that channel".to_string(),
+                                        ],
+                                    );
+                                    ctx.sender.send(reply).await?;
+                                }
+                            }
+                            None => {
+                                // ERR_NOSUCHNICK (401)
+                                let reply = server_reply(
+                                    &ctx.matrix.server_info.name,
+                                    Response::ERR_NOSUCHNICK,
+                                    vec![
+                                        nick.clone(),
+                                        target_nick.to_string(),
+                                        "No such nick/channel".to_string(),
+                                    ],
+                                );
+                                ctx.sender.send(reply).await?;
+                            }
+                        }
+                    } else {
+                        // Status mode without argument - invalid, skip silently
+                        // (parser should have caught this, but be defensive)
+                    }
+                }
+                // Channel key validation
+                ChannelMode::Key => {
+                    if mode.is_plus() {
+                        if let Some(key) = mode.arg() {
+                            // Validate: no spaces, not empty, max 23 chars
+                            if key.is_empty() || key.contains(' ') || key.len() > 23 {
+                                // Invalid key - reject silently per RFC behavior
+                                tracing::warn!(key = %key, "Invalid channel key rejected");
+                            } else {
+                                valid_modes.push(mode.clone());
+                            }
+                        }
+                    } else {
+                        // Removing key - always valid
+                        valid_modes.push(mode.clone());
+                    }
+                }
+                // All other modes pass through
+                _ => {
+                    valid_modes.push(mode.clone());
+                }
+            }
+        }
+
+        let applied_modes = apply_channel_modes_typed(ctx, &mut channel_guard, &valid_modes)?;
 
         if !applied_modes.is_empty() {
             // Broadcast the mode change to channel using typed Command
+            let (_, _, host) = user_mask_from_state(ctx, ctx.uid)
+                .await
+                .ok_or(HandlerError::NickOrUserMissing)?;
+
             let mode_msg = Message {
                 tags: None,
-                prefix: Some(user_prefix(nick, user_name, "localhost")),
+                prefix: Some(user_prefix(nick, user_name, &host)),
                 command: Command::ChannelMODE(canonical_name.clone(), applied_modes.clone()),
             };
 
@@ -473,9 +554,9 @@ pub fn apply_channel_modes_typed(
                         } else {
                             channel.can_modify(ctx.uid, &target_uid)
                         };
-                        
-                        if can_modify {
-                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+
+                        if can_modify
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.op = adding;
                                 applied_modes.push(if adding {
                                     Mode::Plus(ChannelMode::Oper, Some(target_nick.to_string()))
@@ -483,7 +564,6 @@ pub fn apply_channel_modes_typed(
                                     Mode::Minus(ChannelMode::Oper, Some(target_nick.to_string()))
                                 });
                             }
-                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }
@@ -495,15 +575,18 @@ pub fn apply_channel_modes_typed(
                     if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
                         let target_uid = target_uid.value().clone();
                         // Check if issuer can modify target
-                        // For self-modification: only allow removing privileges, not granting
+                        // For voice: if you have halfop or higher, you can voice yourself or others
+                        // This is a lower privilege so self-grant is allowed for privileged users
+                        let issuer_modes = channel.members.get(ctx.uid).cloned();
                         let can_modify = if ctx.uid == target_uid {
-                            !adding // Can only devoice yourself
+                            // Self-modification: allow if removing, or if user has halfop+ (can grant voice)
+                            !adding || issuer_modes.is_some_and(|m| m.has_halfop_or_higher())
                         } else {
                             channel.can_modify(ctx.uid, &target_uid)
                         };
-                        
-                        if can_modify {
-                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+
+                        if can_modify
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.voice = adding;
                                 applied_modes.push(if adding {
                                     Mode::Plus(ChannelMode::Voice, Some(target_nick.to_string()))
@@ -511,7 +594,6 @@ pub fn apply_channel_modes_typed(
                                     Mode::Minus(ChannelMode::Voice, Some(target_nick.to_string()))
                                 });
                             }
-                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }
@@ -529,9 +611,9 @@ pub fn apply_channel_modes_typed(
                         } else {
                             channel.can_modify(ctx.uid, &target_uid)
                         };
-                        
-                        if can_modify {
-                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+
+                        if can_modify
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.halfop = adding;
                                 applied_modes.push(if adding {
                                     Mode::Plus(ChannelMode::Halfop, Some(target_nick.to_string()))
@@ -539,7 +621,6 @@ pub fn apply_channel_modes_typed(
                                     Mode::Minus(ChannelMode::Halfop, Some(target_nick.to_string()))
                                 });
                             }
-                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }
@@ -557,9 +638,9 @@ pub fn apply_channel_modes_typed(
                         } else {
                             channel.can_modify(ctx.uid, &target_uid)
                         };
-                        
-                        if can_modify {
-                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+
+                        if can_modify
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.admin = adding;
                                 applied_modes.push(if adding {
                                     Mode::Plus(ChannelMode::Admin, Some(target_nick.to_string()))
@@ -567,7 +648,6 @@ pub fn apply_channel_modes_typed(
                                     Mode::Minus(ChannelMode::Admin, Some(target_nick.to_string()))
                                 });
                             }
-                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }
@@ -585,9 +665,9 @@ pub fn apply_channel_modes_typed(
                         } else {
                             channel.can_modify(ctx.uid, &target_uid)
                         };
-                        
-                        if can_modify {
-                            if let Some(member_modes) = channel.members.get_mut(&target_uid) {
+
+                        if can_modify
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
                                 member_modes.owner = adding;
                                 applied_modes.push(if adding {
                                     Mode::Plus(ChannelMode::Founder, Some(target_nick.to_string()))
@@ -595,7 +675,6 @@ pub fn apply_channel_modes_typed(
                                     Mode::Minus(ChannelMode::Founder, Some(target_nick.to_string()))
                                 });
                             }
-                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }

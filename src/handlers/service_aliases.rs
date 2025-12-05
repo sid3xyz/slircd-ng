@@ -36,7 +36,7 @@ impl Handler for NsHandler {
 
         // Route to NickServ via unified service router
         route_service_message(
-            ctx.matrix, ctx.uid, nick, "NickServ", cmd_text, ctx.sender,
+            ctx.matrix, ctx.uid, nick, "NickServ", cmd_text, &ctx.sender,
         )
         .await;
 
@@ -73,7 +73,7 @@ impl Handler for CsHandler {
 
         // Route to ChanServ via unified service router
         route_service_message(
-            ctx.matrix, ctx.uid, nick, "ChanServ", cmd_text, ctx.sender,
+            ctx.matrix, ctx.uid, nick, "ChanServ", cmd_text, &ctx.sender,
         )
         .await;
 

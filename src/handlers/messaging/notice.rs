@@ -5,7 +5,7 @@
 use super::common::{
     is_shunned, route_to_channel, route_to_user, ChannelRouteResult, RouteOptions,
 };
-use super::super::{Context, Handler, HandlerError, HandlerResult, user_prefix};
+use super::super::{Context, Handler, HandlerError, HandlerResult, user_mask_from_state, user_prefix};
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
 use tracing::debug;
@@ -46,15 +46,8 @@ impl Handler for NoticeHandler {
             return Ok(());
         }
 
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
-        let user_name = ctx
-            .handshake
-            .user
-            .as_ref()
+        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+            .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Collect client-only tags (those starting with '+') to preserve them
@@ -69,7 +62,7 @@ impl Handler for NoticeHandler {
         // Build the outgoing message with preserved client tags
         let out_msg = Message {
             tags: if client_tags.is_empty() { None } else { Some(client_tags) },
-            prefix: Some(user_prefix(nick, user_name, "localhost")),
+            prefix: Some(user_prefix(&nick, &user_name, &host)),
             command: Command::NOTICE(target.to_string(), text.to_string()),
         };
 
@@ -82,17 +75,26 @@ impl Handler for NoticeHandler {
             block_ctcp: true,
         };
 
-        if target.is_channel_name() {
-            let channel_lower = irc_to_lower(target);
-            if let ChannelRouteResult::Sent =
+        // STATUSMSG support: @#channel sends to ops, +#channel sends to voiced+
+        let (status_prefix, actual_target) = super::privmsg::parse_statusmsg(target);
+        let routing_target = actual_target.unwrap_or(target);
+
+        if routing_target.is_channel_name() {
+            let channel_lower = irc_to_lower(routing_target);
+
+            if let Some(prefix_char) = status_prefix {
+                // Route STATUSMSG
+                let _ = super::privmsg::route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char).await;
+                debug!(from = %nick, to = %target, prefix = %prefix_char, "NOTICE STATUSMSG");
+            } else if let ChannelRouteResult::Sent =
                 route_to_channel(ctx, &channel_lower, out_msg, &opts).await
             {
                 debug!(from = %nick, to = %target, "NOTICE to channel");
             }
             // All errors silently ignored for NOTICE
         } else {
-            let target_lower = irc_to_lower(target);
-            if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {
+            let target_lower = irc_to_lower(routing_target);
+            if route_to_user(ctx, &target_lower, out_msg, &opts, &nick).await {
                 debug!(from = %nick, to = %target, "NOTICE to user");
             }
             // User not found: silently ignored for NOTICE

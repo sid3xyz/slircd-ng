@@ -1,6 +1,6 @@
 //! TOPIC command handler.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, err_notonchannel, require_registered, server_reply, user_prefix};
+use super::super::{Context, Handler, HandlerError, HandlerResult, err_notonchannel, require_registered, server_reply, user_mask_from_state, user_prefix};
 use crate::state::Topic;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
@@ -93,10 +93,34 @@ impl Handler for TopicHandler {
                 }
             }
             Some(topic_text) => {
-                // Set topic (for now, anyone can set - add mode checks later)
+                // Check +t mode: if set, only ops can change topic
+                if channel_guard.modes.topic_lock {
+                    // Check if user has op or higher
+                    let member_modes = channel_guard.members.get(ctx.uid);
+                    let has_op = member_modes.is_some_and(|m| m.has_op_or_higher());
+
+                    if !has_op {
+                        let reply = server_reply(
+                            &ctx.matrix.server_info.name,
+                            Response::ERR_CHANOPRIVSNEEDED,
+                            vec![
+                                nick.to_string(),
+                                canonical_name,
+                                "You're not channel operator".to_string(),
+                            ],
+                        );
+                        ctx.sender.send(reply).await?;
+                        return Ok(());
+                    }
+                }
+
+                let (_, _, host) = user_mask_from_state(ctx, ctx.uid)
+                    .await
+                    .ok_or(HandlerError::NickOrUserMissing)?;
+
                 let new_topic = Topic {
                     text: topic_text.to_string(),
-                    set_by: format!("{}!{}@localhost", nick, user_name),
+                    set_by: format!("{}!{}@{}", nick, user_name, host),
                     set_at: chrono::Utc::now().timestamp(),
                 };
                 channel_guard.topic = Some(new_topic);
@@ -104,7 +128,7 @@ impl Handler for TopicHandler {
                 // Broadcast topic change to channel
                 let topic_msg = Message {
                     tags: None,
-                    prefix: Some(user_prefix(nick, user_name, "localhost")),
+                    prefix: Some(user_prefix(nick, user_name, &host)),
                     command: Command::TOPIC(canonical_name.clone(), Some(topic_text.to_string())),
                 };
 

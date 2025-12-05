@@ -2,7 +2,7 @@
 
 use super::super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_usernotinchannel,
-    server_reply, user_prefix,
+    server_reply, user_mask_from_state, user_prefix,
 };
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
@@ -27,15 +27,8 @@ impl Handler for KickHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
-        let user_name = ctx
-            .handshake
-            .user
-            .as_ref()
+        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+            .await
             .ok_or(HandlerError::NickOrUserMissing)?;
         let channel_lower = irc_to_lower(channel_name);
 
@@ -64,7 +57,7 @@ impl Handler for KickHandler {
             ctx.sender
                 .send(err_chanoprivsneeded(
                     &ctx.matrix.server_info.name,
-                    nick,
+                    &nick,
                     &channel_guard.name,
                 ))
                 .await?;
@@ -120,7 +113,7 @@ impl Handler for KickHandler {
             ctx.sender
                 .send(err_usernotinchannel(
                     &ctx.matrix.server_info.name,
-                    nick,
+                    &nick,
                     target_nick,
                     &channel_guard.name,
                 ))
@@ -136,7 +129,7 @@ impl Handler for KickHandler {
         // Broadcast KICK to channel (before removing)
         let kick_msg = Message {
             tags: None,
-            prefix: Some(user_prefix(nick, user_name, "localhost")),
+            prefix: Some(user_prefix(&nick, &user_name, &host)),
             command: Command::KICK(
                 canonical_name.clone(),
                 target_nick.to_string(),

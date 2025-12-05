@@ -14,7 +14,7 @@ mod privmsg;
 pub use notice::NoticeHandler;
 pub use privmsg::PrivmsgHandler;
 
-use super::{Context, Handler, HandlerError, HandlerResult, user_prefix};
+use super::{Context, Handler, HandlerError, HandlerResult, user_mask_from_state, user_prefix};
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Tag, irc_to_lower};
 use std::borrow::Cow;
@@ -60,39 +60,51 @@ impl Handler for TagmsgHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        let nick = ctx
+        let _nick = ctx
             .handshake
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
-        let user_name = ctx
+        let _user_name = ctx
             .handshake
             .user
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Convert tags from MessageRef to owned Tag structs
+        // Collect only client-only tags (those starting with '+')
+        // Server should not relay arbitrary tags from clients
+        // Unescape tag values since they come from wire format
         let tags: Option<Vec<Tag>> = if msg.tags.is_some() {
-            Some(
-                msg.tags_iter()
-                    .map(|(k, v)| {
-                        let value = if v.is_empty() {
-                            None
-                        } else {
-                            Some(v.to_string())
-                        };
-                        Tag(Cow::Owned(k.to_string()), value)
-                    })
-                    .collect(),
-            )
+            let client_tags: Vec<Tag> = msg
+                .tags_iter()
+                .filter(|(k, _)| k.starts_with('+'))
+                .map(|(k, v)| {
+                    let value = if v.is_empty() {
+                        None
+                    } else {
+                        // Unescape tag value from wire format
+                        Some(slirc_proto::message::tags::unescape_tag_value(v))
+                    };
+                    Tag(Cow::Owned(k.to_string()), value)
+                })
+                .collect();
+            if client_tags.is_empty() {
+                None
+            } else {
+                Some(client_tags)
+            }
         } else {
             None
         };
 
+        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+            .await
+            .ok_or(HandlerError::NickOrUserMissing)?;
+
         // Build the outgoing TAGMSG
         let out_msg = Message {
             tags,
-            prefix: Some(user_prefix(nick, user_name, "localhost")),
+            prefix: Some(user_prefix(&nick, &user_name, &host)),
             command: Command::TAGMSG(target.to_string()),
         };
 
@@ -112,10 +124,10 @@ impl Handler for TagmsgHandler {
                     debug!(from = %nick, to = %target, "TAGMSG to channel");
                 }
                 ChannelRouteResult::NoSuchChannel => {
-                    send_no_such_channel(ctx, nick, target).await?;
+                    send_no_such_channel(ctx, &nick, target).await?;
                 }
                 ChannelRouteResult::BlockedExternal => {
-                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+n)").await?;
+                    send_cannot_send(ctx, &nick, target, "Cannot send to channel (+n)").await?;
                 }
                 ChannelRouteResult::BlockedModerated => {
                     // TAGMSG doesn't check +m, so this shouldn't happen
@@ -126,7 +138,7 @@ impl Handler for TagmsgHandler {
                     unreachable!("TAGMSG has no text content to check for spam");
                 }
                 ChannelRouteResult::BlockedRegisteredOnly => {
-                    send_cannot_send(ctx, nick, target, "Cannot send to channel (+r)").await?;
+                    send_cannot_send(ctx, &nick, target, "Cannot send to channel (+r)").await?;
                 }
                 ChannelRouteResult::BlockedCTCP => {
                     // TAGMSG has no CTCP, so this shouldn't happen
@@ -139,10 +151,10 @@ impl Handler for TagmsgHandler {
             }
         } else {
             let target_lower = irc_to_lower(target);
-            if route_to_user(ctx, &target_lower, out_msg, &opts, nick).await {
+            if route_to_user(ctx, &target_lower, out_msg, &opts, &nick).await {
                 debug!(from = %nick, to = %target, "TAGMSG to user");
             } else {
-                send_no_such_nick(ctx, nick, target).await?;
+                send_no_such_nick(ctx, &nick, target).await?;
             }
         }
 

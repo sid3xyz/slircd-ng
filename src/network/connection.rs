@@ -24,23 +24,35 @@
 //! ```
 
 use crate::db::Database;
-use crate::handlers::{Context, HandshakeState, Registry, cleanup_monitors, notify_monitors_offline, process_batch_message};
+use crate::handlers::{
+    Context,
+    HandshakeState,
+    Registry,
+    ResponseMiddleware,
+    cleanup_monitors,
+    labeled_ack,
+    notify_monitors_offline,
+    process_batch_message,
+    with_label,
+};
 use crate::state::Matrix;
 use slirc_proto::error::ProtocolError;
 use slirc_proto::transport::{TransportReadError, ZeroCopyTransportEnum};
-use slirc_proto::{Command, Message, irc_to_lower};
+use slirc_proto::{Command, Message, Prefix, Response, BatchSubCommand, irc_to_lower};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{debug, info, instrument, warn};
 
 /// Classification of transport read errors for appropriate handling.
 enum ReadErrorAction {
-    /// Recoverable protocol violation - send error message to client
-    ProtocolViolation { error_msg: String },
+    /// Recoverable line-too-long error - send ERR_INPUTTOOLONG (417) and continue
+    InputTooLong,
+    /// Fatal protocol violation - send ERROR message and disconnect
+    FatalProtocolError { error_msg: String },
     /// I/O error - connection is broken, just log and disconnect
     IoError,
 }
@@ -49,23 +61,33 @@ enum ReadErrorAction {
 fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
     match e {
         TransportReadError::Protocol(proto_err) => {
-            let msg = match proto_err {
-                ProtocolError::MessageTooLong { actual, limit } => {
-                    format!("Input line too long ({actual} bytes, max {limit})")
+            match proto_err {
+                // Recoverable: line or tags too long → ERR_INPUTTOOLONG (417)
+                // Per Ergo/modern IRC: send 417 and continue, don't disconnect
+                ProtocolError::MessageTooLong { .. } | ProtocolError::TagsTooLong { .. } => {
+                    ReadErrorAction::InputTooLong
                 }
-                ProtocolError::TagsTooLong { actual, limit } => {
-                    format!("Message tags too long ({actual} bytes, max {limit})")
-                }
+                // Fatal: other protocol errors → ERROR and disconnect
                 ProtocolError::IllegalControlChar(ch) => {
-                    format!("Illegal control character: {ch:?}")
+                    ReadErrorAction::FatalProtocolError {
+                        error_msg: format!("Illegal control character: {ch:?}"),
+                    }
                 }
                 ProtocolError::InvalidMessage { string, cause } => {
-                    format!("Malformed message: {cause} (input: {string:?})")
+                    ReadErrorAction::FatalProtocolError {
+                        error_msg: format!("Malformed message: {cause} (input: {string:?})"),
+                    }
+                }
+                ProtocolError::InvalidUtf8(details) => {
+                    ReadErrorAction::FatalProtocolError {
+                        error_msg: format!("Invalid UTF-8 in message: {details}"),
+                    }
                 }
                 // Handle other variants that might be added in the future
-                _ => format!("Protocol error: {proto_err}"),
-            };
-            ReadErrorAction::ProtocolViolation { error_msg: msg }
+                _ => ReadErrorAction::FatalProtocolError {
+                    error_msg: format!("Protocol error: {proto_err}"),
+                },
+            }
         }
         TransportReadError::Io(_) => ReadErrorAction::IoError,
         // Handle future variants gracefully
@@ -158,6 +180,23 @@ fn handler_error_to_reply(
     }
 }
 
+/// Convert a u32 to a base36 string (lowercase).
+fn to_base36(mut value: u32) -> String {
+    if value == 0 {
+        return "0".to_string();
+    }
+
+    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut buf = Vec::with_capacity(7);
+    while value > 0 {
+        let rem = (value % 36) as usize;
+        buf.push(DIGITS[rem]);
+        value /= 36;
+    }
+    buf.reverse();
+    String::from_utf8(buf).unwrap_or_default()
+}
+
 /// A client connection handler.
 pub struct Connection {
     uid: String,
@@ -166,6 +205,7 @@ pub struct Connection {
     registry: Arc<Registry>,
     transport: ZeroCopyTransportEnum,
     db: Database,
+    batch_counter: u32,
 }
 
 impl Connection {
@@ -185,6 +225,7 @@ impl Connection {
             registry,
             transport: ZeroCopyTransportEnum::tcp(stream),
             db,
+            batch_counter: 0,
         }
     }
 
@@ -204,6 +245,7 @@ impl Connection {
             registry,
             transport: ZeroCopyTransportEnum::tls(stream),
             db,
+            batch_counter: 0,
         }
     }
 
@@ -223,7 +265,14 @@ impl Connection {
             registry,
             transport: ZeroCopyTransportEnum::websocket(stream),
             db,
+            batch_counter: 0,
         }
+    }
+
+    /// Generate a per-connection batch identifier (base36, sequential, wraps on overflow).
+    fn next_batch_id(&mut self) -> String {
+        self.batch_counter = self.batch_counter.wrapping_add(1);
+        to_base36(self.batch_counter)
     }
 
     /// Run the connection read loop.
@@ -278,16 +327,55 @@ impl Connection {
                     let mut ctx = Context {
                         uid: &self.uid,
                         matrix: &self.matrix,
-                        sender: &handshake_tx,
+                        sender: ResponseMiddleware::Direct(&handshake_tx),
                         handshake: &mut handshake,
                         db: &self.db,
                         remote_addr: self.addr,
                         label,
+                        suppress_labeled_ack: false,
                         registry: &self.registry,
                     };
 
                     if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
                         debug!(error = ?e, "Handler error during handshake");
+
+                        // Handle QUIT specially - disconnect pre-registration client
+                        if let crate::handlers::HandlerError::Quit(quit_msg) = e {
+                            let error_text = match quit_msg {
+                                Some(msg) => format!("Closing Link: {} (Quit: {})", self.addr.ip(), msg),
+                                None => format!("Closing Link: {} (Client Quit)", self.addr.ip()),
+                            };
+                            let error_reply = Message {
+                                tags: None,
+                                prefix: None,
+                                command: Command::ERROR(error_text),
+                            };
+                            let _ = self.transport.write_message(&error_reply).await;
+
+                            // Release nick if it was reserved during handshake
+                            if let Some(nick) = &handshake.nick {
+                                let nick_lower = irc_to_lower(nick);
+                                self.matrix.nicks.remove(&nick_lower);
+                                info!(nick = %nick, "Pre-registration nick released");
+                            }
+                            return Ok(()); // Disconnect
+                        }
+
+                        // Handle AccessDenied - error already sent, drain messages and disconnect
+                        if matches!(e, crate::handlers::HandlerError::AccessDenied) {
+                            // Drain and write queued error messages before disconnecting
+                            while let Ok(response) = handshake_rx.try_recv() {
+                                let _ = self.transport.write_message(&response).await;
+                            }
+
+                            // Release nick if it was reserved during handshake
+                            if let Some(nick) = &handshake.nick {
+                                let nick_lower = irc_to_lower(nick);
+                                self.matrix.nicks.remove(&nick_lower);
+                            }
+                            return Ok(());
+                        }
+
                         // Send appropriate error reply based on error type
                         let nick = handshake.nick.as_deref().unwrap_or("*");
                         if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, nick, &e, &msg_ref) {
@@ -301,6 +389,11 @@ impl Connection {
                     while let Ok(response) = handshake_rx.try_recv() {
                         if let Err(e) = self.transport.write_message(&response).await {
                             warn!(error = ?e, "Write error during handshake");
+                            // Release nick if reserved during handshake
+                            if let Some(nick) = &handshake.nick {
+                                let nick_lower = irc_to_lower(nick);
+                                self.matrix.nicks.remove(&nick_lower);
+                            }
                             return Ok(());
                         }
                     }
@@ -312,7 +405,23 @@ impl Connection {
                 }
                 Some(Err(e)) => {
                     match classify_read_error(&e) {
-                        ReadErrorAction::ProtocolViolation { error_msg } => {
+                        ReadErrorAction::InputTooLong => {
+                            // Recoverable: send ERR_INPUTTOOLONG (417) and continue
+                            warn!("Input line too long during handshake");
+                            let nick = handshake.nick.as_deref().unwrap_or("*");
+                            let reply = Message {
+                                tags: None,
+                                prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
+                                command: Command::Response(
+                                    Response::ERR_INPUTTOOLONG,
+                                    vec![nick.to_string(), "Input line too long".to_string()],
+                                ),
+                            };
+                            let _ = self.transport.write_message(&reply).await;
+                            // Continue reading - don't disconnect
+                            continue;
+                        }
+                        ReadErrorAction::FatalProtocolError { error_msg } => {
                             warn!(error = %error_msg, "Protocol error during handshake");
                             // Send ERROR message before disconnecting
                             let error_reply = Message {
@@ -326,10 +435,20 @@ impl Connection {
                             debug!(error = ?e, "I/O error during handshake");
                         }
                     }
+                    // Release nick if reserved during handshake
+                    if let Some(nick) = &handshake.nick {
+                        let nick_lower = irc_to_lower(nick);
+                        self.matrix.nicks.remove(&nick_lower);
+                    }
                     return Ok(());
                 }
                 None => {
                     info!("Client disconnected during handshake");
+                    // Release nick if reserved during handshake
+                    if let Some(nick) = &handshake.nick {
+                        let nick_lower = irc_to_lower(nick);
+                        self.matrix.nicks.remove(&nick_lower);
+                    }
                     return Ok(());
                 }
             }
@@ -341,6 +460,9 @@ impl Connection {
         // Penalty box: Track consecutive rate limit violations
         let mut flood_violations = 0u8;
         const MAX_FLOOD_VIOLATIONS: u8 = 3; // Strike limit before disconnect
+
+        // Track quit message for broadcast during cleanup
+        let mut quit_message: Option<String> = None;
 
         // Channel for outgoing messages (handlers queue responses here)
         // Also used for routing messages from other users (PRIVMSG, etc.)
@@ -377,7 +499,7 @@ impl Connection {
                                         "*".to_string(),
                                         format!("*** Warning: Flooding detected ({}/{} strikes). Slow down or you will be disconnected.",
                                                 flood_violations, MAX_FLOOD_VIOLATIONS)
-                                    ));
+                                    )).with_prefix(Prefix::ServerName(self.matrix.server_info.name.clone()));
                                     let _ = self.transport.write_message(&notice).await;
 
                                     // Apply penalty delay (exponential backoff)
@@ -425,23 +547,42 @@ impl Connection {
                                 None
                             };
 
-                            // Dispatch to handler
-                            let mut ctx = Context {
-                                uid: &self.uid,
-                                matrix: &self.matrix,
-                                sender: &outgoing_tx,
-                                handshake: &mut handshake,
-                                db: &self.db,
-                                remote_addr: self.addr,
-                                label,
-                                registry: &self.registry,
+                            // Select middleware: direct or capturing buffer when label is present
+                            let mut capture_buffer: Option<Mutex<Vec<Message>>> = None;
+                            let sender_middleware = if label.is_some() {
+                                capture_buffer = Some(Mutex::new(Vec::new()));
+                                ResponseMiddleware::Capturing(capture_buffer.as_ref().unwrap())
+                            } else {
+                                ResponseMiddleware::Direct(&outgoing_tx)
+                            };
+                            let dispatch_sender = sender_middleware.clone();
+
+                            // Dispatch to handler (scope-limited to release &mut handshake)
+                            let (dispatch_result, suppress_ack) = {
+                                let mut ctx = Context {
+                                    uid: &self.uid,
+                                    matrix: &self.matrix,
+                                    sender: dispatch_sender,
+                                    handshake: &mut handshake,
+                                    db: &self.db,
+                                    remote_addr: self.addr,
+                                    label: label.clone(),
+                                    suppress_labeled_ack: false,
+                                    registry: &self.registry,
+                                };
+
+                                let result = self.registry.dispatch(&mut ctx, &msg_ref).await;
+                                (result, ctx.suppress_labeled_ack)
                             };
 
-                            if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
+                            if let Err(e) = dispatch_result {
                                 debug!(error = ?e, "Handler error");
 
                                 // Handle QUIT specially - send ERROR and disconnect
                                 if let crate::handlers::HandlerError::Quit(quit_msg) = e {
+                                    // Store quit message for cleanup broadcast
+                                    quit_message = quit_msg.clone();
+
                                     let error_text = match quit_msg {
                                         Some(msg) => format!("Closing Link: {} (Quit: {})", self.addr.ip(), msg),
                                         None => format!("Closing Link: {} (Client Quit)", self.addr.ip()),
@@ -463,17 +604,82 @@ impl Connection {
                                 // Send appropriate error reply based on error type
                                 let nick = handshake.nick.as_deref().unwrap_or("*");
                                 if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, nick, &e, &msg_ref) {
-                                    let _ = outgoing_tx.send(reply).await;
+                                    let _ = sender_middleware.send(reply).await;
                                 }
                                 // NotRegistered post-handshake indicates a bug - should not happen
                                 if matches!(e, crate::handlers::HandlerError::NotRegistered) {
                                     warn!("NotRegistered error after handshake completed - this is a bug");
                                 }
                             }
+
+                            // Finalize labeled-response batching if needed
+                            if let Some(buffer) = capture_buffer {
+                                // Skip automatic ACK/BATCH if handler suppressed it (e.g., multiline)
+                                if !suppress_ack {
+                                    let mut guard = buffer.lock().await;
+                                    let mut messages = guard.split_off(0);
+                                    drop(guard);
+
+                                    match messages.len() {
+                                        0 => {
+                                            let ack = labeled_ack(&self.matrix.server_info.name, label.as_deref().unwrap());
+                                            let _ = outgoing_tx.send(ack).await;
+                                        }
+                                        1 => {
+                                            let msg = messages.pop().unwrap();
+                                            let tagged = with_label(msg, label.as_deref());
+                                            let _ = outgoing_tx.send(tagged).await;
+                                        }
+                                        _ => {
+                                            let batch_id = self.next_batch_id();
+                                            let start = Message {
+                                                tags: None,
+                                                prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
+                                                command: Command::BATCH(
+                                                    format!("+{}", batch_id),
+                                                    Some(BatchSubCommand::CUSTOM("labeled-response".to_string())),
+                                                    None,
+                                                ),
+                                            }
+                                            .with_tag("label", label.as_deref());
+
+                                            let _ = outgoing_tx.send(start).await;
+
+                                            for mut msg in messages.drain(..) {
+                                                msg = msg.with_tag("batch", Some(&batch_id));
+                                                let _ = outgoing_tx.send(msg).await;
+                                            }
+
+                                            let end = Message {
+                                                tags: None,
+                                                prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
+                                                command: Command::BATCH(format!("-{}", batch_id), None, None),
+                                            };
+
+                                            let _ = outgoing_tx.send(end).await;
+                                        }
+                                    }
+                                }
+                            }
                         }
                         Some(Err(e)) => {
                             match classify_read_error(&e) {
-                                ReadErrorAction::ProtocolViolation { error_msg } => {
+                                ReadErrorAction::InputTooLong => {
+                                    // Recoverable: send ERR_INPUTTOOLONG (417) and continue
+                                    warn!("Input line too long from client");
+                                    let nick = handshake.nick.as_deref().unwrap_or("*");
+                                    let reply = Message {
+                                        tags: None,
+                                        prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
+                                        command: Command::Response(
+                                            Response::ERR_INPUTTOOLONG,
+                                            vec![nick.to_string(), "Input line too long".to_string()],
+                                        ),
+                                    };
+                                    let _ = self.transport.write_message(&reply).await;
+                                    // Continue reading - don't disconnect
+                                }
+                                ReadErrorAction::FatalProtocolError { error_msg } => {
                                     warn!(error = %error_msg, "Protocol error from client");
                                     // Send ERROR message before disconnecting
                                     let error_reply = Message {
@@ -482,12 +688,13 @@ impl Connection {
                                         command: Command::ERROR(error_msg),
                                     };
                                     let _ = self.transport.write_message(&error_reply).await;
+                                    break;
                                 }
                                 ReadErrorAction::IoError => {
                                     debug!(error = ?e, "I/O error");
+                                    break;
                                 }
                             }
-                            break;
                         }
                         None => {
                             info!("Client disconnected");
@@ -521,6 +728,9 @@ impl Connection {
         if let Some(user_ref) = self.matrix.users.get(&self.uid) {
             let user = user_ref.read().await;
             let channels: Vec<String> = user.channels.iter().cloned().collect();
+            let nick = user.nick.clone();
+            let user_ident = user.user.clone();
+            let host = user.host.clone();
 
             // Record WHOWAS entry before cleanup
             self.matrix
@@ -528,6 +738,31 @@ impl Connection {
 
             drop(user);
 
+            // Broadcast QUIT to all channel members
+            let quit_text = quit_message.unwrap_or_else(|| "Client Quit".to_string());
+            let quit_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::Nickname(nick.clone(), user_ident, host)),
+                command: Command::QUIT(Some(quit_text)),
+            };
+
+            // Collect all unique members across channels (except self)
+            let mut notified = std::collections::HashSet::new();
+            for channel_lower in &channels {
+                if let Some(channel) = self.matrix.channels.get(channel_lower) {
+                    let channel = channel.read().await;
+                    for member_uid in channel.members.keys() {
+                        if member_uid != &self.uid && !notified.contains(member_uid) {
+                            notified.insert(member_uid.clone());
+                            if let Some(sender) = self.matrix.senders.get(member_uid) {
+                                let _ = sender.send(quit_msg.clone()).await;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Now remove from channels
             for channel_lower in channels {
                 if let Some(channel) = self.matrix.channels.get(&channel_lower) {
                     let mut channel = channel.write().await;
@@ -581,14 +816,8 @@ mod tests {
             limit: 512,
         });
         let action = classify_read_error(&err);
-        match action {
-            ReadErrorAction::ProtocolViolation { error_msg } => {
-                assert!(error_msg.contains("1024"));
-                assert!(error_msg.contains("512"));
-                assert!(error_msg.contains("too long"));
-            }
-            ReadErrorAction::IoError => panic!("Expected ProtocolViolation"),
-        }
+        // MessageTooLong is recoverable - returns InputTooLong
+        assert!(matches!(action, ReadErrorAction::InputTooLong));
     }
 
     #[test]
@@ -598,14 +827,8 @@ mod tests {
             limit: 4096,
         });
         let action = classify_read_error(&err);
-        match action {
-            ReadErrorAction::ProtocolViolation { error_msg } => {
-                assert!(error_msg.contains("8192"));
-                assert!(error_msg.contains("4096"));
-                assert!(error_msg.contains("tags"));
-            }
-            ReadErrorAction::IoError => panic!("Expected ProtocolViolation"),
-        }
+        // TagsTooLong is recoverable - returns InputTooLong
+        assert!(matches!(action, ReadErrorAction::InputTooLong));
     }
 
     #[test]
@@ -613,10 +836,10 @@ mod tests {
         let err = TransportReadError::Protocol(ProtocolError::IllegalControlChar('\0'));
         let action = classify_read_error(&err);
         match action {
-            ReadErrorAction::ProtocolViolation { error_msg } => {
+            ReadErrorAction::FatalProtocolError { error_msg } => {
                 assert!(error_msg.contains("control character"));
             }
-            ReadErrorAction::IoError => panic!("Expected ProtocolViolation"),
+            _ => panic!("Expected FatalProtocolError"),
         }
     }
 
@@ -628,11 +851,11 @@ mod tests {
         });
         let action = classify_read_error(&err);
         match action {
-            ReadErrorAction::ProtocolViolation { error_msg } => {
+            ReadErrorAction::FatalProtocolError { error_msg } => {
                 assert!(error_msg.contains("Malformed"));
                 assert!(error_msg.contains("garbage"));
             }
-            ReadErrorAction::IoError => panic!("Expected ProtocolViolation"),
+            _ => panic!("Expected FatalProtocolError"),
         }
     }
 

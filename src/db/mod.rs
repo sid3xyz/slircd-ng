@@ -62,24 +62,37 @@ pub struct Database {
 impl Database {
     /// Create a new database connection, running migrations if needed.
     pub async fn new(path: &str) -> Result<Self, DbError> {
-        // Create parent directory if it doesn't exist
-        if let Some(parent) = Path::new(path).parent()
-            && !parent.as_os_str().is_empty()
-            && let Err(e) = std::fs::create_dir_all(parent)
-        {
-            tracing::warn!(path = %parent.display(), error = %e, "Failed to create database directory");
-        }
+        let pool = if path == ":memory:" {
+            // In-memory database - use proper SQLx in-memory mode
+            // Use file::memory: with shared cache for connection pool compatibility
+            let options = SqliteConnectOptions::new()
+                .filename("file::memory:")
+                .shared_cache(true)
+                .create_if_missing(true);
 
-        // Configure SQLite connection
-        let options = SqliteConnectOptions::new()
-            .filename(path)
-            .create_if_missing(true);
+            SqlitePoolOptions::new()
+                .max_connections(5)
+                .connect_with(options)
+                .await?
+        } else {
+            // File-based database
+            // Create parent directory if it doesn't exist
+            if let Some(parent) = Path::new(path).parent()
+                && !parent.as_os_str().is_empty()
+                && let Err(e) = std::fs::create_dir_all(parent)
+            {
+                tracing::warn!(path = %parent.display(), error = %e, "Failed to create database directory");
+            }
 
-        // Create connection pool
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect_with(options)
-            .await?;
+            let options = SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(true);
+
+            SqlitePoolOptions::new()
+                .max_connections(5)
+                .connect_with(options)
+                .await?
+        };
 
         info!(path = %path, "Database connected");
 

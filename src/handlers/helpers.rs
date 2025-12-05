@@ -149,7 +149,8 @@ pub fn err_unknowncommand(server_name: &str, nick: &str, command: &str) -> Messa
 
 /// Attach a label tag to a message if one was provided.
 ///
-/// Used for IRCv3 labeled-response capability to echo the client's label.
+/// Middleware handles labeling automatically; handlers should only call this when constructing
+/// messages outside the normal dispatch path.
 pub fn with_label(msg: Message, label: Option<&str>) -> Message {
     match label {
         Some(value) => msg.with_tag("label", Some(value)),
@@ -159,6 +160,7 @@ pub fn with_label(msg: Message, label: Option<&str>) -> Message {
 
 /// Create a labeled ACK response for commands that normally produce no output.
 ///
+/// Middleware now issues ACKs for labeled-response; handlers should rarely need this directly.
 /// Per IRCv3 labeled-response spec, servers MUST respond with ACK when a labeled
 /// command would normally produce no response (e.g., PONG).
 pub fn labeled_ack(server_name: &str, label: &str) -> Message {

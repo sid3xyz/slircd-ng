@@ -2,7 +2,7 @@
 //!
 //! Implements the CYCLE command (Part + Join in one command).
 
-use super::super::{Context, Handler, HandlerError, HandlerResult};
+use super::super::{Context, Handler, HandlerError, HandlerResult, user_mask_from_state};
 use super::part::leave_channel_internal;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, irc_to_lower};
@@ -26,20 +26,13 @@ impl Handler for CycleHandler {
         let channels_str = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let part_message = msg.arg(1); // Optional part message
 
-        let nick = ctx
-            .handshake
-            .nick
-            .clone()
-            .ok_or(HandlerError::NickOrUserMissing)?;
-        let user_name = ctx
-            .handshake
-            .user
-            .clone()
+        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+            .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Process each channel
         let channels: Vec<&str> = channels_str.split(',').collect();
-        
+
         for channel_name in &channels {
             if channel_name.is_empty() {
                 continue;
@@ -48,7 +41,8 @@ impl Handler for CycleHandler {
             let channel_lower = irc_to_lower(channel_name);
 
             // Use leave_channel_internal to properly broadcast PART
-            leave_channel_internal(ctx, &channel_lower, &nick, &user_name, part_message).await?;
+            leave_channel_internal(ctx, &channel_lower, &nick, &user_name, &host, part_message)
+                .await?;
         }
 
         // After parting all channels, rejoin them using the original channels_str

@@ -42,20 +42,12 @@ impl Handler for MotdHandler {
         );
         ctx.sender.send(reply).await?;
 
-        // RPL_MOTD (372): :- <text>
-        let motd_lines = [
-            format!("- Welcome to {}", ctx.matrix.server_info.network),
-            format!("- Running slircd-ng v{}", VERSION),
-            "- ".to_string(),
-            "- This server is powered by Rust and Tokio.".to_string(),
-            "- Enjoy your stay!".to_string(),
-        ];
-
-        for line in &motd_lines {
+        // RPL_MOTD (372): :- <text> - send each line from configured MOTD
+        for line in &ctx.matrix.server_info.motd_lines {
             let reply = server_reply(
                 server_name,
                 Response::RPL_MOTD,
-                vec![nick.clone(), line.clone()],
+                vec![nick.clone(), format!("- {}", line)],
             );
             ctx.sender.send(reply).await?;
         }
@@ -213,7 +205,7 @@ impl Handler for AdminHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_ADMINEMAIL,
-            vec![nick.clone(), "admin@localhost".to_string()],
+            vec![nick.clone(), format!("admin@{}", server_name)],
         );
         ctx.sender.send(reply).await?;
 
@@ -348,12 +340,17 @@ impl Handler for LusersHandler {
         ctx.sender.send(reply).await?;
 
         // RPL_LUSERUNKNOWN (253): <u> :unknown connection(s)
+        // Unregistered = connections with nick but not yet in users map
+        // This includes connections that have sent NICK but not USER
+        let total_nicks = ctx.matrix.nicks.len();
+        let unregistered_count = total_nicks.saturating_sub(total_users);
+
         let reply = server_reply(
             server_name,
             Response::RPL_LUSERUNKNOWN,
             vec![
                 nick.clone(),
-                "0".to_string(),
+                unregistered_count.to_string(),
                 "unknown connection(s)".to_string(),
             ],
         );
@@ -405,83 +402,6 @@ impl Handler for LusersHandler {
                 total_users.to_string(),
                 format!("Current global users {}, max {}", total_users, total_users),
             ],
-        );
-        ctx.sender.send(reply).await?;
-
-        Ok(())
-    }
-}
-
-/// Handler for LIST command.
-///
-/// `LIST [channels [target]]`
-///
-/// Lists channels and their topics.
-pub struct ListHandler;
-
-#[async_trait]
-impl Handler for ListHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
-
-        let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
-
-        // LIST [channels]
-        let filter = msg.arg(0);
-
-        // RPL_LISTSTART (321): Channel :Users Name (optional, some clients don't expect it)
-
-        // Iterate channels
-        for channel_ref in ctx.matrix.channels.iter() {
-            let channel = channel_ref.read().await;
-
-            // Skip secret channels unless user is a member
-            if channel.modes.secret && !channel.is_member(ctx.uid) {
-                continue;
-            }
-
-            // Apply filter if provided
-            if let Some(f) = filter
-                && !channel.name.eq_ignore_ascii_case(f)
-            {
-                continue;
-            }
-
-            let topic_text = channel
-                .topic
-                .as_ref()
-                .map(|t| t.text.clone())
-                .unwrap_or_default();
-
-            // RPL_LIST (322): <channel> <# visible> :<topic>
-            let reply = server_reply(
-                server_name,
-                Response::RPL_LIST,
-                vec![
-                    nick.clone(),
-                    channel.name.clone(),
-                    channel.members.len().to_string(),
-                    topic_text,
-                ],
-            );
-            ctx.sender.send(reply).await?;
-        }
-
-        // RPL_LISTEND (323): :End of LIST
-        let reply = server_reply(
-            server_name,
-            Response::RPL_LISTEND,
-            vec![nick.clone(), "End of LIST".to_string()],
         );
         ctx.sender.send(reply).await?;
 

@@ -75,16 +75,19 @@ impl UserModes {
     }
 
     /// Check if user has a specific snomask.
+    #[allow(dead_code)]
     pub fn has_snomask(&self, mask: char) -> bool {
         self.snomasks.contains(&mask)
     }
 
     /// Add a snomask.
+    #[allow(dead_code)]
     pub fn add_snomask(&mut self, mask: char) {
         self.snomasks.insert(mask);
     }
 
     /// Remove a snomask.
+    #[allow(dead_code)]
     pub fn remove_snomask(&mut self, mask: char) {
         self.snomasks.remove(&mask);
     }

@@ -42,7 +42,7 @@ pub use bans::{
 };
 pub use batch::{BatchHandler, BatchState, process_batch_message};
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
-pub use channel::{CycleHandler, InviteHandler, JoinHandler, KickHandler, KnockHandler, NamesHandler, PartHandler, TopicHandler, force_join_channel, force_part_channel, TargetUser};
+pub use channel::{CycleHandler, InviteHandler, JoinHandler, KickHandler, KnockHandler, ListHandler, NamesHandler, PartHandler, TopicHandler, force_join_channel, force_part_channel, TargetUser};
 pub use chathistory::ChatHistoryHandler;
 pub use connection::{
     NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,
@@ -52,7 +52,7 @@ pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
 pub use monitor::{MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online};
 pub use oper::{ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, RestartHandler, TraceHandler, VhostHandler, WallopsHandler};
 pub use server_query::{
-    AdminHandler, HelpHandler, InfoHandler, LinksHandler, ListHandler, LusersHandler, MapHandler, MotdHandler,
+    AdminHandler, HelpHandler, InfoHandler, LinksHandler, LusersHandler, MapHandler, MotdHandler,
     RulesHandler, ServiceHandler, ServlistHandler, SqueryHandler, StatsHandler, TimeHandler, UseripHandler, VersionHandler,
 };
 pub use service_aliases::{CsHandler, NsHandler};
@@ -68,7 +68,29 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
+
+/// Middleware for routing handler responses.
+/// Direct forwards to the connection sender; Capturing buffers for labeled-response batching.
+#[derive(Clone)]
+pub enum ResponseMiddleware<'a> {
+    Direct(&'a mpsc::Sender<Message>),
+    Capturing(&'a Mutex<Vec<Message>>),
+}
+
+impl<'a> ResponseMiddleware<'a> {
+    /// Send or buffer a message depending on middleware mode.
+    pub async fn send(&self, msg: Message) -> Result<(), mpsc::error::SendError<Message>> {
+        match self {
+            Self::Direct(tx) => tx.send(msg).await,
+            Self::Capturing(buf) => {
+                let mut guard = buf.lock().await;
+                guard.push(msg);
+                Ok(())
+            }
+        }
+    }
+}
 
 /// Handler context passed to each command handler.
 pub struct Context<'a> {
@@ -76,8 +98,8 @@ pub struct Context<'a> {
     pub uid: &'a str,
     /// Shared server state.
     pub matrix: &'a Arc<Matrix>,
-    /// Sender for outgoing messages to this client.
-    pub sender: &'a mpsc::Sender<Message>,
+    /// Sender for outgoing messages to this client (can capture for labeled-response).
+    pub sender: ResponseMiddleware<'a>,
     /// Current handshake state.
     pub handshake: &'a mut HandshakeState,
     /// Database for services.
@@ -87,6 +109,9 @@ pub struct Context<'a> {
     /// Label from incoming message for labeled-response (IRCv3).
     /// If present, should be echoed back on all responses.
     pub label: Option<String>,
+    /// Suppress automatic labeled-response ACK/BATCH wrapping.
+    /// Set to true by handlers that manually apply labels (e.g., multiline BATCH).
+    pub suppress_labeled_ack: bool,
     /// Command registry (for STATS m command usage tracking).
     pub registry: &'a Arc<Registry>,
 }
@@ -110,6 +135,8 @@ pub struct HandshakeState {
     pub capabilities: std::collections::HashSet<String>,
     /// SASL authentication state.
     pub sasl_state: SaslState,
+    /// Buffer for accumulating chunked SASL data (for large payloads).
+    pub sasl_buffer: String,
     /// Account name if SASL authenticated.
     pub account: Option<String>,
     /// Whether this is a TLS connection.
@@ -171,6 +198,13 @@ pub enum HandlerError {
     Send(#[from] mpsc::error::SendError<Message>),
     #[error("client quit: {0:?}")]
     Quit(Option<String>),
+}
+
+/// Fetch the current nick, user, and visible host for a given UID from Matrix.
+pub async fn user_mask_from_state(ctx: &Context<'_>, uid: &str) -> Option<(String, String, String)> {
+    let user_ref = ctx.matrix.users.get(uid)?;
+    let user = user_ref.read().await;
+    Some((user.nick.clone(), user.user.clone(), user.visible_host.clone()))
 }
 
 /// Result type for command handlers.
@@ -346,6 +380,8 @@ impl Registry {
             // Send ERR_UNKNOWNCOMMAND for unrecognized commands
             let nick = get_nick_or_star(ctx).await;
             let reply = err_unknowncommand(&ctx.matrix.server_info.name, &nick, &cmd_name);
+            // Attach label for labeled-response capability
+            let reply = with_label(reply, ctx.label.as_deref());
             ctx.sender.send(reply).await?;
             Ok(())
         }

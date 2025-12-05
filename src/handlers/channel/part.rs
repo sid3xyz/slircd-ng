@@ -1,7 +1,7 @@
 //! PART command handler.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_notonchannel, server_reply, user_prefix,
+    Context, Handler, HandlerError, HandlerResult, err_notonchannel, server_reply, user_mask_from_state, user_prefix,
 };
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
@@ -21,15 +21,8 @@ impl Handler for PartHandler {
         let channels_str = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let reason = msg.arg(1);
 
-        let nick = ctx
-            .handshake
-            .nick
-            .clone()
-            .ok_or(HandlerError::NickOrUserMissing)?;
-        let user_name = ctx
-            .handshake
-            .user
-            .clone()
+        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+            .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         for channel_name in channels_str.split(',') {
@@ -39,7 +32,8 @@ impl Handler for PartHandler {
             }
 
             let channel_lower = irc_to_lower(channel_name);
-            leave_channel_internal(ctx, &channel_lower, &nick, &user_name, reason).await?;
+            leave_channel_internal(ctx, &channel_lower, &nick, &user_name, &host, reason)
+                .await?;
         }
 
         Ok(())
@@ -52,6 +46,7 @@ pub(super) async fn leave_channel_internal(
     channel_lower: &str,
     nick: &str,
     user_name: &str,
+    host: &str,
     reason: Option<&str>,
 ) -> HandlerResult {
     // Check if channel exists
@@ -91,7 +86,7 @@ pub(super) async fn leave_channel_internal(
     // Broadcast PART before removing
     let part_msg = Message {
         tags: None,
-        prefix: Some(user_prefix(nick, user_name, "localhost")),
+        prefix: Some(user_prefix(nick, user_name, host)),
         command: Command::PART(canonical_name.clone(), reason.map(String::from)),
     };
 

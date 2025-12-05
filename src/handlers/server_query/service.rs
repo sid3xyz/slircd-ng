@@ -143,7 +143,7 @@ impl Handler for SqueryHandler {
             nick,
             service_name,
             text,
-            ctx.sender,
+            &ctx.sender,
         )
         .await;
 

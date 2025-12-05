@@ -39,6 +39,11 @@ impl Handler for NickHandler {
 
         let nick_lower = irc_to_lower(nick);
 
+        // Check if nick is exactly the same (no-op) - return silently
+        if ctx.handshake.nick.as_ref().is_some_and(|old| old == nick) {
+            return Ok(());
+        }
+
         // Check if nick is in use
         if let Some(existing_uid) = ctx.matrix.nicks.get(&nick_lower)
             && existing_uid.value() != ctx.uid
@@ -92,14 +97,22 @@ impl Handler for NickHandler {
             None
         };
 
+        // Check if this is a case-only change (qux -> QUX)
+        let is_case_only_change = ctx.handshake.nick
+            .as_ref()
+            .map(|old| irc_to_lower(old) == nick_lower)
+            .unwrap_or(false);
+
         // Remove old nick from index if changing
         if let Some(old_nick) = &ctx.handshake.nick {
-            // Notify MONITOR watchers that old nick is going offline
-            if ctx.handshake.registered {
+            let old_nick_lower = irc_to_lower(old_nick);
+
+            // Only notify MONITOR watchers if the lowercase nick is changing
+            // (not for case-only changes like qux -> QUX)
+            if ctx.handshake.registered && !is_case_only_change {
                 notify_monitors_offline(ctx.matrix, old_nick).await;
             }
 
-            let old_nick_lower = irc_to_lower(old_nick);
             ctx.matrix.nicks.remove(&old_nick_lower);
             // Clear any enforcement timer for old nick
             ctx.matrix.enforce_timers.remove(ctx.uid);
@@ -113,10 +126,10 @@ impl Handler for NickHandler {
 
         // Send NICK change message for registered users
         if let Some(old_nick) = old_nick_for_change {
-            // Get user info for the prefix
-            let nick_msg = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            // Get user info for the prefix and channels
+            let (nick_msg, user_channels) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
                 let user = user_ref.read().await;
-                Message {
+                let msg = Message {
                     tags: None,
                     prefix: Some(Prefix::Nickname(
                         old_nick.clone(),
@@ -124,10 +137,12 @@ impl Handler for NickHandler {
                         user.visible_host.clone(),
                     )),
                     command: Command::NICK(nick.to_string()),
-                }
+                };
+                let channels = user.channels.clone();
+                (msg, channels)
             } else {
                 // Fallback without full user info
-                Message {
+                let msg = Message {
                     tags: None,
                     prefix: Some(Prefix::Nickname(
                         old_nick.clone(),
@@ -135,23 +150,31 @@ impl Handler for NickHandler {
                         "host".to_string(),
                     )),
                     command: Command::NICK(nick.to_string()),
-                }
+                };
+                (msg, std::collections::HashSet::new())
             };
 
-            // Send to the user themselves
-            ctx.sender.send(nick_msg.clone()).await?;
+            // Send to the user themselves with label (IRCv3 labeled-response)
+            let labeled_nick_msg = super::super::with_label(nick_msg.clone(), ctx.label.as_deref());
+            ctx.sender.send(labeled_nick_msg).await?;
+
+            // Broadcast to all channels the user is in (including case-only changes)
+            for channel_lower in &user_channels {
+                ctx.matrix
+                    .broadcast_to_channel(channel_lower, nick_msg.clone(), Some(ctx.uid))
+                    .await;
+            }
 
             // Also update the User state with the new nick
             if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
                 let mut user = user_ref.write().await;
                 user.nick = nick.to_string();
             }
-
-            // TODO: Broadcast to channels the user is in
         }
 
         // Notify MONITOR watchers that new nick is online (only for already-registered users)
-        if ctx.handshake.registered {
+        // Skip notification for case-only changes (already computed above)
+        if ctx.handshake.registered && !is_case_only_change {
             // Get user info for the hostmask
             if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
                 let user = user_ref.read().await;

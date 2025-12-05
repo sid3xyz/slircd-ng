@@ -3,6 +3,7 @@
 //! Monitors enforce_timers in the Matrix and force-renames users who
 //! don't identify within the timeout period.
 
+use crate::handlers::ResponseMiddleware;
 use crate::services::{ServiceEffect, apply_effect};
 use crate::state::Matrix;
 use rand::Rng;
@@ -74,13 +75,15 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
             continue;
         };
 
+        let sender_middleware = ResponseMiddleware::Direct(&sender);
+
         // Apply the forced nick change using centralized effect
         let effect = ServiceEffect::ForceNick {
             target_uid: uid.clone(),
             old_nick: old_nick.clone(),
             new_nick: new_nick.clone(),
         };
-        apply_effect(matrix, &old_nick, &sender, effect).await;
+        apply_effect(matrix, &old_nick, &sender_middleware, effect).await;
 
         // Send notice to user explaining what happened
         let notice = Message {

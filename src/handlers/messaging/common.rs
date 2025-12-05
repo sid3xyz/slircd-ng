@@ -250,42 +250,96 @@ pub async fn route_to_channel(
     // Generate a timestamp once for server-time capability
     let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
+    // Generate a unique msgid for message-tags capability
+    let msgid = uuid::Uuid::new_v4().to_string();
+
+    // Check if this is a TAGMSG (which should only be sent to message-tags clients)
+    let is_tagmsg = matches!(final_msg.command, Command::TAGMSG(_));
+
     // Broadcast to all channel members except sender
     for uid in channel.members.keys() {
         if uid.as_str() == ctx.uid {
             continue;
         }
         if let Some(sender) = ctx.matrix.senders.get(uid) {
-            // Check if recipient has server-time capability
-            let msg_for_recipient = if let Some(user_ref) = ctx.matrix.users.get(uid) {
+            // Check recipient's capabilities and build appropriate message
+            if let Some(user_ref) = ctx.matrix.users.get(uid) {
                 let user = user_ref.read().await;
-                if user.caps.contains("server-time") {
-                    final_msg.clone().with_tag("time", Some(timestamp.clone()))
-                } else {
-                    final_msg.clone()
+                let has_message_tags = user.caps.contains("message-tags");
+                let has_server_time = user.caps.contains("server-time");
+
+                // TAGMSG should only be sent to clients with message-tags capability
+                if is_tagmsg && !has_message_tags {
+                    continue;
                 }
+
+                // Start with the final message
+                let mut result = final_msg.clone();
+
+                // Strip label tag from recipient copies (label is sender-only)
+                if ctx.label.is_some() {
+                    result.tags = result.tags.map(|tags| {
+                        tags.into_iter()
+                            .filter(|tag| tag.0.as_ref() != "label")
+                            .collect::<Vec<_>>()
+                    }).and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+                }
+
+                // If recipient doesn't have message-tags, strip client-only tags (those with '+' prefix)
+                if !has_message_tags {
+                    result.tags = result.tags.map(|tags| {
+                        tags.into_iter()
+                            .filter(|tag| !tag.0.starts_with('+'))
+                            .collect::<Vec<_>>()
+                    }).and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+                } else {
+                    // Add msgid for users with message-tags
+                    result = result.with_tag("msgid", Some(msgid.clone()));
+                }
+
+                // Add server-time if capability is enabled
+                if has_server_time {
+                    result = result.with_tag("time", Some(timestamp.clone()));
+                }
+
+                let _ = sender.send(result).await;
+                crate::metrics::MESSAGES_SENT.inc();
             } else {
-                final_msg.clone()
-            };
-            let _ = sender.send(msg_for_recipient).await;
-            crate::metrics::MESSAGES_SENT.inc();
+                let _ = sender.send(final_msg.clone()).await;
+                crate::metrics::MESSAGES_SENT.inc();
+            }
         }
     }
 
     // Echo message back to sender if they have echo-message capability
     if ctx.handshake.capabilities.contains("echo-message") {
-        // Add server-time tag if client has that capability
-        let echo_msg = if ctx.handshake.capabilities.contains("server-time") {
-            final_msg.clone().with_tag("time", Some(timestamp))
-        } else {
-            final_msg.clone()
-        };
+        let has_message_tags = ctx.handshake.capabilities.contains("message-tags");
+        let has_server_time = ctx.handshake.capabilities.contains("server-time");
+        let has_labeled_response = ctx.label.is_some();
+
+        let mut echo_msg = final_msg.clone();
+
+        // For labeled-response with PRIVMSG/NOTICE: strip ALL client tags
+        // For TAGMSG: preserve client-only tags (they're the whole point!)
+        if has_labeled_response && !is_tagmsg {
+            echo_msg.tags = None; // Start fresh, only add server tags below
+        }
+
+        // Add msgid if sender has message-tags
+        if has_message_tags {
+            echo_msg = echo_msg.with_tag("msgid", Some(msgid.clone()));
+        }
+
+        // Add server-time if capability is enabled
+        if has_server_time {
+            echo_msg = echo_msg.with_tag("time", Some(timestamp));
+        }
+
         // Preserve label if present
-        let echo_msg = if let Some(ref label) = ctx.label {
-            echo_msg.with_tag("label", Some(label.clone()))
-        } else {
-            echo_msg
-        };
+        if let Some(ref label) = ctx.label {
+            echo_msg = echo_msg.with_tag("label", Some(label.clone()));
+        }
+
         let _ = ctx.sender.send(echo_msg).await;
     }
 
@@ -374,11 +428,11 @@ pub async fn route_to_user(
                 Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
                 _ => None,
             };
-            if let Some(text) = text {
-                if Ctcp::is_ctcp(text) {
+            if let Some(text) = text
+                && Ctcp::is_ctcp(text) {
                     // Check if it's an ACTION (allowed even with +T)
-                    if let Some(ctcp) = Ctcp::parse(text) {
-                        if !matches!(ctcp.kind, CtcpKind::Action) {
+                    if let Some(ctcp) = Ctcp::parse(text)
+                        && !matches!(ctcp.kind, CtcpKind::Action) {
                             debug!(
                                 target = %target_user.nick,
                                 ctcp_type = ?ctcp.kind,
@@ -386,32 +440,88 @@ pub async fn route_to_user(
                             );
                             return false; // Silently drop non-ACTION CTCP
                         }
-                    }
                 }
-            }
         }
     }
 
-    // Send to target user
+    // Send to target user with appropriate tags based on their capabilities
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let msgid = uuid::Uuid::new_v4().to_string();
+
+    // Check if this is a TAGMSG
+    let is_tagmsg = matches!(msg.command, Command::TAGMSG(_));
+
     if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
-        let _ = sender.send(msg.clone()).await;
+        // Check target's capabilities and build appropriate message
+        let msg_for_target = if let Some(user_ref) = ctx.matrix.users.get(target_uid.value()) {
+            let user = user_ref.read().await;
+            let has_message_tags = user.caps.contains("message-tags");
+            let has_server_time = user.caps.contains("server-time");
+
+            let mut result = msg.clone();
+
+            // Strip label tag from recipient copies (label is sender-only)
+            if ctx.label.is_some() {
+                result.tags = result.tags.map(|tags| {
+                    tags.into_iter()
+                        .filter(|tag| tag.0.as_ref() != "label")
+                        .collect::<Vec<_>>()
+                }).and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+            }
+
+            // If recipient doesn't have message-tags, strip client-only tags
+            if !has_message_tags {
+                result.tags = result.tags.map(|tags| {
+                    tags.into_iter()
+                        .filter(|tag| !tag.0.starts_with('+'))
+                        .collect::<Vec<_>>()
+                }).and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+            } else {
+                // Add msgid for users with message-tags
+                result = result.with_tag("msgid", Some(msgid.clone()));
+            }
+
+            // Add server-time if capability is enabled
+            if has_server_time {
+                result = result.with_tag("time", Some(timestamp.clone()));
+            }
+
+            result
+        } else {
+            msg.clone()
+        };
+        let _ = sender.send(msg_for_target).await;
         crate::metrics::MESSAGES_SENT.inc();
 
         // Echo message back to sender if they have echo-message capability
         if ctx.handshake.capabilities.contains("echo-message") {
-            // Add server-time tag if client has that capability
-            let echo_msg = if ctx.handshake.capabilities.contains("server-time") {
-                let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
-                msg.with_tag("time", Some(timestamp))
-            } else {
-                msg
-            };
+            let has_message_tags = ctx.handshake.capabilities.contains("message-tags");
+            let has_server_time = ctx.handshake.capabilities.contains("server-time");
+            let has_labeled_response = ctx.label.is_some();
+
+            let mut echo_msg = msg.clone();
+
+            // For labeled-response with PRIVMSG/NOTICE: strip ALL client tags
+            // For TAGMSG: preserve client-only tags (they're the whole point!)
+            if has_labeled_response && !is_tagmsg {
+                echo_msg.tags = None; // Start fresh, only add server tags below
+            }
+
+            // Add msgid if sender has message-tags
+            if has_message_tags {
+                echo_msg = echo_msg.with_tag("msgid", Some(msgid));
+            }
+
+            // Add server-time if capability is enabled
+            if has_server_time {
+                echo_msg = echo_msg.with_tag("time", Some(timestamp));
+            }
+
             // Preserve label if present
-            let echo_msg = if let Some(ref label) = ctx.label {
-                echo_msg.with_tag("label", Some(label.clone()))
-            } else {
-                echo_msg
-            };
+            if let Some(ref label) = ctx.label {
+                echo_msg = echo_msg.with_tag("label", Some(label.clone()));
+            }
+
             let _ = ctx.sender.send(echo_msg).await;
         }
 

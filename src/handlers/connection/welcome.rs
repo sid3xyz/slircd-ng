@@ -22,7 +22,16 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     let realname = ctx.handshake.realname.as_ref().cloned().unwrap_or_default();
     let server_name = &ctx.matrix.server_info.name;
     let network = &ctx.matrix.server_info.network;
-    let host = ctx.remote_addr.ip().to_string();
+    let remote_ip = ctx.remote_addr.ip().to_string();
+    let webirc_ip = ctx.handshake.webirc_ip.clone();
+    let webirc_host = ctx.handshake.webirc_host.clone();
+
+    // Prefer WEBIRC-provided host/IP when available (trusted gateway path)
+    let ban_host = webirc_host
+        .clone()
+        .or(webirc_ip.clone())
+        .unwrap_or_else(|| remote_ip.clone());
+    let host = ban_host.clone();
 
     // Check server password if configured
     if let Some(required_password) = &ctx.matrix.config.server.password {
@@ -253,6 +262,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             "MODES=6".to_string(),
             "MAXTARGETS=4".to_string(),
             "MONITOR=100".to_string(), // Max monitored nicks per client
+            "STATUSMSG=@+".to_string(), // Prefixes for status messages
             "are supported by this server".to_string(),
         ],
     );
@@ -281,20 +291,15 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     );
     ctx.sender.send(motdstart).await?;
 
-    // 372 RPL_MOTD
-    let motd = server_reply(
-        server_name,
-        Response::RPL_MOTD,
-        vec![nick.clone(), "- Welcome to slircd-ng!".to_string()],
-    );
-    ctx.sender.send(motd).await?;
-
-    let motd2 = server_reply(
-        server_name,
-        Response::RPL_MOTD,
-        vec![nick.clone(), "- A high-performance IRC daemon.".to_string()],
-    );
-    ctx.sender.send(motd2).await?;
+    // 372 RPL_MOTD - send each line from the configured MOTD
+    for line in &ctx.matrix.server_info.motd_lines {
+        let motd = server_reply(
+            server_name,
+            Response::RPL_MOTD,
+            vec![nick.clone(), format!("- {}", line)],
+        );
+        ctx.sender.send(motd).await?;
+    }
 
     // 376 RPL_ENDOFMOTD
     let endmotd = server_reply(

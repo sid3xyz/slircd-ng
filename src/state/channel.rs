@@ -1,6 +1,6 @@
 //! Channel-related types and state.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// An IRC channel.
 #[derive(Debug)]
@@ -22,6 +22,9 @@ pub struct Channel {
     pub quiets: Vec<ListEntry>,
     /// Extended ban list (bans with $ prefix like $a:account).
     pub extended_bans: Vec<ListEntry>,
+    /// Pending invites: set of UIDs that have been invited to this channel.
+    /// Cleared when user joins or after timeout.
+    pub invites: HashSet<String>,
 }
 
 /// Channel modes.
@@ -212,6 +215,28 @@ impl MemberModes {
         }
     }
 
+    /// Get all prefix characters for this member (for multi-prefix CAP).
+    /// Returns in order from highest to lowest: ~ & @ % +
+    pub fn all_prefix_chars(&self) -> String {
+        let mut s = String::new();
+        if self.owner {
+            s.push('~');
+        }
+        if self.admin {
+            s.push('&');
+        }
+        if self.op {
+            s.push('@');
+        }
+        if self.halfop {
+            s.push('%');
+        }
+        if self.voice {
+            s.push('+');
+        }
+        s
+    }
+
     /// Get the privilege rank (higher number = more privileges).
     /// Returns 0 if no privileges, 5 for owner, 4 for admin, etc.
     pub fn rank(&self) -> u8 {
@@ -260,6 +285,7 @@ impl Channel {
             invex: Vec::new(),
             quiets: Vec::new(),
             extended_bans: Vec::new(),
+            invites: HashSet::new(),
         }
     }
 
@@ -289,6 +315,7 @@ impl Channel {
     }
 
     /// Check if user has halfop or higher privileges.
+    #[allow(dead_code)]
     pub fn has_halfop(&self, uid: &str) -> bool {
         self.members.get(uid).is_some_and(|m| m.has_halfop_or_higher())
     }

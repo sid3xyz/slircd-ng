@@ -1,0 +1,267 @@
+//! WHOIS handler for detailed user information queries.
+
+use crate::handlers::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply, with_label};
+use async_trait::async_trait;
+use slirc_proto::{MessageRef, Response, irc_to_lower};
+use tracing::debug;
+
+/// Handler for WHOIS command.
+///
+/// `WHOIS [server] nickmask`
+///
+/// Returns detailed information about a specific user.
+pub struct WhoisHandler;
+
+#[async_trait]
+impl Handler for WhoisHandler {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        if !ctx.handshake.registered {
+            ctx.sender
+                .send(err_notregistered(&ctx.matrix.server_info.name))
+                .await?;
+            return Ok(());
+        }
+
+        // WHOIS [server] <nick>
+        // If two args, first is server, second is nick
+        // If one arg, it's the nick
+        let target = if msg.args().len() >= 2 {
+            msg.arg(1).unwrap_or("")
+        } else {
+            msg.arg(0).unwrap_or("")
+        };
+
+        if target.is_empty() {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_NONICKNAMEGIVEN,
+                vec![
+                    ctx.handshake
+                        .nick
+                        .clone()
+                        .unwrap_or_else(|| "*".to_string()),
+                    "No nickname given".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        let server_name = &ctx.matrix.server_info.name;
+        let nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
+        let target_lower = irc_to_lower(target);
+
+        // Look up target user
+        if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
+            if let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value()) {
+                let target_user = target_user_ref.read().await;
+
+                // RPL_WHOISUSER (311): <nick> <user> <host> * :<realname>
+                let reply = server_reply(
+                    server_name,
+                    Response::RPL_WHOISUSER,
+                    vec![
+                        nick.clone(),
+                        target_user.nick.clone(),
+                        target_user.user.clone(),
+                        target_user.visible_host.clone(),
+                        "*".to_string(),
+                        target_user.realname.clone(),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+
+                // RPL_WHOISSERVER (312): <nick> <server> :<server info>
+                let reply = server_reply(
+                    server_name,
+                    Response::RPL_WHOISSERVER,
+                    vec![
+                        nick.clone(),
+                        target_user.nick.clone(),
+                        server_name.clone(),
+                        ctx.matrix.server_info.description.clone(),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+
+                // RPL_WHOISCHANNELS (319): <nick> :{[@|+]<channel>}
+                // Skip if target is invisible and requester doesn't share any channels
+                let show_channels = if target_user.modes.invisible && target_uid.value() != ctx.uid {
+                    // Check if requester shares any channel with target
+                    let mut shares_channel = false;
+                    for ch in &target_user.channels {
+                        if let Some(channel_ref) = ctx.matrix.channels.get(ch) {
+                            let channel = channel_ref.read().await;
+                            if channel.is_member(ctx.uid) {
+                                shares_channel = true;
+                                break;
+                            }
+                        }
+                    }
+                    shares_channel
+                } else {
+                    true
+                };
+
+                if show_channels && !target_user.channels.is_empty() {
+                    let mut channel_list = Vec::new();
+                    for channel_name in &target_user.channels {
+                        if let Some(channel_ref) = ctx.matrix.channels.get(channel_name) {
+                            let channel = channel_ref.read().await;
+
+                            // Skip secret channels unless requester is a member
+                            if channel.modes.secret && !channel.is_member(ctx.uid) {
+                                continue;
+                            }
+
+                            let prefix = if let Some(member) = channel.members.get(&target_user.uid)
+                            {
+                                if member.op {
+                                    "@"
+                                } else if member.voice {
+                                    "+"
+                                } else {
+                                    ""
+                                }
+                            } else {
+                                ""
+                            };
+                            channel_list.push(format!("{}{}", prefix, channel.name));
+                        }
+                    }
+
+                    if !channel_list.is_empty() {
+                        let reply = server_reply(
+                            server_name,
+                            Response::RPL_WHOISCHANNELS,
+                            vec![
+                                nick.clone(),
+                                target_user.nick.clone(),
+                                channel_list.join(" "),
+                            ],
+                        );
+                        ctx.sender.send(reply).await?;
+                    }
+                }
+
+                // RPL_WHOISOPERATOR (313): <nick> :is an IRC operator
+                if target_user.modes.oper {
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_WHOISOPERATOR,
+                        vec![
+                            nick.clone(),
+                            target_user.nick.clone(),
+                            "is an IRC operator".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+
+                // RPL_WHOISACCOUNT (330): <nick> <account> :is logged in as
+                if let Some(account) = &target_user.account {
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_WHOISACCOUNT,
+                        vec![
+                            nick.clone(),
+                            target_user.nick.clone(),
+                            account.clone(),
+                            "is logged in as".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+
+                // RPL_WHOISSECURE (671): <nick> :is using a secure connection (if TLS)
+                if target_user.modes.secure {
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_WHOISSECURE,
+                        vec![
+                            nick.clone(),
+                            target_user.nick.clone(),
+                            "is using a secure connection".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+
+                // RPL_AWAY (301): <nick> :<away message>
+                if let Some(away_msg) = &target_user.away {
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_AWAY,
+                        vec![nick.clone(), target_user.nick.clone(), away_msg.clone()],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+
+                // RPL_ENDOFWHOIS (318): <nick> :End of WHOIS list - attach label for labeled-response
+                let reply = with_label(
+                    server_reply(
+                        server_name,
+                        Response::RPL_ENDOFWHOIS,
+                        vec![
+                            nick.clone(),
+                            target_user.nick.clone(),
+                            "End of WHOIS list".to_string(),
+                        ],
+                    ),
+                    ctx.label.as_deref(),
+                );
+                ctx.sender.send(reply).await?;
+
+                debug!(requester = %nick, target = %target_user.nick, "WHOIS completed");
+            } else {
+                send_no_such_nick(ctx, target).await?;
+            }
+        } else {
+            send_no_such_nick(ctx, target).await?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Send ERR_NOSUCHNICK for a target.
+async fn send_no_such_nick(ctx: &mut Context<'_>, target: &str) -> HandlerResult {
+    let server_name = &ctx.matrix.server_info.name;
+    let nick = ctx
+        .handshake
+        .nick
+        .as_ref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
+
+    let reply = server_reply(
+        server_name,
+        Response::ERR_NOSUCHNICK,
+        vec![
+            nick.clone(),
+            target.to_string(),
+            "No such nick/channel".to_string(),
+        ],
+    );
+    ctx.sender.send(reply).await?;
+
+    // Also send end of whois - attach label for labeled-response
+    let reply = with_label(
+        server_reply(
+            server_name,
+            Response::RPL_ENDOFWHOIS,
+            vec![
+                nick.clone(),
+                target.to_string(),
+                "End of WHOIS list".to_string(),
+            ],
+        ),
+        ctx.label.as_deref(),
+    );
+    ctx.sender.send(reply).await?;
+
+    Ok(())
+}
