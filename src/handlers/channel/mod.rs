@@ -26,8 +26,3 @@ pub use topic::TopicHandler;
 
 use crate::security::UserContext;
 use crate::state::ListEntry;
-
-/// Check if a ban entry matches a user, supporting both hostmask and extended bans.
-pub(super) fn matches_ban(entry: &ListEntry, user_mask: &str, user_context: &UserContext) -> bool {
-    super::matches_ban_or_except(&entry.mask, user_mask, user_context)
-}

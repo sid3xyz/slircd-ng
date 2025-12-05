@@ -9,7 +9,7 @@ mod channel;
 mod common;
 mod user;
 
-pub use channel::{apply_channel_modes_typed, format_modes_for_log};
+pub use channel::format_modes_for_log;
 
 use super::{Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;

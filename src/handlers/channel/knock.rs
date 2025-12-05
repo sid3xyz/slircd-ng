@@ -3,8 +3,10 @@
 //! RFC-style extension - Request invite to an invite-only channel
 
 use super::super::{Context, Handler, HandlerResult, err_notregistered, server_reply};
+use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{Command, MessageRef, Prefix, Response, irc_to_lower};
+use slirc_proto::{MessageRef, Response, irc_to_lower};
+use tokio::sync::oneshot;
 
 /// Handler for KNOCK command.
 ///
@@ -51,7 +53,6 @@ impl Handler for KnockHandler {
                 return Ok(());
             }
         };
-        let knock_msg = msg.arg(1);
 
         let server_name = &ctx.matrix.server_info.name;
         let channel_lower = irc_to_lower(channel_name);
@@ -67,102 +68,89 @@ impl Handler for KnockHandler {
         };
 
         // Check if channel exists
-        let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) else {
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NOSUCHCHANNEL,
-                vec![
-                    nick,
-                    channel_name.to_string(),
-                    "No such channel".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
-        };
-
-        // Check if user is already in channel
-        {
-            let channel = channel_ref.read().await;
-            if channel.is_member(ctx.uid) {
-                // ERR_KNOCKONCHAN (714) - already on channel
+        let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
+            Some(c) => c.clone(),
+            None => {
                 let reply = server_reply(
                     server_name,
-                    Response::ERR_KNOCKONCHAN,
+                    Response::ERR_NOSUCHCHANNEL,
                     vec![
                         nick,
                         channel_name.to_string(),
-                        "You're already on that channel".to_string(),
+                        "No such channel".to_string(),
                     ],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());
             }
+        };
 
-            // Check +K (no knock)
-            if channel.modes.no_knock {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
+
+        let event = ChannelEvent::Knock {
+            sender_uid: ctx.uid.to_string(),
+            sender_prefix,
+            reply_tx,
+        };
+
+        if let Err(_) = channel_tx.send(event).await {
+             return Ok(());
+        }
+
+        match reply_rx.await {
+            Ok(Ok(())) => {
                 let reply = server_reply(
                     server_name,
-                    Response::ERR_CHANOPRIVSNEEDED,
+                    Response::RPL_KNOCKDLVR,
                     vec![
                         nick,
                         channel_name.to_string(),
-                        "Knocking is disabled on this channel (+K)".to_string(),
+                        "Your knock has been delivered".to_string(),
                     ],
                 );
                 ctx.sender.send(reply).await?;
-                return Ok(());
             }
-            // Check if channel is +i (invite only)
-            if !channel.modes.invite_only {
-                // ERR_CHANOPEN (713) - channel not invite-only
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_CHANOPEN,
-                    vec![
-                        nick.clone(),
-                        channel_name.to_string(),
-                        "Channel is open, just join it".to_string(),
-                    ],
-                );
+            Ok(Err(err_code)) => {
+                let reply = match err_code.as_str() {
+                    "ERR_CANNOTKNOCK" => server_reply(
+                        server_name,
+                        Response::ERR_CHANOPRIVSNEEDED, // Fallback if ERR_CANNOTKNOCK not available, or use it if available.
+                        // Existing code used ERR_CHANOPRIVSNEEDED for +K.
+                        vec![
+                            nick.clone(),
+                            channel_name.to_string(),
+                            "Knocking is disabled on this channel (+K)".to_string(),
+                        ],
+                    ),
+                    "ERR_CHANOPEN" => server_reply(
+                        server_name,
+                        Response::ERR_CHANOPEN,
+                        vec![
+                            nick.clone(),
+                            channel_name.to_string(),
+                            "Channel is open, just join it".to_string(),
+                        ],
+                    ),
+                    "ERR_USERONCHANNEL" => server_reply(
+                        server_name,
+                        Response::ERR_KNOCKONCHAN,
+                        vec![
+                            nick.clone(),
+                            channel_name.to_string(),
+                            "You're already on that channel".to_string(),
+                        ],
+                    ),
+                    _ => server_reply(
+                        server_name,
+                        Response::ERR_UNKNOWNERROR,
+                        vec![nick.clone(), "Unknown error during KNOCK".to_string()],
+                    ),
+                };
                 ctx.sender.send(reply).await?;
-                return Ok(());
             }
+            Err(_) => {}
         }
-
-        // Build KNOCK notification for channel ops
-        let knock_text = knock_msg
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "has asked for an invite".to_string());
-        let knock_notice = slirc_proto::Message {
-            tags: None,
-            prefix: Some(Prefix::Nickname(nick.clone(), user, host)),
-            command: Command::KNOCK(channel_name.to_string(), Some(knock_text)),
-        };
-
-        // Send to channel operators
-        {
-            let channel = channel_ref.read().await;
-            for (member_uid, modes) in &channel.members {
-                if modes.op
-                    && let Some(sender) = ctx.matrix.senders.get(member_uid)
-                {
-                    let _ = sender.send(knock_notice.clone()).await;
-                }
-            }
-        }
-
-        // RPL_KNOCKDLVR (711) - knock delivered
-        let reply = server_reply(
-            server_name,
-            Response::RPL_KNOCKDLVR,
-            vec![
-                nick,
-                channel_name.to_string(),
-                "Your knock has been delivered".to_string(),
-            ],
-        );
-        ctx.sender.send(reply).await?;
 
         Ok(())
     }

@@ -74,23 +74,30 @@ impl Handler for NickHandler {
         {
             let user = user_ref.read().await;
             for channel_lower in &user.channels {
-                if let Some(channel_ref) = ctx.matrix.channels.get(channel_lower) {
-                    let channel = channel_ref.read().await;
-                    if channel.modes.no_nick_change {
-                        let reply = server_reply(
-                            &ctx.matrix.server_info.name,
-                            Response::ERR_NONICKCHANGE,
-                            vec![
-                                ctx.handshake
-                                    .nick
-                                    .clone()
-                                    .unwrap_or_else(|| "*".to_string()),
-                                channel.name.clone(),
-                                "Cannot change nickname while in this channel (+N)".to_string(),
-                            ],
-                        );
-                        ctx.sender.send(reply).await?;
-                        return Ok(());
+                if let Some(channel_sender) = ctx.matrix.channels.get(channel_lower) {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetInfo {
+                        requester_uid: Some(ctx.uid.to_string()),
+                        reply_tx: tx
+                    }).await;
+
+                    if let Ok(info) = rx.await {
+                        if info.modes.contains(&crate::state::actor::ChannelMode::NoNickChange) {
+                            let reply = server_reply(
+                                &ctx.matrix.server_info.name,
+                                Response::ERR_NONICKCHANGE,
+                                vec![
+                                    ctx.handshake
+                                        .nick
+                                        .clone()
+                                        .unwrap_or_else(|| "*".to_string()),
+                                    info.name.clone(),
+                                    "Cannot change nickname while in this channel (+N)".to_string(),
+                                ],
+                            );
+                            ctx.sender.send(reply).await?;
+                            return Ok(());
+                        }
                     }
                 }
             }

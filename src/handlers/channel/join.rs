@@ -4,61 +4,20 @@ use super::super::{
     Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state, user_prefix,
     with_label,
 };
-use super::matches_ban;
 use crate::db::ChannelRepository;
 use crate::security::UserContext;
-use crate::state::{Channel, MemberModes, User, parse_mlock};
+use crate::state::MemberModes;
 use async_trait::async_trait;
 use slirc_proto::{
     ChannelExt, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower,
 };
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use tracing::info;
 
 /// Handler for JOIN command.
 pub struct JoinHandler;
 
 /// Apply MLOCK modes to a channel's mode struct.
-///
-/// MLOCK (mode lock) ensures certain modes are always set or unset on a channel.
-/// This is typically configured via ChanServ and enforced when the channel is created.
-fn apply_mlock_to_channel(channel: &mut Channel, modes: &[Mode<ChannelMode>]) {
-    for mode in modes {
-        match mode {
-            // Simple flags (Type D - no parameters)
-            Mode::Plus(ChannelMode::NoExternalMessages, _) => channel.modes.no_external = true,
-            Mode::Minus(ChannelMode::NoExternalMessages, _) => channel.modes.no_external = false,
-            Mode::Plus(ChannelMode::ProtectedTopic, _) => channel.modes.topic_lock = true,
-            Mode::Minus(ChannelMode::ProtectedTopic, _) => channel.modes.topic_lock = false,
-            Mode::Plus(ChannelMode::Secret, _) => channel.modes.secret = true,
-            Mode::Minus(ChannelMode::Secret, _) => channel.modes.secret = false,
-            Mode::Plus(ChannelMode::InviteOnly, _) => channel.modes.invite_only = true,
-            Mode::Minus(ChannelMode::InviteOnly, _) => channel.modes.invite_only = false,
-            Mode::Plus(ChannelMode::Moderated, _) => channel.modes.moderated = true,
-            Mode::Minus(ChannelMode::Moderated, _) => channel.modes.moderated = false,
-            Mode::Plus(ChannelMode::RegisteredOnly, _) => channel.modes.registered_only = true,
-            Mode::Minus(ChannelMode::RegisteredOnly, _) => channel.modes.registered_only = false,
-            Mode::Plus(ChannelMode::NoColors, _) => channel.modes.no_colors = true,
-            Mode::Minus(ChannelMode::NoColors, _) => channel.modes.no_colors = false,
-            Mode::Plus(ChannelMode::NoCTCP, _) => channel.modes.no_ctcp = true,
-            Mode::Minus(ChannelMode::NoCTCP, _) => channel.modes.no_ctcp = false,
-            Mode::Plus(ChannelMode::NoNickChange, _) => channel.modes.no_nick_change = true,
-            Mode::Minus(ChannelMode::NoNickChange, _) => channel.modes.no_nick_change = false,
-            // Parameter modes (Type B/C)
-            Mode::Plus(ChannelMode::Key, Some(key)) => channel.modes.key = Some(key.clone()),
-            Mode::Minus(ChannelMode::Key, _) => channel.modes.key = None,
-            Mode::Plus(ChannelMode::Limit, Some(limit_str)) => {
-                if let Ok(limit) = limit_str.parse::<u32>() {
-                    channel.modes.limit = Some(limit);
-                }
-            }
-            Mode::Minus(ChannelMode::Limit, _) => channel.modes.limit = None,
-            // Skip list modes (bans, etc.) and prefix modes - not applicable for MLOCK
-            _ => {}
-        }
-    }
-}
+
 
 #[async_trait]
 impl Handler for JoinHandler {
@@ -169,10 +128,6 @@ async fn join_channel(
         (user.host.clone(), user.realname.clone())
     };
 
-    // Build user's full mask for ban/invite checks (nick!user@real_host)
-    let user_mask = format!("{}!{}@{}", nick, user_name, real_host);
-
-    // Build UserContext for extended ban checks
     let ip_addr = ctx
         .handshake
         .webirc_ip
@@ -192,11 +147,7 @@ async fn join_channel(
 
     // Check AKICK before joining
     if let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name).await {
-        // User is on the AKICK list - send a notice and refuse join
-        let reason = akick
-            .reason
-            .as_deref()
-            .unwrap_or("You are banned from this channel");
+        let reason = akick.reason.as_deref().unwrap_or("You are banned from this channel");
         let notice = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(
@@ -206,10 +157,7 @@ async fn join_channel(
             )),
             command: Command::NOTICE(
                 nick.clone(),
-                format!(
-                    "You are not permitted to be on \x02{}\x02: {}",
-                    channel_name, reason
-                ),
+                format!("You are not permitted to be on \x02{}\x02: {}", channel_name, reason),
             ),
         };
         ctx.sender.send(notice).await?;
@@ -217,286 +165,25 @@ async fn join_channel(
         return Ok(());
     }
 
-    // Get or create channel
-    let channel = ctx
+    // Check auto modes if registered
+    let initial_modes = if ctx.matrix.registered_channels.contains(&channel_lower) {
+        check_auto_modes(ctx, &channel_lower).await
+    } else {
+        None
+    };
+
+    // Get or create channel actor
+    let channel_sender = ctx
         .matrix
         .channels
         .entry(channel_lower.clone())
         .or_insert_with(|| {
             crate::metrics::ACTIVE_CHANNELS.inc();
-            Arc::new(RwLock::new(Channel::new(channel_name.to_string())))
+            crate::state::actor::ChannelActor::spawn(channel_name.to_string())
         })
         .clone();
 
-    let mut channel_guard = channel.write().await;
-
-    // Apply MLOCK for newly created registered channels
-    // A channel is "new" if it has no members yet
-    if channel_guard.members.is_empty() && ctx.matrix.registered_channels.contains(&channel_lower) {
-        // Fetch the channel record to get MLOCK settings
-        let mlock_str = ctx
-            .db
-            .channels()
-            .find_by_name(&channel_lower)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|r| r.mlock);
-
-        if let Some(mlock_str) = mlock_str {
-            let mlock_modes = parse_mlock(&mlock_str);
-            apply_mlock_to_channel(&mut channel_guard, &mlock_modes);
-            if !mlock_modes.is_empty() {
-                info!(channel = %channel_name, mlock = %mlock_str, "Applied MLOCK to new channel");
-            }
-        }
-    }
-
-    // Check if already in channel
-    if channel_guard.is_member(ctx.uid) {
-        return Ok(());
-    }
-
-    // Enforce channel access controls:
-
-    // Check if user was invited via INVITE command (used by multiple checks below)
-    let has_invite = channel_guard.invites.contains(ctx.uid);
-
-    // 0. Check Channel Key (+k) mode
-    if let Some(ref channel_key) = channel_guard.modes.key {
-        // Channel has a key set - validate provided key
-        if provided_key != Some(channel_key.as_str()) {
-            // Key missing or incorrect
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_BADCHANNELKEY,
-                vec![
-                    nick.clone(),
-                    channel_name.to_string(),
-                    "Cannot join channel (+k)".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            drop(channel_guard);
-            info!(nick = %nick, channel = %channel_name, "JOIN denied: bad/missing key");
-            return Ok(());
-        }
-    }
-
-    // 1. Check Invite-Only (+i) mode
-    if channel_guard.modes.invite_only {
-        // Check invite exception list (+I) - supports extended bans
-        let has_invex = channel_guard
-            .invex
-            .iter()
-            .any(|entry| matches_ban(entry, &user_mask, &user_context));
-
-        // Check if user was invited via INVITE command (has_invite computed above)
-
-        if !has_invex && !has_invite {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_INVITEONLYCHAN,
-                vec![
-                    nick.clone(),
-                    channel_name.to_string(),
-                    "Cannot join channel (+i)".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            drop(channel_guard);
-            info!(nick = %nick, channel = %channel_name, "JOIN denied: invite-only");
-            return Ok(());
-        }
-    }
-
-    // 1b. Check Registered-Only (+r) mode
-    if channel_guard.modes.registered_only {
-        // Determine if the user is identified (user mode +r)
-        let is_registered = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_ref.read().await;
-            user.modes.registered
-        } else {
-            false
-        };
-
-        if !is_registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NEEDREGGEDNICK,
-                vec![
-                    nick.clone(),
-                    channel_name.to_string(),
-                    "Cannot join channel (+r)".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            crate::metrics::REGISTERED_ONLY_BLOCKED.inc();
-            drop(channel_guard);
-            info!(nick = %nick, channel = %channel_name, "JOIN denied: +r registered-only");
-            return Ok(());
-        }
-    }
-
-    // 1c. Check Oper-Only (+O) mode
-    if channel_guard.modes.oper_only {
-        let is_oper = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_ref.read().await;
-            user.modes.oper
-        } else {
-            false
-        };
-
-        if !is_oper {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_INVITEONLYCHAN,
-                vec![
-                    nick.clone(),
-                    channel_name.to_string(),
-                    "Cannot join channel (+O) - Oper only".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            drop(channel_guard);
-            info!(nick = %nick, channel = %channel_name, "JOIN denied: +O oper-only");
-            return Ok(());
-        }
-    }
-
-    // 1d. Check TLS-Only (+z) mode
-    if channel_guard.modes.tls_only && !ctx.handshake.is_tls {
-        let reply = server_reply(
-            &ctx.matrix.server_info.name,
-            Response::ERR_SECUREONLYCHAN,
-            vec![
-                nick.clone(),
-                channel_name.to_string(),
-                "Cannot join channel (+z) - TLS connection required".to_string(),
-            ],
-        );
-        ctx.sender.send(reply).await?;
-        drop(channel_guard);
-        info!(nick = %nick, channel = %channel_name, "JOIN denied: +z TLS-only");
-        return Ok(());
-    }
-
-    // 2. Check ban list (+b) and ban exceptions (+e) - supports extended bans
-    let is_banned = channel_guard
-        .bans
-        .iter()
-        .any(|entry| matches_ban(entry, &user_mask, &user_context))
-        || channel_guard
-            .extended_bans
-            .iter()
-            .any(|entry| matches_ban(entry, &user_mask, &user_context));
-
-    if is_banned {
-        // Check if user has ban exception (+e) - supports extended bans
-        let has_exception = channel_guard
-            .excepts
-            .iter()
-            .any(|entry| matches_ban(entry, &user_mask, &user_context));
-
-        // Being invited also exempts from bans
-        if !has_exception && !has_invite {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_BANNEDFROMCHAN,
-                vec![
-                    nick.clone(),
-                    channel_name.to_string(),
-                    "Cannot join channel (+b)".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            crate::metrics::BANS_TRIGGERED.inc();
-            drop(channel_guard);
-            info!(nick = %nick, channel = %channel_name, "JOIN denied: banned");
-            return Ok(());
-        }
-    }
-
-    // Access checks passed, proceed with join
-
-    // Determine member modes:
-    // 1. First user of an unregistered channel gets op (+o, shown as @)
-    //    Note: We use op, not owner (~), because our PREFIX=(ov)@+ advertises only @ and +
-    // 2. If channel is registered, check access list for auto-op/voice
-    let now = chrono::Utc::now().timestamp();
-    let modes = if channel_guard.members.is_empty() {
-        MemberModes {
-            owner: false,
-            admin: false,
-            op: true,
-            halfop: false,
-            voice: false,
-            join_time: Some(now),
-        }
-    } else {
-        // Only check for auto-op/voice if channel is registered
-        if ctx.matrix.registered_channels.contains(&channel_lower) {
-            let mut member_modes = check_auto_modes(ctx, &channel_lower)
-                .await
-                .unwrap_or_default();
-            member_modes.join_time = Some(now);
-            member_modes
-        } else {
-            MemberModes {
-                join_time: Some(now),
-                ..Default::default()
-            }
-        }
-    };
-
-    // Add user to channel
-    channel_guard.add_member(ctx.uid.to_string(), modes.clone());
-    // Remove from pending invites if they were invited
-    channel_guard.invites.remove(ctx.uid);
-    let member_count = channel_guard.members.len();
-    let topic = channel_guard.topic.clone();
-    let canonical_name = channel_guard.name.clone();
-
-    drop(channel_guard);
-
-    // Update last_used timestamp for registered channels (non-blocking)
-    if ctx.matrix.registered_channels.contains(&channel_lower) {
-        let db = ctx.db.clone();
-        let channel_name = channel_lower.clone();
-        tokio::spawn(async move {
-            if let Err(e) = db.channels().touch_by_name(&channel_name).await {
-                tracing::warn!(channel = %channel_name, error = ?e, "Failed to update channel last_used");
-            }
-        });
-    }
-
-    // Add channel to user's list
-    if let Some(user) = ctx.matrix.users.get(ctx.uid) {
-        let mut user = user.write().await;
-        user.channels.insert(channel_lower.clone());
-    } else {
-        // User doesn't exist in matrix yet, create them
-        let security_config = &ctx.matrix.config.security;
-        let user = User::new(
-            ctx.uid.to_string(),
-            nick.clone(),
-            user_name.clone(),
-            realname.clone(),
-            real_host.clone(),
-            &security_config.cloak_secret,
-            &security_config.cloak_suffix,
-            ctx.handshake.capabilities.clone(),
-            ctx.handshake.certfp.clone(),
-        );
-        let user = Arc::new(RwLock::new(user));
-        ctx.matrix.users.insert(ctx.uid.to_string(), user.clone());
-        let mut user = user.write().await;
-        user.channels.insert(channel_lower.clone());
-    }
-
-    // Broadcast JOIN to all channel members (including self)
-    // For extended-join: recipients with the capability get the extended format,
-    // recipients without get the standard format
+    // Construct JOIN messages
     let (account, away_message) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
         let user = user_ref.read().await;
         (user.account.clone(), user.away.clone())
@@ -505,173 +192,150 @@ async fn join_channel(
     };
     let account_name = account.as_deref().unwrap_or("*");
 
-    // Extended JOIN format: :nick!user@host JOIN #channel account :realname
     let extended_join_msg = Message {
         tags: None,
         prefix: Some(user_prefix(&nick, &user_name, &visible_host)),
         command: Command::JOIN(
-            canonical_name.clone(),
+            channel_name.to_string(),
             Some(account_name.to_string()),
             Some(realname.clone()),
         ),
     };
 
-    // Standard JOIN format: :nick!user@host JOIN #channel
     let standard_join_msg = Message {
         tags: None,
         prefix: Some(user_prefix(&nick, &user_name, &visible_host)),
-        command: Command::JOIN(canonical_name.clone(), None, None),
+        command: Command::JOIN(channel_name.to_string(), None, None),
     };
 
-    // For labeled-response batching: send JOIN to self through ctx.sender
-    // (which will be batched with NAMES/topic if label is present)
-    // and broadcast to other members
-    let self_join_msg = if ctx.handshake.capabilities.contains("extended-join") {
-        extended_join_msg.clone()
-    } else {
-        standard_join_msg.clone()
-    };
-    ctx.sender.send(self_join_msg).await?;
+    // Send Join request
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    let _ = channel_sender.send(crate::state::actor::ChannelEvent::Join {
+        uid: ctx.uid.to_string(),
+        sender: ctx.matrix.senders.get(ctx.uid).map(|s| s.clone()).unwrap(),
+        caps: ctx.matrix.users.get(ctx.uid).unwrap().read().await.caps.clone(),
+        user_context,
+        key: provided_key.map(|s| s.to_string()),
+        initial_modes,
+        join_msg_extended: extended_join_msg.clone(),
+        join_msg_standard: standard_join_msg.clone(),
+        reply_tx,
+    }).await;
 
-    // Broadcast to other channel members (exclude self since we sent above)
-    ctx.matrix
-        .broadcast_to_channel_with_cap(
-            &channel_lower,
-            extended_join_msg,
-            Some(ctx.uid), // Exclude self - we already sent above
-            Some("extended-join"),
-            Some(standard_join_msg),
-        )
-        .await;
+    // Wait for result
+    match reply_rx.await {
+        Ok(Ok(data)) => {
+            // Success
+            // Add channel to user's list
+            if let Some(user) = ctx.matrix.users.get(&ctx.uid.to_string()) {
+                let mut user = user.write().await;
+                user.channels.insert(channel_lower.clone());
+            }
 
-    // IRCv3 away-notify: Send AWAY to channel members with away-notify cap
-    // when a user who is already away joins the channel
-    if let Some(ref away_text) = away_message {
-        let away_msg = Message {
-            tags: None,
-            prefix: Some(user_prefix(&nick, &user_name, &visible_host)),
-            command: Command::AWAY(Some(away_text.clone())),
-        };
-        // Only send to others with away-notify, exclude the joining user
-        ctx.matrix
-            .broadcast_to_channel_with_cap(
-                &channel_lower,
-                away_msg,
-                Some(ctx.uid),
-                Some("away-notify"),
-                None, // No fallback for clients without away-notify
-            )
-            .await;
-    }
-
-    // If auto-op/voice was applied, broadcast the MODE change using typed modes
-    if modes.op || modes.voice {
-        let mut mode_changes: Vec<Mode<ChannelMode>> = Vec::new();
-
-        if modes.op {
-            mode_changes.push(Mode::plus(ChannelMode::Oper, Some(&nick)));
-        }
-        if modes.voice {
-            mode_changes.push(Mode::plus(ChannelMode::Voice, Some(&nick)));
-        }
-
-        let mode_str = mode_changes.iter().map(|m| m.flag()).collect::<String>();
-
-        let mode_msg = Message {
-            tags: None,
-            prefix: Some(Prefix::Nickname(
-                "ChanServ".to_string(),
-                "ChanServ".to_string(),
-                "services.".to_string(),
-            )),
-            command: Command::ChannelMODE(canonical_name.clone(), mode_changes.clone()),
-        };
-
-        // Send MODE to self through ctx.sender (for batching with labeled-response)
-        ctx.sender.send(mode_msg.clone()).await?;
-
-        // Broadcast to other channel members (exclude self)
-        ctx.matrix
-            .broadcast_to_channel(&channel_lower, mode_msg, Some(ctx.uid))
-            .await;
-        info!(nick = %nick, channel = %canonical_name, modes = %mode_str, "Auto-modes applied");
-    }
-
-    info!(nick = %nick, channel = %canonical_name, members = member_count, "User joined channel");
-
-    // Send topic if set
-    if let Some(topic) = topic {
-        let topic_reply = server_reply(
-            &ctx.matrix.server_info.name,
-            Response::RPL_TOPIC,
-            vec![nick.clone(), canonical_name.clone(), topic.text],
-        );
-        ctx.sender.send(topic_reply).await?;
-
-        // Also send RPL_TOPICWHOTIME (333)
-        let topic_who_reply = server_reply(
-            &ctx.matrix.server_info.name,
-            Response::RPL_TOPICWHOTIME,
-            vec![
-                nick.clone(),
-                canonical_name.clone(),
-                topic.set_by,
-                topic.set_at.to_string(),
-            ],
-        );
-        ctx.sender.send(topic_who_reply).await?;
-    }
-
-    // Send NAMES list
-    // Rebuild names list with correct nicks
-    let channel_ref = if let Some(c) = ctx.matrix.channels.get(&channel_lower) {
-        c
-    } else {
-        tracing::warn!("Channel {} disappeared during JOIN processing", channel_lower);
-        return Ok(());
-    };
-    let channel = channel_ref.read().await;
-    let mut names_list = Vec::new();
-    for (uid, member_modes) in &channel.members {
-        if let Some(user) = ctx.matrix.users.get(uid) {
-            let user = user.read().await;
-            let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
-                format!("{}{}", prefix, user.nick)
+            // Send self-join message
+            let self_join_msg = if ctx.handshake.capabilities.contains("extended-join") {
+                extended_join_msg
             } else {
-                user.nick.clone()
+                standard_join_msg
             };
-            names_list.push(nick_with_prefix);
+            ctx.sender.send(self_join_msg).await?;
+
+            // Send AWAY if needed
+            if let Some(ref away_text) = away_message {
+                let away_msg = Message {
+                    tags: None,
+                    prefix: Some(user_prefix(&nick, &user_name, &visible_host)),
+                    command: Command::AWAY(Some(away_text.clone())),
+                };
+                ctx.matrix.broadcast_to_channel_with_cap(
+                    &channel_lower,
+                    away_msg,
+                    Some(ctx.uid),
+                    Some("away-notify"),
+                    None,
+                ).await;
+            }
+
+            // Send TOPIC
+            if let Some(topic) = data.topic {
+                let topic_reply = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_TOPIC,
+                    vec![nick.clone(), data.channel_name.clone(), topic.text],
+                );
+                ctx.sender.send(topic_reply).await?;
+
+                let topic_who_reply = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_TOPICWHOTIME,
+                    vec![
+                        nick.clone(),
+                        data.channel_name.clone(),
+                        topic.set_by,
+                        topic.set_at.to_string(),
+                    ],
+                );
+                ctx.sender.send(topic_who_reply).await?;
+            }
+
+            // Send NAMES
+            let mut names_list = Vec::new();
+            for (uid, member_modes) in data.members {
+                if let Some(user) = ctx.matrix.users.get(&uid) {
+                    let user = user.read().await;
+                    let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
+                        format!("{}{}", prefix, user.nick)
+                    } else {
+                        user.nick.clone()
+                    };
+                    names_list.push(nick_with_prefix);
+                }
+            }
+            let channel_symbol = if data.is_secret { "@" } else { "=" };
+
+            let names_reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::RPL_NAMREPLY,
+                vec![
+                    nick.clone(),
+                    channel_symbol.to_string(),
+                    data.channel_name.clone(),
+                    names_list.join(" "),
+                ],
+            );
+            ctx.sender.send(names_reply).await?;
+
+            let end_names = with_label(
+                server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_ENDOFNAMES,
+                    vec![
+                        nick.clone(),
+                        data.channel_name,
+                        "End of /NAMES list".to_string(),
+                    ],
+                ),
+                ctx.label.as_deref(),
+            );
+            ctx.sender.send(end_names).await?;
+        }
+        Ok(Err(reason)) => {
+            // Join failed
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_UNKNOWNERROR,
+                vec![
+                    nick.clone(),
+                    channel_name.to_string(),
+                    reason,
+                ],
+            );
+            ctx.sender.send(reply).await?;
+        }
+        Err(_) => {
+            return Err(HandlerError::Internal("Channel actor died".to_string()));
         }
     }
-    // Channel symbol per RFC 2812: @ = secret, = = public
-    let channel_symbol = if channel.modes.secret { "@" } else { "=" };
-    drop(channel);
-
-    let names_reply = server_reply(
-        &ctx.matrix.server_info.name,
-        Response::RPL_NAMREPLY,
-        vec![
-            nick.clone(),
-            channel_symbol.to_string(),
-            canonical_name.clone(),
-            names_list.join(" "),
-        ],
-    );
-    ctx.sender.send(names_reply).await?;
-
-    let end_names = with_label(
-        server_reply(
-            &ctx.matrix.server_info.name,
-            Response::RPL_ENDOFNAMES,
-            vec![
-                nick.clone(),
-                canonical_name,
-                "End of /NAMES list".to_string(),
-            ],
-        ),
-        ctx.label.as_deref(),
-    );
-    ctx.sender.send(end_names).await?;
 
     Ok(())
 }

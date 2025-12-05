@@ -1,12 +1,14 @@
 //! PART command handler.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_notonchannel, server_reply,
-    user_mask_from_state, user_prefix,
+    Context, Handler, HandlerError, HandlerResult, server_reply,
+    user_mask_from_state,
 };
+use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
-use tracing::{debug, info};
+use slirc_proto::{MessageRef, Response, irc_to_lower, Prefix};
+use tokio::sync::oneshot;
+use tracing::info;
 
 /// Handler for PART command.
 pub struct PartHandler;
@@ -50,7 +52,7 @@ pub(super) async fn leave_channel_internal(
     reason: Option<&str>,
 ) -> HandlerResult {
     // Check if channel exists
-    let channel = match ctx.matrix.channels.get(channel_lower) {
+    let channel_sender = match ctx.matrix.channels.get(channel_lower) {
         Some(c) => c.clone(),
         None => {
             let reply = server_reply(
@@ -67,59 +69,59 @@ pub(super) async fn leave_channel_internal(
         }
     };
 
-    let mut channel_guard = channel.write().await;
+    let prefix = Prefix::Nickname(
+        nick.to_string(),
+        user_name.to_string(),
+        host.to_string(),
+    );
 
-    // Check if user is in channel
-    if !channel_guard.is_member(ctx.uid) {
-        ctx.sender
-            .send(err_notonchannel(
-                &ctx.matrix.server_info.name,
-                nick,
-                &channel_guard.name,
-            ))
-            .await?;
+    let (reply_tx, reply_rx) = oneshot::channel();
+    let event = ChannelEvent::Part {
+        uid: ctx.uid.to_string(),
+        reason: reason.map(|s| s.to_string()),
+        prefix,
+        reply_tx,
+    };
+
+    if let Err(_) = channel_sender.send(event).await {
+        // Channel actor died, remove it
+        ctx.matrix.channels.remove(channel_lower);
         return Ok(());
     }
 
-    let canonical_name = channel_guard.name.clone();
+    match reply_rx.await {
+        Ok(Ok(remaining_members)) => {
+            // Success
+            // Remove channel from user's list
+            if let Some(user) = ctx.matrix.users.get(ctx.uid) {
+                let mut user = user.write().await;
+                user.channels.remove(channel_lower);
+            }
 
-    // Broadcast PART before removing
-    let part_msg = Message {
-        tags: None,
-        prefix: Some(user_prefix(nick, user_name, host)),
-        command: Command::PART(canonical_name.clone(), reason.map(String::from)),
-    };
+            if remaining_members == 0 {
+                 ctx.matrix.channels.remove(channel_lower);
+                 crate::metrics::ACTIVE_CHANNELS.dec();
+            }
 
-    // Broadcast to all members including self
-    for uid in channel_guard.members.keys() {
-        if let Some(sender) = ctx.matrix.senders.get(uid) {
-            let _ = sender.send(part_msg.clone()).await;
+            info!(nick = %nick, channel = %channel_lower, "User left channel");
+        }
+        Ok(Err(e)) => {
+             let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_NOTONCHANNEL,
+                vec![
+                    nick.to_string(),
+                    channel_lower.to_string(),
+                    e,
+                ],
+            );
+            ctx.sender.send(reply).await?;
+        }
+        Err(_) => {
+             // Actor dropped
+             ctx.matrix.channels.remove(channel_lower);
         }
     }
-
-    // Remove user from channel
-    channel_guard.remove_member(ctx.uid);
-    let is_empty = channel_guard.members.is_empty();
-    let is_permanent = channel_guard.modes.permanent;
-
-    drop(channel_guard);
-
-    // Remove channel from user's list
-    if let Some(user) = ctx.matrix.users.get(ctx.uid) {
-        let mut user = user.write().await;
-        user.channels.remove(channel_lower);
-    }
-
-    // If channel is now empty and not permanent (+P), remove it
-    if is_empty && !is_permanent {
-        ctx.matrix.channels.remove(channel_lower);
-        crate::metrics::ACTIVE_CHANNELS.dec();
-        debug!(channel = %canonical_name, "Channel removed (empty)");
-    } else if is_empty && is_permanent {
-        debug!(channel = %canonical_name, "Channel kept alive (+P permanent)");
-    }
-
-    info!(nick = %nick, channel = %canonical_name, "User left channel");
 
     Ok(())
 }

@@ -2,10 +2,12 @@
 
 use super::super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_usernotinchannel,
-    server_reply, user_mask_from_state, user_prefix,
+    server_reply, user_mask_from_state,
 };
+use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
+use slirc_proto::{MessageRef, Response, irc_to_lower};
+use tokio::sync::oneshot;
 use tracing::info;
 
 /// Handler for KICK command.
@@ -21,19 +23,19 @@ impl Handler for KickHandler {
         // KICK <channel> <nick> [reason]
         let channel_name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let target_nick = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
-        let reason = msg.arg(2);
+        let reason_str = msg.arg(2).unwrap_or(target_nick).to_string();
 
         if channel_name.is_empty() || target_nick.is_empty() {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+        let (nick, user, host) = user_mask_from_state(ctx, ctx.uid)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
         let channel_lower = irc_to_lower(channel_name);
 
         // Get channel
-        let channel = match ctx.matrix.channels.get(&channel_lower) {
+        let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
                 let reply = server_reply(
@@ -49,45 +51,6 @@ impl Handler for KickHandler {
                 return Ok(());
             }
         };
-
-        let mut channel_guard = channel.write().await;
-
-        // Check if kicker is op
-        if !channel_guard.is_op(ctx.uid) {
-            ctx.sender
-                .send(err_chanoprivsneeded(
-                    &ctx.matrix.server_info.name,
-                    &nick,
-                    &channel_guard.name,
-                ))
-                .await?;
-            return Ok(());
-        }
-
-        // Check +u (no kick / peace mode) - only opers can kick
-        if channel_guard.modes.no_kick {
-            // Check if user is an IRC operator
-            let is_oper = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                user.modes.oper
-            } else {
-                false
-            };
-
-            if !is_oper {
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_CHANOPRIVSNEEDED,
-                    vec![
-                        nick.clone(),
-                        channel_guard.name.clone(),
-                        "Cannot kick users while channel is in peace mode (+u)".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
-                return Ok(());
-            }
-        }
 
         // Find target user
         let target_lower = irc_to_lower(target_nick);
@@ -108,58 +71,64 @@ impl Handler for KickHandler {
             }
         };
 
-        // Check if target is in channel
-        if !channel_guard.is_member(&target_uid) {
-            ctx.sender
-                .send(err_usernotinchannel(
-                    &ctx.matrix.server_info.name,
-                    &nick,
-                    target_nick,
-                    &channel_guard.name,
-                ))
-                .await?;
-            return Ok(());
-        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
 
-        let canonical_name = channel_guard.name.clone();
-        let kick_reason = reason
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| nick.clone());
-
-        // Broadcast KICK to channel (before removing)
-        let kick_msg = Message {
-            tags: None,
-            prefix: Some(user_prefix(&nick, &user_name, &host)),
-            command: Command::KICK(
-                canonical_name.clone(),
-                target_nick.to_string(),
-                Some(kick_reason),
-            ),
+        let event = ChannelEvent::Kick {
+            sender_uid: ctx.uid.to_string(),
+            sender_prefix,
+            target_uid: target_uid.clone(),
+            target_nick: target_nick.to_string(),
+            reason: reason_str,
+            force: false,
+            reply_tx,
         };
 
-        for uid in channel_guard.members.keys() {
-            if let Some(sender) = ctx.matrix.senders.get(uid) {
-                let _ = sender.send(kick_msg.clone()).await;
+        if let Err(_) = channel_tx.send(event).await {
+             return Ok(());
+        }
+
+        match reply_rx.await {
+            Ok(Ok(())) => {
+                // Success.
+                // We also need to remove channel from target's user struct.
+                if let Some(user) = ctx.matrix.users.get(&target_uid) {
+                    let mut user = user.write().await;
+                    user.channels.remove(&channel_lower);
+                }
+
+                info!(
+                    kicker = %nick,
+                    target = %target_nick,
+                    channel = %channel_name,
+                    "User kicked from channel"
+                );
             }
+            Ok(Err(err_code)) => {
+                let reply = match err_code.as_str() {
+                    "ERR_CHANOPRIVSNEEDED" => err_chanoprivsneeded(
+                        &ctx.matrix.server_info.name,
+                        &nick,
+                        channel_name,
+                    ),
+                    "ERR_USERNOTINCHANNEL" => err_usernotinchannel(
+                        &ctx.matrix.server_info.name,
+                        &nick,
+                        target_nick,
+                        channel_name,
+                    ),
+                    _ => {
+                         server_reply(
+                            &ctx.matrix.server_info.name,
+                            Response::ERR_UNKNOWNERROR,
+                            vec![nick.clone(), "Unknown error during KICK".to_string()],
+                        )
+                    }
+                };
+                ctx.sender.send(reply).await?;
+            }
+            Err(_) => {}
         }
-
-        // Remove target from channel
-        channel_guard.remove_member(&target_uid);
-
-        drop(channel_guard);
-
-        // Remove channel from target's list
-        if let Some(user) = ctx.matrix.users.get(&target_uid) {
-            let mut user = user.write().await;
-            user.channels.remove(&channel_lower);
-        }
-
-        info!(
-            kicker = %nick,
-            target = %target_nick,
-            channel = %canonical_name,
-            "User kicked from channel"
-        );
 
         Ok(())
     }

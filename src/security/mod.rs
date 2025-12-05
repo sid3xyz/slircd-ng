@@ -37,3 +37,46 @@ pub use cloaking::{cloak_hostname, cloak_ip_hmac};
 pub use ip_deny_list::{BanMetadata, IpDenyList};
 pub use rate_limit::RateLimitManager;
 pub use xlines::{ExtendedBan, UserContext, matches_extended_ban};
+
+/// Check if a user mask matches a pattern (wildcard support).
+///
+/// Wraps slirc-proto's glob matching for consistent behavior.
+pub fn matches_hostmask(pattern: &str, user_mask: &str) -> bool {
+    let pattern_regex = regex::escape(pattern)
+        .replace(r"\*", ".*")
+        .replace(r"\?", ".");
+    if let Ok(re) = regex::RegexBuilder::new(&format!("^{}$", pattern_regex))
+        .case_insensitive(true)
+        .build()
+    {
+        re.is_match(user_mask)
+    } else {
+        false
+    }
+}
+
+/// Check if a ban/exception entry matches a user, supporting both hostmask and extended bans.
+///
+/// This is the unified helper used by JOIN and speak paths for consistent extended ban handling.
+///
+/// # Arguments
+/// * `mask` - The ban mask (either nick!user@host or $type:pattern)
+/// * `user_mask` - The user's full hostmask (nick!user@host)
+/// * `user_context` - Full user context for extended ban matching
+pub fn matches_ban_or_except(
+    mask: &str,
+    user_mask: &str,
+    user_context: &UserContext,
+) -> bool {
+    if mask.starts_with('$') {
+        // Extended ban format ($a:account, $r:realname, etc.)
+        if let Some(extban) = ExtendedBan::parse(mask) {
+            matches_extended_ban(&extban, user_context)
+        } else {
+            false
+        }
+    } else {
+        // Traditional nick!user@host pattern
+        matches_hostmask(mask, user_mask)
+    }
+}

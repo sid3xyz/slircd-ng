@@ -6,8 +6,10 @@ use super::super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
     err_notregistered, server_reply, user_mask_from_state,
 };
+use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{Command, MessageRef, Response, irc_to_lower};
+use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
+use tokio::sync::oneshot;
 
 /// Handler for INVITE command.
 ///
@@ -74,115 +76,108 @@ impl Handler for InviteHandler {
         };
 
         // Check if channel exists
-        if let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) {
-            let channel = channel_ref.read().await;
-
+        if let Some(channel_tx) = ctx.matrix.channels.get(&channel_lower) {
             // Check if user is on channel
-            if !channel.is_member(ctx.uid) {
+            let user_in_channel = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
+                 let user = user.read().await;
+                 user.channels.contains(&channel_lower)
+            } else {
+                 false
+            };
+
+            if !user_in_channel {
                 ctx.sender
                     .send(err_notonchannel(server_name, nick, channel_name))
                     .await?;
                 return Ok(());
             }
 
-            // Check if target already on channel
-            if channel.is_member(&target_uid) {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_USERONCHANNEL,
-                    vec![
-                        nick.clone(),
-                        target_nick.to_string(),
-                        channel_name.to_string(),
-                        "is already on channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
-                return Ok(());
+            let (reply_tx, reply_rx) = oneshot::channel();
+            let (nick, user, host) = user_mask_from_state(ctx, ctx.uid)
+                .await
+                .ok_or(HandlerError::NickOrUserMissing)?;
+            let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
+
+            let event = ChannelEvent::Invite {
+                sender_uid: ctx.uid.to_string(),
+                sender_prefix: sender_prefix.clone(),
+                target_uid: target_uid.clone(),
+                target_nick: target_nick.to_string(),
+                force: false,
+                reply_tx,
+            };
+
+            if let Err(_) = channel_tx.send(event).await {
+                 return Ok(());
             }
 
-            // If channel is +V (no invite), block invite
-            if channel.modes.no_invite {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_CHANOPRIVSNEEDED,
-                    vec![
-                        nick.clone(),
-                        channel_name.to_string(),
-                        "Invites are disabled on this channel (+V)".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
-                return Ok(());
-            }
+            match reply_rx.await {
+                Ok(Ok(())) => {
+                    // Success, invite recorded in channel.
+                    // Now send INVITE message to target user.
 
-            // If channel is +i but not +g, check if user is op
-            if channel.modes.invite_only && !channel.modes.free_invite && !channel.is_op(ctx.uid) {
-                ctx.sender
-                    .send(err_chanoprivsneeded(server_name, nick, channel_name))
-                    .await?;
-                return Ok(());
-            }
+                    let invite_msg = Message {
+                        tags: None,
+                        prefix: Some(sender_prefix),
+                        command: if channel_first {
+                            Command::INVITE(channel_name.to_string(), target_nick.to_string())
+                        } else {
+                            Command::INVITE(target_nick.to_string(), channel_name.to_string())
+                        },
+                    };
 
-            drop(channel);
+                    if let Some(target_sender) = ctx.matrix.senders.get(&target_uid) {
+                        let _ = target_sender.send(invite_msg).await;
+                    }
 
-            // Add target to channel's invite list
-            if let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) {
-                let mut channel = channel_ref.write().await;
-                channel.invites.insert(target_uid.clone());
+                    // RPL_INVITING (341)
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_INVITING,
+                        vec![nick.clone(), target_nick.to_string(), channel_name.to_string()],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+                Ok(Err(err_code)) => {
+                    let reply = match err_code.as_str() {
+                        "ERR_CHANOPRIVSNEEDED" => err_chanoprivsneeded(
+                            server_name,
+                            &nick,
+                            channel_name,
+                        ),
+                        "ERR_USERONCHANNEL" => server_reply(
+                            server_name,
+                            Response::ERR_USERONCHANNEL,
+                            vec![
+                                nick.clone(),
+                                target_nick.to_string(),
+                                channel_name.to_string(),
+                                "is already on channel".to_string(),
+                            ],
+                        ),
+                        _ => server_reply(
+                            server_name,
+                            Response::ERR_UNKNOWNERROR,
+                            vec![nick.clone(), "Unknown error during INVITE".to_string()],
+                        ),
+                    };
+                    ctx.sender.send(reply).await?;
+                }
+                Err(_) => {}
             }
         } else {
-            // Channel doesn't exist - some servers allow inviting to non-existent channels
-            // We'll allow it for now
+             // Channel doesn't exist.
+             let reply = server_reply(
+                server_name,
+                Response::ERR_NOSUCHCHANNEL,
+                vec![
+                    nick.clone(),
+                    channel_name.to_string(),
+                    "No such channel".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
         }
-
-        // Build the INVITE message - preserve the original argument order
-        let (_, _, host) = user_mask_from_state(ctx, ctx.uid)
-            .await
-            .ok_or(HandlerError::NickOrUserMissing)?;
-
-        let invite_msg = slirc_proto::Message {
-            tags: None,
-            prefix: Some(slirc_proto::Prefix::Nickname(
-                nick.clone(),
-                ctx.handshake.user.clone().unwrap_or_default(),
-                host,
-            )),
-            command: if channel_first {
-                Command::INVITE(channel_name.to_string(), target_nick.to_string())
-            } else {
-                Command::INVITE(target_nick.to_string(), channel_name.to_string())
-            },
-        };
-
-        // Send INVITE to target user
-        if let Some(sender) = ctx.matrix.senders.get(&target_uid) {
-            let _ = sender.send(invite_msg.clone()).await;
-        }
-
-        // IRCv3 invite-notify: broadcast INVITE to channel members who have the capability
-        // Exclude the target user (they already received the direct INVITE)
-        ctx.matrix
-            .broadcast_to_channel_with_cap(
-                &channel_lower,
-                invite_msg,
-                Some(&target_uid),
-                Some("invite-notify"),
-                None, // No fallback - clients without cap receive nothing
-            )
-            .await;
-
-        // RPL_INVITING (341)
-        let reply = server_reply(
-            server_name,
-            Response::RPL_INVITING,
-            vec![
-                nick.clone(),
-                target_nick.to_string(),
-                channel_name.to_string(),
-            ],
-        );
-        ctx.sender.send(reply).await?;
 
         Ok(())
     }

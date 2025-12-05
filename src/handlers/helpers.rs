@@ -187,28 +187,4 @@ pub fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
 // Ban matching (extended bans + hostmask via proto)
 // ============================================================================
 
-/// Check if a ban/exception entry matches a user, supporting both hostmask and extended bans.
-///
-/// This is the unified helper used by JOIN and speak paths for consistent extended ban handling.
-///
-/// # Arguments
-/// * `mask` - The ban mask (either nick!user@host or $type:pattern)
-/// * `user_mask` - The user's full hostmask (nick!user@host)
-/// * `user_context` - Full user context for extended ban matching
-pub fn matches_ban_or_except(
-    mask: &str,
-    user_mask: &str,
-    user_context: &crate::security::UserContext,
-) -> bool {
-    if mask.starts_with('$') {
-        // Extended ban format ($a:account, $r:realname, etc.)
-        if let Some(extban) = crate::security::ExtendedBan::parse(mask) {
-            crate::security::matches_extended_ban(&extban, user_context)
-        } else {
-            false
-        }
-    } else {
-        // Traditional nick!user@host pattern
-        matches_hostmask(mask, user_mask)
-    }
-}
+

@@ -119,11 +119,10 @@ impl Handler for NoticeHandler {
 
         // NOTICE: silently drop on errors, check moderated, no away reply
         let opts = RouteOptions {
-            check_moderated: true,
             send_away_reply: false,
             is_notice: true,
-            strip_colors: true,
             block_ctcp: true,
+            status_prefix: None,
         };
 
         // STATUSMSG support: @#channel sends to ops, +#channel sends to voiced+

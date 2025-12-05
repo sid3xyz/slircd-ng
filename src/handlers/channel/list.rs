@@ -37,10 +37,20 @@ impl Handler for ListHandler {
 
         // Iterate channels
         for channel_ref in ctx.matrix.channels.iter() {
-            let channel = channel_ref.read().await;
+            let sender = channel_ref.value();
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = sender.send(crate::state::actor::ChannelEvent::GetInfo {
+                requester_uid: Some(ctx.uid.to_string()),
+                reply_tx: tx
+            }).await;
+
+            let channel = match rx.await {
+                Ok(info) => info,
+                Err(_) => continue,
+            };
 
             // Skip secret channels unless user is a member
-            if channel.modes.secret && !channel.is_member(ctx.uid) {
+            if channel.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel.is_member {
                 continue;
             }
 
@@ -64,7 +74,7 @@ impl Handler for ListHandler {
                 vec![
                     nick.clone(),
                     channel.name.clone(),
-                    channel.members.len().to_string(),
+                    channel.member_count.to_string(),
                     topic_text,
                 ],
             );

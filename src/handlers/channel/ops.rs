@@ -4,12 +4,10 @@
 //! These functions perform the core channel membership operations without
 //! permission checks, allowing callers to implement their own access control.
 
-use super::super::{Context, HandlerResult, server_reply, user_prefix, with_label};
-use crate::state::{Channel, MemberModes};
+use super::super::{Context, HandlerResult, HandlerError, server_reply, with_label};
+use crate::state::MemberModes;
 use slirc_proto::{Command, Message, Prefix, Response, irc_to_lower};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tracing::{debug, info};
+use tracing::info;
 
 /// Target user information for channel operations.
 ///
@@ -62,21 +60,76 @@ pub async fn force_join_channel(
         .entry(channel_lower.clone())
         .or_insert_with(|| {
             crate::metrics::ACTIVE_CHANNELS.inc();
-            Arc::new(RwLock::new(Channel::new(channel_name.to_string())))
+            crate::state::actor::ChannelActor::spawn(channel_name.to_string())
         })
         .clone();
 
-    // Add user to channel
-    let (topic, canonical_name, member_count) = {
-        let mut channel = channel_ref.write().await;
-        if !channel.is_member(target.uid) {
-            channel.add_member(target.uid.to_string(), modes.clone());
-        }
-        (
-            channel.topic.clone(),
-            channel.name.clone(),
-            channel.members.len(),
-        )
+    // Get user data
+    let (caps, user_context, sender) = if let Some(user_ref) = ctx.matrix.users.get(target.uid) {
+        let user = user_ref.read().await;
+        let context = crate::security::UserContext::for_registration(
+            "0.0.0.0".parse().unwrap(),
+            user.host.clone(),
+            user.nick.clone(),
+            user.user.clone(),
+            user.realname.clone(),
+            ctx.matrix.server_info.name.clone(),
+            user.account.clone(),
+        );
+        let sender = ctx.matrix.senders.get(target.uid).map(|s| s.clone());
+        (user.caps.clone(), context, sender)
+    } else {
+        return Ok(());
+    };
+
+    let Some(sender) = sender else { return Ok(()); };
+
+    // Prepare messages
+    let prefix = Some(Prefix::Nickname(
+        target.nick.to_string(),
+        target.user.to_string(),
+        target.host.to_string(),
+    ));
+
+    let join_msg_standard = Message {
+        tags: None,
+        prefix: prefix.clone(),
+        command: Command::JOIN(channel_name.to_string(), None, None),
+    };
+
+    let account = user_context.account.as_deref().unwrap_or("*");
+    let join_msg_extended = Message {
+        tags: None,
+        prefix: prefix.clone(),
+        command: Command::JOIN(
+            channel_name.to_string(),
+            Some(account.to_string()),
+            Some(user_context.realname.clone()),
+        ),
+    };
+
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+
+    let event = crate::state::actor::ChannelEvent::Join {
+        uid: target.uid.to_string(),
+        sender: sender.clone(),
+        caps,
+        user_context,
+        key: None,
+        initial_modes: Some(modes),
+        join_msg_extended,
+        join_msg_standard,
+        reply_tx,
+    };
+
+    if let Err(_) = channel_ref.send(event).await {
+        return Err(HandlerError::Internal("Channel actor died".to_string()));
+    }
+
+    let join_data = match reply_rx.await {
+        Ok(Ok(data)) => data,
+        Ok(Err(e)) => return Err(HandlerError::Internal(e)),
+        Err(_) => return Err(HandlerError::Internal("Channel actor died".to_string())),
     };
 
     // Add channel to user's list
@@ -85,47 +138,28 @@ pub async fn force_join_channel(
         user.channels.insert(channel_lower.clone());
     }
 
-    // Build and broadcast JOIN message
-    let join_msg = Message {
-        tags: None,
-        prefix: Some(Prefix::Nickname(
-            target.nick.to_string(),
-            target.user.to_string(),
-            target.host.to_string(),
-        )),
-        command: Command::JOIN(canonical_name.clone(), None, None),
-    };
-    ctx.matrix
-        .broadcast_to_channel(&channel_lower, join_msg, None)
-        .await;
-
     info!(
         nick = %target.nick,
-        channel = %canonical_name,
-        members = member_count,
+        channel = %join_data.channel_name,
+        members = join_data.members.len(),
         "User joined channel"
     );
 
     // Send topic and names to joining user if requested
     if let Some(sender) = send_topic_names_to {
         // Send topic if set
-        if let Some(topic) = topic {
+        if let Some(topic) = join_data.topic {
             let topic_reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::RPL_TOPIC,
-                vec![target.nick.to_string(), canonical_name.clone(), topic.text],
+                vec![target.nick.to_string(), join_data.channel_name.clone(), topic.text],
             );
             sender.send(topic_reply).await?;
         }
 
-        // Send NAMES list (channel may have disappeared between operations)
-        let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) else {
-            tracing::warn!(channel = %channel_lower, "Channel vanished before NAMES emit");
-            return Ok(());
-        };
-        let channel = channel_ref.read().await;
+        // Send NAMES list
         let mut names_list = Vec::new();
-        for (uid, member_modes) in &channel.members {
+        for (uid, member_modes) in &join_data.members {
             if let Some(user) = ctx.matrix.users.get(uid) {
                 let user = user.read().await;
                 let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
@@ -137,8 +171,7 @@ pub async fn force_join_channel(
             }
         }
         // Channel symbol per RFC 2812: @ = secret, = = public
-        let channel_symbol = if channel.modes.secret { "@" } else { "=" };
-        drop(channel);
+        let channel_symbol = if join_data.is_secret { "@" } else { "=" };
 
         let names_reply = server_reply(
             &ctx.matrix.server_info.name,
@@ -146,7 +179,7 @@ pub async fn force_join_channel(
             vec![
                 target.nick.to_string(),
                 channel_symbol.to_string(),
-                canonical_name.clone(),
+                join_data.channel_name.clone(),
                 names_list.join(" "),
             ],
         );
@@ -158,7 +191,7 @@ pub async fn force_join_channel(
                 Response::RPL_ENDOFNAMES,
                 vec![
                     target.nick.to_string(),
-                    canonical_name,
+                    join_data.channel_name.clone(),
                     "End of /NAMES list".to_string(),
                 ],
             ),
@@ -194,56 +227,48 @@ pub async fn force_part_channel(
     reason: Option<&str>,
 ) -> Result<bool, super::super::HandlerError> {
     // Get channel reference
-    let Some(channel_ref) = ctx.matrix.channels.get(channel_lower).map(|r| r.clone()) else {
-        return Ok(false);
+    let channel_sender = match ctx.matrix.channels.get(channel_lower) {
+        Some(c) => c.clone(),
+        None => return Ok(false),
     };
 
-    let mut channel_guard = channel_ref.write().await;
+    let prefix = slirc_proto::Prefix::Nickname(
+        target.nick.to_string(),
+        target.user.to_string(),
+        target.host.to_string(),
+    );
 
-    // Check if user is in channel
-    if !channel_guard.is_member(target.uid) {
-        return Ok(false);
-    }
-
-    let canonical_name = channel_guard.name.clone();
-
-    // Broadcast PART before removing
-    let part_msg = Message {
-        tags: None,
-        prefix: Some(user_prefix(target.nick, target.user, target.host)),
-        command: Command::PART(canonical_name.clone(), reason.map(String::from)),
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    let event = crate::state::actor::ChannelEvent::Part {
+        uid: target.uid.to_string(),
+        reason: reason.map(|s| s.to_string()),
+        prefix,
+        reply_tx,
     };
 
-    // Broadcast to all members including target
-    for uid in channel_guard.members.keys() {
-        if let Some(sender) = ctx.matrix.senders.get(uid) {
-            let _ = sender.send(part_msg.clone()).await;
-        }
-    }
-
-    // Remove user from channel
-    channel_guard.remove_member(target.uid);
-    let is_empty = channel_guard.members.is_empty();
-    let is_permanent = channel_guard.modes.permanent;
-
-    drop(channel_guard);
-
-    // Remove channel from user's list
-    if let Some(user) = ctx.matrix.users.get(target.uid) {
-        let mut user = user.write().await;
-        user.channels.remove(channel_lower);
-    }
-
-    // If channel is now empty and not permanent (+P), remove it
-    if is_empty && !is_permanent {
+    if let Err(_) = channel_sender.send(event).await {
+        // Channel actor died, remove it
         ctx.matrix.channels.remove(channel_lower);
-        crate::metrics::ACTIVE_CHANNELS.dec();
-        debug!(channel = %canonical_name, "Channel removed (empty)");
-    } else if is_empty && is_permanent {
-        debug!(channel = %canonical_name, "Channel kept alive (+P permanent)");
+        return Ok(false);
     }
 
-    info!(nick = %target.nick, channel = %canonical_name, "User left channel");
+    match reply_rx.await {
+        Ok(Ok(remaining_members)) => {
+            // Success
+            // Remove channel from user's list
+            if let Some(user) = ctx.matrix.users.get(target.uid) {
+                let mut user = user.write().await;
+                user.channels.remove(channel_lower);
+            }
 
-    Ok(true)
+            if remaining_members == 0 {
+                 ctx.matrix.channels.remove(channel_lower);
+                 crate::metrics::ACTIVE_CHANNELS.dec();
+            }
+
+            Ok(true)
+        }
+        Ok(Err(_)) => Ok(false), // User not in channel
+        Err(_) => Ok(false), // Actor dropped
+    }
 }

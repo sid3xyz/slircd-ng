@@ -389,31 +389,26 @@ async fn deliver_multiline_to_channel(
         return Ok(());
     };
 
-    let channel = channel_ref.read().await;
+    // Get list of members
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    if let Err(_) = channel_ref.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await {
+        return Ok(());
+    }
+    let member_uids = match rx.await {
+        Ok(members) => members.into_iter().map(|(u, _)| u).collect::<Vec<_>>(),
+        Err(_) => return Ok(()),
+    };
 
     // Get list of members and their UIDs
-    let members: Vec<(String, String)> = channel
-        .members
-        .keys()
-        .map(|uid| {
-            let nick = ctx
-                .matrix
-                .users
-                .get(uid)
-                .map(|u| {
-                    // Can't await here, so we need to use try_read
-                    if let Ok(guard) = u.try_read() {
-                        guard.nick.clone()
-                    } else {
-                        uid.clone()
-                    }
-                })
-                .unwrap_or_else(|| uid.clone());
-            (uid.clone(), nick)
-        })
-        .collect();
-
-    drop(channel);
+    let mut members: Vec<(String, String)> = Vec::new();
+    for uid in member_uids {
+        let nick = if let Some(user) = ctx.matrix.users.get(&uid) {
+             user.read().await.nick.clone()
+        } else {
+             uid.clone()
+        };
+        members.push((uid, nick));
+    }
 
     // Generate a unique batch reference, msgid, and server_time for outgoing
     // ALL recipients must receive the same msgid and time per IRCv3 spec

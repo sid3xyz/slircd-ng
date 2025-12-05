@@ -7,7 +7,7 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    Context, Handler, HandlerResult, TargetUser, apply_channel_modes_typed, err_needmoreparams,
+    Context, Handler, HandlerResult, TargetUser, err_needmoreparams,
     err_nosuchchannel, err_nosuchnick, force_join_channel, force_part_channel,
     format_modes_for_log, require_oper, resolve_nick_to_uid, server_notice, server_reply,
 };
@@ -404,33 +404,51 @@ impl Handler for SamodeHandler {
             }
         };
 
-        // Apply modes to channel state
-        let mut channel_guard = channel.write().await;
-        let canonical_name = channel_guard.name.clone();
+        // Resolve target UIDs for user modes
+        let mut target_uids = std::collections::HashMap::new();
+        for mode in &typed_modes {
+            match mode.mode() {
+                slirc_proto::mode::ChannelMode::Oper | slirc_proto::mode::ChannelMode::Voice => {
+                    if let Some(nick) = mode.arg() {
+                        let nick_lower = irc_to_lower(nick);
+                        if let Some(uid) = ctx.matrix.nicks.get(&nick_lower) {
+                            target_uids.insert(nick.to_string(), uid.value().clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
 
-        let applied_modes = apply_channel_modes_typed(ctx, &mut channel_guard, &typed_modes)?;
+        // Apply modes to channel state
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        if let Err(_) = channel.send(crate::state::actor::ChannelEvent::ApplyModes {
+            sender_uid: ctx.uid.to_string(),
+            sender_prefix: slirc_proto::Prefix::ServerName(server_name.clone()),
+            modes: typed_modes,
+            target_uids,
+            force: true,
+            reply_tx,
+        }).await {
+             return Ok(()); // Channel died
+        }
+
+        let applied_modes = match reply_rx.await {
+            Ok(Ok(m)) => m,
+            Ok(Err(e)) => {
+                ctx.sender.send(server_notice(server_name, &oper_nick, format!("SAMODE error: {e}"))).await?;
+                return Ok(());
+            }
+            Err(_) => return Ok(()),
+        };
 
         if !applied_modes.is_empty() {
-            // Broadcast as server using typed Command
-            let mode_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(server_name.clone())),
-                command: Command::ChannelMODE(canonical_name.clone(), applied_modes.clone()),
-            };
-
-            // Broadcast to all channel members
-            for uid in channel_guard.members.keys() {
-                if let Some(sender) = ctx.matrix.senders.get(uid) {
-                    let _ = sender.send(mode_msg.clone()).await;
-                }
-            }
-
             // Format modes for logging
             let modes_str = format_modes_for_log(&applied_modes);
 
             tracing::info!(
                 oper = %oper_nick,
-                channel = %canonical_name,
+                channel = %channel_name,
                 modes = %modes_str,
                 "SAMODE: Server mode change applied"
             );
@@ -440,7 +458,7 @@ impl Handler for SamodeHandler {
                 .send(server_notice(
                     server_name,
                     &oper_nick,
-                    format!("SAMODE: {canonical_name} {modes_str}"),
+                    format!("SAMODE: {channel_name} {modes_str}"),
                 ))
                 .await?;
         } else {
@@ -449,7 +467,7 @@ impl Handler for SamodeHandler {
                 .send(server_notice(
                     server_name,
                     &oper_nick,
-                    format!("SAMODE: {canonical_name} (no modes applied)"),
+                    format!("SAMODE: {channel_name} (no modes applied)"),
                 ))
                 .await?;
         }
