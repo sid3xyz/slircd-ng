@@ -1,8 +1,8 @@
 //! PING and PONG handlers.
 
-use super::super::{Context, Handler, HandlerResult};
+use super::super::{Context, Handler, HandlerResult, err_needmoreparams, with_label};
 use async_trait::async_trait;
-use slirc_proto::{Message, MessageRef};
+use slirc_proto::{Message, MessageRef, prefix::Prefix};
 
 /// Handler for PING command.
 pub struct PingHandler;
@@ -11,11 +11,26 @@ pub struct PingHandler;
 impl Handler for PingHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         // PING <token>
-        // Response: PONG <server> <token>
-        let token = msg.arg(0).unwrap_or("");
+        // Response: :<server> PONG <server> <token>
+        // Per RFC 1459: PING requires at least one parameter
+        let token = match msg.arg(0) {
+            Some(t) if !t.is_empty() => t,
+            _ => {
+                // No token provided - return ERR_NEEDMOREPARAMS (461)
+                let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
+                let reply = err_needmoreparams(&ctx.matrix.server_info.name, nick, "PING");
+                let reply = with_label(reply, ctx.label.as_deref());
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+        };
         let server_name = &ctx.matrix.server_info.name;
 
-        let pong = Message::pong_with_token(server_name, token);
+        // PONG must have server prefix for clients to properly match responses
+        let pong = Message::pong_with_token(server_name, token)
+            .with_prefix(Prefix::ServerName(server_name.clone()));
+        // Attach label for labeled-response capability
+        let pong = with_label(pong, ctx.label.as_deref());
         ctx.sender.send(pong).await?;
 
         Ok(())
@@ -36,25 +51,5 @@ impl Handler for PongHandler {
 
         // Just acknowledge PONG - resets idle timer (handled in connection loop)
         Ok(())
-    }
-}
-
-/// Handler for QUIT command.
-pub struct QuitHandler;
-
-#[async_trait]
-impl Handler for QuitHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let quit_msg = msg.arg(0).map(|s| s.to_string());
-
-        tracing::info!(
-            uid = %ctx.uid,
-            nick = ?ctx.handshake.nick,
-            message = ?quit_msg,
-            "Client quit"
-        );
-
-        // Signal quit by returning Quit error that connection loop will handle
-        Err(super::super::HandlerError::Quit(quit_msg))
     }
 }

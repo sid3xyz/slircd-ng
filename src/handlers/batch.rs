@@ -6,7 +6,7 @@
 //! Reference: <https://ircv3.net/specs/extensions/batch>
 //! Reference: <https://ircv3.net/specs/extensions/multiline>
 
-use super::{Context, Handler, HandlerResult};
+use super::{Context, Handler, HandlerResult, ResponseMiddleware};
 use async_trait::async_trait;
 use slirc_proto::{
     format_server_time, generate_batch_ref, generate_msgid, BatchSubCommand, Command, Message,
@@ -15,9 +15,11 @@ use slirc_proto::{
 use tracing::debug;
 
 /// Maximum bytes allowed in a multiline batch message.
-pub const MULTILINE_MAX_BYTES: usize = 40000;
+/// Per Ergo's implementation and irctest expectations.
+pub const MULTILINE_MAX_BYTES: usize = 4096;
 /// Maximum lines allowed in a multiline batch.
-pub const MULTILINE_MAX_LINES: usize = 100;
+/// Per Ergo's implementation and irctest expectations.
+pub const MULTILINE_MAX_LINES: usize = 32;
 
 /// State for an in-progress batch.
 #[derive(Debug, Clone)]
@@ -32,8 +34,11 @@ pub struct BatchState {
     pub total_bytes: usize,
     /// Command type (PRIVMSG or NOTICE).
     pub command_type: Option<String>,
+    /// Response label from labeled-response (saved from BATCH +, applied to BATCH -).
+    pub response_label: Option<String>,
+    /// Client-only tags from BATCH + command (tags starting with '+').
+    pub client_tags: Vec<Tag>,
 }
-
 /// A line within a batch.
 #[derive(Debug, Clone)]
 pub struct BatchLine {
@@ -80,19 +85,41 @@ impl Handler for BatchHandler {
                     return Ok(());
                 }
 
-                // Store batch state in handshake (we'll need a field for this)
-                // For now, we use a simple approach with a single active batch
+                // Store batch state in handshake
                 debug!(nick = %nick, batch_ref = %stripped, target = %target, "Starting multiline batch");
 
-                // Store in context - we need to add batch_state to HandshakeState
+                // Save the response label for when we complete the batch
+                let response_label = ctx.label.clone();
+
+                // Extract client-only tags (tags starting with '+') from BATCH + message
+                let client_tags: Vec<Tag> = msg
+                    .tags_iter()
+                    .filter(|(key, _)| key.starts_with('+'))
+                    .map(|(key, value)| {
+                        let val = if value.is_empty() {
+                            None
+                        } else {
+                            Some(value.to_string())
+                        };
+                        Tag::new(key, val)
+                    })
+                    .collect();
+
+                // Store in context
                 ctx.handshake.active_batch = Some(BatchState {
                     batch_type: "draft/multiline".to_string(),
                     target: target.to_string(),
                     lines: Vec::new(),
                     total_bytes: 0,
                     command_type: None,
+                    response_label,
+                    client_tags,
                 });
                 ctx.handshake.active_batch_ref = Some(stripped.to_string());
+
+                // CRITICAL: Suppress the automatic labeled-response ACK for BATCH +
+                // The label will be applied manually to the BATCH echo when BATCH - is processed
+                ctx.suppress_labeled_ack = true;
             }
         } else if let Some(stripped) = ref_tag.strip_prefix('-') {
             // End a batch
@@ -150,7 +177,10 @@ pub fn process_batch_message(
     };
 
     if batch_ref != active_ref {
-        return Ok(None); // Different batch, process normally
+        return Err(format!(
+            "FAIL BATCH MULTILINE_INVALID :Batch tag mismatch (expected {}, got {})",
+            active_ref, batch_ref
+        ));
     }
 
     // Add to the active batch
@@ -343,29 +373,14 @@ async fn deliver_multiline_to_channel(
 
     drop(channel);
 
-    // Generate a unique batch reference for outgoing
+    // Generate a unique batch reference, msgid, and server_time for outgoing
+    // ALL recipients must receive the same msgid and time per IRCv3 spec
     let batch_ref = generate_batch_ref();
+    let msgid = generate_msgid();
+    let server_time = format_server_time();
 
     // Send to each member
     for (member_uid, _member_nick) in &members {
-        // Skip sending to self if echo-message is not enabled
-        if member_uid == ctx.uid
-            && ctx
-                .matrix
-                .users
-                .get(ctx.uid)
-                .is_none_or(|u| u.try_read().is_ok_and(|g| !g.caps.contains("echo-message")))
-        {
-            continue;
-        }
-
-        // Get member's sender
-        let Some(member_sender_ref) = ctx.matrix.senders.get(member_uid) else {
-            continue;
-        };
-        let member_sender = member_sender_ref.clone();
-        drop(member_sender_ref);
-
         // Check if member has draft/multiline capability
         let has_multiline = if let Some(user_ref) = ctx.matrix.users.get(member_uid) {
             let user = user_ref.read().await;
@@ -374,12 +389,45 @@ async fn deliver_multiline_to_channel(
             false
         };
 
-        if has_multiline {
-            // Send as batch
-            send_multiline_batch(&member_sender, batch, prefix, &batch_ref, cmd_type).await?;
+        // For the sender's own echo, get direct channel to bypass middleware and apply label manually
+        // For other members, send directly to their sender channel
+        if member_uid == ctx.uid {
+            // Echo to self - get direct sender channel and apply label manually
+            if ctx
+                .matrix
+                .users
+                .get(ctx.uid)
+                .is_some_and(|u| u.try_read().is_ok_and(|g| g.caps.contains("echo-message")))
+            {
+                let Some(sender_ref) = ctx.matrix.senders.get(ctx.uid) else {
+                    continue;
+                };
+                let sender = sender_ref.clone();
+                drop(sender_ref);
+
+                let sender_middleware = ResponseMiddleware::Direct(&sender);
+
+                if has_multiline {
+                    send_multiline_batch(&sender_middleware, batch, prefix, &batch_ref, &msgid, cmd_type, batch.response_label.as_deref()).await?;
+                } else {
+                    send_multiline_fallback(&sender_middleware, batch, prefix, &msgid, &server_time, cmd_type).await?;
+                }
+            }
         } else {
-            // Send as fallback individual lines (skip blank lines)
-            send_multiline_fallback(&member_sender, batch, prefix, cmd_type).await?;
+            // Send to other member - use direct channel
+            let Some(member_sender_ref) = ctx.matrix.senders.get(member_uid) else {
+                continue;
+            };
+            let member_sender = member_sender_ref.clone();
+            drop(member_sender_ref);
+
+            let member_middleware = ResponseMiddleware::Direct(&member_sender);
+
+            if has_multiline {
+                send_multiline_batch(&member_middleware, batch, prefix, &batch_ref, &msgid, cmd_type, None).await?;
+            } else {
+                send_multiline_fallback(&member_middleware, batch, prefix, &msgid, &server_time, cmd_type).await?;
+            }
         }
     }
 
@@ -428,12 +476,17 @@ async fn deliver_multiline_to_user(
         false
     };
 
+    // Generate batch ref, msgid, and server_time (shared between target and echo)
     let batch_ref = generate_batch_ref();
+    let msgid = generate_msgid();
+    let server_time = format_server_time();
+
+    let target_middleware = ResponseMiddleware::Direct(&target_sender);
 
     if has_multiline {
-        send_multiline_batch(&target_sender, batch, prefix, &batch_ref, cmd_type).await?;
+        send_multiline_batch(&target_middleware, batch, prefix, &batch_ref, &msgid, cmd_type, None).await?;
     } else {
-        send_multiline_fallback(&target_sender, batch, prefix, cmd_type).await?;
+        send_multiline_fallback(&target_middleware, batch, prefix, &msgid, &server_time, cmd_type).await?;
     }
 
     // Echo to sender if echo-message enabled
@@ -448,10 +501,19 @@ async fn deliver_multiline_to_user(
                 false
             };
 
+            // Get direct sender channel to bypass middleware and apply label manually
+            let Some(sender_ref) = ctx.matrix.senders.get(ctx.uid) else {
+                return Ok(());
+            };
+            let sender = sender_ref.clone();
+            drop(sender_ref);
+
+            let sender_middleware = ResponseMiddleware::Direct(&sender);
+
             if sender_has_multiline {
-                send_multiline_batch(ctx.sender, batch, prefix, &batch_ref, cmd_type).await?;
+                send_multiline_batch(&sender_middleware, batch, prefix, &batch_ref, &msgid, cmd_type, batch.response_label.as_deref()).await?;
             } else {
-                send_multiline_fallback(ctx.sender, batch, prefix, cmd_type).await?;
+                send_multiline_fallback(&sender_middleware, batch, prefix, &msgid, &server_time, cmd_type).await?;
             }
         }
     }
@@ -459,25 +521,41 @@ async fn deliver_multiline_to_user(
     Ok(())
 }
 
-/// Send a multiline batch to a client that supports draft/multiline.
+/// Send a multiline batch (with BATCH +/-)
 async fn send_multiline_batch(
-    sender: &tokio::sync::mpsc::Sender<Message>,
+    sender: &ResponseMiddleware<'_>,
     batch: &BatchState,
     prefix: &Prefix,
     batch_ref: &str,
+    msgid: &str,
     cmd_type: &str,
+    label: Option<&str>,
 ) -> HandlerResult {
-    // Generate a msgid for the batch
-    let msgid = generate_msgid();
+    // Use provided msgid (shared across all recipients)
     let server_time = format_server_time();
 
     // Send BATCH +ref draft/multiline target
     // Start batch includes server-time and msgid
+    let mut start_tags = vec![
+        Tag::new("time", Some(server_time.clone())),
+        Tag::new("msgid", Some(msgid.to_string())),
+    ];
+
+    // Add client-only tags from original BATCH + command
+    for client_tag in &batch.client_tags {
+        start_tags.push(client_tag.clone());
+    }
+
+    // Add label tag if present (for labeled-response)
+    if let Some(lbl) = label {
+        debug!("Adding label tag to BATCH: {}", lbl);
+        start_tags.push(Tag::new("label", Some(lbl.to_string())));
+    } else {
+        debug!("No label to add to BATCH");
+    }
+
     let start_batch = Message {
-        tags: Some(vec![
-            Tag::new("time", Some(server_time.clone())),
-            Tag::new("msgid", Some(msgid.clone())),
-        ]),
+        tags: Some(start_tags),
         prefix: Some(prefix.clone()),
         command: Command::BATCH(
             format!("+{}", batch_ref),
@@ -521,52 +599,54 @@ async fn send_multiline_batch(
 
 /// Send fallback individual lines to a client without draft/multiline.
 async fn send_multiline_fallback(
-    sender: &tokio::sync::mpsc::Sender<Message>,
+    sender: &crate::handlers::ResponseMiddleware<'_>,
     batch: &BatchState,
     prefix: &Prefix,
+    msgid: &str,
+    server_time: &str,
     cmd_type: &str,
 ) -> HandlerResult {
-    // Generate msgid and server-time for the first message
-    let msgid = generate_msgid();
-    let server_time = format_server_time();
+    // Use provided msgid and server-time (shared across all recipients)
 
-    // Combine lines respecting concat tags, then split by newlines
-    let mut combined = String::new();
-    for (i, line) in batch.lines.iter().enumerate() {
-        if i > 0 && !line.concat {
-            combined.push('\n');
-        }
-        combined.push_str(&line.content);
-    }
+    // For fallback: send each non-empty line as a separate message
+    // Ignore concat tags (client can't handle multiline anyway)
+    // Skip empty lines per spec
+    let mut message_index = 0;
 
-    // Send each resulting line (skip blank lines per spec)
-    for (i, text) in combined.split('\n').enumerate() {
-        if text.is_empty() {
-            continue; // Skip blank lines in fallback
+    for line in &batch.lines {
+        // Skip empty lines in fallback
+        if line.content.is_empty() {
+            continue;
         }
 
         let cmd = if cmd_type == "NOTICE" {
-            Command::NOTICE(batch.target.clone(), text.to_string())
+            Command::NOTICE(batch.target.clone(), line.content.clone())
         } else {
-            Command::PRIVMSG(batch.target.clone(), text.to_string())
+            Command::PRIVMSG(batch.target.clone(), line.content.clone())
         };
 
-        // First line gets msgid and server-time tags
-        let tags = if i == 0 {
-            Some(vec![
-                Tag::new("time", Some(server_time.clone())),
-                Tag::new("msgid", Some(msgid.clone())),
-            ])
-        } else {
-            None
-        };
+        // First non-empty line gets msgid, server-time, and client tags
+        // All subsequent lines get server-time and client tags (NO msgid)
+        let mut tags = vec![Tag::new("time", Some(server_time.to_string()))];
+
+        // Add client-only tags from original BATCH + command to ALL messages
+        for client_tag in &batch.client_tags {
+            tags.push(client_tag.clone());
+        }
+
+        // Only first message gets msgid
+        if message_index == 0 {
+            tags.insert(1, Tag::new("msgid", Some(msgid.to_string())));
+        }
 
         let msg = Message {
-            tags,
+            tags: Some(tags),
             prefix: Some(prefix.clone()),
             command: cmd,
         };
         sender.send(msg).await?;
+
+        message_index += 1;
     }
 
     Ok(())

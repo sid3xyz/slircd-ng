@@ -137,6 +137,8 @@ pub async fn force_join_channel(
                 names_list.push(nick_with_prefix);
             }
         }
+        // Channel symbol per RFC 2812: @ = secret, = = public
+        let channel_symbol = if channel.modes.secret { "@" } else { "=" };
         drop(channel);
 
         let names_reply = server_reply(
@@ -144,7 +146,7 @@ pub async fn force_join_channel(
             Response::RPL_NAMREPLY,
             vec![
                 target.nick.to_string(),
-                "=".to_string(), // public channel
+                channel_symbol.to_string(),
                 canonical_name.clone(),
                 names_list.join(" "),
             ],

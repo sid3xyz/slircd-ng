@@ -56,6 +56,9 @@ pub async fn handle_user_mode(
         let (applied, rejected) = apply_user_modes_typed(&mut user.modes, modes);
 
         if !applied.is_empty() {
+            // Get host from the user we already have (avoid deadlock)
+            let host = user.visible_host.clone();
+
             // Echo the change back using typed Command::UserMODE
             let mode_msg = Message {
                 tags: None,
@@ -65,7 +68,7 @@ pub async fn handle_user_mode(
                         .user
                         .as_ref()
                         .ok_or(HandlerError::NickOrUserMissing)?,
-                    "localhost",
+                    &host,
                 )),
                 command: Command::UserMODE(nick.clone(), applied.clone()),
             };

@@ -6,10 +6,9 @@ pub mod chanserv;
 pub mod enforce;
 pub mod nickserv;
 
-use crate::state::Matrix;
+use crate::{handlers::ResponseMiddleware, state::Matrix};
 use slirc_proto::{ChannelMode, Command, Message, Mode, Prefix, irc_to_lower};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tracing::info;
 
 /// Unified effect type returned by all service commands.
@@ -108,7 +107,7 @@ pub async fn route_service_message(
     nick: &str,
     target: &str,
     text: &str,
-    sender: &mpsc::Sender<Message>,
+    sender: &ResponseMiddleware<'_>,
 ) -> bool {
     let target_lower = irc_to_lower(target);
 
@@ -133,7 +132,7 @@ pub async fn route_service_message(
 pub async fn apply_effects(
     matrix: &Arc<Matrix>,
     nick: &str,
-    sender: &mpsc::Sender<Message>,
+    sender: &ResponseMiddleware<'_>,
     effects: Vec<ServiceEffect>,
 ) {
     for effect in effects {
@@ -148,7 +147,7 @@ pub async fn apply_effects(
 pub async fn apply_effect(
     matrix: &Arc<Matrix>,
     nick: &str,
-    sender: &mpsc::Sender<Message>,
+    sender: &ResponseMiddleware<'_>,
     effect: ServiceEffect,
 ) {
     match effect {

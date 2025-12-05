@@ -44,6 +44,9 @@ pub struct Config {
     /// Account registration (draft/account-registration) configuration.
     #[serde(default)]
     pub account_registration: AccountRegistrationConfig,
+    /// Message of the Day configuration.
+    #[serde(default)]
+    pub motd: MotdConfig,
 }
 
 /// Account registration configuration (draft/account-registration).
@@ -51,6 +54,7 @@ pub struct Config {
 pub struct AccountRegistrationConfig {
     /// Whether account registration is enabled.
     #[serde(default = "default_true")]
+    #[allow(dead_code)]
     pub enabled: bool,
     /// Allow registration before connection is complete (before CAP END).
     #[serde(default = "default_true")]
@@ -76,6 +80,34 @@ impl Default for AccountRegistrationConfig {
 
 fn default_true() -> bool {
     true
+}
+
+/// Message of the Day (MOTD) configuration.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct MotdConfig {
+    /// Path to MOTD file (one line per MOTD line).
+    pub file: Option<String>,
+}
+
+impl MotdConfig {
+    /// Load MOTD lines from file, or return default MOTD.
+    pub fn load_lines(&self) -> Vec<String> {
+        if let Some(ref path) = self.file {
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    return content.lines().map(|s| s.to_string()).collect();
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to read MOTD file {}: {}", path, e);
+                }
+            }
+        }
+        // Default MOTD
+        vec![
+            "Welcome to slircd-ng!".to_string(),
+            "A high-performance IRC daemon.".to_string(),
+        ]
+    }
 }
 
 /// Database configuration.

@@ -1,7 +1,7 @@
 //! JOIN command handler and related functionality.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, server_reply, user_prefix, with_label,
+    Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state, user_prefix, with_label,
 };
 use super::matches_ban;
 use crate::db::ChannelRepository;
@@ -91,8 +91,21 @@ impl Handler for JoinHandler {
             return Ok(());
         }
 
-        // Parse channel list (comma-separated)
-        for channel_name in channels_str.split(',') {
+        // Parse channel list (comma-separated) and optional keys
+        let channels: Vec<&str> = channels_str.split(',').collect();
+        let keys: Vec<Option<&str>> = if let Some(keys_str) = msg.arg(1) {
+            let mut key_list: Vec<Option<&str>> = keys_str.split(',').map(|k| {
+                let trimmed = k.trim();
+                if trimmed.is_empty() { None } else { Some(trimmed) }
+            }).collect();
+            // Pad with None if fewer keys than channels
+            key_list.resize(channels.len(), None);
+            key_list
+        } else {
+            vec![None; channels.len()]
+        };
+
+        for (i, channel_name) in channels.iter().enumerate() {
             let channel_name = channel_name.trim();
             if channel_name.is_empty() {
                 continue;
@@ -115,7 +128,8 @@ impl Handler for JoinHandler {
                 continue;
             }
 
-            join_channel(ctx, channel_name).await?;
+            let key = keys.get(i).and_then(|k| *k);
+            join_channel(ctx, channel_name, key).await?;
         }
 
         Ok(())
@@ -123,32 +137,32 @@ impl Handler for JoinHandler {
 }
 
 /// Join a single channel.
-async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResult {
+async fn join_channel(ctx: &mut Context<'_>, channel_name: &str, provided_key: Option<&str>) -> HandlerResult {
     let channel_lower = irc_to_lower(channel_name);
-    let nick = ctx
-        .handshake
-        .nick
-        .as_ref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
-    let user_name = ctx
-        .handshake
-        .user
-        .as_ref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
-    let realname = ctx
-        .handshake
-        .realname
-        .as_ref()
+    let (nick, user_name, visible_host) = user_mask_from_state(ctx, ctx.uid)
+        .await
         .ok_or(HandlerError::NickOrUserMissing)?;
 
-    // Build user's full mask for ban/invite checks (nick!user@host)
-    let host = ctx.remote_addr.ip().to_string();
-    let user_mask = format!("{}!{}@{}", nick, user_name, host);
+    let (real_host, realname) = {
+        let user_ref = ctx.matrix.users.get(ctx.uid).ok_or(HandlerError::NickOrUserMissing)?;
+        let user = user_ref.read().await;
+        (user.host.clone(), user.realname.clone())
+    };
+
+    // Build user's full mask for ban/invite checks (nick!user@real_host)
+    let user_mask = format!("{}!{}@{}", nick, user_name, real_host);
 
     // Build UserContext for extended ban checks
+    let ip_addr = ctx
+        .handshake
+        .webirc_ip
+        .as_ref()
+        .and_then(|ip| ip.parse().ok())
+        .unwrap_or_else(|| ctx.remote_addr.ip());
+
     let user_context = UserContext::for_registration(
-        ctx.remote_addr.ip(),
-        host.clone(),
+        ip_addr,
+        real_host.clone(),
         nick.clone(),
         user_name.clone(),
         realname.clone(),
@@ -157,7 +171,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     );
 
     // Check AKICK before joining
-    if let Some(akick) = check_akick(ctx, &channel_lower, nick, user_name).await {
+    if let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name).await {
         // User is on the AKICK list - send a notice and refuse join
         let reason = akick
             .reason
@@ -227,6 +241,30 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
 
     // Enforce channel access controls:
 
+    // Check if user was invited via INVITE command (used by multiple checks below)
+    let has_invite = channel_guard.invites.contains(ctx.uid);
+
+    // 0. Check Channel Key (+k) mode
+    if let Some(ref channel_key) = channel_guard.modes.key {
+        // Channel has a key set - validate provided key
+        if provided_key != Some(channel_key.as_str()) {
+            // Key missing or incorrect
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_BADCHANNELKEY,
+                vec![
+                    nick.clone(),
+                    channel_name.to_string(),
+                    "Cannot join channel (+k)".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            drop(channel_guard);
+            info!(nick = %nick, channel = %channel_name, "JOIN denied: bad/missing key");
+            return Ok(());
+        }
+    }
+
     // 1. Check Invite-Only (+i) mode
     if channel_guard.modes.invite_only {
         // Check invite exception list (+I) - supports extended bans
@@ -235,10 +273,9 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             .iter()
             .any(|entry| matches_ban(entry, &user_mask, &user_context));
 
-        // TODO: Check if user is in temporary invite list (from INVITE command)
-        // For now, only check invex
+        // Check if user was invited via INVITE command (has_invite computed above)
 
-        if !has_invex {
+        if !has_invex && !has_invite {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_INVITEONLYCHAN,
@@ -343,7 +380,8 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             .iter()
             .any(|entry| matches_ban(entry, &user_mask, &user_context));
 
-        if !has_exception {
+        // Being invited also exempts from bans
+        if !has_exception && !has_invite {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_BANNEDFROMCHAN,
@@ -364,15 +402,15 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     // Access checks passed, proceed with join
 
     // Determine member modes:
-    // 1. First user of an unregistered channel gets owner
-    //    (for registered channels, owner may be granted via check_auto_modes)
+    // 1. First user of an unregistered channel gets op (+o, shown as @)
+    //    Note: We use op, not owner (~), because our PREFIX=(ov)@+ advertises only @ and +
     // 2. If channel is registered, check access list for auto-op/voice
     let now = chrono::Utc::now().timestamp();
     let modes = if channel_guard.members.is_empty() {
         MemberModes {
-            owner: true,
+            owner: false,
             admin: false,
-            op: false,
+            op: true,
             halfop: false,
             voice: false,
             join_time: Some(now),
@@ -395,6 +433,8 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
 
     // Add user to channel
     channel_guard.add_member(ctx.uid.to_string(), modes.clone());
+    // Remove from pending invites if they were invited
+    channel_guard.invites.remove(ctx.uid);
     let member_count = channel_guard.members.len();
     let topic = channel_guard.topic.clone();
     let canonical_name = channel_guard.name.clone();
@@ -424,7 +464,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             nick.clone(),
             user_name.clone(),
             realname.clone(),
-            "localhost".to_string(),
+            real_host.clone(),
             &security_config.cloak_secret,
             &security_config.cloak_suffix,
             ctx.handshake.capabilities.clone(),
@@ -439,18 +479,18 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     // Broadcast JOIN to all channel members (including self)
     // For extended-join: recipients with the capability get the extended format,
     // recipients without get the standard format
-    let account = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+    let (account, away_message) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
         let user = user_ref.read().await;
-        user.account.clone()
+        (user.account.clone(), user.away.clone())
     } else {
-        None
+        (None, None)
     };
     let account_name = account.as_deref().unwrap_or("*");
 
     // Extended JOIN format: :nick!user@host JOIN #channel account :realname
     let extended_join_msg = Message {
         tags: None,
-        prefix: Some(user_prefix(nick, user_name, "localhost")),
+        prefix: Some(user_prefix(&nick, &user_name, &visible_host)),
         command: Command::JOIN(
             canonical_name.clone(),
             Some(account_name.to_string()),
@@ -461,29 +501,60 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
     // Standard JOIN format: :nick!user@host JOIN #channel
     let standard_join_msg = Message {
         tags: None,
-        prefix: Some(user_prefix(nick, user_name, "localhost")),
+        prefix: Some(user_prefix(&nick, &user_name, &visible_host)),
         command: Command::JOIN(canonical_name.clone(), None, None),
     };
 
+    // For labeled-response batching: send JOIN to self through ctx.sender
+    // (which will be batched with NAMES/topic if label is present)
+    // and broadcast to other members
+    let self_join_msg = if ctx.handshake.capabilities.contains("extended-join") {
+        extended_join_msg.clone()
+    } else {
+        standard_join_msg.clone()
+    };
+    ctx.sender.send(self_join_msg).await?;
+
+    // Broadcast to other channel members (exclude self since we sent above)
     ctx.matrix
         .broadcast_to_channel_with_cap(
             &channel_lower,
             extended_join_msg,
-            None,
+            Some(ctx.uid), // Exclude self - we already sent above
             Some("extended-join"),
             Some(standard_join_msg),
         )
         .await;
+
+    // IRCv3 away-notify: Send AWAY to channel members with away-notify cap
+    // when a user who is already away joins the channel
+    if let Some(ref away_text) = away_message {
+        let away_msg = Message {
+            tags: None,
+            prefix: Some(user_prefix(&nick, &user_name, &visible_host)),
+            command: Command::AWAY(Some(away_text.clone())),
+        };
+        // Only send to others with away-notify, exclude the joining user
+        ctx.matrix
+            .broadcast_to_channel_with_cap(
+                &channel_lower,
+                away_msg,
+                Some(ctx.uid),
+                Some("away-notify"),
+                None, // No fallback for clients without away-notify
+            )
+            .await;
+    }
 
     // If auto-op/voice was applied, broadcast the MODE change using typed modes
     if modes.op || modes.voice {
         let mut mode_changes: Vec<Mode<ChannelMode>> = Vec::new();
 
         if modes.op {
-            mode_changes.push(Mode::plus(ChannelMode::Oper, Some(nick)));
+            mode_changes.push(Mode::plus(ChannelMode::Oper, Some(&nick)));
         }
         if modes.voice {
-            mode_changes.push(Mode::plus(ChannelMode::Voice, Some(nick)));
+            mode_changes.push(Mode::plus(ChannelMode::Voice, Some(&nick)));
         }
 
         let mode_str = mode_changes
@@ -498,11 +569,15 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
                 "ChanServ".to_string(),
                 "services.".to_string(),
             )),
-            command: Command::ChannelMODE(canonical_name.clone(), mode_changes),
+            command: Command::ChannelMODE(canonical_name.clone(), mode_changes.clone()),
         };
 
+        // Send MODE to self through ctx.sender (for batching with labeled-response)
+        ctx.sender.send(mode_msg.clone()).await?;
+
+        // Broadcast to other channel members (exclude self)
         ctx.matrix
-            .broadcast_to_channel(&channel_lower, mode_msg, None)
+            .broadcast_to_channel(&channel_lower, mode_msg, Some(ctx.uid))
             .await;
         info!(nick = %nick, channel = %canonical_name, modes = %mode_str, "Auto-modes applied");
     }
@@ -517,6 +592,14 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             vec![nick.clone(), canonical_name.clone(), topic.text],
         );
         ctx.sender.send(topic_reply).await?;
+
+        // Also send RPL_TOPICWHOTIME (333)
+        let topic_who_reply = server_reply(
+            &ctx.matrix.server_info.name,
+            Response::RPL_TOPICWHOTIME,
+            vec![nick.clone(), canonical_name.clone(), topic.set_by, topic.set_at.to_string()],
+        );
+        ctx.sender.send(topic_who_reply).await?;
     }
 
     // Send NAMES list
@@ -535,6 +618,8 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
             names_list.push(nick_with_prefix);
         }
     }
+    // Channel symbol per RFC 2812: @ = secret, = = public
+    let channel_symbol = if channel.modes.secret { "@" } else { "=" };
     drop(channel);
 
     let names_reply = server_reply(
@@ -542,7 +627,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str) -> HandlerResul
         Response::RPL_NAMREPLY,
         vec![
             nick.clone(),
-            "=".to_string(), // public channel
+            channel_symbol.to_string(),
             canonical_name.clone(),
             names_list.join(" "),
         ],
@@ -587,12 +672,12 @@ async fn check_auto_modes(ctx: &Context<'_>, channel_lower: &str) -> Option<Memb
     // Look up channel record
     let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
 
-    // Check if user is founder - grant owner
+    // Check if user is founder - grant op (not owner, since PREFIX=(ov)@+ doesn't include ~)
     if account.id == channel_record.founder_account_id {
         return Some(MemberModes {
-            owner: true,
+            owner: false,
             admin: false,
-            op: false,
+            op: true,
             halfop: false,
             voice: false,
             join_time: None, // Will be set by caller
@@ -635,28 +720,32 @@ async fn check_akick(
     // Look up channel record
     let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
 
-    // Get host - for now use "localhost" but this should be the actual host
-    let host = "localhost";
+    let host = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+        let user_state = user_ref.read().await;
+        user_state.host.clone()
+    } else if let Some(h) = ctx
+        .handshake
+        .webirc_host
+        .clone()
+        .or(ctx.handshake.webirc_ip.clone())
+    {
+        h
+    } else {
+        ctx.remote_addr.ip().to_string()
+    };
 
     // Check AKICK list
     ctx.db
         .channels()
-        .check_akick(channel_record.id, nick, user, host)
+        .check_akick(channel_record.id, nick, user, &host)
         .await
         .ok()?
 }
 
 /// Leave all channels (JOIN 0).
 async fn leave_all_channels(ctx: &mut Context<'_>) -> HandlerResult {
-    let nick = ctx
-        .handshake
-        .nick
-        .clone()
-        .ok_or(HandlerError::NickOrUserMissing)?;
-    let user_name = ctx
-        .handshake
-        .user
-        .clone()
+    let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+        .await
         .ok_or(HandlerError::NickOrUserMissing)?;
 
     // Get list of channels user is in
@@ -669,7 +758,8 @@ async fn leave_all_channels(ctx: &mut Context<'_>) -> HandlerResult {
 
     // Leave each channel
     for channel_lower in channels {
-        super::part::leave_channel_internal(ctx, &channel_lower, &nick, &user_name, None).await?;
+        super::part::leave_channel_internal(ctx, &channel_lower, &nick, &user_name, &host, None)
+            .await?;
     }
 
     Ok(())

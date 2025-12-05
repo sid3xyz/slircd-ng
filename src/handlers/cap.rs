@@ -59,7 +59,20 @@ impl Handler for CapHandler {
         let subcommand: CapSubCommand = match subcommand_str.parse() {
             Ok(cmd) => cmd,
             Err(_) => {
-                debug!(subcommand = subcommand_str, "Unknown CAP subcommand");
+                // Send ERR_INVALIDCAPCMD (410) for unknown subcommand
+                let reply = Message {
+                    tags: None,
+                    prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
+                    command: Command::Raw(
+                        "410".to_string(),
+                        vec![
+                            nick.clone(),
+                            subcommand_str.to_string(),
+                            "Invalid CAP subcommand".to_string(),
+                        ],
+                    ),
+                };
+                ctx.sender.send(reply).await?;
                 return Ok(());
             }
         };
@@ -204,6 +217,16 @@ async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -
         };
         ctx.sender.send(reply).await?;
         debug!(nick = %nick, accepted = ?accepted, "CAP REQ ACK");
+
+        // If user is registered, sync capabilities to their User in Matrix
+        // This enables mid-session CAP REQ (e.g., requesting message-tags after registration)
+        if ctx.handshake.registered
+            && let Some(user_ref) = ctx.matrix.users.get(ctx.uid)
+        {
+            let mut user = user_ref.write().await;
+            user.caps = ctx.handshake.capabilities.clone();
+            debug!(uid = %ctx.uid, caps = ?user.caps, "Synced caps to Matrix user");
+        }
     }
 
     Ok(())
@@ -404,13 +427,37 @@ impl Handler for AuthenticateHandler {
             }
             SaslState::WaitingForData => {
                 // Client sending base64-encoded credentials
+                // Per SASL 3.1 spec: messages are split into 400-byte chunks
+                // - Line == 400 bytes: more data follows
+                // - Line < 400 bytes: last chunk
+                // - "+" alone: empty final chunk (when prior was exactly 400 bytes)
+
                 if data == "*" {
                     // Client aborting
+                    ctx.handshake.sasl_buffer.clear();
                     send_sasl_fail(ctx, &nick, "SASL authentication aborted").await?;
                     ctx.handshake.sasl_state = SaslState::None;
                 } else {
+                    // Accumulate the chunk
+                    // "+" alone means empty chunk (final when previous was exactly 400 bytes)
+                    if data != "+" {
+                        ctx.handshake.sasl_buffer.push_str(data);
+                    }
+
+                    // Check if more data is expected
+                    // If this chunk is exactly 400 bytes, wait for more
+                    if data.len() == 400 {
+                        // More data expected, wait for next AUTHENTICATE
+                        debug!(nick = %nick, chunk_len = data.len(), total_len = ctx.handshake.sasl_buffer.len(), "SASL: accumulated chunk, waiting for more");
+                        return Ok(());
+                    }
+
+                    // We have the complete payload, process it
+                    let full_data = std::mem::take(&mut ctx.handshake.sasl_buffer);
+                    debug!(nick = %nick, total_len = full_data.len(), "SASL: processing complete payload");
+
                     // Try to decode and validate
-                    match validate_sasl_plain(data) {
+                    match validate_sasl_plain(&full_data) {
                         Ok((authzid, authcid, password)) => {
                             // Validate against database
                             let account_name = if authzid.is_empty() {
@@ -502,13 +549,21 @@ async fn send_sasl_success(
     user: &str,
     account: &str,
 ) -> HandlerResult {
+    // Use effective host (WEBIRC/TLS-aware) for prefix
+    let host = ctx
+        .handshake
+        .webirc_host
+        .clone()
+        .or(ctx.handshake.webirc_ip.clone())
+        .unwrap_or_else(|| ctx.remote_addr.ip().to_string());
+
     // RPL_LOGGEDIN (900)
     let reply = server_reply(
         &ctx.matrix.server_info.name,
         Response::RPL_LOGGEDIN,
         vec![
             nick.to_string(),
-            format!("{}!{}@{}", nick, user, "localhost"),
+            format!("{}!{}@{}", nick, user, host),
             account.to_string(),
             format!("You are now logged in as {}", account),
         ],

@@ -4,7 +4,7 @@
 
 use super::super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
-    err_notregistered, server_reply,
+    err_notregistered, server_reply, user_mask_from_state,
 };
 use async_trait::async_trait;
 use slirc_proto::{Command, MessageRef, Response, irc_to_lower};
@@ -33,9 +33,24 @@ impl Handler for InviteHandler {
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
 
-        // INVITE <nickname> <channel>
-        let target_nick = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let channel_name = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
+        // INVITE <nickname> <channel> or INVITE <channel> <nickname>
+        // Detect which argument is which based on whether it starts with a channel prefix
+        let arg0 = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let arg1 = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
+
+        // Track if channel was first (non-standard order) for echo
+        let channel_first = arg0.starts_with('#')
+            || arg0.starts_with('&')
+            || arg0.starts_with('+')
+            || arg0.starts_with('!');
+
+        let (target_nick, channel_name) = if channel_first {
+            // INVITE #channel nickname format
+            (arg1, arg0)
+        } else {
+            // INVITE nickname #channel format (standard)
+            (arg0, arg1)
+        };
 
         let channel_lower = irc_to_lower(channel_name);
         let target_lower = irc_to_lower(target_nick);
@@ -108,20 +123,36 @@ impl Handler for InviteHandler {
                     .await?;
                 return Ok(());
             }
+
+            drop(channel);
+
+            // Add target to channel's invite list
+            if let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) {
+                let mut channel = channel_ref.write().await;
+                channel.invites.insert(target_uid.clone());
+            }
         } else {
             // Channel doesn't exist - some servers allow inviting to non-existent channels
             // We'll allow it for now
         }
 
-        // Build the INVITE message
+        // Build the INVITE message - preserve the original argument order
+        let (_, _, host) = user_mask_from_state(ctx, ctx.uid)
+            .await
+            .ok_or(HandlerError::NickOrUserMissing)?;
+
         let invite_msg = slirc_proto::Message {
             tags: None,
             prefix: Some(slirc_proto::Prefix::Nickname(
                 nick.clone(),
                 ctx.handshake.user.clone().unwrap_or_default(),
-                "localhost".to_string(), // TODO: get actual host
+                host,
             )),
-            command: Command::INVITE(target_nick.to_string(), channel_name.to_string()),
+            command: if channel_first {
+                Command::INVITE(channel_name.to_string(), target_nick.to_string())
+            } else {
+                Command::INVITE(target_nick.to_string(), channel_name.to_string())
+            },
         };
 
         // Send INVITE to target user

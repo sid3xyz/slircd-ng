@@ -2,7 +2,8 @@
 //!
 //! Handles user status management and IRCv3 profile updates.
 
-use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply, matches_hostmask};
+use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
+use super::user_mask_from_state;
 use async_trait::async_trait;
 use slirc_proto::{Command, MessageRef, Response};
 use tracing::debug;
@@ -11,9 +12,8 @@ use tracing::debug;
 ///
 /// `AWAY [message]`
 ///
-/// Sets or clears away status per RFC 2812.
-/// - With a message: Sets the user as away with that reason.
-/// - Without a message (or empty): Clears the away status.
+/// Sets or clears away status and broadcasts to channels for clients with
+/// `away-notify`.
 pub struct AwayHandler;
 
 #[async_trait]
@@ -27,10 +27,8 @@ impl Handler for AwayHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
+        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+            .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // AWAY [message]
@@ -57,12 +55,9 @@ impl Handler for AwayHandler {
             let away_broadcast = slirc_proto::Message {
                 tags: None,
                 prefix: Some(slirc_proto::Prefix::new(
-                    nick,
-                    ctx.handshake
-                        .user
-                        .as_ref()
-                        .ok_or(HandlerError::NickOrUserMissing)?,
-                    "localhost",
+                    &nick,
+                    &user_name,
+                    &host,
                 )),
                 command: Command::AWAY(Some(away_text.to_string())),
             };
@@ -111,12 +106,9 @@ impl Handler for AwayHandler {
         let away_broadcast = slirc_proto::Message {
             tags: None,
             prefix: Some(slirc_proto::Prefix::new(
-                nick,
-                ctx.handshake
-                    .user
-                    .as_ref()
-                    .ok_or(HandlerError::NickOrUserMissing)?,
-                "localhost",
+                &nick,
+                &user_name,
+                &host,
             )),
             command: Command::AWAY(None),
         };
@@ -196,10 +188,10 @@ impl Handler for SetnameHandler {
         };
 
         // Update the user's realname
-        let (nick, user, host) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+        let (nick, user, visible_host) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
             let mut user = user_ref.write().await;
             user.realname = new_realname.to_string();
-            (user.nick.clone(), user.user.clone(), user.host.clone())
+            (user.nick.clone(), user.user.clone(), user.visible_host.clone())
         } else {
             return Ok(());
         };
@@ -210,7 +202,7 @@ impl Handler for SetnameHandler {
         // Broadcast SETNAME to all channels the user is in (for clients with setname cap)
         let setname_msg = slirc_proto::Message {
             tags: None,
-            prefix: Some(slirc_proto::Prefix::new(&nick, &user, &host)),
+            prefix: Some(slirc_proto::Prefix::new(&nick, &user, &visible_host)),
             command: Command::SETNAME(new_realname.to_string()),
         };
 
@@ -222,10 +214,16 @@ impl Handler for SetnameHandler {
             Vec::new()
         };
 
-        // Broadcast to each channel (including back to sender for echo)
+        // Broadcast to each channel (only to clients with setname capability)
         for channel_name in &channels {
             ctx.matrix
-                .broadcast_to_channel(channel_name, setname_msg.clone(), None)
+                .broadcast_to_channel_with_cap(
+                    channel_name,
+                    setname_msg.clone(),
+                    None,
+                    Some("setname"),
+                    None,
+                )
                 .await;
         }
 
@@ -276,7 +274,7 @@ impl Handler for SilenceHandler {
             // List silence entries
             if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
                 let user = user_ref.read().await;
-                
+
                 // RPL_SILELIST (271) for each entry
                 for mask in &user.silence_list {
                     let reply = server_reply(
@@ -289,7 +287,7 @@ impl Handler for SilenceHandler {
                     );
                     ctx.sender.send(reply).await?;
                 }
-                
+
                 // RPL_ENDOFSILELIST (272)
                 let end_reply = server_reply(
                     server_name,
@@ -305,16 +303,16 @@ impl Handler for SilenceHandler {
         }
 
         let mask_str = mask_arg.unwrap();
-        
+
         // Check for +/- prefix
         if mask_str.is_empty() {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        let (adding, mask) = if mask_str.starts_with('+') {
-            (true, &mask_str[1..])
-        } else if mask_str.starts_with('-') {
-            (false, &mask_str[1..])
+        let (adding, mask) = if let Some(stripped) = mask_str.strip_prefix('+') {
+            (true, stripped)
+        } else if let Some(stripped) = mask_str.strip_prefix('-') {
+            (false, stripped)
         } else {
             // No prefix, treat as add
             (true, mask_str)
@@ -327,7 +325,7 @@ impl Handler for SilenceHandler {
         // Update silence list
         if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
             let mut user = user_ref.write().await;
-            
+
             if adding {
                 // Add to silence list (limit to reasonable size)
                 const MAX_SILENCE_ENTRIES: usize = 50;
@@ -345,7 +343,7 @@ impl Handler for SilenceHandler {
                     ctx.sender.send(reply).await?;
                     return Ok(());
                 }
-                
+
                 if user.silence_list.insert(mask.to_string()) {
                     debug!(nick = %nick, mask = %mask, "Added to silence list");
                 }

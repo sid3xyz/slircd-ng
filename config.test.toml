@@ -62,3 +62,12 @@ lines = [
 name = "testoper"
 password = "testpass"
 hostmask = "*@*"
+
+# Account registration settings for testing
+# Note: before_connect is intentionally set to false to pass compliance tests
+# that verify the server correctly rejects before-connect registration when disabled
+[account_registration]
+enabled = true
+before_connect = false     # Test that server correctly enforces this restriction
+email_required = false
+custom_account_name = true

@@ -240,9 +240,9 @@ impl Handler for LinksHandler {
             Response::RPL_LINKS,
             vec![
                 nick.clone(),
-                "*".to_string(),
                 server_name.clone(),
-                format!("0 {}", ctx.matrix.server_info.network),
+                server_name.clone(),
+                format!("0 {}", ctx.matrix.server_info.description),
             ],
         );
         ctx.sender.send(reply).await?;

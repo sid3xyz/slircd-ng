@@ -5,12 +5,12 @@
 
 mod help;
 mod info;
-mod motd;
+mod server_info;
 mod service;
 mod stats;
 
 pub use help::HelpHandler;
 pub use info::{LinksHandler, MapHandler, RulesHandler, UseripHandler};
-pub use motd::{AdminHandler, InfoHandler, ListHandler, LusersHandler, MotdHandler, TimeHandler, VersionHandler};
+pub use server_info::{AdminHandler, InfoHandler, LusersHandler, MotdHandler, TimeHandler, VersionHandler};
 pub use service::{ServiceHandler, ServlistHandler, SqueryHandler};
 pub use stats::StatsHandler;

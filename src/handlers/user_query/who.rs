@@ -12,6 +12,20 @@ use slirc_proto::{MessageRef, Response, irc_to_lower};
 /// The 'o' flag restricts results to operators only.
 pub struct WhoHandler;
 
+/// Build prefix string for WHO flags based on member modes and multi-prefix setting.
+fn get_member_prefixes(
+    member_modes: &crate::state::MemberModes,
+    multi_prefix: bool,
+) -> String {
+    if multi_prefix {
+        member_modes.all_prefix_chars()
+    } else if let Some(prefix) = member_modes.prefix_char() {
+        prefix.to_string()
+    } else {
+        String::new()
+    }
+}
+
 #[async_trait]
 impl Handler for WhoHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
@@ -36,6 +50,14 @@ impl Handler for WhoHandler {
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
 
+        // Check if the user has multi-prefix CAP enabled
+        let multi_prefix = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
+            let user = user.read().await;
+            user.caps.contains("multi-prefix")
+        } else {
+            false
+        };
+
         // Determine query type
         if let Some(mask_str) = mask {
             if is_channel_name(mask_str) {
@@ -53,7 +75,7 @@ impl Handler for WhoHandler {
                                 continue;
                             }
 
-                            // Build flags: H=here, G=gone (away), *=ircop, @=chanop, +=voice
+                            // Build flags: H=here, G=gone (away), *=ircop, then channel prefixes
                             let mut flags = if user.away.is_some() {
                                 "G".to_string()
                             } else {
@@ -62,12 +84,7 @@ impl Handler for WhoHandler {
                             if user.modes.oper {
                                 flags.push('*');
                             }
-                            if member_modes.op {
-                                flags.push('@');
-                            }
-                            if member_modes.voice && !member_modes.op {
-                                flags.push('+');
-                            }
+                            flags.push_str(&get_member_prefixes(member_modes, multi_prefix));
 
                             // RPL_WHOREPLY (352): <channel> <user> <host> <server> <nick> <flags> :<hopcount> <realname>
                             let reply = server_reply(
@@ -92,12 +109,54 @@ impl Handler for WhoHandler {
                 // Mask-based WHO - search all users
                 let mask_lower = irc_to_lower(mask_str);
 
+                // Check if this is an exact nick query (no wildcards)
+                let is_exact_query = !mask_str.contains('*') && !mask_str.contains('?');
+
+                // Get requester's operator status for invisible visibility
+                let requester_is_oper = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                    user_ref.read().await.modes.oper
+                } else {
+                    false
+                };
+
+                // Pre-collect requester's channel memberships for invisible checking
+                let mut requester_channels: Vec<String> = Vec::new();
+                for ch_ref in ctx.matrix.channels.iter() {
+                    let channel = ch_ref.read().await;
+                    if channel.is_member(ctx.uid) {
+                        requester_channels.push(ch_ref.key().clone());
+                    }
+                }
+
                 for user_ref in ctx.matrix.users.iter() {
                     let user = user_ref.read().await;
+                    let target_uid = user_ref.key().clone();
 
                     // Skip if operators_only and not an operator
                     if operators_only && !user.modes.oper {
                         continue;
+                    }
+
+                    // Skip invisible users unless:
+                    // 1. Requester is an oper
+                    // 2. Requester shares a channel with the user
+                    // 3. Requester is querying themselves
+                    // 4. Query is an exact nick (no wildcards)
+                    if user.modes.invisible && !requester_is_oper && target_uid != ctx.uid && !is_exact_query {
+                        // Check if they share any channel
+                        let mut shares_channel = false;
+                        for ch_key in &requester_channels {
+                            if let Some(ch_ref) = ctx.matrix.channels.get(ch_key) {
+                                let channel = ch_ref.read().await;
+                                if channel.is_member(&target_uid) {
+                                    shares_channel = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if !shares_channel {
+                            continue;
+                        }
                     }
 
                     // Match against nick (simple case-insensitive match or wildcard)

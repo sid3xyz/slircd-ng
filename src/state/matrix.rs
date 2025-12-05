@@ -144,6 +144,8 @@ pub struct ServerInfo {
     pub network: String,
     pub description: String,
     pub created: i64,
+    /// MOTD lines loaded from config file.
+    pub motd_lines: Vec<String>,
 }
 
 /// A linked server (for future use).
@@ -226,6 +228,7 @@ impl Matrix {
                 network: config.server.network.clone(),
                 description: config.server.description.clone(),
                 created: now,
+                motd_lines: config.motd.load_lines(),
             },
             uid_gen: UidGenerator::new(config.server.sid.clone()),
             config: MatrixConfig {
@@ -315,6 +318,32 @@ impl Matrix {
         required_cap: Option<&str>,
         fallback_msg: Option<Message>,
     ) -> usize {
+        let excludes: &[&str] = if let Some(e) = exclude {
+            &[e]
+        } else {
+            &[]
+        };
+        self.broadcast_to_channel_with_cap_exclude_users(
+            channel_name,
+            msg,
+            excludes,
+            required_cap,
+            fallback_msg,
+        )
+        .await
+    }
+
+    /// Broadcast a message to channel members, filtering by capability and excluding multiple users.
+    ///
+    /// Same as `broadcast_to_channel_with_cap` but allows excluding multiple users.
+    pub async fn broadcast_to_channel_with_cap_exclude_users(
+        &self,
+        channel_name: &str,
+        msg: Message,
+        exclude: &[&str],
+        required_cap: Option<&str>,
+        fallback_msg: Option<Message>,
+    ) -> usize {
         let Some(channel) = self.channels.get(channel_name) else {
             return 0;
         };
@@ -325,7 +354,7 @@ impl Matrix {
         let mut sent = 0;
 
         for uid in channel.members.keys() {
-            if exclude.is_some_and(|e| e == uid.as_str()) {
+            if exclude.contains(&uid.as_str()) {
                 continue;
             }
 
