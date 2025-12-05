@@ -547,10 +547,9 @@ impl Connection {
                             };
 
                             // Select middleware: direct or capturing buffer when label is present
-                            let mut capture_buffer: Option<Mutex<Vec<Message>>> = None;
-                            let sender_middleware = if label.is_some() {
-                                capture_buffer = Some(Mutex::new(Vec::new()));
-                                ResponseMiddleware::Capturing(capture_buffer.as_ref().unwrap())
+                            let capture_buffer: Option<Mutex<Vec<Message>>> = label.as_ref().map(|_| Mutex::new(Vec::new()));
+                            let sender_middleware = if let Some(buf) = capture_buffer.as_ref() {
+                                ResponseMiddleware::Capturing(buf)
                             } else {
                                 ResponseMiddleware::Direct(&outgoing_tx)
                             };
@@ -621,41 +620,51 @@ impl Connection {
 
                                     match messages.len() {
                                         0 => {
-                                            let ack = labeled_ack(&self.matrix.server_info.name, label.as_deref().unwrap());
-                                            let _ = outgoing_tx.send(ack).await;
+                                            if let Some(label_str) = label.as_deref() {
+                                                let ack = labeled_ack(&self.matrix.server_info.name, label_str);
+                                                let _ = outgoing_tx.send(ack).await;
+                                            } else {
+                                                warn!("Missing label while sending ACK");
+                                            }
                                         }
                                         1 => {
-                                            let msg = messages.pop().unwrap();
-                                            let tagged = with_label(msg, label.as_deref());
-                                            let _ = outgoing_tx.send(tagged).await;
+                                            if let Some(msg) = messages.pop() {
+                                                let tagged = with_label(msg, label.as_deref());
+                                                let _ = outgoing_tx.send(tagged).await;
+                                            }
                                         }
                                         _ => {
-                                            let batch_id = self.next_batch_id();
-                                            let start = Message {
-                                                tags: None,
-                                                prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
-                                                command: Command::BATCH(
-                                                    format!("+{}", batch_id),
-                                                    Some(BatchSubCommand::CUSTOM("labeled-response".to_string())),
-                                                    None,
-                                                ),
+                                            if let Some(label_str) = label.as_deref() {
+                                                let batch_id = self.next_batch_id();
+                                                let start = Message {
+                                                    tags: None,
+                                                    prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
+                                                    command: Command::BATCH(
+                                                        format!("+{}", batch_id),
+                                                        Some(BatchSubCommand::CUSTOM("labeled-response".to_string())),
+                                                        None,
+                                                    ),
+                                                }
+                                                .with_tag("label", Some(label_str));
+
+                                                let _ = outgoing_tx.send(start).await;
+
+                                                for mut msg in messages.drain(..) {
+                                                    msg = msg.with_tag("batch", Some(&batch_id));
+                                                    let tagged = with_label(msg, Some(label_str));
+                                                    let _ = outgoing_tx.send(tagged).await;
+                                                }
+
+                                                let end = Message {
+                                                    tags: None,
+                                                    prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
+                                                    command: Command::BATCH(format!("-{}", batch_id), None, None),
+                                                };
+
+                                                let _ = outgoing_tx.send(end).await;
+                                            } else {
+                                                warn!("Missing label while batching responses");
                                             }
-                                            .with_tag("label", label.as_deref());
-
-                                            let _ = outgoing_tx.send(start).await;
-
-                                            for mut msg in messages.drain(..) {
-                                                msg = msg.with_tag("batch", Some(&batch_id));
-                                                let _ = outgoing_tx.send(msg).await;
-                                            }
-
-                                            let end = Message {
-                                                tags: None,
-                                                prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
-                                                command: Command::BATCH(format!("-{}", batch_id), None, None),
-                                            };
-
-                                            let _ = outgoing_tx.send(end).await;
                                         }
                                     }
                                 }
