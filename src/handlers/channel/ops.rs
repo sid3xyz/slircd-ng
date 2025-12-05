@@ -118,9 +118,12 @@ pub async fn force_join_channel(
             sender.send(topic_reply).await?;
         }
 
-        // Send NAMES list
-        let channel = ctx.matrix.channels.get(&channel_lower).unwrap();
-        let channel = channel.read().await;
+        // Send NAMES list (channel may have disappeared between operations)
+        let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) else {
+            tracing::warn!(channel = %channel_lower, "Channel vanished before NAMES emit");
+            return Ok(());
+        };
+        let channel = channel_ref.read().await;
         let mut names_list = Vec::new();
         for (uid, member_modes) in &channel.members {
             if let Some(user) = ctx.matrix.users.get(uid) {
