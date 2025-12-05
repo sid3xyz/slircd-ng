@@ -33,7 +33,7 @@ use slirc_proto::Message;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::{RwLock, mpsc, broadcast};
+use tokio::sync::{RwLock, broadcast, mpsc};
 
 /// Unique user identifier (TS6 format: 9 characters).
 pub type Uid = String;
@@ -318,11 +318,7 @@ impl Matrix {
         required_cap: Option<&str>,
         fallback_msg: Option<Message>,
     ) -> usize {
-        let excludes: &[&str] = if let Some(e) = exclude {
-            &[e]
-        } else {
-            &[]
-        };
+        let excludes: &[&str] = if let Some(e) = exclude { &[e] } else { &[] };
         self.broadcast_to_channel_with_cap_exclude_users(
             channel_name,
             msg,
@@ -501,7 +497,7 @@ impl Matrix {
     /// Broadcast CAP NEW or CAP DEL to all connected clients with cap-notify enabled.
     ///
     /// This is called when the server dynamically adds or removes capabilities.
-    /// Per IRCv3 cap-notify spec: https://ircv3.net/specs/extensions/capability-negotiation#cap-notify
+    /// Per IRCv3 cap-notify spec: <https://ircv3.net/specs/extensions/capability-negotiation#cap-notify>
     ///
     /// # Arguments
     /// * `is_new` - true for CAP NEW, false for CAP DEL

@@ -10,7 +10,7 @@ use tracing::{info, warn};
 impl ChanServ {
     /// Handle CLEAR command - mass-kick users from a channel.
     ///
-    /// CLEAR #channel USERS [reason]
+    /// `CLEAR #channel USERS [reason]`
     ///
     /// Kicks all users without +o (operator) status from the channel.
     /// Requires +F (founder) access on the channel.
