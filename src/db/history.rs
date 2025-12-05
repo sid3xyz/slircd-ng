@@ -117,8 +117,8 @@ impl<'a> HistoryRepository<'a> {
             tags: None,
         };
 
-        let message_data =
-            serde_json::to_vec(&envelope).map_err(|e| DbError::Sqlx(sqlx::Error::Protocol(e.to_string())))?;
+        let message_data = serde_json::to_vec(&envelope)
+            .map_err(|e| DbError::Sqlx(sqlx::Error::Protocol(e.to_string())))?;
 
         sqlx::query(
             r#"
@@ -333,13 +333,12 @@ impl<'a> HistoryRepository<'a> {
     ) -> Result<Option<i64>, DbError> {
         let normalized_target = irc_to_lower(target);
 
-        let result: Option<(i64,)> = sqlx::query_as(
-            "SELECT nanotime FROM message_history WHERE target = ? AND msgid = ?",
-        )
-        .bind(&normalized_target)
-        .bind(msgid)
-        .fetch_optional(self.pool)
-        .await?;
+        let result: Option<(i64,)> =
+            sqlx::query_as("SELECT nanotime FROM message_history WHERE target = ? AND msgid = ?")
+                .bind(&normalized_target)
+                .bind(msgid)
+                .fetch_optional(self.pool)
+                .await?;
 
         Ok(result.map(|(n,)| n))
     }

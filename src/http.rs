@@ -2,7 +2,7 @@
 //!
 //! Runs on a separate tokio task and serves `/metrics` for Prometheus scraping.
 
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 use std::net::SocketAddr;
 
 /// Handler for GET /metrics - returns Prometheus metrics in text format.

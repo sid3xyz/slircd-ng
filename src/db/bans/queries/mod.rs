@@ -1,11 +1,11 @@
 //! Database query methods for ban operations.
 
-pub mod kline;
 pub mod dline;
 pub mod gline;
-pub mod zline;
+pub mod kline;
 pub mod rline;
 pub mod shun;
+pub mod zline;
 
 use crate::db::DbError;
 use sqlx::SqlitePool;
@@ -40,7 +40,10 @@ impl<'a> BanRepository<'a> {
     }
 
     /// Check if a user@host matches any active K-line.
-    pub async fn matches_kline(&self, user_host: &str) -> Result<Option<super::models::Kline>, DbError> {
+    pub async fn matches_kline(
+        &self,
+        user_host: &str,
+    ) -> Result<Option<super::models::Kline>, DbError> {
         kline::matches_kline(self.pool, user_host).await
     }
 
@@ -96,7 +99,10 @@ impl<'a> BanRepository<'a> {
     }
 
     /// Check if a user@host matches any active G-line.
-    pub async fn matches_gline(&self, user_host: &str) -> Result<Option<super::models::Gline>, DbError> {
+    pub async fn matches_gline(
+        &self,
+        user_host: &str,
+    ) -> Result<Option<super::models::Gline>, DbError> {
         gline::matches_gline(self.pool, user_host).await
     }
 
@@ -152,7 +158,10 @@ impl<'a> BanRepository<'a> {
     }
 
     /// Check if a realname matches any active R-line.
-    pub async fn matches_rline(&self, realname: &str) -> Result<Option<super::models::Rline>, DbError> {
+    pub async fn matches_rline(
+        &self,
+        realname: &str,
+    ) -> Result<Option<super::models::Rline>, DbError> {
         rline::matches_rline(self.pool, realname).await
     }
 
@@ -175,7 +184,10 @@ impl<'a> BanRepository<'a> {
     }
 
     /// Check if a user@host matches any active shun.
-    pub async fn matches_shun(&self, user_host: &str) -> Result<Option<super::models::Shun>, DbError> {
+    pub async fn matches_shun(
+        &self,
+        user_host: &str,
+    ) -> Result<Option<super::models::Shun>, DbError> {
         shun::matches_shun(self.pool, user_host).await
     }
 

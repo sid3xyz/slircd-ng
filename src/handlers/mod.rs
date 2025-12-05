@@ -9,8 +9,8 @@
 //! buffer, avoiding allocations in the hot loop. Use `msg.arg(n)` to access
 //! arguments as `&str` slices.
 
-mod admin;
 mod account;
+mod admin;
 mod bans;
 mod batch;
 mod cap;
@@ -34,26 +34,35 @@ pub use helpers::{
     matches_ban_or_except, matches_hostmask, server_notice, server_reply, user_prefix, with_label,
 };
 
-pub use admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler};
 pub use account::RegisterHandler;
+pub use admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler};
 pub use bans::{
     DlineHandler, GlineHandler, KlineHandler, RlineHandler, ShunHandler, UndlineHandler,
     UnglineHandler, UnklineHandler, UnrlineHandler, UnshunHandler, UnzlineHandler, ZlineHandler,
 };
 pub use batch::{BatchHandler, BatchState, process_batch_message};
 pub use cap::{AuthenticateHandler, CapHandler, SaslState};
-pub use channel::{CycleHandler, InviteHandler, JoinHandler, KickHandler, KnockHandler, ListHandler, NamesHandler, PartHandler, TopicHandler, force_join_channel, force_part_channel, TargetUser};
+pub use channel::{
+    CycleHandler, InviteHandler, JoinHandler, KickHandler, KnockHandler, ListHandler, NamesHandler,
+    PartHandler, TargetUser, TopicHandler, force_join_channel, force_part_channel,
+};
 pub use chathistory::ChatHistoryHandler;
 pub use connection::{
     NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,
 };
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
 pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
-pub use monitor::{MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online};
-pub use oper::{ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, RestartHandler, TraceHandler, VhostHandler, WallopsHandler};
+pub use monitor::{
+    MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online,
+};
+pub use oper::{
+    ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, RestartHandler,
+    TraceHandler, VhostHandler, WallopsHandler,
+};
 pub use server_query::{
     AdminHandler, HelpHandler, InfoHandler, LinksHandler, LusersHandler, MapHandler, MotdHandler,
-    RulesHandler, ServiceHandler, ServlistHandler, SqueryHandler, StatsHandler, TimeHandler, UseripHandler, VersionHandler,
+    RulesHandler, ServiceHandler, ServlistHandler, SqueryHandler, StatsHandler, TimeHandler,
+    UseripHandler, VersionHandler,
 };
 pub use service_aliases::{CsHandler, NsHandler};
 pub use user_query::{IsonHandler, UserhostHandler, WhoHandler, WhoisHandler, WhowasHandler};
@@ -68,7 +77,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 /// Middleware for routing handler responses.
 /// Direct forwards to the connection sender; Capturing buffers for labeled-response batching.
@@ -201,10 +210,17 @@ pub enum HandlerError {
 }
 
 /// Fetch the current nick, user, and visible host for a given UID from Matrix.
-pub async fn user_mask_from_state(ctx: &Context<'_>, uid: &str) -> Option<(String, String, String)> {
+pub async fn user_mask_from_state(
+    ctx: &Context<'_>,
+    uid: &str,
+) -> Option<(String, String, String)> {
     let user_ref = ctx.matrix.users.get(uid)?;
     let user = user_ref.read().await;
-    Some((user.nick.clone(), user.user.clone(), user.visible_host.clone()))
+    Some((
+        user.nick.clone(),
+        user.user.clone(),
+        user.visible_host.clone(),
+    ))
 }
 
 /// Result type for command handlers.
@@ -344,12 +360,16 @@ impl Registry {
             command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
         }
 
-        Self { handlers, command_counts }
+        Self {
+            handlers,
+            command_counts,
+        }
     }
 
     /// Get command usage statistics for STATS m.
     pub fn get_command_stats(&self) -> Vec<(&'static str, u64)> {
-        let mut stats: Vec<_> = self.command_counts
+        let mut stats: Vec<_> = self
+            .command_counts
             .iter()
             .map(|(cmd, count)| (*cmd, count.load(Ordering::Relaxed)))
             .filter(|(_, count)| *count > 0) // Only include used commands
@@ -371,7 +391,9 @@ impl Registry {
             // Increment command counter (counters are created for all handlers in new())
             // We use expect() here because the invariant is that all handlers have counters.
             // If this fails, it indicates a logic error in Registry::new().
-            let counter = self.command_counts.get(cmd_name.as_str())
+            let counter = self
+                .command_counts
+                .get(cmd_name.as_str())
                 .expect("Command counter missing for registered handler");
             counter.fetch_add(1, Ordering::Relaxed);
 
@@ -422,8 +444,16 @@ pub async fn get_nick_or_star(ctx: &Context<'_>) -> String {
 #[inline]
 #[allow(clippy::result_large_err)]
 pub fn get_nick_user<'a>(ctx: &'a Context<'_>) -> Result<(&'a str, &'a str), HandlerError> {
-    let nick = ctx.handshake.nick.as_deref().ok_or(HandlerError::NickOrUserMissing)?;
-    let user = ctx.handshake.user.as_deref().ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx
+        .handshake
+        .nick
+        .as_deref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
+    let user = ctx
+        .handshake
+        .user
+        .as_deref()
+        .ok_or(HandlerError::NickOrUserMissing)?;
     Ok((nick, user))
 }
 
@@ -470,4 +500,3 @@ pub async fn require_oper(ctx: &mut Context<'_>) -> Result<String, ()> {
 
     Ok(nick)
 }
-

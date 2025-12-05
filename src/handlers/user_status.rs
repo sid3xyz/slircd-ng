@@ -2,8 +2,8 @@
 //!
 //! Handles user status management and IRCv3 profile updates.
 
-use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
 use super::user_mask_from_state;
+use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
 use async_trait::async_trait;
 use slirc_proto::{Command, MessageRef, Response};
 use tracing::debug;
@@ -54,11 +54,7 @@ impl Handler for AwayHandler {
             // Broadcast AWAY to channels - only to clients with away-notify capability (IRCv3)
             let away_broadcast = slirc_proto::Message {
                 tags: None,
-                prefix: Some(slirc_proto::Prefix::new(
-                    &nick,
-                    &user_name,
-                    &host,
-                )),
+                prefix: Some(slirc_proto::Prefix::new(&nick, &user_name, &host)),
                 command: Command::AWAY(Some(away_text.to_string())),
             };
 
@@ -105,11 +101,7 @@ impl Handler for AwayHandler {
         // Broadcast AWAY (no message) to channels - only to clients with away-notify capability (IRCv3)
         let away_broadcast = slirc_proto::Message {
             tags: None,
-            prefix: Some(slirc_proto::Prefix::new(
-                &nick,
-                &user_name,
-                &host,
-            )),
+            prefix: Some(slirc_proto::Prefix::new(&nick, &user_name, &host)),
             command: Command::AWAY(None),
         };
 
@@ -191,7 +183,11 @@ impl Handler for SetnameHandler {
         let (nick, user, visible_host) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
             let mut user = user_ref.write().await;
             user.realname = new_realname.to_string();
-            (user.nick.clone(), user.user.clone(), user.visible_host.clone())
+            (
+                user.nick.clone(),
+                user.user.clone(),
+                user.visible_host.clone(),
+            )
         } else {
             return Ok(());
         };
@@ -280,10 +276,7 @@ impl Handler for SilenceHandler {
                     let reply = server_reply(
                         server_name,
                         Response::RPL_SILELIST,
-                        vec![
-                            nick.clone(),
-                            mask.clone(),
-                        ],
+                        vec![nick.clone(), mask.clone()],
                     );
                     ctx.sender.send(reply).await?;
                 }
@@ -292,10 +285,7 @@ impl Handler for SilenceHandler {
                 let end_reply = server_reply(
                     server_name,
                     Response::RPL_ENDOFSILELIST,
-                    vec![
-                        nick.clone(),
-                        "End of Silence List".to_string(),
-                    ],
+                    vec![nick.clone(), "End of Silence List".to_string()],
                 );
                 ctx.sender.send(end_reply).await?;
             }
@@ -358,4 +348,3 @@ impl Handler for SilenceHandler {
         Ok(())
     }
 }
-

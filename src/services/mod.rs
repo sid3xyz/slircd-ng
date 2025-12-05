@@ -524,7 +524,11 @@ pub async fn apply_effect(
                     kicker.clone(),
                     "services.".to_string(),
                 )),
-                command: Command::KICK(canonical_name.clone(), target_nick.clone(), Some(reason.clone())),
+                command: Command::KICK(
+                    canonical_name.clone(),
+                    target_nick.clone(),
+                    Some(reason.clone()),
+                ),
             };
 
             // Broadcast KICK to channel members

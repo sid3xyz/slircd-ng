@@ -1,6 +1,8 @@
 //! MOTD and related handlers.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
+use super::super::{
+    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply,
+};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 

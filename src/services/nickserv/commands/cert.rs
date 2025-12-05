@@ -139,7 +139,10 @@ where
 
     // Register the certificate
     if let Err(e) = db.accounts().set_certfp(*account_id, Some(&certfp)).await {
-        return vec![reply(uid, &format!("Failed to register certificate: {}", e))];
+        return vec![reply(
+            uid,
+            &format!("Failed to register certificate: {}", e),
+        )];
     }
 
     vec![
@@ -186,10 +189,7 @@ where
 
     vec![reply(
         uid,
-        &format!(
-            "Certificate removed from account \x02{}\x02.",
-            account_name
-        ),
+        &format!("Certificate removed from account \x02{}\x02.", account_name),
     )]
 }
 

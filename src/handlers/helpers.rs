@@ -165,7 +165,10 @@ pub fn with_label(msg: Message, label: Option<&str>) -> Message {
 /// command would normally produce no response (e.g., PONG).
 pub fn labeled_ack(server_name: &str, label: &str) -> Message {
     Message {
-        tags: Some(vec![Tag(std::borrow::Cow::Borrowed("label"), Some(label.to_string()))]),
+        tags: Some(vec![Tag(
+            std::borrow::Cow::Borrowed("label"),
+            Some(label.to_string()),
+        )]),
         prefix: Some(Prefix::ServerName(server_name.to_string())),
         command: Command::ACK,
     }

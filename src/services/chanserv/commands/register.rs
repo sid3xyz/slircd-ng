@@ -1,6 +1,6 @@
 //! Registration-related ChanServ commands: REGISTER, DROP, INFO, SET.
 
-use super::{format_timestamp, ChanServ, ChanServResult};
+use super::{ChanServ, ChanServResult, format_timestamp};
 use crate::state::Matrix;
 use slirc_proto::irc_to_lower;
 use std::sync::Arc;

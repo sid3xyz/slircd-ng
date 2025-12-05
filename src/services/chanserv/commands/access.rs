@@ -1,6 +1,6 @@
 //! Access control ChanServ commands: ACCESS LIST/ADD/DEL.
 
-use super::{format_timestamp, ChanServ, ChanServResult};
+use super::{ChanServ, ChanServResult, format_timestamp};
 use crate::state::Matrix;
 use std::sync::Arc;
 use tracing::{info, warn};

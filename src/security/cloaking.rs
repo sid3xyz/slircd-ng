@@ -282,9 +282,10 @@ mod tests {
         let cloak = cloak_ip_hmac(&ip, TEST_SECRET);
         let hash_parts: Vec<&str> = cloak.split('.').collect();
         for part in &hash_parts[..3] {
-            assert!(part
-                .chars()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+            assert!(
+                part.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            );
         }
     }
 }

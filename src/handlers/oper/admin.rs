@@ -16,19 +16,22 @@ impl Handler for DieHandler {
             return Ok(());
         };
 
-        ctx.sender.send(server_notice(
-            server_name,
-            &nick,
-            "Server shutting down by operator request",
-        )).await?;
+        ctx.sender
+            .send(server_notice(
+                server_name,
+                &nick,
+                "Server shutting down by operator request",
+            ))
+            .await?;
 
         tracing::warn!(oper = %nick, "DIE command issued - initiating shutdown");
 
         ctx.matrix.shutdown_tx.send(()).map_err(|_| {
             tracing::error!("Failed to send shutdown signal - no receivers");
-            HandlerError::Send(mpsc::error::SendError(
-                slirc_proto::Message::notice("*", "Shutdown signal failed")
-            ))
+            HandlerError::Send(mpsc::error::SendError(slirc_proto::Message::notice(
+                "*",
+                "Shutdown signal failed",
+            )))
         })?;
 
         Ok(())
@@ -70,23 +73,28 @@ impl Handler for RehashHandler {
                     anyhow::bail!("Failed to acquire write lock on IP deny list: {}", e)
                 }
             }
-        }.await;
+        }
+        .await;
 
         match reload_result {
             Ok(()) => {
-                ctx.sender.send(server_notice(
-                    server_name,
-                    &nick,
-                    "REHASH complete: IP deny list reloaded from database",
-                )).await?;
+                ctx.sender
+                    .send(server_notice(
+                        server_name,
+                        &nick,
+                        "REHASH complete: IP deny list reloaded from database",
+                    ))
+                    .await?;
                 tracing::info!(oper = %nick, "REHASH completed successfully");
             }
             Err(e) => {
-                ctx.sender.send(server_notice(
-                    server_name,
-                    &nick,
-                    format!("REHASH warning: {}", e),
-                )).await?;
+                ctx.sender
+                    .send(server_notice(
+                        server_name,
+                        &nick,
+                        format!("REHASH warning: {}", e),
+                    ))
+                    .await?;
                 tracing::warn!(oper = %nick, error = %e, "REHASH completed with errors");
             }
         }
@@ -106,19 +114,22 @@ impl Handler for RestartHandler {
             return Ok(());
         };
 
-        ctx.sender.send(server_notice(
-            server_name,
-            &nick,
-            "Server restarting by operator request (exec replacement)",
-        )).await?;
+        ctx.sender
+            .send(server_notice(
+                server_name,
+                &nick,
+                "Server restarting by operator request (exec replacement)",
+            ))
+            .await?;
 
         tracing::warn!(oper = %nick, "RESTART command issued - exec restarting");
 
         ctx.matrix.shutdown_tx.send(()).map_err(|_| {
             tracing::error!("Failed to send shutdown signal - no receivers");
-            HandlerError::Send(mpsc::error::SendError(
-                slirc_proto::Message::notice("*", "Shutdown signal failed")
-            ))
+            HandlerError::Send(mpsc::error::SendError(slirc_proto::Message::notice(
+                "*",
+                "Shutdown signal failed",
+            )))
         })?;
 
         tracing::info!("RESTART: Shutting down (use process supervisor for automatic restart)");

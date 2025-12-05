@@ -1,6 +1,9 @@
 //! TOPIC command handler.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, err_notonchannel, require_registered, server_reply, user_mask_from_state, user_prefix};
+use super::super::{
+    Context, Handler, HandlerError, HandlerResult, err_notonchannel, require_registered,
+    server_reply, user_mask_from_state, user_prefix,
+};
 use crate::state::Topic;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};

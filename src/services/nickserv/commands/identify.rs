@@ -1,8 +1,8 @@
 //! IDENTIFY command handler for NickServ.
 
+use super::NickServResult;
 use crate::db::Database;
 use crate::services::ServiceEffect;
-use super::NickServResult;
 use tracing::{info, warn};
 
 /// Handle IDENTIFY command.
@@ -41,9 +41,7 @@ pub async fn handle_identify(
         Err(crate::db::DbError::AccountNotFound(_)) => {
             reply_effects(uid, vec!["No account found for your nickname."])
         }
-        Err(crate::db::DbError::InvalidPassword) => {
-            reply_effects(uid, vec!["Invalid password."])
-        }
+        Err(crate::db::DbError::InvalidPassword) => reply_effects(uid, vec!["Invalid password."]),
         Err(e) => {
             warn!(nick = %nick, error = ?e, "Identification failed");
             reply_effects(uid, vec!["Identification failed. Please try again later."])

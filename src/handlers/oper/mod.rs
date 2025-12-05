@@ -1,12 +1,12 @@
 //! Operator command handlers split into submodules.
 
-mod auth;
-mod kill;
-mod wallops;
 mod admin;
+mod auth;
 mod chghost;
+mod kill;
 mod trace;
 mod vhost;
+mod wallops;
 
 pub use admin::{DieHandler, RehashHandler, RestartHandler};
 pub use auth::OperHandler;
@@ -39,10 +39,7 @@ pub(super) fn is_valid_hostname(hostname: &str) -> bool {
             return false;
         }
 
-        if !label
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-')
-        {
+        if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
             return false;
         }
     }
@@ -51,7 +48,9 @@ pub(super) fn is_valid_hostname(hostname: &str) -> bool {
 }
 
 /// Get full user info for message construction.
-pub(super) async fn get_user_full_info(ctx: &Context<'_>) -> Option<(String, String, String, bool)> {
+pub(super) async fn get_user_full_info(
+    ctx: &Context<'_>,
+) -> Option<(String, String, String, bool)> {
     let user_ref = ctx.matrix.users.get(ctx.uid)?;
     let user = user_ref.read().await;
     Some((

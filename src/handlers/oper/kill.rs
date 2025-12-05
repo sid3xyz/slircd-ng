@@ -1,6 +1,6 @@
 use super::super::{
-    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges,
-    err_nosuchnick, get_nick_or_star, resolve_nick_to_uid,
+    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, err_nosuchnick,
+    get_nick_or_star, resolve_nick_to_uid,
 };
 use super::get_user_full_info;
 use async_trait::async_trait;
@@ -30,7 +30,8 @@ impl Handler for KillHandler {
         };
         let reason = msg.arg(1).unwrap_or("No reason given");
 
-        let Some((killer_nick, killer_user, killer_host, is_oper)) = get_user_full_info(ctx).await else {
+        let Some((killer_nick, killer_user, killer_host, is_oper)) = get_user_full_info(ctx).await
+        else {
             return Ok(());
         };
 

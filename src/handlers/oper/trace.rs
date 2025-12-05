@@ -1,5 +1,6 @@
 use super::super::{
-    Context, Handler, HandlerResult, err_nosuchnick, require_oper, resolve_nick_to_uid, server_reply,
+    Context, Handler, HandlerResult, err_nosuchnick, require_oper, resolve_nick_to_uid,
+    server_reply,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -39,11 +40,7 @@ impl Handler for TraceHandler {
                     let reply = server_reply(
                         server_name,
                         numeric,
-                        vec![
-                            oper_nick.clone(),
-                            class.to_string(),
-                            user.nick.clone(),
-                        ],
+                        vec![oper_nick.clone(), class.to_string(), user.nick.clone()],
                     );
                     ctx.sender.send(reply).await?;
                 }
@@ -68,11 +65,7 @@ impl Handler for TraceHandler {
                 let reply = server_reply(
                     server_name,
                     numeric,
-                    vec![
-                        oper_nick.clone(),
-                        class.to_string(),
-                        user.nick.clone(),
-                    ],
+                    vec![oper_nick.clone(), class.to_string(), user.nick.clone()],
                 );
                 ctx.sender.send(reply).await?;
             }

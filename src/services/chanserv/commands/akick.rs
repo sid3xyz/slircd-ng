@@ -1,6 +1,6 @@
 //! AKICK ChanServ commands: AKICK ADD/DEL/LIST.
 
-use super::{format_timestamp, ChanServ, ChanServResult};
+use super::{ChanServ, ChanServResult, format_timestamp};
 use crate::db::ChannelRepository;
 use crate::state::Matrix;
 use std::sync::Arc;

@@ -88,12 +88,7 @@ impl Handler for RegisterHandler {
 
         // Validate password (basic check)
         if password.is_empty() || password == "*" {
-            let reply = fail_response(
-                server_name,
-                "INVALID_PARAMS",
-                &nick,
-                "Invalid password",
-            );
+            let reply = fail_response(server_name, "INVALID_PARAMS", &nick, "Invalid password");
             ctx.sender.send(reply).await?;
             return Ok(());
         }

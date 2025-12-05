@@ -264,7 +264,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             "AWAYLEN=200".to_string(),
             "MODES=6".to_string(),
             "MAXTARGETS=4".to_string(),
-            "MONITOR=100".to_string(), // Max monitored nicks per client
+            "MONITOR=100".to_string(),  // Max monitored nicks per client
             "STATUSMSG=@+".to_string(), // Prefixes for status messages
             "are supported by this server".to_string(),
         ],

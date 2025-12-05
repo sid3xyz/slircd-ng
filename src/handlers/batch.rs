@@ -9,8 +9,8 @@
 use super::{Context, Handler, HandlerResult, ResponseMiddleware};
 use async_trait::async_trait;
 use slirc_proto::{
-    format_server_time, generate_batch_ref, generate_msgid, BatchSubCommand, Command, Message,
-    MessageRef, Prefix, Tag,
+    BatchSubCommand, Command, Message, MessageRef, Prefix, Tag, format_server_time,
+    generate_batch_ref, generate_msgid,
 };
 use tracing::debug;
 
@@ -76,12 +76,24 @@ impl Handler for BatchHandler {
             if batch_type.eq_ignore_ascii_case("draft/multiline") {
                 // Check if client has the capability
                 if !ctx.handshake.capabilities.contains("draft/multiline") {
-                    send_fail(ctx, &server_name, "MULTILINE_INVALID", "Capability not negotiated").await?;
+                    send_fail(
+                        ctx,
+                        &server_name,
+                        "MULTILINE_INVALID",
+                        "Capability not negotiated",
+                    )
+                    .await?;
                     return Ok(());
                 }
 
                 if target.is_empty() {
-                    send_fail(ctx, &server_name, "MULTILINE_INVALID", "No target specified").await?;
+                    send_fail(
+                        ctx,
+                        &server_name,
+                        "MULTILINE_INVALID",
+                        "No target specified",
+                    )
+                    .await?;
                     return Ok(());
                 }
 
@@ -125,7 +137,13 @@ impl Handler for BatchHandler {
             // End a batch
             if let Some(ref active_ref) = ctx.handshake.active_batch_ref {
                 if active_ref != stripped {
-                    send_fail(ctx, &server_name, "MULTILINE_INVALID", "Batch reference mismatch").await?;
+                    send_fail(
+                        ctx,
+                        &server_name,
+                        "MULTILINE_INVALID",
+                        "Batch reference mismatch",
+                    )
+                    .await?;
                     return Ok(());
                 }
             } else {
@@ -192,13 +210,19 @@ pub fn process_batch_message(
     // Check command type (must be PRIVMSG or NOTICE)
     let cmd_name = msg.command_name().to_ascii_uppercase();
     if cmd_name != "PRIVMSG" && cmd_name != "NOTICE" {
-        return Err(format!("FAIL BATCH MULTILINE_INVALID :Invalid command {} in multiline batch", cmd_name));
+        return Err(format!(
+            "FAIL BATCH MULTILINE_INVALID :Invalid command {} in multiline batch",
+            cmd_name
+        ));
     }
 
     // Verify command type consistency
     if let Some(ref existing_type) = batch.command_type {
         if existing_type != &cmd_name {
-            return Err("FAIL BATCH MULTILINE_INVALID :Cannot mix PRIVMSG and NOTICE in multiline batch".to_string());
+            return Err(
+                "FAIL BATCH MULTILINE_INVALID :Cannot mix PRIVMSG and NOTICE in multiline batch"
+                    .to_string(),
+            );
         }
     } else {
         batch.command_type = Some(cmd_name.clone());
@@ -225,7 +249,13 @@ pub fn process_batch_message(
     }
 
     // Check limits
-    let new_bytes = batch.total_bytes + content.len() + if batch.lines.is_empty() || has_concat { 0 } else { 1 };
+    let new_bytes = batch.total_bytes
+        + content.len()
+        + if batch.lines.is_empty() || has_concat {
+            0
+        } else {
+            1
+        };
     if new_bytes > MULTILINE_MAX_BYTES {
         return Err(format!(
             "FAIL BATCH MULTILINE_MAX_BYTES {} :Multiline batch max-bytes exceeded",
@@ -260,13 +290,25 @@ async fn process_multiline_batch(
 ) -> HandlerResult {
     // Validate batch isn't empty or all blank
     if batch.lines.is_empty() {
-        send_fail(ctx, server_name, "MULTILINE_INVALID", "Empty multiline batch").await?;
+        send_fail(
+            ctx,
+            server_name,
+            "MULTILINE_INVALID",
+            "Empty multiline batch",
+        )
+        .await?;
         return Ok(());
     }
 
     let all_blank = batch.lines.iter().all(|l| l.content.is_empty());
     if all_blank {
-        send_fail(ctx, server_name, "MULTILINE_INVALID", "Multiline batch with blank lines only").await?;
+        send_fail(
+            ctx,
+            server_name,
+            "MULTILINE_INVALID",
+            "Multiline batch with blank lines only",
+        )
+        .await?;
         return Ok(());
     }
 
@@ -408,9 +450,26 @@ async fn deliver_multiline_to_channel(
                 let sender_middleware = ResponseMiddleware::Direct(&sender);
 
                 if has_multiline {
-                    send_multiline_batch(&sender_middleware, batch, prefix, &batch_ref, &msgid, cmd_type, batch.response_label.as_deref()).await?;
+                    send_multiline_batch(
+                        &sender_middleware,
+                        batch,
+                        prefix,
+                        &batch_ref,
+                        &msgid,
+                        cmd_type,
+                        batch.response_label.as_deref(),
+                    )
+                    .await?;
                 } else {
-                    send_multiline_fallback(&sender_middleware, batch, prefix, &msgid, &server_time, cmd_type).await?;
+                    send_multiline_fallback(
+                        &sender_middleware,
+                        batch,
+                        prefix,
+                        &msgid,
+                        &server_time,
+                        cmd_type,
+                    )
+                    .await?;
                 }
             }
         } else {
@@ -424,9 +483,26 @@ async fn deliver_multiline_to_channel(
             let member_middleware = ResponseMiddleware::Direct(&member_sender);
 
             if has_multiline {
-                send_multiline_batch(&member_middleware, batch, prefix, &batch_ref, &msgid, cmd_type, None).await?;
+                send_multiline_batch(
+                    &member_middleware,
+                    batch,
+                    prefix,
+                    &batch_ref,
+                    &msgid,
+                    cmd_type,
+                    None,
+                )
+                .await?;
             } else {
-                send_multiline_fallback(&member_middleware, batch, prefix, &msgid, &server_time, cmd_type).await?;
+                send_multiline_fallback(
+                    &member_middleware,
+                    batch,
+                    prefix,
+                    &msgid,
+                    &server_time,
+                    cmd_type,
+                )
+                .await?;
             }
         }
     }
@@ -444,7 +520,11 @@ async fn deliver_multiline_to_user(
     target_nick: &str,
 ) -> HandlerResult {
     // Find target user by nick
-    let target_uid = ctx.matrix.nicks.get(&target_nick.to_lowercase()).map(|r| r.clone());
+    let target_uid = ctx
+        .matrix
+        .nicks
+        .get(&target_nick.to_lowercase())
+        .map(|r| r.clone());
 
     let Some(target_uid) = target_uid else {
         // User not found
@@ -484,9 +564,26 @@ async fn deliver_multiline_to_user(
     let target_middleware = ResponseMiddleware::Direct(&target_sender);
 
     if has_multiline {
-        send_multiline_batch(&target_middleware, batch, prefix, &batch_ref, &msgid, cmd_type, None).await?;
+        send_multiline_batch(
+            &target_middleware,
+            batch,
+            prefix,
+            &batch_ref,
+            &msgid,
+            cmd_type,
+            None,
+        )
+        .await?;
     } else {
-        send_multiline_fallback(&target_middleware, batch, prefix, &msgid, &server_time, cmd_type).await?;
+        send_multiline_fallback(
+            &target_middleware,
+            batch,
+            prefix,
+            &msgid,
+            &server_time,
+            cmd_type,
+        )
+        .await?;
     }
 
     // Echo to sender if echo-message enabled
@@ -511,9 +608,26 @@ async fn deliver_multiline_to_user(
             let sender_middleware = ResponseMiddleware::Direct(&sender);
 
             if sender_has_multiline {
-                send_multiline_batch(&sender_middleware, batch, prefix, &batch_ref, &msgid, cmd_type, batch.response_label.as_deref()).await?;
+                send_multiline_batch(
+                    &sender_middleware,
+                    batch,
+                    prefix,
+                    &batch_ref,
+                    &msgid,
+                    cmd_type,
+                    batch.response_label.as_deref(),
+                )
+                .await?;
             } else {
-                send_multiline_fallback(&sender_middleware, batch, prefix, &msgid, &server_time, cmd_type).await?;
+                send_multiline_fallback(
+                    &sender_middleware,
+                    batch,
+                    prefix,
+                    &msgid,
+                    &server_time,
+                    cmd_type,
+                )
+                .await?;
             }
         }
     }
@@ -664,7 +778,11 @@ async fn send_fail(
         prefix: Some(Prefix::ServerName(server_name.to_string())),
         command: Command::Raw(
             "FAIL".to_string(),
-            vec!["BATCH".to_string(), code.to_string(), format!(":{}", message)],
+            vec![
+                "BATCH".to_string(),
+                code.to_string(),
+                format!(":{}", message),
+            ],
         ),
     };
     ctx.sender.send(reply).await?;

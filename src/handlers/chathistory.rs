@@ -6,9 +6,14 @@
 //! - IRCv3 chathistory: <https://ircv3.net/specs/extensions/chathistory>
 
 use crate::db::StoredMessage;
-use crate::handlers::{Context, Handler, HandlerResult, err_needmoreparams, err_notregistered, get_nick_or_star};
+use crate::handlers::{
+    Context, Handler, HandlerResult, err_needmoreparams, err_notregistered, get_nick_or_star,
+};
 use async_trait::async_trait;
-use slirc_proto::{BatchSubCommand, ChatHistorySubCommand, Command, Message, MessageRef, MessageReference, Prefix, Tag};
+use slirc_proto::{
+    BatchSubCommand, ChatHistorySubCommand, Command, Message, MessageRef, MessageReference, Prefix,
+    Tag,
+};
 use tracing::{debug, warn};
 use uuid::Uuid;
 
@@ -94,12 +99,8 @@ impl Handler for ChatHistoryHandler {
 
         // Parse limit (last argument)
         let limit = match subcommand {
-            ChatHistorySubCommand::TARGETS => {
-                msg.arg(4).and_then(|s| s.parse().ok()).unwrap_or(50)
-            }
-            ChatHistorySubCommand::BETWEEN => {
-                msg.arg(4).and_then(|s| s.parse().ok()).unwrap_or(50)
-            }
+            ChatHistorySubCommand::TARGETS => msg.arg(4).and_then(|s| s.parse().ok()).unwrap_or(50),
+            ChatHistorySubCommand::BETWEEN => msg.arg(4).and_then(|s| s.parse().ok()).unwrap_or(50),
             _ => msg.arg(3).and_then(|s| s.parse().ok()).unwrap_or(50),
         };
         let limit = limit.min(MAX_HISTORY_LIMIT);
@@ -114,7 +115,9 @@ impl Handler for ChatHistoryHandler {
                     let msgref = MessageReference::parse(msgref_str);
                     match msgref {
                         Ok(MessageReference::MsgId(id)) => {
-                            if let Ok(Some(nanos)) = ctx.db.history().lookup_msgid_nanotime(&target, &id).await {
+                            if let Ok(Some(nanos)) =
+                                ctx.db.history().lookup_msgid_nanotime(&target, &id).await
+                            {
                                 ctx.db.history().query_before(&target, nanos, limit).await
                             } else {
                                 ctx.db.history().query_latest(&target, limit).await
@@ -132,9 +135,14 @@ impl Handler for ChatHistoryHandler {
                 let msgref_str = msg.arg(2).unwrap_or("*");
                 let msgref = MessageReference::parse(msgref_str);
                 let nanos = match msgref {
-                    Ok(MessageReference::MsgId(id)) => {
-                        ctx.db.history().lookup_msgid_nanotime(&target, &id).await.ok().flatten().unwrap_or(i64::MAX)
-                    }
+                    Ok(MessageReference::MsgId(id)) => ctx
+                        .db
+                        .history()
+                        .lookup_msgid_nanotime(&target, &id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or(i64::MAX),
                     Ok(MessageReference::Timestamp(ts)) => parse_timestamp_to_nanos(&ts),
                     _ => i64::MAX,
                 };
@@ -144,9 +152,14 @@ impl Handler for ChatHistoryHandler {
                 let msgref_str = msg.arg(2).unwrap_or("*");
                 let msgref = MessageReference::parse(msgref_str);
                 let nanos = match msgref {
-                    Ok(MessageReference::MsgId(id)) => {
-                        ctx.db.history().lookup_msgid_nanotime(&target, &id).await.ok().flatten().unwrap_or(0)
-                    }
+                    Ok(MessageReference::MsgId(id)) => ctx
+                        .db
+                        .history()
+                        .lookup_msgid_nanotime(&target, &id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or(0),
                     Ok(MessageReference::Timestamp(ts)) => parse_timestamp_to_nanos(&ts),
                     _ => 0,
                 };
@@ -156,9 +169,14 @@ impl Handler for ChatHistoryHandler {
                 let msgref_str = msg.arg(2).unwrap_or("*");
                 let msgref = MessageReference::parse(msgref_str);
                 let nanos = match msgref {
-                    Ok(MessageReference::MsgId(id)) => {
-                        ctx.db.history().lookup_msgid_nanotime(&target, &id).await.ok().flatten().unwrap_or(0)
-                    }
+                    Ok(MessageReference::MsgId(id)) => ctx
+                        .db
+                        .history()
+                        .lookup_msgid_nanotime(&target, &id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or(0),
                     Ok(MessageReference::Timestamp(ts)) => parse_timestamp_to_nanos(&ts),
                     _ => 0,
                 };
@@ -171,21 +189,34 @@ impl Handler for ChatHistoryHandler {
                 let ref2 = MessageReference::parse(ref2_str);
 
                 let start_nanos = match ref1 {
-                    Ok(MessageReference::MsgId(id)) => {
-                        ctx.db.history().lookup_msgid_nanotime(&target, &id).await.ok().flatten().unwrap_or(0)
-                    }
+                    Ok(MessageReference::MsgId(id)) => ctx
+                        .db
+                        .history()
+                        .lookup_msgid_nanotime(&target, &id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or(0),
                     Ok(MessageReference::Timestamp(ts)) => parse_timestamp_to_nanos(&ts),
                     _ => 0,
                 };
                 let end_nanos = match ref2 {
-                    Ok(MessageReference::MsgId(id)) => {
-                        ctx.db.history().lookup_msgid_nanotime(&target, &id).await.ok().flatten().unwrap_or(i64::MAX)
-                    }
+                    Ok(MessageReference::MsgId(id)) => ctx
+                        .db
+                        .history()
+                        .lookup_msgid_nanotime(&target, &id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or(i64::MAX),
                     Ok(MessageReference::Timestamp(ts)) => parse_timestamp_to_nanos(&ts),
                     _ => i64::MAX,
                 };
 
-                ctx.db.history().query_between(&target, start_nanos, end_nanos, limit).await
+                ctx.db
+                    .history()
+                    .query_between(&target, start_nanos, end_nanos, limit)
+                    .await
             }
             ChatHistorySubCommand::TARGETS => {
                 // TARGETS is not yet implemented - would require scanning distinct targets

@@ -4,7 +4,7 @@
 //! These functions perform the core channel membership operations without
 //! permission checks, allowing callers to implement their own access control.
 
-use super::super::{server_reply, user_prefix, with_label, Context, HandlerResult};
+use super::super::{Context, HandlerResult, server_reply, user_prefix, with_label};
 use crate::state::{Channel, MemberModes};
 use slirc_proto::{Command, Message, Prefix, Response, irc_to_lower};
 use std::sync::Arc;
@@ -113,11 +113,7 @@ pub async fn force_join_channel(
             let topic_reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::RPL_TOPIC,
-                vec![
-                    target.nick.to_string(),
-                    canonical_name.clone(),
-                    topic.text,
-                ],
+                vec![target.nick.to_string(), canonical_name.clone(), topic.text],
             );
             sender.send(topic_reply).await?;
         }

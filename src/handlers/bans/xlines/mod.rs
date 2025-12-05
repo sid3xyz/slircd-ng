@@ -11,7 +11,9 @@
 
 use super::common::{BanType, disconnect_matching_ban};
 use crate::db::{Database, DbError};
-use crate::handlers::{err_needmoreparams, require_oper, server_notice, Context, Handler, HandlerResult};
+use crate::handlers::{
+    Context, Handler, HandlerResult, err_needmoreparams, require_oper, server_notice,
+};
 use crate::state::Matrix;
 use async_trait::async_trait;
 use ipnet::IpNet;
@@ -481,13 +483,7 @@ impl BanConfig for RlineConfig {
         db.bans().remove_rline(target).await
     }
 
-    async fn add_to_cache(
-        &self,
-        _matrix: &Arc<Matrix>,
-        _target: &str,
-        _reason: &str,
-        _oper: &str,
-    ) {
+    async fn add_to_cache(&self, _matrix: &Arc<Matrix>, _target: &str, _reason: &str, _oper: &str) {
         // R-lines don't have an in-memory cache (checked at connection time via DB)
     }
 
