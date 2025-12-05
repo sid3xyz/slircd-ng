@@ -321,25 +321,12 @@ pub async fn apply_effect(
                 return;
             };
 
-            // Get canonical channel name
             let channel_lower = irc_to_lower(&channel);
-            let canonical_name = if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
-                channel_ref.read().await.name.clone()
+            let channel_sender = if let Some(c) = matrix.channels.get(&channel_lower) {
+                c.clone()
             } else {
                 return;
             };
-
-            // Apply mode change to channel member
-            if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
-                let mut channel_guard = channel_ref.write().await;
-                if let Some(member) = channel_guard.members.get_mut(&target_uid) {
-                    match mode_char {
-                        'o' => member.op = adding,
-                        'v' => member.voice = adding,
-                        _ => {}
-                    }
-                }
-            }
 
             // Build typed MODE message from ChanServ
             let channel_mode = match mode_char {
@@ -349,28 +336,33 @@ pub async fn apply_effect(
                 c => ChannelMode::Unknown(c),
             };
 
-            let mode_change = if adding {
+            let mode_obj = if adding {
                 Mode::plus(channel_mode, Some(&target_nick))
             } else {
                 Mode::minus(channel_mode, Some(&target_nick))
             };
 
-            let mode_str = mode_change.flag();
+            let mut target_uids = std::collections::HashMap::new();
+            target_uids.insert(target_nick.clone(), target_uid.clone());
 
-            let mode_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::Nickname(
-                    "ChanServ".to_string(),
-                    "ChanServ".to_string(),
-                    "services.".to_string(),
-                )),
-                command: Command::ChannelMODE(canonical_name.clone(), vec![mode_change]),
+            let sender_prefix = Prefix::Nickname(
+                "ChanServ".to_string(),
+                "ChanServ".to_string(),
+                "services.".to_string(),
+            );
+
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let event = crate::state::actor::ChannelEvent::ApplyModes {
+                sender_uid: "ChanServ".to_string(),
+                sender_prefix,
+                modes: vec![mode_obj],
+                target_uids,
+                force: true,
+                reply_tx: tx,
             };
 
-            // Broadcast MODE change to channel members
-            matrix.broadcast_to_channel(&channel, mode_msg, None).await;
-
-            info!(channel = %canonical_name, target = %target_nick, mode = %mode_str, "ChanServ mode change");
+            let _ = channel_sender.send(event).await;
+            let _ = rx.await;
         }
 
         ServiceEffect::ChannelModes { channel, modes } => {
@@ -378,121 +370,41 @@ pub async fn apply_effect(
                 return;
             }
 
-            // Get canonical channel name
             let channel_lower = irc_to_lower(&channel);
-            let canonical_name = if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
-                channel_ref.read().await.name.clone()
+            let channel_sender = if let Some(c) = matrix.channels.get(&channel_lower) {
+                c.clone()
             } else {
                 return;
             };
 
-            // Apply mode changes to channel state
-            if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
-                let mut channel_guard = channel_ref.write().await;
-                for mode in &modes {
-                    match mode.mode() {
-                        ChannelMode::Oper | ChannelMode::Voice | ChannelMode::Halfop => {
-                            // User modes - need to find the UID for the nick
-                            if let Some(nick) = mode.arg() {
-                                let nick_lower = irc_to_lower(nick);
-                                if let Some(uid) = matrix.nicks.get(&nick_lower).map(|r| r.clone())
-                                    && let Some(member) = channel_guard.members.get_mut(&uid)
-                                {
-                                    match mode.mode() {
-                                        ChannelMode::Oper => member.op = mode.is_plus(),
-                                        ChannelMode::Voice => member.voice = mode.is_plus(),
-                                        ChannelMode::Halfop => member.halfop = mode.is_plus(),
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-                        ChannelMode::InviteOnly => {
-                            channel_guard.modes.invite_only = mode.is_plus();
-                        }
-                        ChannelMode::Moderated => {
-                            channel_guard.modes.moderated = mode.is_plus();
-                        }
-                        ChannelMode::NoExternalMessages => {
-                            channel_guard.modes.no_external = mode.is_plus();
-                        }
-                        ChannelMode::ProtectedTopic => {
-                            channel_guard.modes.topic_lock = mode.is_plus();
-                        }
-                        ChannelMode::Secret => {
-                            channel_guard.modes.secret = mode.is_plus();
-                        }
-                        ChannelMode::Key => {
-                            if mode.is_plus() {
-                                channel_guard.modes.key = mode.arg().map(|s| s.to_string());
-                            } else {
-                                channel_guard.modes.key = None;
-                            }
-                        }
-                        ChannelMode::Limit => {
-                            if mode.is_plus() {
-                                channel_guard.modes.limit = mode.arg().and_then(|s| s.parse().ok());
-                            } else {
-                                channel_guard.modes.limit = None;
-                            }
-                        }
-                        ChannelMode::RegisteredOnly => {
-                            channel_guard.modes.registered_only = mode.is_plus();
-                        }
-                        ChannelMode::NoColors => {
-                            channel_guard.modes.no_colors = mode.is_plus();
-                        }
-                        ChannelMode::NoCTCP => {
-                            channel_guard.modes.no_ctcp = mode.is_plus();
-                        }
-                        ChannelMode::NoNickChange => {
-                            channel_guard.modes.no_nick_change = mode.is_plus();
-                        }
-                        ChannelMode::NoKnock => {
-                            channel_guard.modes.no_knock = mode.is_plus();
-                        }
-                        ChannelMode::NoInvite => {
-                            channel_guard.modes.no_invite = mode.is_plus();
-                        }
-                        ChannelMode::NoChannelNotice => {
-                            channel_guard.modes.no_channel_notice = mode.is_plus();
-                        }
-                        ChannelMode::NoKick => {
-                            channel_guard.modes.no_kick = mode.is_plus();
-                        }
-                        ChannelMode::Permanent => {
-                            channel_guard.modes.permanent = mode.is_plus();
-                        }
-                        ChannelMode::OperOnly => {
-                            channel_guard.modes.oper_only = mode.is_plus();
-                        }
-                        ChannelMode::FreeInvite => {
-                            channel_guard.modes.free_invite = mode.is_plus();
-                        }
-                        ChannelMode::TlsOnly => {
-                            channel_guard.modes.tls_only = mode.is_plus();
-                        }
-                        // List modes (ban, except, invex, quiet) and other modes not handled here
-                        _ => {}
-                    }
-                }
+            let mut target_uids = std::collections::HashMap::new();
+            for mode in &modes {
+                 if let Some(nick) = mode.arg() {
+                     let nick_lower = irc_to_lower(nick);
+                     if let Some(uid) = matrix.nicks.get(&nick_lower).map(|r| r.clone()) {
+                         target_uids.insert(nick.to_string(), uid);
+                     }
+                 }
             }
 
-            // Build typed MODE message from ChanServ
-            let mode_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::Nickname(
-                    "ChanServ".to_string(),
-                    "ChanServ".to_string(),
-                    "services.".to_string(),
-                )),
-                command: Command::ChannelMODE(canonical_name.clone(), modes.clone()),
+            let sender_prefix = Prefix::Nickname(
+                "ChanServ".to_string(),
+                "ChanServ".to_string(),
+                "services.".to_string(),
+            );
+
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let event = crate::state::actor::ChannelEvent::ApplyModes {
+                sender_uid: "ChanServ".to_string(),
+                sender_prefix,
+                modes,
+                target_uids,
+                force: true,
+                reply_tx: tx,
             };
 
-            // Broadcast MODE change to channel members
-            matrix.broadcast_to_channel(&channel, mode_msg, None).await;
-
-            info!(channel = %canonical_name, modes = ?modes, "ChanServ batch mode change");
+            let _ = channel_sender.send(event).await;
+            let _ = rx.await;
         }
 
         ServiceEffect::Kick {
@@ -508,47 +420,42 @@ pub async fn apply_effect(
                 return;
             };
 
-            // Get canonical channel name
             let channel_lower = irc_to_lower(&channel);
-            let canonical_name = if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
-                channel_ref.read().await.name.clone()
+            let channel_sender = if let Some(c) = matrix.channels.get(&channel_lower) {
+                c.clone()
             } else {
                 return;
             };
 
-            // Build KICK message from ChanServ
-            let kick_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::Nickname(
-                    kicker.clone(),
-                    kicker.clone(),
-                    "services.".to_string(),
-                )),
-                command: Command::KICK(
-                    canonical_name.clone(),
-                    target_nick.clone(),
-                    Some(reason.clone()),
-                ),
+            let sender_prefix = Prefix::Nickname(
+                kicker.clone(),
+                kicker.clone(),
+                "services.".to_string(),
+            );
+
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let event = crate::state::actor::ChannelEvent::Kick {
+                sender_uid: kicker.clone(),
+                sender_prefix,
+                target_uid: target_uid.clone(),
+                target_nick: target_nick.clone(),
+                reason: reason.clone(),
+                force: true,
+                reply_tx: tx,
             };
 
-            // Broadcast KICK to channel members
-            matrix
-                .broadcast_to_channel(&channel_lower, kick_msg, None)
-                .await;
-
-            // Remove user from channel state
-            if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
-                let mut channel_guard = channel_ref.write().await;
-                channel_guard.members.remove(&target_uid);
+            if let Ok(_) = channel_sender.send(event).await {
+                if let Ok(Ok(())) = rx.await {
+                    // Success
+                    // Remove channel from user's channel list
+                    if let Some(user_ref) = matrix.users.get(&target_uid) {
+                        let mut user_guard = user_ref.write().await;
+                        user_guard.channels.remove(&channel_lower);
+                    }
+                }
             }
 
-            // Remove channel from user's channel list
-            if let Some(user_ref) = matrix.users.get(&target_uid) {
-                let mut user_guard = user_ref.write().await;
-                user_guard.channels.remove(&channel_lower);
-            }
-
-            info!(channel = %canonical_name, target = %target_nick, kicker = %kicker, reason = %reason, "User kicked by service");
+            info!(channel = %channel, target = %target_nick, kicker = %kicker, reason = %reason, "User kicked by service");
         }
 
         ServiceEffect::ForceNick {

@@ -31,7 +31,7 @@ mod user_status;
 pub use helpers::{
     err_chanoprivsneeded, err_needmoreparams, err_noprivileges, err_nosuchchannel, err_nosuchnick,
     err_notonchannel, err_notregistered, err_unknowncommand, err_usernotinchannel, labeled_ack,
-    matches_ban_or_except, matches_hostmask, server_notice, server_reply, user_prefix, with_label,
+    matches_hostmask, server_notice, server_reply, user_prefix, with_label,
 };
 
 pub use account::RegisterHandler;
@@ -51,7 +51,7 @@ pub use connection::{
     NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,
 };
 pub use messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler};
-pub use mode::{ModeHandler, apply_channel_modes_typed, format_modes_for_log};
+pub use mode::{ModeHandler, format_modes_for_log};
 pub use monitor::{
     MonitorHandler, cleanup_monitors, notify_monitors_offline, notify_monitors_online,
 };
@@ -207,6 +207,8 @@ pub enum HandlerError {
     Send(#[from] mpsc::error::SendError<Message>),
     #[error("client quit: {0:?}")]
     Quit(Option<String>),
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 /// Fetch the current nick, user, and visible host for a given UID from Matrix.

@@ -41,24 +41,40 @@ impl Handler for NamesHandler {
             // - Public channels (if user is not in them but they're visible)
             // Secret channels (+s) are not shown unless user is in them
             for channel_arc in ctx.matrix.channels.iter() {
-                let channel = channel_arc.read().await;
-                let is_member = channel.members.contains_key(ctx.uid);
+                let sender = channel_arc.value();
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let _ = sender.send(crate::state::actor::ChannelEvent::GetInfo {
+                    requester_uid: Some(ctx.uid.to_string()),
+                    reply_tx: tx
+                }).await;
+
+                let channel_info = match rx.await {
+                    Ok(info) => info,
+                    Err(_) => continue,
+                };
 
                 // Skip secret channels unless user is a member
-                if channel.modes.secret && !is_member {
+                if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel_info.is_member {
                     continue;
                 }
 
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let _ = sender.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await;
+                let members = match rx.await {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+
                 let mut names_list = Vec::new();
-                for (uid, member_modes) in &channel.members {
-                    if let Some(user) = ctx.matrix.users.get(uid) {
+                for (uid, member_modes) in members {
+                    if let Some(user) = ctx.matrix.users.get(&uid) {
                         let user = user.read().await;
-                        let prefix = get_member_prefix(member_modes, multi_prefix);
+                        let prefix = get_member_prefix(&member_modes, multi_prefix);
                         names_list.push(format!("{}{}", prefix, user.nick));
                     }
                 }
 
-                let channel_symbol = if channel.modes.secret { "@" } else { "=" };
+                let channel_symbol = if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) { "@" } else { "=" };
 
                 let names_reply = server_reply(
                     &ctx.matrix.server_info.name,
@@ -66,7 +82,7 @@ impl Handler for NamesHandler {
                     vec![
                         nick.to_string(),
                         channel_symbol.to_string(),
-                        channel.name.clone(),
+                        channel_info.name.clone(),
                         names_list.join(" "),
                     ],
                 );
@@ -88,14 +104,46 @@ impl Handler for NamesHandler {
 
         let channel_lower = irc_to_lower(channel_name);
 
-        if let Some(channel) = ctx.matrix.channels.get(&channel_lower) {
-            let channel = channel.read().await;
+        if let Some(channel_sender) = ctx.matrix.channels.get(&channel_lower) {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetInfo {
+                requester_uid: Some(ctx.uid.to_string()),
+                reply_tx: tx
+            }).await;
+
+            let channel_info = match rx.await {
+                Ok(info) => info,
+                Err(_) => return Ok(()),
+            };
+
+            // If channel is secret and user is not a member, treat as if it doesn't exist
+            if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel_info.is_member {
+                let end_names = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_ENDOFNAMES,
+                    vec![
+                        nick.to_string(),
+                        channel_name.to_string(),
+                        "End of /NAMES list".to_string(),
+                    ],
+                );
+                ctx.sender.send(end_names).await?;
+                return Ok(());
+            }
+
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await;
+            let members = match rx.await {
+                Ok(m) => m,
+                Err(_) => return Ok(()),
+            };
+
             let mut names_list = Vec::new();
 
-            for (uid, member_modes) in &channel.members {
-                if let Some(user) = ctx.matrix.users.get(uid) {
+            for (uid, member_modes) in members {
+                if let Some(user) = ctx.matrix.users.get(&uid) {
                     let user = user.read().await;
-                    let prefix = get_member_prefix(member_modes, multi_prefix);
+                    let prefix = get_member_prefix(&member_modes, multi_prefix);
                     names_list.push(format!("{}{}", prefix, user.nick));
                 }
             }
@@ -104,7 +152,7 @@ impl Handler for NamesHandler {
             // @ = secret (+s)
             // * = private (not used, some IRCds treat +p this way)
             // = = public (default)
-            let channel_symbol = if channel.modes.secret { "@" } else { "=" };
+            let channel_symbol = if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) { "@" } else { "=" };
 
             let names_reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -112,7 +160,7 @@ impl Handler for NamesHandler {
                 vec![
                     nick.to_string(),
                     channel_symbol.to_string(),
-                    channel.name.clone(),
+                    channel_info.name.clone(),
                     names_list.join(" "),
                 ],
             );
@@ -123,7 +171,7 @@ impl Handler for NamesHandler {
                 Response::RPL_ENDOFNAMES,
                 vec![
                     nick.to_string(),
-                    channel.name.clone(),
+                    channel_info.name.clone(),
                     "End of /NAMES list".to_string(),
                 ],
             );

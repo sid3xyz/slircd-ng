@@ -3,7 +3,7 @@
 //! Shared helpers for PRIVMSG, NOTICE, and TAGMSG handlers including shun checking,
 //! routing logic, channel validation, and error responses.
 
-use super::super::{Context, HandlerResult, matches_ban_or_except, server_reply};
+use super::super::{Context, HandlerResult, server_reply};
 use crate::security::UserContext;
 use crate::security::spam::SpamVerdict;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
@@ -45,40 +45,19 @@ pub async fn is_shunned(ctx: &Context<'_>) -> bool {
 // Message Routing Types
 // ============================================================================
 
-/// Result of attempting to route a message to a channel.
-#[allow(dead_code)] // BlockedCTCP reserved for future use
-pub enum ChannelRouteResult {
-    /// Message was successfully broadcast to channel members.
-    Sent,
-    /// Channel does not exist.
-    NoSuchChannel,
-    /// Sender is blocked by +n (no external messages).
-    BlockedExternal,
-    /// Sender is blocked by +m (moderated).
-    BlockedModerated,
-    /// Message blocked by spam detection.
-    BlockedSpam,
-    /// Sender is blocked by +r (registered-only channel).
-    BlockedRegisteredOnly,
-    /// Blocked by +C (no CTCP except ACTION).
-    BlockedCTCP,
-    /// Blocked by +T (no channel NOTICE).
-    BlockedNotice,
-}
+pub use crate::state::actor::ChannelRouteResult;
 
 /// Options for message routing behavior.
 pub struct RouteOptions {
-    /// Whether to check +m moderated mode (PRIVMSG/NOTICE do, TAGMSG doesn't).
-    pub check_moderated: bool,
     /// Whether to send RPL_AWAY for user targets (only PRIVMSG).
     pub send_away_reply: bool,
     /// Whether this is a NOTICE (for +T check).
     pub is_notice: bool,
-    /// Whether to strip colors (+c mode).
-    pub strip_colors: bool,
     /// Whether to block CTCP (+C mode, except ACTION).
     #[allow(dead_code)] // Reserved for future use
     pub block_ctcp: bool,
+    /// Status prefix for channel messages (e.g. @#chan).
+    pub status_prefix: Option<char>,
 }
 
 // ============================================================================
@@ -98,262 +77,66 @@ pub async fn route_to_channel(
         return ChannelRouteResult::NoSuchChannel;
     };
 
-    let channel = channel_ref.read().await;
-    let is_member = channel.is_member(ctx.uid);
-
-    // Check +n (no external messages)
-    if channel.modes.no_external && !is_member {
-        return ChannelRouteResult::BlockedExternal;
-    }
-
-    // Build user's hostmask for ban/quiet checks (nick!user@host)
-    let (user_mask, user_context, is_registered) =
-        if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_ref.read().await;
-            let mask = format!("{}!{}@{}", user.nick, user.user, user.host);
-            let context = UserContext::for_registration(
-                ctx.remote_addr.ip(),
-                user.host.clone(),
-                user.nick.clone(),
-                user.user.clone(),
-                user.realname.clone(),
-                ctx.matrix.server_info.name.clone(),
-                user.account.clone(),
-            );
-            (mask, context, user.modes.registered)
-        } else {
-            // Shouldn't happen for registered users, but provide fallback
-            let mask = "unknown!unknown@unknown".to_string();
-            let context = UserContext::for_registration(
-                ctx.remote_addr.ip(),
-                "unknown".to_string(),
-                "unknown".to_string(),
-                "unknown".to_string(),
-                "unknown".to_string(),
-                ctx.matrix.server_info.name.clone(),
-                None,
-            );
-            (mask, context, false)
-        };
-
-    // Check +r (registered-only channel)
-    if channel.modes.registered_only && !is_registered {
-        crate::metrics::REGISTERED_ONLY_BLOCKED.inc();
-        return ChannelRouteResult::BlockedRegisteredOnly;
-    }
-
-    // Check +z (TLS-only channel)
-    if channel.modes.tls_only && !ctx.handshake.is_tls {
-        return ChannelRouteResult::BlockedExternal; // Reuse error type
-    }
-
-    // Check +b (bans) - banned users cannot speak even if in channel
-    // Supports both hostmask and extended bans ($a:account, $r:realname, etc.)
-    let is_banned = channel
-        .bans
-        .iter()
-        .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context))
-        || channel
-            .extended_bans
-            .iter()
-            .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context));
-
-    if is_banned {
-        // Check if user has ban exception (+e) - supports extended bans
-        let has_exception = channel
-            .excepts
-            .iter()
-            .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context));
-
-        if !has_exception {
-            return ChannelRouteResult::BlockedExternal; // Reuse for ban
-        }
-    }
-
-    // Check +q (quiet) - quieted users cannot speak
-    // Supports both hostmask and extended bans
-    let is_quieted = channel
-        .quiets
-        .iter()
-        .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context));
-
-    if is_quieted {
-        // Check if user has ban exception (+e) - some IRCds allow +e to bypass +q
-        let has_exception = channel
-            .excepts
-            .iter()
-            .any(|entry| matches_ban_or_except(&entry.mask, &user_mask, &user_context));
-
-        if !has_exception {
-            return ChannelRouteResult::BlockedModerated; // Reuse for quiet
-        }
-    }
-
-    // Check for spam (if enabled)
-    if let Some(detector) = &ctx.matrix.spam_detector {
-        // Extract message text from PRIVMSG command
-        if let Command::PRIVMSG(_, ref text) = msg.command {
-            match detector.check_message(text) {
-                SpamVerdict::Spam { pattern, .. } => {
-                    debug!(
-                        uid = %ctx.uid,
-                        channel = %channel_lower,
-                        pattern = %pattern,
-                        "Message blocked as spam"
-                    );
-                    crate::metrics::SPAM_BLOCKED.inc();
-                    return ChannelRouteResult::BlockedSpam;
-                }
-                SpamVerdict::Clean => {
-                    // Message is clean, proceed
-                }
-            }
-        }
-    }
-
-    // Check +T (no channel NOTICE)
-    if opts.is_notice && channel.modes.no_channel_notice {
-        return ChannelRouteResult::BlockedNotice;
-    }
-
-    // Check +m (moderated) - only if option enabled
-    if opts.check_moderated && channel.modes.moderated && !channel.can_speak(ctx.uid) {
-        return ChannelRouteResult::BlockedModerated;
-    }
-
-    // Prepare final message: potentially strip colors (+c) or modify text
-    let final_msg = if opts.strip_colors && channel.modes.no_colors {
-        // Strip IRC formatting codes from message text
-        use slirc_proto::colors::FormattedStringExt;
-        match &msg.command {
-            Command::PRIVMSG(target, text) => {
-                let stripped = text.as_str().strip_formatting();
-                Message {
-                    tags: msg.tags.clone(),
-                    prefix: msg.prefix.clone(),
-                    command: Command::PRIVMSG(target.clone(), stripped.into_owned()),
-                }
-            }
-            Command::NOTICE(target, text) => {
-                let stripped = text.as_str().strip_formatting();
-                Message {
-                    tags: msg.tags.clone(),
-                    prefix: msg.prefix.clone(),
-                    command: Command::NOTICE(target.clone(), stripped.into_owned()),
-                }
-            }
-            _ => msg,
-        }
+    // Get user info
+    let (user_context, is_registered) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+        let user = user_ref.read().await;
+        let context = UserContext::for_registration(
+            ctx.remote_addr.ip(),
+            user.host.clone(),
+            user.nick.clone(),
+            user.user.clone(),
+            user.realname.clone(),
+            ctx.matrix.server_info.name.clone(),
+            user.account.clone(),
+        );
+        (context, user.modes.registered)
     } else {
-        msg
+        // Fallback for unregistered users (shouldn't happen usually)
+        let context = UserContext::for_registration(
+            ctx.remote_addr.ip(),
+            "unknown".to_string(),
+            "unknown".to_string(),
+            "unknown".to_string(),
+            "unknown".to_string(),
+            ctx.matrix.server_info.name.clone(),
+            None,
+        );
+        (context, false)
     };
 
-    // Generate a timestamp once for server-time capability
-    let timestamp = chrono::Utc::now()
-        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-        .to_string();
+        // Extract text and tags from message
+    let (text, tags) = match &msg.command {
+        Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => (text.clone(), msg.tags.clone()),
+        _ => return ChannelRouteResult::Sent, // Should not happen
+    };
 
-    // Generate a unique msgid for message-tags capability
-    let msgid = uuid::Uuid::new_v4().to_string();
+    let is_notice = matches!(msg.command, Command::NOTICE(_, _));
 
-    // Check if this is a TAGMSG (which should only be sent to message-tags clients)
-    let is_tagmsg = matches!(final_msg.command, Command::TAGMSG(_));
+    // Send to actor
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    let event = crate::state::actor::ChannelEvent::Message {
+        sender_uid: ctx.uid.to_string(),
+        text,
+        tags,
+        is_notice,
+        user_context,
+        is_registered,
+        is_tls: ctx.handshake.is_tls,
+        status_prefix: opts.status_prefix,
+        reply_tx,
+    };
 
-    // Broadcast to all channel members except sender
-    for uid in channel.members.keys() {
-        if uid.as_str() == ctx.uid {
-            continue;
-        }
-        if let Some(sender) = ctx.matrix.senders.get(uid) {
-            // Check recipient's capabilities and build appropriate message
-            if let Some(user_ref) = ctx.matrix.users.get(uid) {
-                let user = user_ref.read().await;
-                let has_message_tags = user.caps.contains("message-tags");
-                let has_server_time = user.caps.contains("server-time");
-
-                // TAGMSG should only be sent to clients with message-tags capability
-                if is_tagmsg && !has_message_tags {
-                    continue;
-                }
-
-                // Start with the final message
-                let mut result = final_msg.clone();
-
-                // Strip label tag from recipient copies (label is sender-only)
-                if ctx.label.is_some() {
-                    result.tags = result
-                        .tags
-                        .map(|tags| {
-                            tags.into_iter()
-                                .filter(|tag| tag.0.as_ref() != "label")
-                                .collect::<Vec<_>>()
-                        })
-                        .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-                }
-
-                // If recipient doesn't have message-tags, strip client-only tags (those with '+' prefix)
-                if !has_message_tags {
-                    result.tags = result
-                        .tags
-                        .map(|tags| {
-                            tags.into_iter()
-                                .filter(|tag| !tag.0.starts_with('+'))
-                                .collect::<Vec<_>>()
-                        })
-                        .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-                } else {
-                    // Add msgid for users with message-tags
-                    result = result.with_tag("msgid", Some(msgid.clone()));
-                }
-
-                // Add server-time if capability is enabled
-                if has_server_time {
-                    result = result.with_tag("time", Some(timestamp.clone()));
-                }
-
-                let _ = sender.send(result).await;
-                crate::metrics::MESSAGES_SENT.inc();
-            } else {
-                let _ = sender.send(final_msg.clone()).await;
-                crate::metrics::MESSAGES_SENT.inc();
-            }
-        }
+    if let Err(_) = channel_ref.send(event).await {
+        return ChannelRouteResult::NoSuchChannel; // Actor died
     }
 
-    // Echo message back to sender if they have echo-message capability
-    if ctx.handshake.capabilities.contains("echo-message") {
-        let has_message_tags = ctx.handshake.capabilities.contains("message-tags");
-        let has_server_time = ctx.handshake.capabilities.contains("server-time");
-        let has_labeled_response = ctx.label.is_some();
-
-        let mut echo_msg = final_msg.clone();
-
-        // For labeled-response with PRIVMSG/NOTICE: strip ALL client tags
-        // For TAGMSG: preserve client-only tags (they're the whole point!)
-        if has_labeled_response && !is_tagmsg {
-            echo_msg.tags = None; // Start fresh, only add server tags below
-        }
-
-        // Add msgid if sender has message-tags
-        if has_message_tags {
-            echo_msg = echo_msg.with_tag("msgid", Some(msgid.clone()));
-        }
-
-        // Add server-time if capability is enabled
-        if has_server_time {
-            echo_msg = echo_msg.with_tag("time", Some(timestamp));
-        }
-
-        // Preserve label if present
-        if let Some(ref label) = ctx.label {
-            echo_msg = echo_msg.with_tag("label", Some(label.clone()));
-        }
-
-        let _ = ctx.sender.send(echo_msg).await;
+    match reply_rx.await {
+        Ok(result) => result,
+        Err(_) => ChannelRouteResult::NoSuchChannel,
     }
-
-    ChannelRouteResult::Sent
 }
+
+
 
 /// Route a message to a user target, optionally sending RPL_AWAY.
 ///

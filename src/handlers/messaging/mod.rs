@@ -110,11 +110,10 @@ impl Handler for TagmsgHandler {
 
         // TAGMSG: send errors, but don't check +m (only +n), no away reply
         let opts = RouteOptions {
-            check_moderated: false,
             send_away_reply: false,
             is_notice: false,
-            strip_colors: false,
             block_ctcp: false,
+            status_prefix: None,
         };
 
         if target.is_channel_name() {
@@ -147,6 +146,9 @@ impl Handler for TagmsgHandler {
                 ChannelRouteResult::BlockedNotice => {
                     // TAGMSG is not a NOTICE, so this shouldn't happen
                     unreachable!("TAGMSG is not a NOTICE");
+                }
+                ChannelRouteResult::BlockedBanned => {
+                    send_cannot_send(ctx, &nick, target, "Cannot send to channel (+b)").await?;
                 }
             }
         } else {

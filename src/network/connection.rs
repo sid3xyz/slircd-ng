@@ -166,6 +166,7 @@ fn handler_error_to_reply(
         HandlerError::NickOrUserMissing | HandlerError::Send(_) => None,
         // Quit is handled specially by the connection loop, not as an error reply
         HandlerError::Quit(_) => None,
+        HandlerError::Internal(_) => None,
     }
 }
 
@@ -754,28 +755,27 @@ impl Connection {
                 command: Command::QUIT(Some(quit_text)),
             };
 
-            // Collect all unique members across channels (except self)
-            let mut notified = std::collections::HashSet::new();
-            for channel_lower in &channels {
-                if let Some(channel) = self.matrix.channels.get(channel_lower) {
-                    let channel = channel.read().await;
-                    for member_uid in channel.members.keys() {
-                        if member_uid != &self.uid && !notified.contains(member_uid) {
-                            notified.insert(member_uid.clone());
-                            if let Some(sender) = self.matrix.senders.get(member_uid) {
-                                let _ = sender.send(quit_msg.clone()).await;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Now remove from channels
+            // Send Quit event to all channels
             for channel_lower in channels {
                 if let Some(channel) = self.matrix.channels.get(&channel_lower) {
-                    let mut channel = channel.write().await;
-                    channel.remove_member(&self.uid);
-                    // If channel is empty, it will be cleaned up eventually
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let event = crate::state::actor::ChannelEvent::Quit {
+                        uid: self.uid.clone(),
+                        quit_msg: quit_msg.clone(),
+                        reply_tx: Some(tx),
+                    };
+
+                    if let Ok(_) = channel.send(event).await {
+                        if let Ok(remaining) = rx.await {
+                            if remaining == 0 {
+                                self.matrix.channels.remove(&channel_lower);
+                                crate::metrics::ACTIVE_CHANNELS.dec();
+                            }
+                        }
+                    } else {
+                         // Actor died
+                         self.matrix.channels.remove(&channel_lower);
+                    }
                 }
             }
         }

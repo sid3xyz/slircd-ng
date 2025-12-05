@@ -45,8 +45,13 @@ impl ChanServ {
         // Check if user is op in the channel
         let channel_lower = irc_to_lower(channel_name);
         let is_op = if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
-            let channel = channel_ref.read().await;
-            channel.is_op(uid)
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = channel_ref.send(crate::state::actor::ChannelEvent::GetMemberModes { uid: uid.to_string(), reply_tx: tx }).await;
+            if let Ok(Some(modes)) = rx.await {
+                modes.op
+            } else {
+                false
+            }
         } else {
             return self.error_reply(
                 uid,

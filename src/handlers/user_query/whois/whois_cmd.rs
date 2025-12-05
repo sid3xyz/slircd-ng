@@ -96,10 +96,10 @@ impl Handler for WhoisHandler {
                 {
                     // Check if requester shares any channel with target
                     let mut shares_channel = false;
-                    for ch in &target_user.channels {
-                        if let Some(channel_ref) = ctx.matrix.channels.get(ch) {
-                            let channel = channel_ref.read().await;
-                            if channel.is_member(ctx.uid) {
+                    if let Some(requester) = ctx.matrix.users.get(ctx.uid) {
+                        let requester = requester.read().await;
+                        for ch in &target_user.channels {
+                            if requester.channels.contains(ch) {
                                 shares_channel = true;
                                 break;
                             }
@@ -113,19 +113,33 @@ impl Handler for WhoisHandler {
                 if show_channels && !target_user.channels.is_empty() {
                     let mut channel_list = Vec::new();
                     for channel_name in &target_user.channels {
-                        if let Some(channel_ref) = ctx.matrix.channels.get(channel_name) {
-                            let channel = channel_ref.read().await;
+                        if let Some(channel_sender) = ctx.matrix.channels.get(channel_name) {
+                            let (tx, rx) = tokio::sync::oneshot::channel();
+                            let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetInfo {
+                                requester_uid: Some(ctx.uid.to_string()),
+                                reply_tx: tx
+                            }).await;
+
+                            let channel_info = match rx.await {
+                                Ok(info) => info,
+                                Err(_) => continue,
+                            };
 
                             // Skip secret channels unless requester is a member
-                            if channel.modes.secret && !channel.is_member(ctx.uid) {
+                            if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel_info.is_member {
                                 continue;
                             }
 
-                            let prefix = if let Some(member) = channel.members.get(&target_user.uid)
-                            {
-                                if member.op {
+                            let (tx, rx) = tokio::sync::oneshot::channel();
+                            let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetMemberModes {
+                                uid: target_user.uid.clone(),
+                                reply_tx: tx
+                            }).await;
+
+                            let prefix = if let Ok(Some(modes)) = rx.await {
+                                if modes.op {
                                     "@"
-                                } else if member.voice {
+                                } else if modes.voice {
                                     "+"
                                 } else {
                                     ""
@@ -133,7 +147,7 @@ impl Handler for WhoisHandler {
                             } else {
                                 ""
                             };
-                            channel_list.push(format!("{}{}", prefix, channel.name));
+                            channel_list.push(format!("{}{}", prefix, channel_name));
                         }
                     }
 

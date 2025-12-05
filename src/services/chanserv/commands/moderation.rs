@@ -95,16 +95,23 @@ impl ChanServ {
         let channel_lower = irc_to_lower(channel_name);
         let users_to_kick: Vec<String> = {
             if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
-                let channel = channel_ref.read().await;
-                channel
-                    .members
-                    .iter()
-                    .filter(|(member_uid, modes)| {
-                        // Don't kick opped users or the person running the command
-                        !modes.op && *member_uid != uid
-                    })
-                    .map(|(member_uid, _)| member_uid.clone())
-                    .collect()
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let _ = channel_ref.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await;
+                if let Ok(members) = rx.await {
+                    members
+                        .iter()
+                        .filter(|(member_uid, modes)| {
+                            // Don't kick opped users or the person running the command
+                            !modes.op && *member_uid != uid
+                        })
+                        .map(|(member_uid, _)| member_uid.clone())
+                        .collect()
+                } else {
+                    return self.error_reply(
+                        uid,
+                        &format!("Channel \x02{}\x02 does not exist.", channel_name),
+                    );
+                }
             } else {
                 return self.error_reply(
                     uid,

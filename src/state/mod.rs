@@ -8,12 +8,12 @@ mod mode_builder;
 mod uid;
 mod user;
 
-pub use channel::{Channel, ListEntry, MemberModes, Topic};
+pub use channel::{ListEntry, MemberModes, Topic};
 pub use matrix::Matrix;
+pub mod actor;
 pub use user::{User, UserModes};
 // Exports used by matrix.rs internally
-#[allow(unused_imports)]
-pub(crate) use channel::ChannelModes;
+
 #[allow(unused_imports)]
 pub(crate) use user::WhowasEntry;
 // Uid is used in security/rate_limit.rs - allow for now

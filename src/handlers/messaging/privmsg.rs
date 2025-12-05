@@ -24,7 +24,6 @@ use super::common::{
 use crate::db::StoreMessageParams;
 use crate::services::route_service_message;
 use async_trait::async_trait;
-use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Response, irc_to_lower};
 use tracing::debug;
 use uuid::Uuid;
@@ -204,11 +203,10 @@ impl Handler for PrivmsgHandler {
         };
 
         let opts = RouteOptions {
-            check_moderated: true,
             send_away_reply: true,
             is_notice: false,
-            strip_colors: true,
             block_ctcp: true,
+            status_prefix: None,
         };
 
         // STATUSMSG support: @#channel sends to ops, +#channel sends to voiced+
@@ -219,19 +217,6 @@ impl Handler for PrivmsgHandler {
         if routing_target.is_channel_name() {
             let channel_lower = irc_to_lower(routing_target);
 
-            // Check +C mode (no CTCP except ACTION) for channel messages
-            if let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) {
-                let channel = channel_ref.read().await;
-                if channel.modes.no_ctcp
-                    && Ctcp::is_ctcp(text)
-                    && let Some(ctcp) = Ctcp::parse(text)
-                    && !matches!(ctcp.kind, CtcpKind::Action)
-                {
-                    send_cannot_send(ctx, &nick, target, "Cannot send CTCP to channel (+C)")
-                        .await?;
-                    return Ok(());
-                }
-            }
 
             // If STATUSMSG, route to specific member subset
             if let Some(prefix_char) = status_prefix {
@@ -284,6 +269,9 @@ impl Handler for PrivmsgHandler {
                         // Should not happen for PRIVMSG, but handle anyway
                         send_cannot_send(ctx, &nick, target, "Cannot send NOTICE to channel (+T)")
                             .await?;
+                    }
+                    ChannelRouteResult::BlockedBanned => {
+                        send_cannot_send(ctx, &nick, target, "Cannot send to channel (+b)").await?;
                     }
                 }
             }
@@ -342,35 +330,19 @@ pub(super) async fn route_statusmsg(
     msg: Message,
     prefix_char: char,
 ) -> HandlerResult {
-    let channel = match ctx.matrix.channels.get(channel_lower) {
-        Some(c) => c,
-        None => {
-            let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
-            send_no_such_channel(ctx, nick, original_target).await?;
-            return Ok(());
-        }
+    let opts = RouteOptions {
+        send_away_reply: false,
+        is_notice: false,
+        block_ctcp: false,
+        status_prefix: Some(prefix_char),
     };
 
-    let channel = channel.read().await;
-
-    // Determine which members to send to based on prefix
-    for (uid, member_modes) in &channel.members {
-        // Don't echo back to sender
-        if uid == ctx.uid {
-            continue;
+    match route_to_channel(ctx, channel_lower, msg, &opts).await {
+        ChannelRouteResult::NoSuchChannel => {
+            let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
+            send_no_such_channel(ctx, nick, original_target).await?;
         }
-
-        let should_send = match prefix_char {
-            '@' => member_modes.has_op_or_higher(),    // Ops only
-            '+' => member_modes.has_voice_or_higher(), // Voice or higher
-            _ => false,
-        };
-
-        if should_send {
-            if let Some(sender) = ctx.matrix.senders.get(uid) {
-                let _ = sender.send(msg.clone()).await;
-            }
-        }
+        _ => {}
     }
 
     Ok(())

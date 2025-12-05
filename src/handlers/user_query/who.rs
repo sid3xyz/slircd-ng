@@ -62,11 +62,32 @@ impl Handler for WhoHandler {
             if is_channel_name(mask_str) {
                 // Channel WHO - list channel members
                 let channel_lower = irc_to_lower(mask_str);
-                if let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) {
-                    let channel = channel_ref.read().await;
+                if let Some(channel_sender) = ctx.matrix.channels.get(&channel_lower) {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetInfo {
+                        requester_uid: Some(ctx.uid.to_string()),
+                        reply_tx: tx
+                    }).await;
 
-                    for (member_uid, member_modes) in &channel.members {
-                        if let Some(user_ref) = ctx.matrix.users.get(member_uid) {
+                    let channel_info = match rx.await {
+                        Ok(info) => info,
+                        Err(_) => return Ok(()),
+                    };
+
+                    // If channel is secret and user is not a member, return nothing (as if channel doesn't exist)
+                    if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel_info.is_member {
+                        return Ok(());
+                    }
+
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await;
+                    let members = match rx.await {
+                        Ok(m) => m,
+                        Err(_) => return Ok(()),
+                    };
+
+                    for (member_uid, member_modes) in members {
+                        if let Some(user_ref) = ctx.matrix.users.get(&member_uid) {
                             let user = user_ref.read().await;
 
                             // Skip if operators_only and not an operator
@@ -83,7 +104,7 @@ impl Handler for WhoHandler {
                             if user.modes.oper {
                                 flags.push('*');
                             }
-                            flags.push_str(&get_member_prefixes(member_modes, multi_prefix));
+                            flags.push_str(&get_member_prefixes(&member_modes, multi_prefix));
 
                             // RPL_WHOREPLY (352): <channel> <user> <host> <server> <nick> <flags> :<hopcount> <realname>
                             let reply = server_reply(
@@ -91,7 +112,7 @@ impl Handler for WhoHandler {
                                 Response::RPL_WHOREPLY,
                                 vec![
                                     nick.clone(),
-                                    channel.name.clone(),
+                                    channel_info.name.clone(),
                                     user.user.clone(),
                                     user.visible_host.clone(),
                                     server_name.clone(),
@@ -119,13 +140,11 @@ impl Handler for WhoHandler {
                 };
 
                 // Pre-collect requester's channel memberships for invisible checking
-                let mut requester_channels: Vec<String> = Vec::new();
-                for ch_ref in ctx.matrix.channels.iter() {
-                    let channel = ch_ref.read().await;
-                    if channel.is_member(ctx.uid) {
-                        requester_channels.push(ch_ref.key().clone());
-                    }
-                }
+                let requester_channels: Vec<String> = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                    user_ref.read().await.channels.iter().cloned().collect()
+                } else {
+                    Vec::new()
+                };
 
                 for user_ref in ctx.matrix.users.iter() {
                     let user = user_ref.read().await;
@@ -148,13 +167,10 @@ impl Handler for WhoHandler {
                     {
                         // Check if they share any channel
                         let mut shares_channel = false;
-                        for ch_key in &requester_channels {
-                            if let Some(ch_ref) = ctx.matrix.channels.get(ch_key) {
-                                let channel = ch_ref.read().await;
-                                if channel.is_member(&target_uid) {
-                                    shares_channel = true;
-                                    break;
-                                }
+                        for ch in &user.channels {
+                            if requester_channels.contains(ch) {
+                                shares_channel = true;
+                                break;
                             }
                         }
                         if !shares_channel {

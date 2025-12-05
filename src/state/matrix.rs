@@ -19,7 +19,6 @@
 //! - **Collect-then-mutate**: Collect UIDs/keys to Vec, release iteration, then mutate
 //! - **Lock-copy-release**: Acquire lock, copy needed data, release before next operation
 
-use super::channel::Channel;
 use super::user::{User, WhowasEntry};
 use crate::db::Database;
 use crate::services::{chanserv, nickserv};
@@ -28,6 +27,7 @@ use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig, ServerConfi
 use crate::db::{Dline, Gline, Kline, Shun, Zline};
 use crate::security::{BanCache, IpDenyList, RateLimitManager};
 use crate::state::UidGenerator;
+use crate::state::actor::ChannelEvent;
 use dashmap::{DashMap, DashSet};
 use slirc_proto::Message;
 use std::collections::VecDeque;
@@ -53,7 +53,7 @@ pub struct Matrix {
     pub users: DashMap<Uid, Arc<RwLock<User>>>,
 
     /// All channels, indexed by lowercase name.
-    pub channels: DashMap<String, Arc<RwLock<Channel>>>,
+    pub channels: DashMap<String, mpsc::Sender<ChannelEvent>>,
 
     /// Nick to UID mapping for fast nick lookups.
     pub nicks: DashMap<String, Uid>,
@@ -287,19 +287,11 @@ impl Matrix {
         msg: Message,
         exclude: Option<&str>,
     ) {
-        if let Some(channel) = self.channels.get(channel_name) {
-            let channel = channel.read().await;
-            // Use Arc for efficient multi-recipient broadcasting
-            let msg = Arc::new(msg);
-            for uid in channel.members.keys() {
-                if exclude.is_some_and(|e| e == uid.as_str()) {
-                    continue;
-                }
-                if let Some(sender) = self.senders.get(uid) {
-                    // Arc clone is just pointer copy (8 bytes)
-                    let _ = sender.send((*msg).clone()).await;
-                }
-            }
+        if let Some(sender) = self.channels.get(channel_name) {
+            let _ = sender.send(ChannelEvent::Broadcast {
+                message: msg,
+                exclude: exclude.map(|s| s.to_string()),
+            }).await;
         }
     }
 
@@ -340,49 +332,15 @@ impl Matrix {
         required_cap: Option<&str>,
         fallback_msg: Option<Message>,
     ) -> usize {
-        let Some(channel) = self.channels.get(channel_name) else {
-            return 0;
-        };
-
-        let channel = channel.read().await;
-        let msg = Arc::new(msg);
-        let fallback_msg = fallback_msg.map(Arc::new);
-        let mut sent = 0;
-
-        for uid in channel.members.keys() {
-            if exclude.contains(&uid.as_str()) {
-                continue;
-            }
-
-            // Determine which message to send based on user's capabilities
-            let msg_to_send = if let Some(cap) = required_cap {
-                // Check if user has the required capability
-                let has_cap = if let Some(user_ref) = self.users.get(uid) {
-                    let user = user_ref.read().await;
-                    user.caps.contains(cap)
-                } else {
-                    false
-                };
-
-                if has_cap {
-                    Some(msg.clone())
-                } else {
-                    fallback_msg.clone()
-                }
-            } else {
-                // No capability filter, send to everyone
-                Some(msg.clone())
-            };
-
-            if let Some(m) = msg_to_send
-                && let Some(sender) = self.senders.get(uid)
-                && sender.send((*m).clone()).await.is_ok()
-            {
-                sent += 1;
-            }
+        if let Some(sender) = self.channels.get(channel_name) {
+            let _ = sender.send(ChannelEvent::BroadcastWithCap {
+                message: msg,
+                exclude: exclude.iter().map(|s| s.to_string()).collect(),
+                required_cap: required_cap.map(|s| s.to_string()),
+                fallback_msg,
+            }).await;
         }
-
-        sent
+        0
     }
 
     /// Disconnect a user from the server.
@@ -427,14 +385,18 @@ impl Matrix {
 
         // Remove from channels and broadcast QUIT
         for channel_name in &user_channels {
-            if let Some(channel_ref) = self.channels.get(channel_name) {
-                let mut channel = channel_ref.write().await;
-                channel.members.remove(target_uid);
+            if let Some(sender) = self.channels.get(channel_name) {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let _ = sender.send(ChannelEvent::Quit {
+                    uid: target_uid.to_string(),
+                    quit_msg: quit_msg.clone(),
+                    reply_tx: Some(tx),
+                }).await;
 
-                // Broadcast QUIT to remaining members
-                for member_uid in channel.members.keys() {
-                    if let Some(sender) = self.senders.get(member_uid) {
-                        let _ = sender.send(quit_msg.clone()).await;
+                if let Ok(remaining) = rx.await {
+                    if remaining == 0 {
+                        self.channels.remove(channel_name);
+                        crate::metrics::ACTIVE_CHANNELS.dec();
                     }
                 }
             }
