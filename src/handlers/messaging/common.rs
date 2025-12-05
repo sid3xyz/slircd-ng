@@ -3,9 +3,9 @@
 //! Shared helpers for PRIVMSG, NOTICE, and TAGMSG handlers including shun checking,
 //! routing logic, channel validation, and error responses.
 
-use super::super::{server_reply, Context, HandlerResult, matches_ban_or_except};
-use crate::security::spam::SpamVerdict;
+use super::super::{Context, HandlerResult, matches_ban_or_except, server_reply};
 use crate::security::UserContext;
+use crate::security::spam::SpamVerdict;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use slirc_proto::{Command, Message, Response};
 use tracing::debug;
@@ -107,33 +107,34 @@ pub async fn route_to_channel(
     }
 
     // Build user's hostmask for ban/quiet checks (nick!user@host)
-    let (user_mask, user_context, is_registered) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        let user = user_ref.read().await;
-        let mask = format!("{}!{}@{}", user.nick, user.user, user.host);
-        let context = UserContext::for_registration(
-            ctx.remote_addr.ip(),
-            user.host.clone(),
-            user.nick.clone(),
-            user.user.clone(),
-            user.realname.clone(),
-            ctx.matrix.server_info.name.clone(),
-            user.account.clone(),
-        );
-        (mask, context, user.modes.registered)
-    } else {
-        // Shouldn't happen for registered users, but provide fallback
-        let mask = "unknown!unknown@unknown".to_string();
-        let context = UserContext::for_registration(
-            ctx.remote_addr.ip(),
-            "unknown".to_string(),
-            "unknown".to_string(),
-            "unknown".to_string(),
-            "unknown".to_string(),
-            ctx.matrix.server_info.name.clone(),
-            None,
-        );
-        (mask, context, false)
-    };
+    let (user_mask, user_context, is_registered) =
+        if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let user = user_ref.read().await;
+            let mask = format!("{}!{}@{}", user.nick, user.user, user.host);
+            let context = UserContext::for_registration(
+                ctx.remote_addr.ip(),
+                user.host.clone(),
+                user.nick.clone(),
+                user.user.clone(),
+                user.realname.clone(),
+                ctx.matrix.server_info.name.clone(),
+                user.account.clone(),
+            );
+            (mask, context, user.modes.registered)
+        } else {
+            // Shouldn't happen for registered users, but provide fallback
+            let mask = "unknown!unknown@unknown".to_string();
+            let context = UserContext::for_registration(
+                ctx.remote_addr.ip(),
+                "unknown".to_string(),
+                "unknown".to_string(),
+                "unknown".to_string(),
+                "unknown".to_string(),
+                ctx.matrix.server_info.name.clone(),
+                None,
+            );
+            (mask, context, false)
+        };
 
     // Check +r (registered-only channel)
     if channel.modes.registered_only && !is_registered {
@@ -248,7 +249,9 @@ pub async fn route_to_channel(
     };
 
     // Generate a timestamp once for server-time capability
-    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let timestamp = chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string();
 
     // Generate a unique msgid for message-tags capability
     let msgid = uuid::Uuid::new_v4().to_string();
@@ -278,20 +281,26 @@ pub async fn route_to_channel(
 
                 // Strip label tag from recipient copies (label is sender-only)
                 if ctx.label.is_some() {
-                    result.tags = result.tags.map(|tags| {
-                        tags.into_iter()
-                            .filter(|tag| tag.0.as_ref() != "label")
-                            .collect::<Vec<_>>()
-                    }).and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+                    result.tags = result
+                        .tags
+                        .map(|tags| {
+                            tags.into_iter()
+                                .filter(|tag| tag.0.as_ref() != "label")
+                                .collect::<Vec<_>>()
+                        })
+                        .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
                 }
 
                 // If recipient doesn't have message-tags, strip client-only tags (those with '+' prefix)
                 if !has_message_tags {
-                    result.tags = result.tags.map(|tags| {
-                        tags.into_iter()
-                            .filter(|tag| !tag.0.starts_with('+'))
-                            .collect::<Vec<_>>()
-                    }).and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+                    result.tags = result
+                        .tags
+                        .map(|tags| {
+                            tags.into_iter()
+                                .filter(|tag| !tag.0.starts_with('+'))
+                                .collect::<Vec<_>>()
+                        })
+                        .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
                 } else {
                     // Add msgid for users with message-tags
                     result = result.with_tag("msgid", Some(msgid.clone()));
@@ -360,6 +369,28 @@ pub async fn route_to_user(
         return false;
     };
 
+    // Spam detection for direct messages (skip TAGMSG).
+    if let Some(detector) = &ctx.matrix.spam_detector {
+        if let Some(text) = match &msg.command {
+            Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
+            _ => None,
+        } {
+            if let SpamVerdict::Spam { pattern, .. } = detector.check_message(text) {
+                if !opts.is_notice {
+                    let _ = send_cannot_send(
+                        ctx,
+                        sender_nick,
+                        target_lower,
+                        "Message rejected as spam",
+                    )
+                    .await;
+                }
+                debug!(pattern = %pattern, "Direct message blocked as spam");
+                return false;
+            }
+        }
+    }
+
     // Check away status and notify sender if requested
     if opts.send_away_reply
         && let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value())
@@ -402,7 +433,10 @@ pub async fn route_to_user(
         if !target_user.silence_list.is_empty() {
             let sender_mask = if let Some(sender_ref) = ctx.matrix.users.get(ctx.uid) {
                 let sender_user = sender_ref.read().await;
-                format!("{}!{}@{}", sender_user.nick, sender_user.user, sender_user.visible_host)
+                format!(
+                    "{}!{}@{}",
+                    sender_user.nick, sender_user.user, sender_user.visible_host
+                )
             } else {
                 String::from("*!*@*")
             };
@@ -429,23 +463,27 @@ pub async fn route_to_user(
                 _ => None,
             };
             if let Some(text) = text
-                && Ctcp::is_ctcp(text) {
-                    // Check if it's an ACTION (allowed even with +T)
-                    if let Some(ctcp) = Ctcp::parse(text)
-                        && !matches!(ctcp.kind, CtcpKind::Action) {
-                            debug!(
-                                target = %target_user.nick,
-                                ctcp_type = ?ctcp.kind,
-                                "CTCP blocked by +T mode"
-                            );
-                            return false; // Silently drop non-ACTION CTCP
-                        }
+                && Ctcp::is_ctcp(text)
+            {
+                // Check if it's an ACTION (allowed even with +T)
+                if let Some(ctcp) = Ctcp::parse(text)
+                    && !matches!(ctcp.kind, CtcpKind::Action)
+                {
+                    debug!(
+                        target = %target_user.nick,
+                        ctcp_type = ?ctcp.kind,
+                        "CTCP blocked by +T mode"
+                    );
+                    return false; // Silently drop non-ACTION CTCP
                 }
+            }
         }
     }
 
     // Send to target user with appropriate tags based on their capabilities
-    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let timestamp = chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string();
     let msgid = uuid::Uuid::new_v4().to_string();
 
     // Check if this is a TAGMSG
@@ -462,20 +500,26 @@ pub async fn route_to_user(
 
             // Strip label tag from recipient copies (label is sender-only)
             if ctx.label.is_some() {
-                result.tags = result.tags.map(|tags| {
-                    tags.into_iter()
-                        .filter(|tag| tag.0.as_ref() != "label")
-                        .collect::<Vec<_>>()
-                }).and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+                result.tags = result
+                    .tags
+                    .map(|tags| {
+                        tags.into_iter()
+                            .filter(|tag| tag.0.as_ref() != "label")
+                            .collect::<Vec<_>>()
+                    })
+                    .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
             }
 
             // If recipient doesn't have message-tags, strip client-only tags
             if !has_message_tags {
-                result.tags = result.tags.map(|tags| {
-                    tags.into_iter()
-                        .filter(|tag| !tag.0.starts_with('+'))
-                        .collect::<Vec<_>>()
-                }).and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+                result.tags = result
+                    .tags
+                    .map(|tags| {
+                        tags.into_iter()
+                            .filter(|tag| !tag.0.starts_with('+'))
+                            .collect::<Vec<_>>()
+                    })
+                    .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
             } else {
                 // Add msgid for users with message-tags
                 result = result.with_tag("msgid", Some(msgid.clone()));

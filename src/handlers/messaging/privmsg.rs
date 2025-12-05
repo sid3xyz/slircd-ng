@@ -12,13 +12,15 @@
 //! - CTCP replies are sent via NOTICE
 //! - The server only enforces +C channel mode (no CTCP except ACTION)
 //!
-//! See: https://modern.ircdocs.horse/ctcp.html
+//! See: <https://modern.ircdocs.horse/ctcp.html>
 
-use super::common::{
-    is_shunned, route_to_channel, route_to_user, send_cannot_send,
-    send_no_such_channel, send_no_such_nick, ChannelRouteResult, RouteOptions,
+use super::super::{
+    Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state, user_prefix,
 };
-use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state, user_prefix};
+use super::common::{
+    ChannelRouteResult, RouteOptions, is_shunned, route_to_channel, route_to_user,
+    send_cannot_send, send_no_such_channel, send_no_such_nick,
+};
 use crate::db::StoreMessageParams;
 use crate::services::route_service_message;
 use async_trait::async_trait;
@@ -49,7 +51,10 @@ impl Handler for PrivmsgHandler {
         // Check message rate limit
         let uid_string = ctx.uid.to_string();
         if !ctx.matrix.rate_limiter.check_message_rate(&uid_string) {
-            let nick = ctx.handshake.nick.as_ref()
+            let nick = ctx
+                .handshake
+                .nick
+                .as_ref()
                 .ok_or(HandlerError::NickOrUserMissing)?;
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
@@ -75,14 +80,60 @@ impl Handler for PrivmsgHandler {
             return Err(HandlerError::NoTextToSend);
         }
 
+        // Check for repetition spam
+        if let Some(detector) = &ctx.matrix.spam_detector {
+            if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
+                detector.check_message_repetition(&uid_string, text)
+            {
+                debug!(uid = %uid_string, pattern = %pattern, "Message blocked by spam detector");
+                let nick = ctx
+                    .handshake
+                    .nick
+                    .as_ref()
+                    .ok_or(HandlerError::NickOrUserMissing)?;
+                let reply = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::ERR_TOOMANYTARGETS,
+                    vec![
+                        nick.to_string(),
+                        target.to_string(),
+                        "Message blocked: repetition detected.".to_string(),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+        }
+
+        // Rate-limit CTCP messages separately to curb floods.
+        if slirc_proto::ctcp::Ctcp::is_ctcp(text)
+            && !ctx.matrix.rate_limiter.check_ctcp_rate(&uid_string)
+        {
+            let nick = ctx
+                .handshake
+                .nick
+                .as_ref()
+                .ok_or(HandlerError::NickOrUserMissing)?
+                .clone();
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_TOOMANYTARGETS,
+                vec![
+                    nick,
+                    "*".to_string(),
+                    "You are sending CTCPs too quickly. Please wait.".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
         let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Check if this is a service message (NickServ, ChanServ, etc.)
-        if route_service_message(ctx.matrix, ctx.uid, &nick, target, text, &ctx.sender)
-            .await
-        {
+        if route_service_message(ctx.matrix, ctx.uid, &nick, target, text, &ctx.sender).await {
             return Ok(());
         }
 
@@ -109,7 +160,11 @@ impl Handler for PrivmsgHandler {
 
         // Build the outgoing message with preserved client tags
         let out_msg = Message {
-            tags: if client_tags.is_empty() { None } else { Some(client_tags) },
+            tags: if client_tags.is_empty() {
+                None
+            } else {
+                Some(client_tags)
+            },
             prefix: Some(user_prefix(&nick, &user_name, &host)),
             command: Command::PRIVMSG(target.to_string(), text.to_string()),
         };
@@ -138,7 +193,8 @@ impl Handler for PrivmsgHandler {
                     && let Some(ctcp) = Ctcp::parse(text)
                     && !matches!(ctcp.kind, CtcpKind::Action)
                 {
-                    send_cannot_send(ctx, &nick, target, "Cannot send CTCP to channel (+C)").await?;
+                    send_cannot_send(ctx, &nick, target, "Cannot send CTCP to channel (+C)")
+                        .await?;
                     return Ok(());
                 }
             }
@@ -150,50 +206,52 @@ impl Handler for PrivmsgHandler {
             } else {
                 // Regular channel message
                 match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
-                ChannelRouteResult::Sent => {
-                    debug!(from = %nick, to = %target, "PRIVMSG to channel");
+                    ChannelRouteResult::Sent => {
+                        debug!(from = %nick, to = %target, "PRIVMSG to channel");
 
-                    // Store message in history for CHATHISTORY support
-                    let msgid = Uuid::new_v4().to_string();
-                    let prefix = format!("{}!{}@{}", nick, user_name, host);
-                    let account = ctx.handshake.account.as_deref();
+                        // Store message in history for CHATHISTORY support
+                        let msgid = Uuid::new_v4().to_string();
+                        let prefix = format!("{}!{}@{}", nick, user_name, host);
+                        let account = ctx.handshake.account.as_deref();
 
-                    let params = StoreMessageParams {
-                        msgid: &msgid,
-                        channel: target,
-                        sender_nick: &nick,
-                        prefix: &prefix,
-                        text,
-                        account,
-                    };
+                        let params = StoreMessageParams {
+                            msgid: &msgid,
+                            channel: target,
+                            sender_nick: &nick,
+                            prefix: &prefix,
+                            text,
+                            account,
+                        };
 
-                    if let Err(e) = ctx.db.history().store_message(params).await {
-                        debug!(error = %e, "Failed to store message in history");
+                        if let Err(e) = ctx.db.history().store_message(params).await {
+                            debug!(error = %e, "Failed to store message in history");
+                        }
+                    }
+                    ChannelRouteResult::NoSuchChannel => {
+                        send_no_such_channel(ctx, &nick, target).await?;
+                    }
+                    ChannelRouteResult::BlockedExternal => {
+                        send_cannot_send(ctx, &nick, target, "Cannot send to channel (+n)").await?;
+                    }
+                    ChannelRouteResult::BlockedModerated => {
+                        send_cannot_send(ctx, &nick, target, "Cannot send to channel (+m)").await?;
+                    }
+                    ChannelRouteResult::BlockedSpam => {
+                        send_cannot_send(ctx, &nick, target, "Message rejected as spam").await?;
+                    }
+                    ChannelRouteResult::BlockedRegisteredOnly => {
+                        send_cannot_send(ctx, &nick, target, "Cannot send to channel (+r)").await?;
+                    }
+                    ChannelRouteResult::BlockedCTCP => {
+                        send_cannot_send(ctx, &nick, target, "Cannot send CTCP to channel (+C)")
+                            .await?;
+                    }
+                    ChannelRouteResult::BlockedNotice => {
+                        // Should not happen for PRIVMSG, but handle anyway
+                        send_cannot_send(ctx, &nick, target, "Cannot send NOTICE to channel (+T)")
+                            .await?;
                     }
                 }
-                ChannelRouteResult::NoSuchChannel => {
-                    send_no_such_channel(ctx, &nick, target).await?;
-                }
-                ChannelRouteResult::BlockedExternal => {
-                    send_cannot_send(ctx, &nick, target, "Cannot send to channel (+n)").await?;
-                }
-                ChannelRouteResult::BlockedModerated => {
-                    send_cannot_send(ctx, &nick, target, "Cannot send to channel (+m)").await?;
-                }
-                ChannelRouteResult::BlockedSpam => {
-                    send_cannot_send(ctx, &nick, target, "Message rejected as spam").await?;
-                }
-                ChannelRouteResult::BlockedRegisteredOnly => {
-                    send_cannot_send(ctx, &nick, target, "Cannot send to channel (+r)").await?;
-                }
-                ChannelRouteResult::BlockedCTCP => {
-                    send_cannot_send(ctx, &nick, target, "Cannot send CTCP to channel (+C)").await?;
-                }
-                ChannelRouteResult::BlockedNotice => {
-                    // Should not happen for PRIVMSG, but handle anyway
-                    send_cannot_send(ctx, &nick, target, "Cannot send NOTICE to channel (+T)").await?;
-                }
-            }
             }
         } else if route_to_user(ctx, &irc_to_lower(routing_target), out_msg, &opts, &nick).await {
             debug!(from = %nick, to = %target, "PRIVMSG to user");
@@ -224,7 +282,13 @@ pub(super) fn parse_statusmsg(target: &str) -> (Option<char>, Option<&str>) {
     let rest = &target[first_char.len_utf8()..];
 
     // Check if it's @#channel or +#channel
-    if (first_char == '@' || first_char == '+') && rest.chars().next().map(|c| c == '#' || c == '&' || c == '+' || c == '!').unwrap_or(false) {
+    if (first_char == '@' || first_char == '+')
+        && rest
+            .chars()
+            .next()
+            .map(|c| c == '#' || c == '&' || c == '+' || c == '!')
+            .unwrap_or(false)
+    {
         (Some(first_char), Some(rest))
     } else {
         (None, None)
@@ -238,14 +302,15 @@ pub(super) fn parse_statusmsg(target: &str) -> (Option<char>, Option<&str>) {
 pub(super) async fn route_statusmsg(
     ctx: &Context<'_>,
     channel_lower: &str,
-    original_target: &str,  // Keep @#chan or +#chan in the message
+    original_target: &str, // Keep @#chan or +#chan in the message
     msg: Message,
     prefix_char: char,
 ) -> HandlerResult {
     let channel = match ctx.matrix.channels.get(channel_lower) {
         Some(c) => c,
         None => {
-            send_no_such_channel(ctx, ctx.handshake.nick.as_ref().unwrap(), original_target).await?;
+            send_no_such_channel(ctx, ctx.handshake.nick.as_ref().unwrap(), original_target)
+                .await?;
             return Ok(());
         }
     };
@@ -260,8 +325,8 @@ pub(super) async fn route_statusmsg(
         }
 
         let should_send = match prefix_char {
-            '@' => member_modes.has_op_or_higher(),  // Ops only
-            '+' => member_modes.has_voice_or_higher(),  // Voice or higher
+            '@' => member_modes.has_op_or_higher(),    // Ops only
+            '+' => member_modes.has_voice_or_higher(), // Voice or higher
             _ => false,
         };
 

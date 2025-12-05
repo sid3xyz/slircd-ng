@@ -1,7 +1,7 @@
 //! Configuration loading and management.
 
-use rand::distributions::Alphanumeric;
 use rand::Rng;
+use rand::distributions::Alphanumeric;
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -203,7 +203,7 @@ pub struct TlsConfig {
 pub struct WebSocketConfig {
     /// Address to bind to for WebSocket (e.g., "0.0.0.0:8080").
     pub address: SocketAddr,
-    /// Allowed origins for CORS (e.g., ["https://example.com"]).
+    /// Allowed origins for CORS (e.g., `["https://example.com"]`).
     /// Empty list allows all origins.
     #[serde(default)]
     pub allow_origins: Vec<String>,
@@ -272,6 +272,15 @@ pub struct RateLimitConfig {
     /// Channel join burst allowed per client in 10 seconds (default: 5).
     #[serde(default = "default_join_burst")]
     pub join_burst_per_client: u32,
+    /// CTCP messages allowed per client per second (default: 1).
+    #[serde(default = "default_ctcp_rate")]
+    pub ctcp_rate_per_second: u32,
+    /// CTCP burst allowed per client (default: 2).
+    #[serde(default = "default_ctcp_burst")]
+    pub ctcp_burst_per_client: u32,
+    /// Maximum concurrent connections allowed per IP (default: 10).
+    #[serde(default = "default_max_connections")]
+    pub max_connections_per_ip: u32,
 }
 
 impl Default for RateLimitConfig {
@@ -280,6 +289,9 @@ impl Default for RateLimitConfig {
             message_rate_per_second: default_message_rate(),
             connection_burst_per_ip: default_connection_burst(),
             join_burst_per_client: default_join_burst(),
+            ctcp_rate_per_second: default_ctcp_rate(),
+            ctcp_burst_per_client: default_ctcp_burst(),
+            max_connections_per_ip: default_max_connections(),
         }
     }
 }
@@ -294,6 +306,18 @@ fn default_connection_burst() -> u32 {
 
 fn default_join_burst() -> u32 {
     5
+}
+
+fn default_ctcp_rate() -> u32 {
+    1
+}
+
+fn default_ctcp_burst() -> u32 {
+    2
+}
+
+fn default_max_connections() -> u32 {
+    10
 }
 
 impl Config {
