@@ -59,7 +59,9 @@ impl Handler for RegisterHandler {
         let email_arg = msg.arg(1);
         let password_arg = msg.arg(2);
 
-        if account_arg.is_none() || email_arg.is_none() || password_arg.is_none() {
+        let (Some(account), Some(email), Some(password)) =
+            (account_arg, email_arg, password_arg)
+        else {
             let reply = fail_response(
                 server_name,
                 "NEED_MORE_PARAMS",
@@ -68,11 +70,7 @@ impl Handler for RegisterHandler {
             );
             ctx.sender.send(reply).await?;
             return Ok(());
-        }
-
-        let account = account_arg.unwrap();
-        let email = email_arg.unwrap();
-        let password = password_arg.unwrap();
+        };
 
         // Validate email if required
         if acct_cfg.email_required && (email == "*" || email.is_empty() || !email.contains('@')) {

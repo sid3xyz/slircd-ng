@@ -312,7 +312,9 @@ pub(super) fn parse_statusmsg(target: &str) -> (Option<char>, Option<&str>) {
         return (None, None);
     }
 
-    let first_char = target.chars().next().unwrap();
+    let Some(first_char) = target.chars().next() else {
+        return (None, None);
+    };
     let rest = &target[first_char.len_utf8()..];
 
     // Check if it's @#channel or +#channel
@@ -343,8 +345,8 @@ pub(super) async fn route_statusmsg(
     let channel = match ctx.matrix.channels.get(channel_lower) {
         Some(c) => c,
         None => {
-            send_no_such_channel(ctx, ctx.handshake.nick.as_ref().unwrap(), original_target)
-                .await?;
+            let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
+            send_no_such_channel(ctx, nick, original_target).await?;
             return Ok(());
         }
     };
