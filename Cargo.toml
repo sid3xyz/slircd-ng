@@ -73,3 +73,5 @@ uuid = { version = "1.19.0", features = ["v4"] }
 roaring = "0.10"
 rmp-serde = "1.1"
 ipnet = "2.9"
+aho-corasick = "1.1.4"
+bcrypt = "0.17.1"

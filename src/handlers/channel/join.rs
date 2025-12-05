@@ -624,8 +624,13 @@ async fn join_channel(
 
     // Send NAMES list
     // Rebuild names list with correct nicks
-    let channel = ctx.matrix.channels.get(&channel_lower).unwrap();
-    let channel = channel.read().await;
+    let channel_ref = if let Some(c) = ctx.matrix.channels.get(&channel_lower) {
+        c
+    } else {
+        tracing::warn!("Channel {} disappeared during JOIN processing", channel_lower);
+        return Ok(());
+    };
+    let channel = channel_ref.read().await;
     let mut names_list = Vec::new();
     for (uid, member_modes) in &channel.members {
         if let Some(user) = ctx.matrix.users.get(uid) {
