@@ -15,7 +15,7 @@ use tracing::{debug, info};
 /// Spawn the nick enforcement background task.
 ///
 /// This task runs every 5 seconds and checks for expired enforcement timers.
-/// Users who haven't identified in time are renamed to Guest<random>.
+/// Users who haven't identified in time are renamed to `Guest<random>`.
 pub fn spawn_enforcement_task(matrix: Arc<Matrix>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(5));

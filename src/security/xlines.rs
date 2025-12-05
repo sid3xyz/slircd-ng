@@ -18,7 +18,7 @@
 //! # Note on X-Lines (K/G/Z/D-Lines)
 //!
 //! Server-level bans are handled by [`crate::security::BanCache`] which loads
-//! from the database models in [`crate::db::bans`]. This module only handles
+//! from the database models in [`crate::db::BanRepository`]. This module only handles
 //! extended ban patterns for channel mode +b.
 
 use slirc_proto::wildcard_match;

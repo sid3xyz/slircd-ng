@@ -91,7 +91,7 @@ impl Handler for CapHandler {
     }
 }
 
-/// Handle CAP LS [version] - list available capabilities.
+/// Handle `CAP LS [version]` - list available capabilities.
 async fn handle_ls(ctx: &mut Context<'_>, nick: &str, version_arg: Option<&str>) -> HandlerResult {
     // Parse version (301 default, 302 if specified)
     let version: u32 = version_arg.and_then(|v| v.parse().ok()).unwrap_or(301);
@@ -158,7 +158,7 @@ async fn handle_list(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
     Ok(())
 }
 
-/// Handle CAP REQ :<capabilities> - request capabilities.
+/// Handle `CAP REQ :<capabilities>` - request capabilities.
 async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -> HandlerResult {
     let requested = caps_arg.unwrap_or("");
 
@@ -385,7 +385,12 @@ impl Handler for AuthenticateHandler {
                             .and_then(|b| String::from_utf8(b).ok())
                     };
 
-                    let certfp = ctx.handshake.certfp.as_ref().expect("checked above").clone();
+                    let certfp = ctx
+                        .handshake
+                        .certfp
+                        .as_ref()
+                        .expect("checked above")
+                        .clone();
 
                     // Look up account by certificate fingerprint
                     match ctx.db.accounts().find_by_certfp(&certfp).await {
@@ -395,7 +400,8 @@ impl Handler for AuthenticateHandler {
                                 && !az.eq_ignore_ascii_case(&account.name)
                             {
                                 warn!(nick = %nick, authzid = %az, account = %account.name, "SASL EXTERNAL authzid mismatch");
-                                send_sasl_fail(ctx, &nick, "Authorization identity mismatch").await?;
+                                send_sasl_fail(ctx, &nick, "Authorization identity mismatch")
+                                    .await?;
                                 ctx.handshake.sasl_state = SaslState::None;
                                 return Ok(());
                             }
@@ -407,14 +413,19 @@ impl Handler for AuthenticateHandler {
                                 "SASL EXTERNAL authentication successful"
                             );
 
-                            let user = ctx.handshake.user.clone().unwrap_or_else(|| "*".to_string());
+                            let user = ctx
+                                .handshake
+                                .user
+                                .clone()
+                                .unwrap_or_else(|| "*".to_string());
                             send_sasl_success(ctx, &nick, &user, &account.name).await?;
                             ctx.handshake.sasl_state = SaslState::Authenticated;
                             ctx.handshake.account = Some(account.name);
                         }
                         Ok(None) => {
                             warn!(nick = %nick, certfp = %certfp, "SASL EXTERNAL: no account with this certificate");
-                            send_sasl_fail(ctx, &nick, "Certificate not registered to any account").await?;
+                            send_sasl_fail(ctx, &nick, "Certificate not registered to any account")
+                                .await?;
                             ctx.handshake.sasl_state = SaslState::None;
                         }
                         Err(e) => {
