@@ -75,52 +75,35 @@ async fn main() -> anyhow::Result<()> {
         .into_iter()
         .map(|r| r.name)
         .collect();
-    info!(count = registered_channels.len(), "Loaded registered channels");
+    info!(
+        count = registered_channels.len(),
+        "Loaded registered channels"
+    );
 
     // Load active shuns from database
-    let active_shuns = db
-        .bans()
-        .get_active_shuns()
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "Failed to load shuns from database");
-            Vec::new()
-        });
+    let active_shuns = db.bans().get_active_shuns().await.unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "Failed to load shuns from database");
+        Vec::new()
+    });
     info!(count = active_shuns.len(), "Loaded active shuns");
 
     // Load active bans from database for connection-time checks
-    let active_klines = db
-        .bans()
-        .get_active_klines()
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "Failed to load K-lines from database");
-            Vec::new()
-        });
-    let active_dlines = db
-        .bans()
-        .get_active_dlines()
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "Failed to load D-lines from database");
-            Vec::new()
-        });
-    let active_glines = db
-        .bans()
-        .get_active_glines()
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "Failed to load G-lines from database");
-            Vec::new()
-        });
-    let active_zlines = db
-        .bans()
-        .get_active_zlines()
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "Failed to load Z-lines from database");
-            Vec::new()
-        });
+    let active_klines = db.bans().get_active_klines().await.unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "Failed to load K-lines from database");
+        Vec::new()
+    });
+    let active_dlines = db.bans().get_active_dlines().await.unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "Failed to load D-lines from database");
+        Vec::new()
+    });
+    let active_glines = db.bans().get_active_glines().await.unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "Failed to load G-lines from database");
+        Vec::new()
+    });
+    let active_zlines = db.bans().get_active_zlines().await.unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "Failed to load Z-lines from database");
+        Vec::new()
+    });
     info!(
         klines = active_klines.len(),
         dlines = active_dlines.len(),
@@ -182,9 +165,9 @@ async fn main() -> anyhow::Result<()> {
                 interval.tick().await;
                 let now = chrono::Utc::now().timestamp();
                 let before = matrix.shuns.len();
-                matrix.shuns.retain(|_, shun| {
-                    shun.expires_at.is_none_or(|exp| exp > now)
-                });
+                matrix
+                    .shuns
+                    .retain(|_, shun| shun.expires_at.is_none_or(|exp| exp > now));
                 let removed = before - matrix.shuns.len();
                 if removed > 0 {
                     info!(removed = removed, "Expired shuns removed");
@@ -219,7 +202,10 @@ async fn main() -> anyhow::Result<()> {
             // Run immediately at startup
             match db.history().prune_old_messages(30).await {
                 Ok(removed) if removed > 0 => {
-                    info!(removed = removed, "Startup: Old messages pruned from history");
+                    info!(
+                        removed = removed,
+                        "Startup: Old messages pruned from history"
+                    );
                 }
                 Ok(_) => {}
                 Err(e) => {

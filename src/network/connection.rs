@@ -25,24 +25,17 @@
 
 use crate::db::Database;
 use crate::handlers::{
-    Context,
-    HandshakeState,
-    Registry,
-    ResponseMiddleware,
-    cleanup_monitors,
-    labeled_ack,
-    notify_monitors_offline,
-    process_batch_message,
-    with_label,
+    Context, HandshakeState, Registry, ResponseMiddleware, cleanup_monitors, labeled_ack,
+    notify_monitors_offline, process_batch_message, with_label,
 };
 use crate::state::Matrix;
 use slirc_proto::error::ProtocolError;
 use slirc_proto::transport::{TransportReadError, ZeroCopyTransportEnum};
-use slirc_proto::{Command, Message, Prefix, Response, BatchSubCommand, irc_to_lower};
+use slirc_proto::{BatchSubCommand, Command, Message, Prefix, Response, irc_to_lower};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{debug, info, instrument, warn};
@@ -68,21 +61,17 @@ fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
                     ReadErrorAction::InputTooLong
                 }
                 // Fatal: other protocol errors → ERROR and disconnect
-                ProtocolError::IllegalControlChar(ch) => {
-                    ReadErrorAction::FatalProtocolError {
-                        error_msg: format!("Illegal control character: {ch:?}"),
-                    }
-                }
+                ProtocolError::IllegalControlChar(ch) => ReadErrorAction::FatalProtocolError {
+                    error_msg: format!("Illegal control character: {ch:?}"),
+                },
                 ProtocolError::InvalidMessage { string, cause } => {
                     ReadErrorAction::FatalProtocolError {
                         error_msg: format!("Malformed message: {cause} (input: {string:?})"),
                     }
                 }
-                ProtocolError::InvalidUtf8(details) => {
-                    ReadErrorAction::FatalProtocolError {
-                        error_msg: format!("Invalid UTF-8 in message: {details}"),
-                    }
-                }
+                ProtocolError::InvalidUtf8(details) => ReadErrorAction::FatalProtocolError {
+                    error_msg: format!("Invalid UTF-8 in message: {details}"),
+                },
                 // Handle other variants that might be added in the future
                 _ => ReadErrorAction::FatalProtocolError {
                     error_msg: format!("Protocol error: {proto_err}"),
@@ -317,7 +306,8 @@ impl Connection {
 
                     // Extract label tag for labeled-response (IRCv3)
                     let label = if handshake.capabilities.contains("labeled-response") {
-                        msg_ref.tags_iter()
+                        msg_ref
+                            .tags_iter()
                             .find(|(k, _)| *k == "label")
                             .map(|(_, v)| v.to_string())
                     } else {
@@ -342,7 +332,9 @@ impl Connection {
                         // Handle QUIT specially - disconnect pre-registration client
                         if let crate::handlers::HandlerError::Quit(quit_msg) = e {
                             let error_text = match quit_msg {
-                                Some(msg) => format!("Closing Link: {} (Quit: {})", self.addr.ip(), msg),
+                                Some(msg) => {
+                                    format!("Closing Link: {} (Quit: {})", self.addr.ip(), msg)
+                                }
                                 None => format!("Closing Link: {} (Client Quit)", self.addr.ip()),
                             };
                             let error_reply = Message {
@@ -378,7 +370,12 @@ impl Connection {
 
                         // Send appropriate error reply based on error type
                         let nick = handshake.nick.as_deref().unwrap_or("*");
-                        if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, nick, &e, &msg_ref) {
+                        if let Some(reply) = handler_error_to_reply(
+                            &self.matrix.server_info.name,
+                            nick,
+                            &e,
+                            &msg_ref,
+                        ) {
                             let _ = self.transport.write_message(&reply).await;
                         }
                         // NotRegistered during handshake shouldn't break - client may just be
@@ -411,7 +408,9 @@ impl Connection {
                             let nick = handshake.nick.as_deref().unwrap_or("*");
                             let reply = Message {
                                 tags: None,
-                                prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
+                                prefix: Some(Prefix::ServerName(
+                                    self.matrix.server_info.name.clone(),
+                                )),
                                 command: Command::Response(
                                     Response::ERR_INPUTTOOLONG,
                                     vec![nick.to_string(), "Input line too long".to_string()],

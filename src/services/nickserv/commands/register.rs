@@ -1,8 +1,8 @@
 //! REGISTER command handler for NickServ.
 
+use super::NickServResult;
 use crate::db::Database;
 use crate::services::ServiceEffect;
-use super::NickServResult;
 use tracing::{info, warn};
 
 /// Handle REGISTER command.

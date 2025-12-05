@@ -1,7 +1,8 @@
 //! PART command handler.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_notonchannel, server_reply, user_mask_from_state, user_prefix,
+    Context, Handler, HandlerError, HandlerResult, err_notonchannel, server_reply,
+    user_mask_from_state, user_prefix,
 };
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
@@ -32,8 +33,7 @@ impl Handler for PartHandler {
             }
 
             let channel_lower = irc_to_lower(channel_name);
-            leave_channel_internal(ctx, &channel_lower, &nick, &user_name, &host, reason)
-                .await?;
+            leave_channel_internal(ctx, &channel_lower, &nick, &user_name, &host, reason).await?;
         }
 
         Ok(())

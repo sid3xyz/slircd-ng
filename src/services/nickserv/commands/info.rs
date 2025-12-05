@@ -1,7 +1,7 @@
 //! INFO command handler for NickServ.
 
-use crate::db::Database;
 use super::NickServResult;
+use crate::db::Database;
 use tracing::debug;
 
 /// Handle INFO command.
@@ -48,16 +48,15 @@ pub async fn handle_info(
             if let Ok(nicks) = db.accounts().get_nicknames(account.id).await
                 && !nicks.is_empty()
             {
-                effects.push(
-                    reply_effect(uid, &format!("  Nicknames:  {}", nicks.join(", "))),
-                );
+                effects.push(reply_effect(
+                    uid,
+                    &format!("  Nicknames:  {}", nicks.join(", ")),
+                ));
             }
 
             effects
         }
-        Ok(None) => {
-            reply_effects(uid, vec![&format!("\x02{}\x02 is not registered.", nick)])
-        }
+        Ok(None) => reply_effects(uid, vec![&format!("\x02{}\x02 is not registered.", nick)]),
         Err(e) => {
             debug!(nick = %nick, error = ?e, "INFO lookup failed");
             reply_effects(uid, vec!["Failed to retrieve account information."])

@@ -187,11 +187,11 @@ pub struct Topic {
 /// Member modes (op, voice, etc.).
 #[derive(Debug, Default, Clone)]
 pub struct MemberModes {
-    pub owner: bool,   // +q (~)
-    pub admin: bool,   // +a (&)
-    pub op: bool,      // +o (@)
-    pub halfop: bool,  // +h (%)
-    pub voice: bool,   // +v (+)
+    pub owner: bool,  // +q (~)
+    pub admin: bool,  // +a (&)
+    pub op: bool,     // +o (@)
+    pub halfop: bool, // +h (%)
+    pub voice: bool,  // +v (+)
     /// Timestamp when user joined the channel (for +J enforcement)
     pub join_time: Option<i64>,
 }
@@ -311,13 +311,17 @@ impl Channel {
 
     /// Check if user has voice or higher (can speak in +m moderated channel).
     pub fn can_speak(&self, uid: &str) -> bool {
-        self.members.get(uid).is_some_and(|m| m.has_voice_or_higher())
+        self.members
+            .get(uid)
+            .is_some_and(|m| m.has_voice_or_higher())
     }
 
     /// Check if user has halfop or higher privileges.
     #[allow(dead_code)]
     pub fn has_halfop(&self, uid: &str) -> bool {
-        self.members.get(uid).is_some_and(|m| m.has_halfop_or_higher())
+        self.members
+            .get(uid)
+            .is_some_and(|m| m.has_halfop_or_higher())
     }
 
     /// Get the privilege rank of a user (higher = more privileges).

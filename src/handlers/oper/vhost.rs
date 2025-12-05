@@ -49,7 +49,11 @@ impl Handler for VhostHandler {
         }
 
         if !is_valid_hostname(new_vhost) {
-            let reply = server_notice(server_name, &oper_nick, "Invalid vhost: use alphanumeric, hyphens, dots only");
+            let reply = server_notice(
+                server_name,
+                &oper_nick,
+                "Invalid vhost: use alphanumeric, hyphens, dots only",
+            );
             ctx.sender.send(reply).await?;
             return Ok(());
         }
@@ -86,7 +90,11 @@ impl Handler for VhostHandler {
 
             let chghost_msg = Message {
                 tags: None,
-                prefix: Some(Prefix::new(&target_nick_clone, &target_user_clone, &old_vhost)),
+                prefix: Some(Prefix::new(
+                    &target_nick_clone,
+                    &target_user_clone,
+                    &old_vhost,
+                )),
                 command: Command::CHGHOST(target_user_clone.clone(), new_vhost.to_string()),
             };
 

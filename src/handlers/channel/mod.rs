@@ -20,7 +20,7 @@ pub use kick::KickHandler;
 pub use knock::KnockHandler;
 pub use list::ListHandler;
 pub use names::NamesHandler;
-pub use ops::{force_join_channel, force_part_channel, TargetUser};
+pub use ops::{TargetUser, force_join_channel, force_part_channel};
 pub use part::PartHandler;
 pub use topic::TopicHandler;
 

@@ -15,8 +15,8 @@
 //! (`send_list_mode`, `get_list_mode_query`) to a separate `channel_lists.rs`.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, user_mask_from_state, user_prefix,
-    with_label,
+    Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, user_mask_from_state,
+    user_prefix, with_label,
 };
 use crate::security::ExtendedBan;
 use crate::state::ListEntry;
@@ -177,8 +177,17 @@ pub async fn handle_channel_mode(
                         if let Some(key) = mode.arg() {
                             // Validate: no spaces, not empty, max 23 chars
                             if key.is_empty() || key.contains(' ') || key.len() > 23 {
-                                // Invalid key - reject silently per RFC behavior
-                                tracing::warn!(key = %key, "Invalid channel key rejected");
+                                let reply = server_reply(
+                                    &ctx.matrix.server_info.name,
+                                    Response::ERR_INVALIDKEY,
+                                    vec![
+                                        nick.clone(),
+                                        canonical_name.clone(),
+                                        key.to_string(),
+                                        "Invalid channel key".to_string(),
+                                    ],
+                                );
+                                ctx.sender.send(reply).await?;
                             } else {
                                 valid_modes.push(mode.clone());
                             }
@@ -556,14 +565,15 @@ pub fn apply_channel_modes_typed(
                         };
 
                         if can_modify
-                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                                member_modes.op = adding;
-                                applied_modes.push(if adding {
-                                    Mode::Plus(ChannelMode::Oper, Some(target_nick.to_string()))
-                                } else {
-                                    Mode::Minus(ChannelMode::Oper, Some(target_nick.to_string()))
-                                });
-                            }
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid)
+                        {
+                            member_modes.op = adding;
+                            applied_modes.push(if adding {
+                                Mode::Plus(ChannelMode::Oper, Some(target_nick.to_string()))
+                            } else {
+                                Mode::Minus(ChannelMode::Oper, Some(target_nick.to_string()))
+                            });
+                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }
@@ -586,14 +596,15 @@ pub fn apply_channel_modes_typed(
                         };
 
                         if can_modify
-                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                                member_modes.voice = adding;
-                                applied_modes.push(if adding {
-                                    Mode::Plus(ChannelMode::Voice, Some(target_nick.to_string()))
-                                } else {
-                                    Mode::Minus(ChannelMode::Voice, Some(target_nick.to_string()))
-                                });
-                            }
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid)
+                        {
+                            member_modes.voice = adding;
+                            applied_modes.push(if adding {
+                                Mode::Plus(ChannelMode::Voice, Some(target_nick.to_string()))
+                            } else {
+                                Mode::Minus(ChannelMode::Voice, Some(target_nick.to_string()))
+                            });
+                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }
@@ -613,14 +624,15 @@ pub fn apply_channel_modes_typed(
                         };
 
                         if can_modify
-                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                                member_modes.halfop = adding;
-                                applied_modes.push(if adding {
-                                    Mode::Plus(ChannelMode::Halfop, Some(target_nick.to_string()))
-                                } else {
-                                    Mode::Minus(ChannelMode::Halfop, Some(target_nick.to_string()))
-                                });
-                            }
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid)
+                        {
+                            member_modes.halfop = adding;
+                            applied_modes.push(if adding {
+                                Mode::Plus(ChannelMode::Halfop, Some(target_nick.to_string()))
+                            } else {
+                                Mode::Minus(ChannelMode::Halfop, Some(target_nick.to_string()))
+                            });
+                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }
@@ -640,14 +652,15 @@ pub fn apply_channel_modes_typed(
                         };
 
                         if can_modify
-                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                                member_modes.admin = adding;
-                                applied_modes.push(if adding {
-                                    Mode::Plus(ChannelMode::Admin, Some(target_nick.to_string()))
-                                } else {
-                                    Mode::Minus(ChannelMode::Admin, Some(target_nick.to_string()))
-                                });
-                            }
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid)
+                        {
+                            member_modes.admin = adding;
+                            applied_modes.push(if adding {
+                                Mode::Plus(ChannelMode::Admin, Some(target_nick.to_string()))
+                            } else {
+                                Mode::Minus(ChannelMode::Admin, Some(target_nick.to_string()))
+                            });
+                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }
@@ -667,14 +680,15 @@ pub fn apply_channel_modes_typed(
                         };
 
                         if can_modify
-                            && let Some(member_modes) = channel.members.get_mut(&target_uid) {
-                                member_modes.owner = adding;
-                                applied_modes.push(if adding {
-                                    Mode::Plus(ChannelMode::Founder, Some(target_nick.to_string()))
-                                } else {
-                                    Mode::Minus(ChannelMode::Founder, Some(target_nick.to_string()))
-                                });
-                            }
+                            && let Some(member_modes) = channel.members.get_mut(&target_uid)
+                        {
+                            member_modes.owner = adding;
+                            applied_modes.push(if adding {
+                                Mode::Plus(ChannelMode::Founder, Some(target_nick.to_string()))
+                            } else {
+                                Mode::Minus(ChannelMode::Founder, Some(target_nick.to_string()))
+                            });
+                        }
                         // Silently ignore if hierarchy check fails
                     }
                 }

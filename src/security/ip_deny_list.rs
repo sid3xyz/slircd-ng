@@ -351,8 +351,14 @@ impl IpDenyList {
                 } else {
                     // CIDR range
                     let key = net.to_string();
-                    let cidr_removed = self.ipv4_cidrs.iter().position(|n| *n == v4net)
-                        .map(|i| { self.ipv4_cidrs.remove(i); true })
+                    let cidr_removed = self
+                        .ipv4_cidrs
+                        .iter()
+                        .position(|n| *n == v4net)
+                        .map(|i| {
+                            self.ipv4_cidrs.remove(i);
+                            true
+                        })
                         .unwrap_or(false);
                     let meta_removed = self.metadata.remove(&key).is_some();
                     cidr_removed || meta_removed
@@ -366,8 +372,13 @@ impl IpDenyList {
                 };
 
                 let cidr_removed = if v6net.prefix_len() != 128 {
-                    self.ipv6_cidrs.iter().position(|n| *n == v6net)
-                        .map(|i| { self.ipv6_cidrs.remove(i); true })
+                    self.ipv6_cidrs
+                        .iter()
+                        .position(|n| *n == v6net)
+                        .map(|i| {
+                            self.ipv6_cidrs.remove(i);
+                            true
+                        })
                         .unwrap_or(false)
                 } else {
                     false
@@ -506,7 +517,7 @@ impl IpDenyList {
 
         // Merge database bans into current state (preserves runtime bans)
         let added = self.sync_from_database_bans(dlines, zlines);
-        
+
         info!(
             previous_ipv4 = old_ipv4_count,
             previous_ipv4_cidrs = old_ipv4_cidr_count,
@@ -574,20 +585,34 @@ impl IpDenyList {
 
             // Try to parse as IpNet
             if let Ok(net) = dline.mask.parse::<IpNet>() {
-                let reason = dline.reason.clone().unwrap_or_else(|| "D-lined".to_string());
+                let reason = dline
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "D-lined".to_string());
                 let duration = duration_from_expires(dline.expires_at);
-                if self.add_ban(net, reason, duration, dline.set_by.clone()).is_ok() {
+                if self
+                    .add_ban(net, reason, duration, dline.set_by.clone())
+                    .is_ok()
+                {
                     added += 1;
                 }
             } else if let Ok(ip) = dline.mask.parse::<IpAddr>() {
                 // Single IP without /prefix
                 let net = match ip {
                     IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
-                    IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
+                    IpAddr::V6(v6) => {
+                        IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid"))
+                    }
                 };
-                let reason = dline.reason.clone().unwrap_or_else(|| "D-lined".to_string());
+                let reason = dline
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "D-lined".to_string());
                 let duration = duration_from_expires(dline.expires_at);
-                if self.add_ban(net, reason, duration, dline.set_by.clone()).is_ok() {
+                if self
+                    .add_ban(net, reason, duration, dline.set_by.clone())
+                    .is_ok()
+                {
                     added += 1;
                 }
             }
@@ -613,20 +638,34 @@ impl IpDenyList {
 
             // Try to parse as IpNet
             if let Ok(net) = zline.mask.parse::<IpNet>() {
-                let reason = zline.reason.clone().unwrap_or_else(|| "Z-lined".to_string());
+                let reason = zline
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "Z-lined".to_string());
                 let duration = duration_from_expires(zline.expires_at);
-                if self.add_ban(net, reason, duration, zline.set_by.clone()).is_ok() {
+                if self
+                    .add_ban(net, reason, duration, zline.set_by.clone())
+                    .is_ok()
+                {
                     added += 1;
                 }
             } else if let Ok(ip) = zline.mask.parse::<IpAddr>() {
                 // Single IP without /prefix
                 let net = match ip {
                     IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
-                    IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
+                    IpAddr::V6(v6) => {
+                        IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid"))
+                    }
                 };
-                let reason = zline.reason.clone().unwrap_or_else(|| "Z-lined".to_string());
+                let reason = zline
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "Z-lined".to_string());
                 let duration = duration_from_expires(zline.expires_at);
-                if self.add_ban(net, reason, duration, zline.set_by.clone()).is_ok() {
+                if self
+                    .add_ban(net, reason, duration, zline.set_by.clone())
+                    .is_ok()
+                {
                     added += 1;
                 }
             }

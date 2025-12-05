@@ -5,8 +5,8 @@
 
 mod access;
 mod akick;
-mod modes;
 mod moderation;
+mod modes;
 mod register;
 
 use crate::db::{ChannelRepository, Database};
@@ -180,7 +180,10 @@ impl ChanServ {
             self.reply_effect(uid, "  AKICK #channel ADD <mask> [reason] - Add auto-kick"),
             self.reply_effect(uid, "  AKICK #channel DEL <mask>       - Remove auto-kick"),
             self.reply_effect(uid, "  AKICK #channel LIST             - List auto-kicks"),
-            self.reply_effect(uid, "  CLEAR #channel USERS [reason]   - Kick non-opped users"),
+            self.reply_effect(
+                uid,
+                "  CLEAR #channel USERS [reason]   - Kick non-opped users",
+            ),
             self.reply_effect(uid, "  INFO #channel                   - Show channel info"),
             self.reply_effect(uid, "  SET #channel <opt> <value>      - Change settings"),
             self.reply_effect(

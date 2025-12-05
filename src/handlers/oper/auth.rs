@@ -1,6 +1,6 @@
 use super::super::{
-    Context, Handler, HandlerResult, err_needmoreparams, get_nick_or_star,
-    matches_hostmask, server_reply,
+    Context, Handler, HandlerResult, err_needmoreparams, get_nick_or_star, matches_hostmask,
+    server_reply,
 };
 use async_trait::async_trait;
 use slirc_proto::mode::{Mode, UserMode};
@@ -125,14 +125,19 @@ impl Handler for OperHandler {
         }
 
         if let Some(ref required_mask) = oper_block.hostmask {
-            let (user_nick, user_user, user_host) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                (user.nick.clone(), user.user.clone(), user.host.clone())
-            } else {
-                let hs_nick = ctx.handshake.nick.clone().unwrap_or_else(|| nick.clone());
-                let hs_user = ctx.handshake.user.clone().unwrap_or_else(|| "unknown".to_string());
-                (hs_nick, hs_user, ctx.remote_addr.ip().to_string())
-            };
+            let (user_nick, user_user, user_host) =
+                if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                    let user = user_ref.read().await;
+                    (user.nick.clone(), user.user.clone(), user.host.clone())
+                } else {
+                    let hs_nick = ctx.handshake.nick.clone().unwrap_or_else(|| nick.clone());
+                    let hs_user = ctx
+                        .handshake
+                        .user
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string());
+                    (hs_nick, hs_user, ctx.remote_addr.ip().to_string())
+                };
             let user_mask = format!("{}!{}@{}", user_nick, user_user, user_host);
 
             if !matches_hostmask(required_mask, &user_mask) {
@@ -157,12 +162,17 @@ impl Handler for OperHandler {
 
         ctx.handshake.failed_oper_attempts = 0;
 
-        let (user_nick, user_user, user_host) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_ref.read().await;
-            (user.nick.clone(), user.user.clone(), user.host.clone())
-        } else {
-            (nick.clone(), "unknown".to_string(), ctx.remote_addr.ip().to_string())
-        };
+        let (user_nick, user_user, user_host) =
+            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                let user = user_ref.read().await;
+                (user.nick.clone(), user.user.clone(), user.host.clone())
+            } else {
+                (
+                    nick.clone(),
+                    "unknown".to_string(),
+                    ctx.remote_addr.ip().to_string(),
+                )
+            };
 
         if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
             let mut user = user_ref.write().await;

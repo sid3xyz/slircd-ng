@@ -8,10 +8,7 @@ use slirc_proto::{MessageRef, Response, irc_to_lower};
 pub struct NamesHandler;
 
 /// Build prefix string for a member based on whether multi-prefix is enabled.
-fn get_member_prefix(
-    member_modes: &crate::state::MemberModes,
-    multi_prefix: bool,
-) -> String {
+fn get_member_prefix(member_modes: &crate::state::MemberModes, multi_prefix: bool) -> String {
     if multi_prefix {
         member_modes.all_prefix_chars()
     } else if let Some(prefix) = member_modes.prefix_char() {
@@ -107,11 +104,7 @@ impl Handler for NamesHandler {
             // @ = secret (+s)
             // * = private (not used, some IRCds treat +p this way)
             // = = public (default)
-            let channel_symbol = if channel.modes.secret {
-                "@"
-            } else {
-                "="
-            };
+            let channel_symbol = if channel.modes.secret { "@" } else { "=" };
 
             let names_reply = server_reply(
                 &ctx.matrix.server_info.name,

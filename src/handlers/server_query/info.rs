@@ -3,8 +3,8 @@
 //! Additional server query commands for network information.
 
 use super::super::{
-    err_needmoreparams, err_noprivileges, err_notregistered, get_oper_info, server_reply, Context,
-    Handler, HandlerError, HandlerResult,
+    Context, Handler, HandlerError, HandlerResult, err_needmoreparams, err_noprivileges,
+    err_notregistered, get_oper_info, server_reply,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -87,10 +87,7 @@ impl Handler for RulesHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_RULESTART,
-            vec![
-                nick.clone(),
-                format!("- {} Server Rules -", server_name),
-            ],
+            vec![nick.clone(), format!("- {} Server Rules -", server_name)],
         );
         ctx.sender.send(reply).await?;
 
@@ -156,9 +153,7 @@ impl Handler for UseripHandler {
         };
 
         if !is_oper {
-            ctx.sender
-                .send(err_noprivileges(server_name, nick))
-                .await?;
+            ctx.sender.send(err_noprivileges(server_name, nick)).await?;
             return Ok(());
         }
 
@@ -251,7 +246,11 @@ impl Handler for LinksHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_ENDOFLINKS,
-            vec![nick.clone(), "*".to_string(), "End of LINKS list".to_string()],
+            vec![
+                nick.clone(),
+                "*".to_string(),
+                "End of LINKS list".to_string(),
+            ],
         );
         ctx.sender.send(reply).await?;
 

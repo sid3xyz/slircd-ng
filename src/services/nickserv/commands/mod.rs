@@ -1,14 +1,14 @@
 //! NickServ command handlers.
 
 pub mod cert;
-pub mod register;
-pub mod identify;
 pub mod drop;
-pub mod group;
-pub mod ungroup;
 pub mod ghost;
+pub mod group;
+pub mod identify;
 pub mod info;
+pub mod register;
 pub mod set;
+pub mod ungroup;
 
 use crate::db::Database;
 use crate::services::ServiceEffect;

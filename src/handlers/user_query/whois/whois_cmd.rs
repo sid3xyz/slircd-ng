@@ -1,6 +1,8 @@
 //! WHOIS handler for detailed user information queries.
 
-use crate::handlers::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply, with_label};
+use crate::handlers::{
+    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply, with_label,
+};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tracing::debug;
@@ -90,7 +92,8 @@ impl Handler for WhoisHandler {
 
                 // RPL_WHOISCHANNELS (319): <nick> :{[@|+]<channel>}
                 // Skip if target is invisible and requester doesn't share any channels
-                let show_channels = if target_user.modes.invisible && target_uid.value() != ctx.uid {
+                let show_channels = if target_user.modes.invisible && target_uid.value() != ctx.uid
+                {
                     // Check if requester shares any channel with target
                     let mut shares_channel = false;
                     for ch in &target_user.channels {

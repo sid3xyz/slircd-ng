@@ -1,8 +1,8 @@
 //! DROP command handler for NickServ.
 
+use super::NickServResult;
 use crate::db::Database;
 use crate::services::ServiceEffect;
-use super::NickServResult;
 use tracing::{info, warn};
 
 /// Handle DROP command.
@@ -38,9 +38,7 @@ pub async fn handle_drop(
         Err(crate::db::DbError::AccountNotFound(_)) => {
             reply_effects(uid, vec!["Your nickname is not registered."])
         }
-        Err(crate::db::DbError::InvalidPassword) => {
-            reply_effects(uid, vec!["Invalid password."])
-        }
+        Err(crate::db::DbError::InvalidPassword) => reply_effects(uid, vec!["Invalid password."]),
         Err(e) => {
             warn!(nick = %nick, error = ?e, "DROP failed");
             reply_effects(uid, vec!["Failed to drop account. Please try again later."])

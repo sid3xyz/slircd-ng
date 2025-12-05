@@ -21,8 +21,8 @@ use std::borrow::Cow;
 use tracing::debug;
 
 use common::{
-    is_shunned, route_to_channel, route_to_user, send_cannot_send,
-    send_no_such_channel, send_no_such_nick, ChannelRouteResult, RouteOptions,
+    ChannelRouteResult, RouteOptions, is_shunned, route_to_channel, route_to_user,
+    send_cannot_send, send_no_such_channel, send_no_such_nick,
 };
 
 // ============================================================================
@@ -168,8 +168,8 @@ impl Handler for TagmsgHandler {
 
 #[cfg(test)]
 mod tests {
-    use slirc_proto::ChannelExt;
     use crate::handlers::matches_hostmask;
+    use slirc_proto::ChannelExt;
 
     #[test]
     fn test_is_channel() {
@@ -193,7 +193,10 @@ mod tests {
         assert!(matches_hostmask("nick!*@*", "nick!user@host"));
         assert!(matches_hostmask("*!user@*", "nick!user@host"));
         assert!(matches_hostmask("*!*@host", "nick!user@host"));
-        assert!(matches_hostmask("*!*@*.example.com", "nick!user@sub.example.com"));
+        assert!(matches_hostmask(
+            "*!*@*.example.com",
+            "nick!user@sub.example.com"
+        ));
     }
 
     #[test]

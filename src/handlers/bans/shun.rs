@@ -5,7 +5,9 @@
 //! automated abuse.
 
 use crate::db::Shun;
-use crate::handlers::{err_needmoreparams, require_oper, server_notice, Context, Handler, HandlerResult};
+use crate::handlers::{
+    Context, Handler, HandlerResult, err_needmoreparams, require_oper, server_notice,
+};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -68,7 +70,13 @@ impl Handler for ShunHandler {
         );
 
         // Send confirmation
-        ctx.sender.send(server_notice(server_name, &nick, format!("Shun added: {mask} ({reason})"))).await?;
+        ctx.sender
+            .send(server_notice(
+                server_name,
+                &nick,
+                format!("Shun added: {mask} ({reason})"),
+            ))
+            .await?;
 
         Ok(())
     }
@@ -122,7 +130,9 @@ impl Handler for UnshunHandler {
         } else {
             format!("No shun found for: {mask}")
         };
-        ctx.sender.send(server_notice(server_name, &nick, &text)).await?;
+        ctx.sender
+            .send(server_notice(server_name, &nick, &text))
+            .await?;
 
         Ok(())
     }

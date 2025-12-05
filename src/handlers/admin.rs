@@ -108,11 +108,13 @@ impl Handler for SajoinHandler {
         );
 
         // Confirm to operator
-        ctx.sender.send(server_notice(
-            server_name,
-            &oper_nick,
-            format!("SAJOIN: {target_nick} has been forced to join {channel_name}"),
-        )).await?;
+        ctx.sender
+            .send(server_notice(
+                server_name,
+                &oper_nick,
+                format!("SAJOIN: {target_nick} has been forced to join {channel_name}"),
+            ))
+            .await?;
 
         Ok(())
     }
@@ -178,13 +180,7 @@ impl Handler for SapartHandler {
             user: &target_user,
             host: &target_host,
         };
-        let was_in_channel = force_part_channel(
-            ctx,
-            &target,
-            &channel_lower,
-            None,
-        )
-        .await?;
+        let was_in_channel = force_part_channel(ctx, &target, &channel_lower, None).await?;
 
         if !was_in_channel {
             ctx.sender
@@ -201,11 +197,13 @@ impl Handler for SapartHandler {
         );
 
         // Confirm to operator
-        ctx.sender.send(server_notice(
-            server_name,
-            &oper_nick,
-            format!("SAPART: {target_nick} has been forced to leave {channel_name}"),
-        )).await?;
+        ctx.sender
+            .send(server_notice(
+                server_name,
+                &oper_nick,
+                format!("SAPART: {target_nick} has been forced to leave {channel_name}"),
+            ))
+            .await?;
 
         Ok(())
     }
@@ -326,11 +324,13 @@ impl Handler for SanickHandler {
         );
 
         // Confirm to operator
-        ctx.sender.send(server_notice(
-            server_name,
-            &oper_nick,
-            format!("SANICK: {old_nick} has been forced to change nick to {new_nick}"),
-        )).await?;
+        ctx.sender
+            .send(server_notice(
+                server_name,
+                &oper_nick,
+                format!("SANICK: {old_nick} has been forced to change nick to {new_nick}"),
+            ))
+            .await?;
 
         Ok(())
     }
@@ -393,11 +393,13 @@ impl Handler for SamodeHandler {
             Ok(modes) => modes,
             Err(e) => {
                 // Invalid mode string - send notice to operator
-                ctx.sender.send(server_notice(
-                    server_name,
-                    &oper_nick,
-                    format!("SAMODE error: {e}"),
-                )).await?;
+                ctx.sender
+                    .send(server_notice(
+                        server_name,
+                        &oper_nick,
+                        format!("SAMODE error: {e}"),
+                    ))
+                    .await?;
                 return Ok(());
             }
         };
@@ -434,18 +436,22 @@ impl Handler for SamodeHandler {
             );
 
             // Confirm to operator
-            ctx.sender.send(server_notice(
-                server_name,
-                &oper_nick,
-                format!("SAMODE: {canonical_name} {modes_str}"),
-            )).await?;
+            ctx.sender
+                .send(server_notice(
+                    server_name,
+                    &oper_nick,
+                    format!("SAMODE: {canonical_name} {modes_str}"),
+                ))
+                .await?;
         } else {
             // No modes applied - still confirm to operator
-            ctx.sender.send(server_notice(
-                server_name,
-                &oper_nick,
-                format!("SAMODE: {canonical_name} (no modes applied)"),
-            )).await?;
+            ctx.sender
+                .send(server_notice(
+                    server_name,
+                    &oper_nick,
+                    format!("SAMODE: {canonical_name} (no modes applied)"),
+                ))
+                .await?;
         }
 
         Ok(())

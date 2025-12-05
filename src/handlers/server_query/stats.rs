@@ -1,6 +1,8 @@
 //! STATS handler for server statistics.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
+use super::super::{
+    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply,
+};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -98,10 +100,7 @@ impl Handler for StatsHandler {
                 // RPL_STATSKLINE (216): List K-lines
                 if let Ok(klines) = ctx.db.bans().get_active_klines().await {
                     for kline in klines {
-                        let duration = kline
-                            .expires_at
-                            .map(|exp| exp - kline.set_at)
-                            .unwrap_or(0);
+                        let duration = kline.expires_at.map(|exp| exp - kline.set_at).unwrap_or(0);
                         let reason = kline.reason.unwrap_or_default();
                         // :server 216 nick K <mask> <set_at> <duration> <setter> :<reason>
                         let reply = server_reply(
@@ -126,10 +125,7 @@ impl Handler for StatsHandler {
                 // Note: Some servers use 223 for G-lines, but slirc-proto uses RPL_STATSDLINE
                 if let Ok(glines) = ctx.db.bans().get_active_glines().await {
                     for gline in glines {
-                        let duration = gline
-                            .expires_at
-                            .map(|exp| exp - gline.set_at)
-                            .unwrap_or(0);
+                        let duration = gline.expires_at.map(|exp| exp - gline.set_at).unwrap_or(0);
                         let reason = gline.reason.unwrap_or_default();
                         // :server 220 nick G <mask> <set_at> <duration> <setter> :<reason>
                         let reply = server_reply(
@@ -153,10 +149,7 @@ impl Handler for StatsHandler {
                 // Z-lines (IP bans) - using RPL_STATSDLINE
                 if let Ok(zlines) = ctx.db.bans().get_active_zlines().await {
                     for zline in zlines {
-                        let duration = zline
-                            .expires_at
-                            .map(|exp| exp - zline.set_at)
-                            .unwrap_or(0);
+                        let duration = zline.expires_at.map(|exp| exp - zline.set_at).unwrap_or(0);
                         let reason = zline.reason.unwrap_or_default();
                         // :server 220 nick Z <mask> <set_at> <duration> <setter> :<reason>
                         let reply = server_reply(
@@ -198,15 +191,12 @@ impl Handler for StatsHandler {
             'm' | 'M' => {
                 // RPL_STATSCOMMANDS (212): Command usage statistics
                 let stats = ctx.registry.get_command_stats();
-                
+
                 if stats.is_empty() {
                     let reply = server_reply(
                         server_name,
                         Response::RPL_STATSCOMMANDS,
-                        vec![
-                            nick.clone(),
-                            "No commands have been used yet".to_string(),
-                        ],
+                        vec![nick.clone(), "No commands have been used yet".to_string()],
                     );
                     ctx.sender.send(reply).await?;
                 } else {

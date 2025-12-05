@@ -1,9 +1,9 @@
 //! GHOST command handler for NickServ.
 
+use super::NickServResult;
 use crate::db::Database;
 use crate::services::ServiceEffect;
 use crate::state::Matrix;
-use super::NickServResult;
 use std::sync::Arc;
 use tracing::info;
 

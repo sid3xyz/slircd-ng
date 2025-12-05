@@ -1,12 +1,13 @@
 //! JOIN command handler and related functionality.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state, user_prefix, with_label,
+    Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state, user_prefix,
+    with_label,
 };
 use super::matches_ban;
 use crate::db::ChannelRepository;
 use crate::security::UserContext;
-use crate::state::{parse_mlock, Channel, MemberModes, User};
+use crate::state::{Channel, MemberModes, User, parse_mlock};
 use async_trait::async_trait;
 use slirc_proto::{
     ChannelExt, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower,
@@ -77,7 +78,11 @@ impl Handler for JoinHandler {
         // Check join rate limit before processing any channels
         let uid_string = ctx.uid.to_string();
         if !ctx.matrix.rate_limiter.check_join_rate(&uid_string) {
-            let nick = ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string());
+            let nick = ctx
+                .handshake
+                .nick
+                .clone()
+                .unwrap_or_else(|| "*".to_string());
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_TOOMANYCHANNELS,
@@ -94,10 +99,17 @@ impl Handler for JoinHandler {
         // Parse channel list (comma-separated) and optional keys
         let channels: Vec<&str> = channels_str.split(',').collect();
         let keys: Vec<Option<&str>> = if let Some(keys_str) = msg.arg(1) {
-            let mut key_list: Vec<Option<&str>> = keys_str.split(',').map(|k| {
-                let trimmed = k.trim();
-                if trimmed.is_empty() { None } else { Some(trimmed) }
-            }).collect();
+            let mut key_list: Vec<Option<&str>> = keys_str
+                .split(',')
+                .map(|k| {
+                    let trimmed = k.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed)
+                    }
+                })
+                .collect();
             // Pad with None if fewer keys than channels
             key_list.resize(channels.len(), None);
             key_list
@@ -137,14 +149,22 @@ impl Handler for JoinHandler {
 }
 
 /// Join a single channel.
-async fn join_channel(ctx: &mut Context<'_>, channel_name: &str, provided_key: Option<&str>) -> HandlerResult {
+async fn join_channel(
+    ctx: &mut Context<'_>,
+    channel_name: &str,
+    provided_key: Option<&str>,
+) -> HandlerResult {
     let channel_lower = irc_to_lower(channel_name);
     let (nick, user_name, visible_host) = user_mask_from_state(ctx, ctx.uid)
         .await
         .ok_or(HandlerError::NickOrUserMissing)?;
 
     let (real_host, realname) = {
-        let user_ref = ctx.matrix.users.get(ctx.uid).ok_or(HandlerError::NickOrUserMissing)?;
+        let user_ref = ctx
+            .matrix
+            .users
+            .get(ctx.uid)
+            .ok_or(HandlerError::NickOrUserMissing)?;
         let user = user_ref.read().await;
         (user.host.clone(), user.realname.clone())
     };
@@ -212,9 +232,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str, provided_key: O
 
     // Apply MLOCK for newly created registered channels
     // A channel is "new" if it has no members yet
-    if channel_guard.members.is_empty()
-        && ctx.matrix.registered_channels.contains(&channel_lower)
-    {
+    if channel_guard.members.is_empty() && ctx.matrix.registered_channels.contains(&channel_lower) {
         // Fetch the channel record to get MLOCK settings
         let mlock_str = ctx
             .db
@@ -557,10 +575,7 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str, provided_key: O
             mode_changes.push(Mode::plus(ChannelMode::Voice, Some(&nick)));
         }
 
-        let mode_str = mode_changes
-            .iter()
-            .map(|m| m.flag())
-            .collect::<String>();
+        let mode_str = mode_changes.iter().map(|m| m.flag()).collect::<String>();
 
         let mode_msg = Message {
             tags: None,
@@ -597,7 +612,12 @@ async fn join_channel(ctx: &mut Context<'_>, channel_name: &str, provided_key: O
         let topic_who_reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_TOPICWHOTIME,
-            vec![nick.clone(), canonical_name.clone(), topic.set_by, topic.set_at.to_string()],
+            vec![
+                nick.clone(),
+                canonical_name.clone(),
+                topic.set_by,
+                topic.set_at.to_string(),
+            ],
         );
         ctx.sender.send(topic_who_reply).await?;
     }

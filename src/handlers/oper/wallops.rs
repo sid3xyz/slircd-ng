@@ -1,6 +1,5 @@
 use super::super::{
-    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges,
-    get_nick_or_star,
+    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star,
 };
 use super::get_user_full_info;
 use async_trait::async_trait;
@@ -29,7 +28,8 @@ impl Handler for WallopsHandler {
             }
         };
 
-        let Some((sender_nick, sender_user, sender_host, is_oper)) = get_user_full_info(ctx).await else {
+        let Some((sender_nick, sender_user, sender_host, is_oper)) = get_user_full_info(ctx).await
+        else {
             return Ok(());
         };
 
@@ -42,7 +42,11 @@ impl Handler for WallopsHandler {
 
         let wallops_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(sender_nick.clone(), sender_user.clone(), sender_host.clone())),
+            prefix: Some(Prefix::Nickname(
+                sender_nick.clone(),
+                sender_user.clone(),
+                sender_host.clone(),
+            )),
             command: Command::WALLOPS(wallops_text.to_string()),
         };
 

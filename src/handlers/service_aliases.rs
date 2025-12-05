@@ -35,10 +35,7 @@ impl Handler for NsHandler {
         let cmd_text = if text.is_empty() { "HELP" } else { &text };
 
         // Route to NickServ via unified service router
-        route_service_message(
-            ctx.matrix, ctx.uid, nick, "NickServ", cmd_text, &ctx.sender,
-        )
-        .await;
+        route_service_message(ctx.matrix, ctx.uid, nick, "NickServ", cmd_text, &ctx.sender).await;
 
         Ok(())
     }
@@ -72,10 +69,7 @@ impl Handler for CsHandler {
         let cmd_text = if text.is_empty() { "HELP" } else { &text };
 
         // Route to ChanServ via unified service router
-        route_service_message(
-            ctx.matrix, ctx.uid, nick, "ChanServ", cmd_text, &ctx.sender,
-        )
-        .await;
+        route_service_message(ctx.matrix, ctx.uid, nick, "ChanServ", cmd_text, &ctx.sender).await;
 
         Ok(())
     }

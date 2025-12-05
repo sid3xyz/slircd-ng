@@ -32,7 +32,11 @@ impl Handler for MonitorHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx.handshake.nick.clone().unwrap_or_else(|| "*".to_string());
+        let nick = ctx
+            .handshake
+            .nick
+            .clone()
+            .unwrap_or_else(|| "*".to_string());
 
         // MONITOR <+/-/C/L/S> [targets]
         let subcommand = match msg.arg(0) {
@@ -193,11 +197,7 @@ fn handle_clear(ctx: &mut Context<'_>) -> HandlerResult {
 }
 
 /// Handle MONITOR L - list all monitored nicknames.
-async fn handle_list(
-    ctx: &mut Context<'_>,
-    nick: &str,
-    server_name: &str,
-) -> HandlerResult {
+async fn handle_list(ctx: &mut Context<'_>, nick: &str, server_name: &str) -> HandlerResult {
     if let Some(user_monitors) = ctx.matrix.monitors.get(ctx.uid) {
         // Collect all monitored nicks
         let targets: Vec<String> = user_monitors.iter().map(|r| r.clone()).collect();
@@ -228,11 +228,7 @@ async fn handle_list(
 }
 
 /// Handle MONITOR S - show status of all monitored nicknames.
-async fn handle_status(
-    ctx: &mut Context<'_>,
-    nick: &str,
-    server_name: &str,
-) -> HandlerResult {
+async fn handle_status(ctx: &mut Context<'_>, nick: &str, server_name: &str) -> HandlerResult {
     let mut online = Vec::new();
     let mut offline = Vec::new();
 

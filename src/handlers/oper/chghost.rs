@@ -1,6 +1,6 @@
 use super::super::{
-    Context, Handler, HandlerResult, err_needmoreparams, err_nosuchnick,
-    require_oper, resolve_nick_to_uid, server_notice,
+    Context, Handler, HandlerResult, err_needmoreparams, err_nosuchnick, require_oper,
+    resolve_nick_to_uid, server_notice,
 };
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};

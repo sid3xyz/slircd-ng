@@ -72,21 +72,13 @@ lazy_static! {
 ///
 /// Must be called once at server startup before any metrics are recorded.
 pub fn init() {
-    REGISTRY
-        .register(Box::new(MESSAGES_SENT.clone()))
-        .unwrap();
-    REGISTRY
-        .register(Box::new(SPAM_BLOCKED.clone()))
-        .unwrap();
-    REGISTRY
-        .register(Box::new(BANS_TRIGGERED.clone()))
-        .unwrap();
+    REGISTRY.register(Box::new(MESSAGES_SENT.clone())).unwrap();
+    REGISTRY.register(Box::new(SPAM_BLOCKED.clone())).unwrap();
+    REGISTRY.register(Box::new(BANS_TRIGGERED.clone())).unwrap();
     REGISTRY
         .register(Box::new(XLINES_ENFORCED.clone()))
         .unwrap();
-    REGISTRY
-        .register(Box::new(RATE_LIMITED.clone()))
-        .unwrap();
+    REGISTRY.register(Box::new(RATE_LIMITED.clone())).unwrap();
     REGISTRY
         .register(Box::new(REGISTERED_ONLY_BLOCKED.clone()))
         .unwrap();

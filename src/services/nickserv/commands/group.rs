@@ -1,8 +1,8 @@
 //! GROUP command handler for NickServ.
 
+use super::NickServResult;
 use crate::db::Database;
 use crate::services::ServiceEffect;
-use super::NickServResult;
 use tracing::{info, warn};
 
 /// Handle GROUP command - link current nick to an existing account.
@@ -21,7 +21,11 @@ pub async fn handle_group(
     let account_name = args[0];
     let password = args[1];
 
-    match db.accounts().link_nickname(nick, account_name, password).await {
+    match db
+        .accounts()
+        .link_nickname(nick, account_name, password)
+        .await
+    {
         Ok(()) => {
             info!(nick = %nick, account = %account_name, "Nickname grouped");
             vec![
@@ -43,9 +47,7 @@ pub async fn handle_group(
             uid,
             vec![&format!("Account \x02{}\x02 does not exist.", account_name)],
         ),
-        Err(crate::db::DbError::InvalidPassword) => {
-            reply_effects(uid, vec!["Invalid password."])
-        }
+        Err(crate::db::DbError::InvalidPassword) => reply_effects(uid, vec!["Invalid password."]),
         Err(crate::db::DbError::NicknameRegistered(_)) => reply_effects(
             uid,
             vec![&format!(

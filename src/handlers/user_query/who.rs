@@ -1,6 +1,8 @@
 //! WHO handler for listing users matching a mask.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply, with_label};
+use super::super::{
+    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply, with_label,
+};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 
@@ -13,10 +15,7 @@ use slirc_proto::{MessageRef, Response, irc_to_lower};
 pub struct WhoHandler;
 
 /// Build prefix string for WHO flags based on member modes and multi-prefix setting.
-fn get_member_prefixes(
-    member_modes: &crate::state::MemberModes,
-    multi_prefix: bool,
-) -> String {
+fn get_member_prefixes(member_modes: &crate::state::MemberModes, multi_prefix: bool) -> String {
     if multi_prefix {
         member_modes.all_prefix_chars()
     } else if let Some(prefix) = member_modes.prefix_char() {
@@ -142,7 +141,11 @@ impl Handler for WhoHandler {
                     // 2. Requester shares a channel with the user
                     // 3. Requester is querying themselves
                     // 4. Query is an exact nick (no wildcards)
-                    if user.modes.invisible && !requester_is_oper && target_uid != ctx.uid && !is_exact_query {
+                    if user.modes.invisible
+                        && !requester_is_oper
+                        && target_uid != ctx.uid
+                        && !is_exact_query
+                    {
                         // Check if they share any channel
                         let mut shares_channel = false;
                         for ch_key in &requester_channels {

@@ -116,7 +116,11 @@ impl Handler for SqueryHandler {
                 let reply = server_reply(
                     server_name,
                     Response::ERR_NEEDMOREPARAMS,
-                    vec![nick.to_string(), "SQUERY".to_string(), "Not enough parameters".to_string()],
+                    vec![
+                        nick.to_string(),
+                        "SQUERY".to_string(),
+                        "Not enough parameters".to_string(),
+                    ],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());

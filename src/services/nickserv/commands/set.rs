@@ -1,8 +1,8 @@
 //! SET command handler for NickServ.
 
+use super::NickServResult;
 use crate::db::Database;
 use crate::state::Matrix;
-use super::NickServResult;
 use std::sync::Arc;
 use tracing::{info, warn};
 

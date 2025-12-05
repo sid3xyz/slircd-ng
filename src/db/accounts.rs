@@ -445,12 +445,11 @@ impl<'a> AccountRepository<'a> {
 
     /// Get the certificate fingerprint for an account.
     pub async fn get_certfp(&self, account_id: i64) -> Result<Option<String>, DbError> {
-        let certfp = sqlx::query_scalar::<_, Option<String>>(
-            "SELECT certfp FROM accounts WHERE id = ?",
-        )
-        .bind(account_id)
-        .fetch_one(self.pool)
-        .await?;
+        let certfp =
+            sqlx::query_scalar::<_, Option<String>>("SELECT certfp FROM accounts WHERE id = ?")
+                .bind(account_id)
+                .fetch_one(self.pool)
+                .await?;
 
         Ok(certfp)
     }
@@ -458,11 +457,7 @@ impl<'a> AccountRepository<'a> {
     /// Set or clear the certificate fingerprint for an account.
     ///
     /// Pass `None` to remove the certificate.
-    pub async fn set_certfp(
-        &self,
-        account_id: i64,
-        certfp: Option<&str>,
-    ) -> Result<(), DbError> {
+    pub async fn set_certfp(&self, account_id: i64, certfp: Option<&str>) -> Result<(), DbError> {
         sqlx::query("UPDATE accounts SET certfp = ? WHERE id = ?")
             .bind(certfp)
             .bind(account_id)
