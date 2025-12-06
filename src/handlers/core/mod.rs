@@ -3,10 +3,20 @@
 //! This module contains the fundamental types and infrastructure for the
 //! command handler system, including the handler registry, context types,
 //! and middleware for response routing.
+//!
+//! ## Typestate Handler Traits (Innovation 1)
+//!
+//! The `traits` submodule provides state-aware handler traits:
+//! - [`PreRegHandler`]: For commands valid before registration
+//! - [`PostRegHandler`]: For commands requiring registration
+//! - [`UniversalHandler`]: For commands valid in any state
+//!
+//! See [`traits`] for migration guidance.
 
 pub mod context;
 pub mod middleware;
 pub mod registry;
+pub mod traits;
 
 // Re-export commonly used types
 pub use context::{
@@ -16,3 +26,8 @@ pub use context::{
 };
 pub use middleware::ResponseMiddleware;
 pub use registry::Registry;
+
+// Re-export typestate handler traits (Innovation 1)
+pub use traits::{
+    HandlerPhase, PostRegHandler, PreRegHandler, UniversalHandler, command_phase,
+};
