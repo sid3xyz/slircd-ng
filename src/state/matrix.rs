@@ -334,10 +334,10 @@ impl Matrix {
     ) -> usize {
         if let Some(sender) = self.channels.get(channel_name) {
             let _ = sender.send(ChannelEvent::BroadcastWithCap {
-                message: msg,
+                message: Box::new(msg),
                 exclude: exclude.iter().map(|s| s.to_string()).collect(),
                 required_cap: required_cap.map(|s| s.to_string()),
-                fallback_msg,
+                fallback_msg: fallback_msg.map(Box::new),
             }).await;
         }
         0

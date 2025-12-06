@@ -119,7 +119,7 @@ pub async fn route_to_channel(
         text,
         tags,
         is_notice,
-        user_context,
+        user_context: Box::new(user_context),
         is_registered,
         is_tls: ctx.handshake.is_tls,
         status_prefix: opts.status_prefix,

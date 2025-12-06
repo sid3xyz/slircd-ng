@@ -38,11 +38,11 @@ pub enum ChannelEvent {
         nick: String,
         sender: mpsc::Sender<Message>,
         caps: HashSet<String>,
-        user_context: UserContext,
+        user_context: Box<UserContext>,
         key: Option<String>,
         initial_modes: Option<MemberModes>,
-        join_msg_extended: Message,
-        join_msg_standard: Message,
+        join_msg_extended: Box<Message>,
+        join_msg_standard: Box<Message>,
         /// Reply channel for the result (success/error).
         reply_tx: oneshot::Sender<Result<JoinSuccessData, String>>,
     },
@@ -65,7 +65,7 @@ pub enum ChannelEvent {
         text: String,
         tags: Option<Vec<slirc_proto::message::Tag>>,
         is_notice: bool,
-        user_context: UserContext,
+        user_context: Box<UserContext>,
         is_registered: bool,
         is_tls: bool,
         status_prefix: Option<char>,
@@ -140,10 +140,10 @@ pub enum ChannelEvent {
     },
     /// Broadcast with capability filtering.
     BroadcastWithCap {
-        message: Message,
+        message: Box<Message>,
         exclude: Vec<Uid>,
         required_cap: Option<String>,
-        fallback_msg: Option<Message>,
+        fallback_msg: Option<Box<Message>>,
     },
     /// User nickname change.
     NickChange {
@@ -320,7 +320,7 @@ impl ChannelActor {
     async fn handle_event(&mut self, event: ChannelEvent) {
         match event {
             ChannelEvent::Join { uid, nick, sender, caps, user_context, key, initial_modes, join_msg_extended, join_msg_standard, reply_tx } => {
-                self.handle_join(uid, nick, sender, caps, user_context, key, initial_modes, join_msg_extended, join_msg_standard, reply_tx).await;
+                self.handle_join(uid, nick, sender, caps, *user_context, key, initial_modes, *join_msg_extended, *join_msg_standard, reply_tx).await;
             }
             ChannelEvent::Part { uid, reason, prefix, reply_tx } => {
                 self.handle_part(uid, reason, prefix, reply_tx).await;
@@ -344,7 +344,7 @@ impl ChannelActor {
                     text,
                     tags,
                     is_notice,
-                    user_context,
+                    *user_context,
                     is_registered,
                     is_tls,
                     status_prefix,
@@ -355,7 +355,7 @@ impl ChannelActor {
                 self.handle_broadcast(message, exclude).await;
             }
             ChannelEvent::BroadcastWithCap { message, exclude, required_cap, fallback_msg } => {
-                self.handle_broadcast_with_cap(message, exclude, required_cap, fallback_msg).await;
+                self.handle_broadcast_with_cap(*message, exclude, required_cap, fallback_msg.map(|m| *m)).await;
             }
             ChannelEvent::GetInfo { requester_uid, reply_tx } => {
                 let is_member = if let Some(uid) = requester_uid {
@@ -479,7 +479,7 @@ impl ChannelActor {
         } else {
             initial_modes.unwrap_or_default()
         };
-        
+
         self.members.insert(uid.clone(), modes);
         self.user_nicks.insert(uid.clone(), nick.clone());
         self.senders.insert(uid.clone(), sender.clone());

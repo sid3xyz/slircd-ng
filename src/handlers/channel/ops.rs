@@ -115,11 +115,11 @@ pub async fn force_join_channel(
         nick: target.nick.to_string(),
         sender: sender.clone(),
         caps,
-        user_context,
+        user_context: Box::new(user_context),
         key: None,
         initial_modes: Some(modes),
-        join_msg_extended,
-        join_msg_standard,
+        join_msg_extended: Box::new(join_msg_extended),
+        join_msg_standard: Box::new(join_msg_standard),
         reply_tx,
     };
 

@@ -217,11 +217,11 @@ async fn join_channel(
         nick: nick.clone(),
         sender: ctx.matrix.senders.get(ctx.uid).map(|s| s.clone()).unwrap(),
         caps: ctx.matrix.users.get(ctx.uid).unwrap().read().await.caps.clone(),
-        user_context,
+        user_context: Box::new(user_context),
         key: provided_key.map(|s| s.to_string()),
         initial_modes,
-        join_msg_extended: extended_join_msg.clone(),
-        join_msg_standard: standard_join_msg.clone(),
+        join_msg_extended: Box::new(extended_join_msg.clone()),
+        join_msg_standard: Box::new(standard_join_msg.clone()),
         reply_tx,
     }).await;
 
