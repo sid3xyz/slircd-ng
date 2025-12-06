@@ -1,46 +1,74 @@
 # slircd-ng
 
-Straylight IRC Daemon - Next Generation. A high-performance, multi-threaded IRC server built on zero-copy parsing.
+`slircd-ng` (Straylight IRC Daemon - Next Generation) is a modern, high-performance IRC server written in Rust. It leverages the `slirc-proto` library for zero-copy protocol handling and `tokio` for asynchronous I/O, designed to be robust, scalable, and compliant with modern IRCv3 standards.
 
 ## Features
 
-- **High Performance**: Built on `tokio` for async I/O and `slirc-proto` for efficient message handling.
-- **Zero-Copy Parsing**: Minimizes memory allocations during message processing.
-- **Database Backed**: Uses SQLite (`sqlx`) for persistent storage of channels, bans, and shuns.
+- **High Performance**: Built on a zero-copy parsing architecture using `slirc-proto`.
+- **IRCv3 Compliance**: Native support for:
+  - Capability Negotiation (`CAP`)
+  - SASL Authentication (`PLAIN`, `SCRAM-SHA-256`)
+  - Message Tags (`@time`, `@msgid`, `@account`)
+  - Batch (`BATCH`)
+  - Chat History (`CHATHISTORY`)
+  - Monitor (`MONITOR`)
+  - Account Tracking (`account-tag`, `account-notify`)
+- **Persistence**: SQLite backend for storing:
+  - Registered channels and topics
+  - Operator bans (G-lines, K-lines, Z-lines, D-lines)
+  - Shuns
 - **Security**:
-  - **Cloaking**: IP cloaking support.
-  - **Bans/Shuns**: K-lines (bans) and Shuns (silencing) support.
-  - **TLS**: Secure connections via `tokio-rustls`.
-- **Observability**: Structured logging with `tracing`.
-- **Configuration**: TOML-based configuration.
+  - IP Cloaking
+  - Granular ban system (Global, Local, IP, Duration-based)
+  - Rate limiting
+- **Observability**: Integrated `tracing` for structured logging and metrics.
+
+## Architecture
+
+`slircd-ng` uses a hybrid architecture:
+
+- **Gateway**: Handles incoming TCP/TLS connections and framing.
+- **Matrix**: The central shared state container, managing the global view of users and channels.
+- **Actors**: Channels are implemented as actors to serialize state updates and prevent race conditions.
+- **Handlers**: Command handlers operate on `MessageRef` types, minimizing memory allocations during command processing.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Rust (latest stable)
+- Rust 1.70+
 - SQLite
 
-### Running the Server
+### Configuration
 
-1.  **Configuration**: Ensure `config.toml` is present. You can copy `config.test.toml` as a starting point.
-2.  **Run**:
-    ```bash
-    cargo run -p slircd-ng
-    ```
+Copy the example configuration:
 
-### Development
+```bash
+cp config.toml.example config.toml
+```
 
-- **Build**: `cargo build -p slircd-ng`
-- **Test**: `cargo test -p slircd-ng`
+Edit `config.toml` to set your server name, network info, and listen ports.
 
-## Architecture
+### Running
 
-- **Gateway**: Handles incoming connections and protocol decoding.
-- **Matrix**: Manages global server state (users, channels) using lock-free `DashMap`s.
-- **Handlers**: Process specific IRC commands.
-- **Services**: Background tasks for enforcement and maintenance.
+Run the server:
+
+```bash
+cargo run --release
+```
+
+The server will create and initialize `slircd.db` automatically if configured.
+
+### Database
+
+`slircd-ng` uses `sqlx` with SQLite. Migrations are embedded and run on startup.
+
+## Development
+
+- **Build**: `cargo build`
+- **Test**: `cargo test`
+- **Lint**: `cargo clippy`
 
 ## License
 
-Unlicense
+Unlicense.
