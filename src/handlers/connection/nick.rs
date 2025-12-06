@@ -6,6 +6,7 @@ use super::super::{
 };
 use super::welcome::send_welcome_burst;
 use async_trait::async_trait;
+use dashmap::mapref::entry::Entry;
 use slirc_proto::{Command, Message, MessageRef, NickExt, Prefix, Response, irc_to_lower};
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
@@ -47,24 +48,31 @@ impl Handler for NickHandler {
             return Ok(());
         }
 
-        // Check if nick is in use
-        if let Some(existing_uid) = ctx.matrix.nicks.get(&nick_lower)
-            && existing_uid.value() != ctx.uid
-        {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NICKNAMEINUSE,
-                vec![
-                    ctx.handshake
-                        .nick
-                        .clone()
-                        .unwrap_or_else(|| "*".to_string()),
-                    nick.to_string(),
-                    "Nickname is already in use".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
+        // Atomically claim nickname (prevents TOCTOU where two clients race between check/insert)
+        match ctx.matrix.nicks.entry(nick_lower.clone()) {
+            Entry::Occupied(entry) => {
+                let owner_uid = entry.get();
+                if owner_uid != ctx.uid {
+                    let reply = server_reply(
+                        &ctx.matrix.server_info.name,
+                        Response::ERR_NICKNAMEINUSE,
+                        vec![
+                            ctx.handshake
+                                .nick
+                                .clone()
+                                .unwrap_or_else(|| "*".to_string()),
+                            nick.to_string(),
+                            "Nickname is already in use".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                    return Ok(());
+                }
+                // Owner is the same UID; allow case-change or reconnect continuation.
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(ctx.uid.to_string());
+            }
         }
 
         // Check +N (no nick change) on any channel the user is in
@@ -127,7 +135,10 @@ impl Handler for NickHandler {
                 notify_monitors_offline(ctx.matrix, old_nick).await;
             }
 
-            ctx.matrix.nicks.remove(&old_nick_lower);
+            // If the lowercase nick is changing, remove the old mapping (case-only changes keep mapping)
+            if old_nick_lower != nick_lower {
+                ctx.matrix.nicks.remove(&old_nick_lower);
+            }
             // Clear any enforcement timer for old nick
             ctx.matrix.enforce_timers.remove(ctx.uid);
         }

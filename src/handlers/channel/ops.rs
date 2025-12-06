@@ -60,12 +60,15 @@ pub async fn force_join_channel(
         .entry(channel_lower.clone())
         .or_insert_with(|| {
             crate::metrics::ACTIVE_CHANNELS.inc();
-            crate::state::actor::ChannelActor::spawn(channel_name.to_string())
+            crate::state::actor::ChannelActor::spawn(
+                channel_name.to_string(),
+                std::sync::Arc::downgrade(ctx.matrix),
+            )
         })
         .clone();
 
     // Get user data
-    let (caps, user_context, sender) = if let Some(user_ref) = ctx.matrix.users.get(target.uid) {
+    let (caps, user_context, sender, session_id) = if let Some(user_ref) = ctx.matrix.users.get(target.uid) {
         let user = user_ref.read().await;
         let context = crate::security::UserContext::for_registration(
             "0.0.0.0".parse().unwrap(),
@@ -77,7 +80,7 @@ pub async fn force_join_channel(
             user.account.clone(),
         );
         let sender = ctx.matrix.senders.get(target.uid).map(|s| s.clone());
-        (user.caps.clone(), context, sender)
+        (user.caps.clone(), context, sender, user.session_id)
     } else {
         return Ok(());
     };
@@ -120,6 +123,7 @@ pub async fn force_join_channel(
         initial_modes: Some(modes),
         join_msg_extended: Box::new(join_msg_extended),
         join_msg_standard: Box::new(join_msg_standard),
+        session_id,
         reply_tx,
     };
 
