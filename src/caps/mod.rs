@@ -33,7 +33,7 @@
 //!     let authority = CapabilityAuthority::new(ctx.matrix.clone());
 //!     let kick_cap = authority.request_kick_cap(ctx.uid, channel).await
 //!         .ok_or_else(|| HandlerError::NoPrivileges)?;
-//!     
+//!
 //!     // Perform the kick - function signature proves authorization
 //!     channel_actor.kick(target, kick_cap).await?;
 //!     Ok(())
