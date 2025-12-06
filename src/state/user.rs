@@ -1,6 +1,7 @@
 //! User-related types and state.
 
 use std::collections::HashSet;
+use uuid::Uuid;
 
 /// A connected user.
 #[derive(Debug)]
@@ -12,6 +13,8 @@ pub struct User {
     pub host: String,
     /// Visible hostname shown to other users (cloaked for privacy).
     pub visible_host: String,
+    /// Unique session identifier for this connection (guards against ghost joins).
+    pub session_id: Uuid,
     /// Channels this user is in (lowercase names).
     pub channels: HashSet<String>,
     /// User modes.
@@ -124,6 +127,7 @@ impl User {
             realname,
             host,
             visible_host,
+            session_id: Uuid::new_v4(),
             channels: HashSet::new(),
             modes: UserModes::default(),
             account: None,
