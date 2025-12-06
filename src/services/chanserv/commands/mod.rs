@@ -10,9 +10,9 @@ mod modes;
 mod register;
 
 use crate::db::{ChannelRepository, Database};
+use crate::services::base::ServiceBase;
 use crate::services::ServiceEffect;
 use crate::state::Matrix;
-use slirc_proto::{Command, Message, Prefix};
 use std::sync::Arc;
 
 /// Result of a ChanServ command - a list of effects to apply.
@@ -21,6 +21,16 @@ pub type ChanServResult = Vec<ServiceEffect>;
 /// ChanServ service.
 pub struct ChanServ {
     pub(crate) db: Database,
+}
+
+impl ServiceBase for ChanServ {
+    fn service_name(&self) -> &'static str {
+        "ChanServ"
+    }
+
+    fn db(&self) -> &Database {
+        &self.db
+    }
 }
 
 impl ChanServ {
@@ -63,60 +73,28 @@ impl ChanServ {
         }
     }
 
-    // ========== Helper methods for creating effects ==========
+    // ========== ChanServ-specific helper methods ==========
 
     /// Create a single reply effect.
     pub(crate) fn reply_effect(&self, target_uid: &str, text: &str) -> ServiceEffect {
-        ServiceEffect::Reply {
-            target_uid: target_uid.to_string(),
-            msg: Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName("ChanServ".to_string())),
-                command: Command::NOTICE("*".to_string(), text.to_string()),
-            },
-        }
+        <Self as ServiceBase>::reply_effect(self, target_uid, text)
     }
 
     /// Create multiple reply effects.
     pub(crate) fn reply_effects(&self, target_uid: &str, texts: Vec<&str>) -> ChanServResult {
-        texts
-            .into_iter()
-            .map(|t| self.reply_effect(target_uid, t))
-            .collect()
+        <Self as ServiceBase>::reply_effects(self, target_uid, texts)
     }
 
     /// Create an error reply.
     pub(crate) fn error_reply(&self, uid: &str, text: &str) -> ChanServResult {
-        vec![self.reply_effect(uid, text)]
-    }
-
-    /// Create an unknown command reply.
-    fn unknown_command(&self, uid: &str, cmd: &str) -> ChanServResult {
-        self.error_reply(
-            uid,
-            &format!(
-                "Unknown command: \x02{}\x02. Use \x02HELP\x02 for a list of commands.",
-                cmd
-            ),
-        )
+        <Self as ServiceBase>::error_reply(self, uid, text)
     }
 
     /// Get user's account ID if identified.
+    ///
+    /// Uses the default implementation from ServiceBase trait.
     pub(crate) async fn get_user_account_id(&self, matrix: &Arc<Matrix>, uid: &str) -> Option<i64> {
-        let user = matrix.users.get(uid)?;
-        let user = user.read().await;
-
-        if !user.modes.registered {
-            return None;
-        }
-
-        let account_name = user.account.as_ref()?;
-
-        // Look up account ID
-        match self.db.accounts().find_by_name(account_name).await {
-            Ok(Some(account)) => Some(account.id),
-            _ => None,
-        }
+        <Self as ServiceBase>::get_user_account_id(self, matrix, uid).await
     }
 
     /// Check if user has founder access on a channel.

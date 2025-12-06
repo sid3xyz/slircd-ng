@@ -11,9 +11,9 @@ pub mod set;
 pub mod ungroup;
 
 use crate::db::Database;
+use crate::services::base::ServiceBase;
 use crate::services::ServiceEffect;
 use crate::state::Matrix;
-use slirc_proto::{Command, Message, Prefix};
 use std::sync::Arc;
 
 /// Result of a NickServ command - a list of effects to apply.
@@ -22,6 +22,16 @@ pub type NickServResult = Vec<ServiceEffect>;
 /// NickServ service.
 pub struct NickServ {
     db: Database,
+}
+
+impl ServiceBase for NickServ {
+    fn service_name(&self) -> &'static str {
+        "NickServ"
+    }
+
+    fn db(&self) -> &Database {
+        &self.db
+    }
 }
 
 impl NickServ {
@@ -152,28 +162,16 @@ impl NickServ {
         }
     }
 
+    // ========== Reply helper methods (delegate to trait) ==========
+
     /// Create a single reply effect.
     fn reply_effect(&self, target_uid: &str, text: &str) -> ServiceEffect {
-        ServiceEffect::Reply {
-            target_uid: target_uid.to_string(),
-            msg: Message {
-                tags: None,
-                prefix: Some(Prefix::Nickname(
-                    "NickServ".to_string(),
-                    "NickServ".to_string(),
-                    "services.".to_string(),
-                )),
-                command: Command::NOTICE(String::new(), text.to_string()),
-            },
-        }
+        <Self as ServiceBase>::reply_effect(self, target_uid, text)
     }
 
     /// Create multiple reply effects.
     fn reply_effects(&self, target_uid: &str, texts: Vec<&str>) -> NickServResult {
-        texts
-            .into_iter()
-            .map(|t| self.reply_effect(target_uid, t))
-            .collect()
+        <Self as ServiceBase>::reply_effects(self, target_uid, texts)
     }
 
     /// Create a help reply.
@@ -225,16 +223,5 @@ impl NickServ {
                 "  \x02HELP\x02                        - Show this help",
             ),
         ]
-    }
-
-    /// Create an unknown command reply.
-    fn unknown_command(&self, uid: &str, cmd: &str) -> NickServResult {
-        self.reply_effects(
-            uid,
-            vec![&format!(
-                "Unknown command \x02{}\x02. Type \x02HELP\x02 for a list of commands.",
-                cmd
-            )],
-        )
     }
 }
