@@ -14,9 +14,9 @@ use crate::state::{ListEntry, MemberModes, Topic};
 use chrono::Utc;
 use slirc_proto::{Command, Message, Prefix};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
 /// Unique identifier for a user (UID string).
@@ -273,9 +273,18 @@ pub struct ChannelActor {
     pub quiets: Vec<ListEntry>,
 
     // State
-    pub invites: HashSet<Uid>,
+    pub invites: VecDeque<InviteEntry>,
     pub kicked_users: HashMap<Uid, Instant>,
 }
+
+#[derive(Debug, Clone)]
+pub struct InviteEntry {
+    pub uid: Uid,
+    pub set_at: Instant,
+}
+
+const MAX_INVITES_PER_CHANNEL: usize = 100;
+const INVITE_TTL: Duration = Duration::from_secs(60 * 60); // 1 hour
 
 impl ChannelActor {
     /// Create a new Channel Actor and spawn it.
@@ -299,7 +308,7 @@ impl ChannelActor {
             excepts: Vec::new(),
             invex: Vec::new(),
             quiets: Vec::new(),
-            invites: HashSet::new(),
+            invites: VecDeque::new(),
             kicked_users: HashMap::new(),
         };
 
@@ -440,7 +449,7 @@ impl ChannelActor {
 
         // 2. Invite Only (+i)
         if self.modes.contains(&ChannelMode::InviteOnly) {
-            let is_invited = self.invites.contains(&uid);
+            let is_invited = self.is_invited(&uid);
             let is_invex = self.invex.iter().any(|i| crate::security::matches_ban_or_except(&i.mask, &user_mask, &user_context));
 
             if !is_invited && !is_invex {
@@ -468,7 +477,7 @@ impl ChannelActor {
         }
 
         // Consume invite
-        self.invites.remove(&uid);
+        self.remove_invite(&uid);
 
         // Basic JOIN implementation
         // Fix #14: Preserve existing modes if user is already in channel (rejoin)
@@ -988,7 +997,7 @@ impl ChannelActor {
             return;
         }
 
-        self.invites.insert(target_uid.clone());
+        self.add_invite(target_uid.clone());
 
         // Broadcast invite-notify
         let invite_msg = Message {
@@ -1072,6 +1081,42 @@ impl ChannelActor {
             .get(uid)
             .map(|m| m.has_halfop_or_higher())
             .unwrap_or(false)
+    }
+
+    fn prune_invites(&mut self) {
+        while let Some(front) = self.invites.front() {
+            if front.set_at.elapsed() > INVITE_TTL {
+                self.invites.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn add_invite(&mut self, uid: Uid) {
+        self.prune_invites();
+
+        if self.invites.iter().any(|entry| entry.uid == uid) {
+            return;
+        }
+
+        self.invites.push_back(InviteEntry {
+            uid,
+            set_at: Instant::now(),
+        });
+
+        while self.invites.len() > MAX_INVITES_PER_CHANNEL {
+            self.invites.pop_front();
+        }
+    }
+
+    fn remove_invite(&mut self, uid: &Uid) {
+        self.invites.retain(|entry| &entry.uid != uid);
+    }
+
+    fn is_invited(&mut self, uid: &Uid) -> bool {
+        self.prune_invites();
+        self.invites.iter().any(|entry| &entry.uid == uid)
     }
 
     fn set_flag_mode(&mut self, flag: ChannelMode, adding: bool) -> bool {
@@ -1221,7 +1266,7 @@ mod tests {
             excepts: Vec::new(),
             invex: Vec::new(),
             quiets: Vec::new(),
-            invites: HashSet::new(),
+            invites: VecDeque::new(),
             kicked_users: HashMap::new(),
         }
     }
