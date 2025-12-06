@@ -148,7 +148,7 @@ pub enum ChannelEvent {
     /// User nickname change.
     NickChange {
         uid: Uid,
-        _old_nick: String,
+        old_nick: String,
         new_nick: String,
     },
 }
