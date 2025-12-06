@@ -54,7 +54,7 @@ impl Handler for TopicHandler {
              ctx.sender
                 .send(err_notonchannel(
                     &ctx.matrix.server_info.name,
-                    &nick,
+                    nick,
                     channel_name,
                 ))
                 .await?;

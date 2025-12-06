@@ -49,14 +49,13 @@ impl Handler for NoticeHandler {
         }
 
         // Check for repetition spam (always check)
-        if let Some(detector) = &ctx.matrix.spam_detector {
-            if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
+        if let Some(detector) = &ctx.matrix.spam_detector
+            && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
                 detector.check_message_repetition(&uid_string, text)
             {
                 debug!(uid = %uid_string, pattern = %pattern, "NOTICE blocked by spam detector");
                 return Ok(());
             }
-        }
 
         // Check for content spam (skip for trusted users)
         let is_trusted = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
@@ -66,16 +65,14 @@ impl Handler for NoticeHandler {
             false
         };
 
-        if !is_trusted {
-            if let Some(detector) = &ctx.matrix.spam_detector {
-                if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
+        if !is_trusted
+            && let Some(detector) = &ctx.matrix.spam_detector
+                && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
                     detector.check_message(text)
                 {
                     debug!(uid = %uid_string, pattern = %pattern, "NOTICE blocked by spam detector");
                     return Ok(());
                 }
-            }
-        }
 
         // Rate-limit CTCP NOTICE floods (silent drop on limit).
         if slirc_proto::ctcp::Ctcp::is_ctcp(text)

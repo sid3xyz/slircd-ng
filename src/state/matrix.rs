@@ -393,12 +393,11 @@ impl Matrix {
                     reply_tx: Some(tx),
                 }).await;
 
-                if let Ok(remaining) = rx.await {
-                    if remaining == 0 {
+                if let Ok(remaining) = rx.await
+                    && remaining == 0 {
                         self.channels.remove(channel_name);
                         crate::metrics::ACTIVE_CHANNELS.dec();
                     }
-                }
             }
         }
 

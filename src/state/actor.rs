@@ -451,22 +451,20 @@ impl ChannelActor {
 
         // 3. Limit (+l)
         for mode in &self.modes {
-            if let ChannelMode::Limit(limit) = mode {
-                if self.members.len() >= *limit {
+            if let ChannelMode::Limit(limit) = mode
+                && self.members.len() >= *limit {
                     let _ = reply_tx.send(Err("Cannot join channel (+l)".to_string()));
                     return;
                 }
-            }
         }
 
         // 4. Key (+k)
         for mode in &self.modes {
-            if let ChannelMode::Key(key) = mode {
-                if key_arg.as_deref() != Some(key) {
+            if let ChannelMode::Key(key) = mode
+                && key_arg.as_deref() != Some(key) {
                     let _ = reply_tx.send(Err("Cannot join channel (+k)".to_string()));
                     return;
                 }
-            }
         }
 
         // Consume invite
@@ -624,32 +622,27 @@ impl ChannelActor {
         }
 
         // Check +m (moderated)
-        if modes.contains(&ChannelMode::Moderated) {
-            if !self.member_has_voice_or_higher(&sender_uid) {
+        if modes.contains(&ChannelMode::Moderated)
+            && !self.member_has_voice_or_higher(&sender_uid) {
                  let _ = reply_tx.send(ChannelRouteResult::BlockedModerated);
                  return;
             }
-        }
 
         // Check +T (no notice)
-        if is_notice && modes.contains(&ChannelMode::NoNotice) {
-             if !self.member_has_halfop_or_higher(&sender_uid) {
+        if is_notice && modes.contains(&ChannelMode::NoNotice)
+             && !self.member_has_halfop_or_higher(&sender_uid) {
                 let _ = reply_tx.send(ChannelRouteResult::BlockedNotice);
                 return;
             }
-        }
 
         // Check +C (no CTCP)
-        if modes.contains(&ChannelMode::NoCtcp) {
-             if slirc_proto::ctcp::Ctcp::is_ctcp(&text) {
-                 if let Some(ctcp) = slirc_proto::ctcp::Ctcp::parse(&text) {
-                     if !matches!(ctcp.kind, slirc_proto::ctcp::CtcpKind::Action) {
+        if modes.contains(&ChannelMode::NoCtcp)
+             && slirc_proto::ctcp::Ctcp::is_ctcp(&text)
+                 && let Some(ctcp) = slirc_proto::ctcp::Ctcp::parse(&text)
+                     && !matches!(ctcp.kind, slirc_proto::ctcp::CtcpKind::Action) {
                          let _ = reply_tx.send(ChannelRouteResult::BlockedCTCP);
                          return;
                      }
-                 }
-             }
-        }
 
         // Check bans (+b) and quiets (+q)
         let is_op = self.member_has_halfop_or_higher(&sender_uid);
@@ -1007,13 +1000,11 @@ impl ChannelActor {
         for (uid, _) in &self.members {
             if *uid == target_uid { continue; }
 
-            if let Some(caps) = self.user_caps.get(uid) {
-                if caps.contains("invite-notify") {
-                    if let Some(sender) = self.senders.get(uid) {
+            if let Some(caps) = self.user_caps.get(uid)
+                && caps.contains("invite-notify")
+                    && let Some(sender) = self.senders.get(uid) {
                         let _ = sender.send(invite_msg.clone()).await;
                     }
-                }
-            }
         }
 
         let _ = reply_tx.send(Ok(()));
@@ -1053,11 +1044,10 @@ impl ChannelActor {
         };
 
         for (uid, modes) in &self.members {
-            if modes.op || modes.halfop {
-                if let Some(sender) = self.senders.get(uid) {
+            if (modes.op || modes.halfop)
+                && let Some(sender) = self.senders.get(uid) {
                      let _ = sender.send(msg.clone()).await;
                 }
-            }
         }
 
         let _ = reply_tx.send(Ok(()));
