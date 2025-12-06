@@ -2,6 +2,7 @@
 //!
 //! Provides virtual services like NickServ and ChanServ.
 
+pub mod base;
 pub mod chanserv;
 pub mod enforce;
 pub mod nickserv;

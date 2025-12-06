@@ -55,8 +55,21 @@
 
 🔄 **Current Focus: Priority 5c - Service Command Base Traits**
 
+Analysis: NickServ & ChanServ command patterns
+- Duplicate reply helpers: reply_effect, reply_effects, error_reply (~50 lines)
+- Account verification helpers: get_user_account_id, account ownership checks (~30 lines)
+- Permission checking: channel op verification (~20 lines)
+- Error handling: DbError mapping, logging patterns (~40 lines)
+
 Task breakdown:
-  - Extract common auth/permission/error patterns
+- [ ] Create services/base.rs trait with default reply helpers
+- [ ] Extract common permission/auth checking methods
+- [ ] Standardize error handling patterns
+- [ ] Update NickServ to use base trait
+- [ ] Update ChanServ to use base trait
+- [ ] Verify tests pass, commit changes
+
+Estimated reduction: ~100-140 lines duplicate code
 
 ## 📊 METRICS
 
