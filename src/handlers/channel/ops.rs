@@ -112,6 +112,7 @@ pub async fn force_join_channel(
 
     let event = crate::state::actor::ChannelEvent::Join {
         uid: target.uid.to_string(),
+        nick: target.nick.to_string(),
         sender: sender.clone(),
         caps,
         user_context,
@@ -141,11 +142,10 @@ pub async fn force_join_channel(
     info!(
         nick = %target.nick,
         channel = %join_data.channel_name,
-        members = join_data.members.len(),
         "User joined channel"
     );
 
-    // Send topic and names to joining user if requested
+    // Send topic and NAMES to joining user if requested
     if let Some(sender) = send_topic_names_to {
         // Send topic if set
         if let Some(topic) = join_data.topic {
@@ -157,33 +157,40 @@ pub async fn force_join_channel(
             sender.send(topic_reply).await?;
         }
 
-        // Send NAMES list
-        let mut names_list = Vec::new();
-        for (uid, member_modes) in &join_data.members {
-            if let Some(user) = ctx.matrix.users.get(uid) {
-                let user = user.read().await;
-                let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
-                    format!("{}{}", prefix, user.nick)
-                } else {
-                    user.nick.clone()
-                };
-                names_list.push(nick_with_prefix);
-            }
-        }
-        // Channel symbol per RFC 2812: @ = secret, = = public
-        let channel_symbol = if join_data.is_secret { "@" } else { "=" };
+        // Send NAMES using GetMembers (oneshot-based, no deadlock)
+        let (members_tx, members_rx) = tokio::sync::oneshot::channel();
+        let _ = channel_ref.send(crate::state::actor::ChannelEvent::GetMembers {
+            reply_tx: members_tx,
+        }).await;
 
-        let names_reply = server_reply(
-            &ctx.matrix.server_info.name,
-            Response::RPL_NAMREPLY,
-            vec![
-                target.nick.to_string(),
-                channel_symbol.to_string(),
-                join_data.channel_name.clone(),
-                names_list.join(" "),
-            ],
-        );
-        sender.send(names_reply).await?;
+        if let Ok(members) = members_rx.await {
+            let channel_symbol = if join_data.is_secret { "@" } else { "=" };
+            let mut names_list = Vec::new();
+
+            for (uid, member_modes) in members {
+                if let Some(user) = ctx.matrix.users.get(&uid) {
+                    let user = user.read().await;
+                    let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
+                        format!("{}{}", prefix, user.nick)
+                    } else {
+                        user.nick.clone()
+                    };
+                    names_list.push(nick_with_prefix);
+                }
+            }
+
+            let names_reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::RPL_NAMREPLY,
+                vec![
+                    target.nick.to_string(),
+                    channel_symbol.to_string(),
+                    join_data.channel_name.clone(),
+                    names_list.join(" "),
+                ],
+            );
+            sender.send(names_reply).await?;
+        }
 
         let end_names = with_label(
             server_reply(

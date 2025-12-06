@@ -230,7 +230,7 @@ pub async fn handle_channel_mode(
                  sender_uid: ctx.uid.to_string(),
                  sender_prefix: prefix,
                  modes: valid_modes,
-                 target_uids,
+                 target_uids: target_uids.into(),
                  force: false,
                  reply_tx,
              }).await {
