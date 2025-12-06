@@ -384,13 +384,20 @@ pub async fn add_kline(...) -> Result<(), DbError> {
 #### 9. Handler Response Building Patterns
 **Location:** Throughout `src/handlers/`, especially `server_query/` and `user_query/whois/`
 
-Handlers repeatedly build responses manually:
+**Status:** ✅ COMPLETE (commit 2778394)
+
+Handlers repeatedly built responses manually:
 ```rust
 let reply = server_reply(&ctx.matrix.server_info.name, Response::RPL_X, vec![nick, ...]);
 ctx.sender.send(reply).await?;
 ```
 
-**Recommendation:** Create response builder helper like `send_reply!(ctx, Response::RPL_X, nick, ...)` to reduce boilerplate.
+**Solution:** Added `Context::send_reply()` convenience method that combines both operations:
+```rust
+ctx.send_reply(Response::RPL_X, vec![nick, ...]).await?;
+```
+
+**Result:** 36 lines eliminated, cleaner API, improved readability across 7 handler files.
 
 ---
 
@@ -414,7 +421,8 @@ Multiple handlers perform similar checks:
 | Ban queries            | `src/db/bans/queries/`    | ✅ 196 lines eliminated (Priority 5a - commit 8bf1dda) |
 | Message validation     | `src/handlers/messaging/` | ✅ 140 lines eliminated (Priority 5b - commit 59be059) |
 | Service infrastructure | `src/services/`           | ✅ 37 lines eliminated (Priority 5c - commit 68d4c93)  |
-| **Total eliminated**   |                           | **373 lines**                                         |
+| Response building      | `src/handlers/`           | ✅ 36 lines eliminated (item 9 - commit 2778394)      |
+| **Total eliminated**   |                           | **409 lines**                                         |
 
 ---
 
@@ -422,18 +430,19 @@ Multiple handlers perform similar checks:
 
 **Actual Results:**
 
-- ✅ Files refactored: ~50
+- ✅ Files refactored: ~57
 - ✅ Lines reorganized: ~3600
-- ✅ Lines eliminated: ~373 (ban queries: 196, message validation: 140, services: 37)
+- ✅ Lines eliminated: ~409 (ban queries: 196, message validation: 140, services: 37, responses: 36)
 - ✅ New modules created: 24
-- ✅ Code duplication eliminated: user_mask, ban checking, ban queries, message validation, service helpers
+- ✅ Code duplication eliminated: user_mask, ban checking, ban queries, message validation, service helpers, response building
 - ✅ All tests passing, clippy clean
-- ✅ **Total impact: ~21% codebase improvement**
+- ✅ **Total impact: ~22% codebase improvement**
 
 **Phases Completed:**
 1. ✅ Phase 1-4: Actor, connection, handlers core modularization
 2. ✅ Phase 5a: Ban query generics (commit 8bf1dda)
 3. ✅ Phase 5b: Message validation extraction (commit 59be059)
 4. ✅ Phase 5c: Service base traits (commit 68d4c93)
+5. ✅ Phase 5d: Response building helper (commit 2778394)
 
 All planned refactoring objectives achieved!
