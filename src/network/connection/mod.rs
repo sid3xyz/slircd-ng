@@ -23,14 +23,19 @@
 //!    └─────────────────────────────────────────────────────┘
 //! ```
 
+mod batch_state;
+mod error_handling;
+
+use batch_state::to_base36;
+use error_handling::{ReadErrorAction, classify_read_error, handler_error_to_reply};
+
 use crate::db::Database;
 use crate::handlers::{
     Context, HandshakeState, Registry, ResponseMiddleware, cleanup_monitors, labeled_ack,
     notify_monitors_offline, process_batch_message, with_label,
 };
 use crate::state::Matrix;
-use slirc_proto::error::ProtocolError;
-use slirc_proto::transport::{TransportReadError, ZeroCopyTransportEnum};
+use slirc_proto::transport::ZeroCopyTransportEnum;
 use slirc_proto::{BatchSubCommand, Command, Message, Prefix, Response, irc_to_lower};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -39,153 +44,6 @@ use tokio::sync::{Mutex, mpsc};
 use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{debug, info, instrument, warn};
-
-/// Classification of transport read errors for appropriate handling.
-enum ReadErrorAction {
-    /// Recoverable line-too-long error - send ERR_INPUTTOOLONG (417) and continue
-    InputTooLong,
-    /// Fatal protocol violation - send ERROR message and disconnect
-    FatalProtocolError { error_msg: String },
-    /// I/O error - connection is broken, just log and disconnect
-    IoError,
-}
-
-/// Classify a transport read error into an actionable category.
-fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
-    match e {
-        TransportReadError::Protocol(proto_err) => {
-            match proto_err {
-                // Recoverable: line or tags too long → ERR_INPUTTOOLONG (417)
-                // Per Ergo/modern IRC: send 417 and continue, don't disconnect
-                ProtocolError::MessageTooLong { .. } | ProtocolError::TagsTooLong { .. } => {
-                    ReadErrorAction::InputTooLong
-                }
-                // Fatal: other protocol errors → ERROR and disconnect
-                ProtocolError::IllegalControlChar(ch) => ReadErrorAction::FatalProtocolError {
-                    error_msg: format!("Illegal control character: {ch:?}"),
-                },
-                ProtocolError::InvalidMessage { string, cause } => {
-                    ReadErrorAction::FatalProtocolError {
-                        error_msg: format!("Malformed message: {cause} (input: {string:?})"),
-                    }
-                }
-                ProtocolError::InvalidUtf8(details) => ReadErrorAction::FatalProtocolError {
-                    error_msg: format!("Invalid UTF-8 in message: {details}"),
-                },
-                // Handle other variants that might be added in the future
-                _ => ReadErrorAction::FatalProtocolError {
-                    error_msg: format!("Protocol error: {proto_err}"),
-                },
-            }
-        }
-        TransportReadError::Io(_) => ReadErrorAction::IoError,
-        // Handle future variants gracefully
-        _ => ReadErrorAction::IoError,
-    }
-}
-
-/// Convert a HandlerError to an appropriate IRC error reply.
-///
-/// Returns None for errors that don't warrant a client-visible reply
-/// (e.g., internal errors, send failures).
-fn handler_error_to_reply(
-    server_name: &str,
-    nick: &str,
-    error: &crate::handlers::HandlerError,
-    msg: &slirc_proto::MessageRef<'_>,
-) -> Option<Message> {
-    use crate::handlers::HandlerError;
-    use slirc_proto::{Command, Prefix, Response};
-
-    let cmd_name = msg.command_name();
-
-    match error {
-        HandlerError::NotRegistered => Some(Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.to_string())),
-            command: Command::Response(
-                Response::ERR_NOTREGISTERED,
-                vec!["*".to_string(), "You have not registered".to_string()],
-            ),
-        }),
-        HandlerError::NeedMoreParams => Some(Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.to_string())),
-            command: Command::Response(
-                Response::ERR_NEEDMOREPARAMS,
-                vec![
-                    nick.to_string(),
-                    cmd_name.to_string(),
-                    "Not enough parameters".to_string(),
-                ],
-            ),
-        }),
-        HandlerError::NoTextToSend => Some(Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.to_string())),
-            command: Command::Response(
-                Response::ERR_NOTEXTTOSEND,
-                vec![nick.to_string(), "No text to send".to_string()],
-            ),
-        }),
-        HandlerError::NicknameInUse(nick) => Some(Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.to_string())),
-            command: Command::Response(
-                Response::ERR_NICKNAMEINUSE,
-                vec![
-                    "*".to_string(),
-                    nick.clone(),
-                    "Nickname is already in use".to_string(),
-                ],
-            ),
-        }),
-        HandlerError::ErroneousNickname(nick) => Some(Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.to_string())),
-            command: Command::Response(
-                Response::ERR_ERRONEOUSNICKNAME,
-                vec![
-                    "*".to_string(),
-                    nick.clone(),
-                    "Erroneous nickname".to_string(),
-                ],
-            ),
-        }),
-        HandlerError::AlreadyRegistered => Some(Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(server_name.to_string())),
-            command: Command::Response(
-                Response::ERR_ALREADYREGISTERED,
-                vec!["*".to_string(), "You may not reregister".to_string()],
-            ),
-        }),
-        // Access denied - error already sent to client, don't add another message
-        HandlerError::AccessDenied => None,
-        // Internal errors - don't expose to client
-        HandlerError::NickOrUserMissing | HandlerError::Send(_) => None,
-        // Quit is handled specially by the connection loop, not as an error reply
-        HandlerError::Quit(_) => None,
-        HandlerError::Internal(_) => None,
-    }
-}
-
-/// Convert a u32 to a base36 string (lowercase).
-fn to_base36(mut value: u32) -> String {
-    if value == 0 {
-        return "0".to_string();
-    }
-
-    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
-    let mut buf = Vec::with_capacity(7);
-    while value > 0 {
-        let rem = (value % 36) as usize;
-        buf.push(DIGITS[rem]);
-        value /= 36;
-    }
-    buf.reverse();
-    String::from_utf8(buf).unwrap_or_default()
-}
 
 /// A client connection handler.
 pub struct Connection {
