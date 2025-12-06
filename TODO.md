@@ -43,44 +43,36 @@
 - [x] Convert all individual query files to use generic implementation
 - **Result**: 806→610 lines (~196 lines / 24% reduction)
 
-🔄 **Current Focus: Priority 5b - Message Validation Extraction**
+✅ **Priority 5b: Message Validation Extraction** (DONE - commit 59be059)
+- [x] Create messaging/validation.rs module
+  - [x] Extract validate_message_send() function (handles shun/rate/spam checks)
+  - [x] Add ErrorStrategy enum (SendError vs SilentDrop)
+  - [x] Parameterize error handling behavior
+- [x] Update privmsg.rs to use shared validation
+- [x] Update notice.rs to use shared validation
+- [x] Verify tests pass, commit changes
+- **Result**: privmsg 387→286 (-101), notice 159→120 (-39), new validation 164 (140 lines duplicate code eliminated)
+
+🔄 **Current Focus: Priority 5c - Service Command Base Traits**
 
 Task breakdown:
-- [ ] Create messaging/validation.rs module
-  - [ ] Extract validate_message_send() function (handles shun/rate/spam checks)
-  - [ ] Add ErrorStrategy enum (SendError vs SilentDrop)
-  - [ ] Parameterize error handling behavior
-- [ ] Update privmsg.rs to use shared validation
-- [ ] Update notice.rs to use shared validation
-- [ ] Verify tests pass, commit changes
-
-**Remaining Priority 5 Tasks:**
-
-- [ ] Error reply helper consolidation (defer - current code is readable)
-  - Current: ~15 error helper functions in helpers.rs
-  - Analysis: Functions have different signatures, macro would reduce readability
-  - Decision: Keep as-is unless significant duplication found
-- [ ] Service command base traits (services/nickserv + chanserv)
-  - Extract shared validation pipeline
-  - Parameterize error handling strategy
-- [ ] Service command base traits (services/nickserv + chanserv)
   - Extract common auth/permission/error patterns
 
 ## 📊 METRICS
 
 **Completed Refactoring:**
 
-- Files refactored: ~45 (actor handlers, validation, connection, handlers core, ban queries)
-- Lines reorganized: ~3200
-- Lines eliminated: ~200 (ban query deduplication)
-- New modules created: 20 (15 from P1-P3, 4 from P4, 1 from P5a)
-- Code duplication eliminated: user_mask (3→1), ban checking (2→1), ban queries (6×84→6×33+generic)
+- Files refactored: ~47 (actor handlers, validation, connection, handlers core, ban queries, messaging)
+- Lines reorganized: ~3400
+- Lines eliminated: ~340 (ban queries: 196, message validation: 140 duplicate)
+- New modules created: 22 (15 from P1-P3, 4 from P4, 2 from P5a+5b, 1 from validation)
+- Code duplication eliminated: user_mask (3→1), ban checking (2→1), ban queries (6×84→6×33+generic), message validation (2→1)
 - All changes: clippy clean, builds successfully
 
 **Estimated Remaining:**
 
-- Duplication cleanup: ~700 lines potential reduction (error helpers, message validation, service traits)
-- Total impact achieved so far: ~18% codebase improvement
+- Duplication cleanup: ~200 lines potential reduction (service command traits)
+- Total impact achieved so far: ~20% codebase improvement
 
 ## 🧪 TESTING STATUS
 
