@@ -654,9 +654,9 @@ impl ChannelActor {
         if self.members.is_empty() && !is_permanent {
             // Mark as draining first - this prevents any new events from being processed
             self.state = ActorState::Draining;
-            
+
             // Remove channel from global registry
-            // 
+            //
             // RACE CONDITION NOTE (#12): There is a theoretical race where:
             // 1. This actor marks itself as draining and removes from matrix.channels
             // 2. A new JOIN arrives and creates a fresh actor before removal completes
