@@ -6,7 +6,7 @@
 //! SERVLIST lists registered services - we return an empty list.
 //! SQUERY routes messages to services like NickServ/ChanServ.
 
-use super::super::{Context, Handler, HandlerResult, err_notregistered, server_reply};
+use super::super::{Context, Handler, HandlerResult, err_notregistered};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -21,31 +21,27 @@ pub struct ServiceHandler;
 #[async_trait]
 impl Handler for ServiceHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
-
         // If already registered as a user, send ERR_ALREADYREGISTERED
         if ctx.handshake.registered {
             let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
-            let reply = server_reply(
-                server_name,
+            ctx.send_reply(
                 Response::ERR_ALREADYREGISTERED,
                 vec![nick.to_string(), "You are already registered".to_string()],
-            );
-            ctx.sender.send(reply).await?;
+            )
+            .await?;
             return Ok(());
         }
 
         // SERVICE registration is not supported for clients
         // Send ERR_NOPRIVILEGES (481) - most servers do this
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::ERR_NOPRIVILEGES,
             vec![
                 "*".to_string(),
                 "SERVICE command is not available".to_string(),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -69,13 +65,11 @@ impl Handler for ServlistHandler {
             return Ok(());
         }
 
-        let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
 
         // RPL_SERVLISTEND (235) - no services to list
         // Format: <nick> <mask> <type> :End of service listing
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_SERVLISTEND,
             vec![
                 nick.to_string(),
@@ -83,8 +77,8 @@ impl Handler for ServlistHandler {
                 "*".to_string(),
                 "End of service listing".to_string(),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -107,22 +101,20 @@ impl Handler for SqueryHandler {
             return Ok(());
         }
 
-        let server_name = &ctx.matrix.server_info.name;
         let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
 
         let service_name = match msg.arg(0) {
             Some(s) if !s.is_empty() => s,
             _ => {
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::ERR_NEEDMOREPARAMS,
                     vec![
                         nick.to_string(),
                         "SQUERY".to_string(),
                         "Not enough parameters".to_string(),
                     ],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
                 return Ok(());
             }
         };
@@ -130,12 +122,11 @@ impl Handler for SqueryHandler {
         let text = match msg.arg(1) {
             Some(t) if !t.is_empty() => t,
             _ => {
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::ERR_NOTEXTTOSEND,
                     vec![nick.to_string(), "No text to send".to_string()],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
                 return Ok(());
             }
         };
@@ -153,16 +144,15 @@ impl Handler for SqueryHandler {
 
         if !handled {
             // Unknown service
-            let reply = server_reply(
-                server_name,
+            ctx.send_reply(
                 Response::ERR_NOSUCHSERVICE,
                 vec![
                     nick.to_string(),
                     service_name.to_string(),
                     "No such service".to_string(),
                 ],
-            );
-            ctx.sender.send(reply).await?;
+            )
+            .await?;
         }
 
         Ok(())

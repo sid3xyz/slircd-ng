@@ -1,8 +1,6 @@
 //! MOTD and related handlers.
 
-use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply,
-};
+use super::super::{Context, Handler, HandlerError, HandlerResult, err_notregistered};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -34,33 +32,30 @@ impl Handler for MotdHandler {
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_MOTDSTART (375): :- <server> Message of the day -
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_MOTDSTART,
             vec![
                 nick.clone(),
                 format!("- {} Message of the day -", server_name),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_MOTD (372): :- <text> - send each line from configured MOTD
         for line in &ctx.matrix.server_info.motd_lines {
-            let reply = server_reply(
-                server_name,
+            ctx.send_reply(
                 Response::RPL_MOTD,
                 vec![nick.clone(), format!("- {}", line)],
-            );
-            ctx.sender.send(reply).await?;
+            )
+            .await?;
         }
 
         // RPL_ENDOFMOTD (376): :End of MOTD command
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_ENDOFMOTD,
             vec![nick.clone(), "End of MOTD command".to_string()],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -96,8 +91,7 @@ impl Handler for VersionHandler {
         #[cfg(not(debug_assertions))]
         let version_str = format!("{}.0", VERSION);
 
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_VERSION,
             vec![
                 nick.clone(),
@@ -105,8 +99,8 @@ impl Handler for VersionHandler {
                 server_name.clone(),
                 "slircd-ng IRC daemon".to_string(),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -140,12 +134,11 @@ impl Handler for TimeHandler {
         let now = chrono::Local::now();
         let time_string = now.format("%A %B %d %Y -- %H:%M:%S %z").to_string();
 
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_TIME,
             vec![nick.clone(), server_name.clone(), time_string],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -176,40 +169,36 @@ impl Handler for AdminHandler {
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_ADMINME (256): <server> :Administrative info
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_ADMINME,
             vec![
                 nick.clone(),
                 server_name.clone(),
                 "Administrative info".to_string(),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_ADMINLOC1 (257): :<admin info>
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_ADMINLOC1,
             vec![nick.clone(), "slircd-ng IRC Server".to_string()],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_ADMINLOC2 (258): :<admin info>
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_ADMINLOC2,
             vec![nick.clone(), ctx.matrix.server_info.network.clone()],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_ADMINEMAIL (259): :<admin email>
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_ADMINEMAIL,
             vec![nick.clone(), format!("admin@{}", server_name)],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -232,7 +221,6 @@ impl Handler for InfoHandler {
             return Ok(());
         }
 
-        let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
             .handshake
             .nick
@@ -253,21 +241,16 @@ impl Handler for InfoHandler {
 
         // RPL_INFO (371): :<string>
         for line in &info_lines {
-            let reply = server_reply(
-                server_name,
-                Response::RPL_INFO,
-                vec![nick.clone(), line.clone()],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.send_reply(Response::RPL_INFO, vec![nick.clone(), line.clone()])
+                .await?;
         }
 
         // RPL_ENDOFINFO (374): :End of INFO list
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_ENDOFINFO,
             vec![nick.clone(), "End of INFO list".to_string()],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -290,7 +273,6 @@ impl Handler for LusersHandler {
             return Ok(());
         }
 
-        let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
             .handshake
             .nick
@@ -316,8 +298,7 @@ impl Handler for LusersHandler {
         let channel_count = ctx.matrix.channels.len();
 
         // RPL_LUSERCLIENT (251): :There are <u> users and <i> invisible on <s> servers
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_LUSERCLIENT,
             vec![
                 nick.clone(),
@@ -326,20 +307,19 @@ impl Handler for LusersHandler {
                     visible_users, invisible_count
                 ),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_LUSEROP (252): <ops> :operator(s) online
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_LUSEROP,
             vec![
                 nick.clone(),
                 oper_count.to_string(),
                 "operator(s) online".to_string(),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_LUSERUNKNOWN (253): <u> :unknown connection(s)
         // Unregistered = connections with nick but not yet in users map
@@ -347,43 +327,39 @@ impl Handler for LusersHandler {
         let total_nicks = ctx.matrix.nicks.len();
         let unregistered_count = total_nicks.saturating_sub(total_users);
 
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_LUSERUNKNOWN,
             vec![
                 nick.clone(),
                 unregistered_count.to_string(),
                 "unknown connection(s)".to_string(),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_LUSERCHANNELS (254): <channels> :channels formed
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_LUSERCHANNELS,
             vec![
                 nick.clone(),
                 channel_count.to_string(),
                 "channels formed".to_string(),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_LUSERME (255): :I have <c> clients and <s> servers
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_LUSERME,
             vec![
                 nick.clone(),
                 format!("I have {} clients and 0 servers", total_users),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_LOCALUSERS (265): <u> <m> :Current local users <u>, max <m>
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_LOCALUSERS,
             vec![
                 nick.clone(),
@@ -391,12 +367,11 @@ impl Handler for LusersHandler {
                 total_users.to_string(), // max = current for now
                 format!("Current local users {}, max {}", total_users, total_users),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_GLOBALUSERS (266): <u> <m> :Current global users <u>, max <m>
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_GLOBALUSERS,
             vec![
                 nick.clone(),
@@ -404,8 +379,8 @@ impl Handler for LusersHandler {
                 total_users.to_string(),
                 format!("Current global users {}, max {}", total_users, total_users),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }

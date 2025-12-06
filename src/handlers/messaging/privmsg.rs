@@ -18,8 +18,8 @@ use super::super::{
     Context, Handler, HandlerError, HandlerResult, user_mask_from_state, user_prefix,
 };
 use super::common::{
-    ChannelRouteResult, RouteOptions, route_to_channel, route_to_user,
-    send_cannot_send, send_no_such_channel, send_no_such_nick,
+    ChannelRouteResult, RouteOptions, route_to_channel, route_to_user, send_cannot_send,
+    send_no_such_channel, send_no_such_nick,
 };
 use super::validation::{ErrorStrategy, validate_message_send};
 use crate::db::StoreMessageParams;

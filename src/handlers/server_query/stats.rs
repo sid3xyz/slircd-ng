@@ -1,7 +1,7 @@
 //! STATS handler for server statistics.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply,
+    Context, Handler, HandlerError, HandlerResult, err_notregistered,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -34,7 +34,6 @@ impl Handler for StatsHandler {
             return Ok(());
         }
 
-        let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
             .handshake
             .nick
@@ -61,8 +60,7 @@ impl Handler for StatsHandler {
                 let minutes = (uptime % 3600) / 60;
                 let seconds = uptime % 60;
 
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::RPL_STATSUPTIME,
                     vec![
                         nick.clone(),
@@ -71,8 +69,8 @@ impl Handler for StatsHandler {
                             days, hours, minutes, seconds
                         ),
                     ],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
             }
             'o' | 'O' => {
                 // RPL_STATSOLINE (243): List online operators
@@ -80,8 +78,7 @@ impl Handler for StatsHandler {
                     let user_guard = user_entry.value().read().await;
                     if user_guard.modes.oper {
                         // :server 243 nick O * <oper_nick> * :<realname>
-                        let reply = server_reply(
-                            server_name,
+                        ctx.send_reply(
                             Response::RPL_STATSOLINE,
                             vec![
                                 nick.clone(),
@@ -91,8 +88,8 @@ impl Handler for StatsHandler {
                                 "*".to_string(),
                                 user_guard.realname.clone(),
                             ],
-                        );
-                        ctx.sender.send(reply).await?;
+                        )
+                        .await?;
                     }
                 }
             }
@@ -103,8 +100,7 @@ impl Handler for StatsHandler {
                         let duration = kline.expires_at.map(|exp| exp - kline.set_at).unwrap_or(0);
                         let reason = kline.reason.unwrap_or_default();
                         // :server 216 nick K <mask> <set_at> <duration> <setter> :<reason>
-                        let reply = server_reply(
-                            server_name,
+                        ctx.send_reply(
                             Response::RPL_STATSKLINE,
                             vec![
                                 nick.clone(),
@@ -115,8 +111,8 @@ impl Handler for StatsHandler {
                                 kline.set_by,
                                 reason,
                             ],
-                        );
-                        ctx.sender.send(reply).await?;
+                        )
+                        .await?;
                     }
                 }
             }
@@ -128,8 +124,7 @@ impl Handler for StatsHandler {
                         let duration = gline.expires_at.map(|exp| exp - gline.set_at).unwrap_or(0);
                         let reason = gline.reason.unwrap_or_default();
                         // :server 220 nick G <mask> <set_at> <duration> <setter> :<reason>
-                        let reply = server_reply(
-                            server_name,
+                        ctx.send_reply(
                             Response::RPL_STATSDLINE,
                             vec![
                                 nick.clone(),
@@ -140,8 +135,8 @@ impl Handler for StatsHandler {
                                 gline.set_by,
                                 reason,
                             ],
-                        );
-                        ctx.sender.send(reply).await?;
+                        )
+                        .await?;
                     }
                 }
             }
@@ -152,8 +147,7 @@ impl Handler for StatsHandler {
                         let duration = zline.expires_at.map(|exp| exp - zline.set_at).unwrap_or(0);
                         let reason = zline.reason.unwrap_or_default();
                         // :server 220 nick Z <mask> <set_at> <duration> <setter> :<reason>
-                        let reply = server_reply(
-                            server_name,
+                        ctx.send_reply(
                             Response::RPL_STATSDLINE,
                             vec![
                                 nick.clone(),
@@ -164,8 +158,8 @@ impl Handler for StatsHandler {
                                 zline.set_by,
                                 reason,
                             ],
-                        );
-                        ctx.sender.send(reply).await?;
+                        )
+                        .await?;
                     }
                 }
             }
@@ -175,8 +169,7 @@ impl Handler for StatsHandler {
                 let current_channels = ctx.matrix.channels.len();
 
                 // Use RPL_LUSERCLIENT style for connection info
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::RPL_LUSERCLIENT,
                     vec![
                         nick.clone(),
@@ -185,26 +178,24 @@ impl Handler for StatsHandler {
                             current_users, current_channels
                         ),
                     ],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
             }
             'm' | 'M' => {
                 // RPL_STATSCOMMANDS (212): Command usage statistics
                 let stats = ctx.registry.get_command_stats();
 
                 if stats.is_empty() {
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::RPL_STATSCOMMANDS,
                         vec![nick.clone(), "No commands have been used yet".to_string()],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 } else {
                     for (cmd, count) in stats {
                         // :server 212 nick <command> <count> <byte_count> <remote_count>
                         // We don't track byte_count and remote_count, so use 0
-                        let reply = server_reply(
-                            server_name,
+                        ctx.send_reply(
                             Response::RPL_STATSCOMMANDS,
                             vec![
                                 nick.clone(),
@@ -213,8 +204,8 @@ impl Handler for StatsHandler {
                                 "0".to_string(),
                                 "0".to_string(),
                             ],
-                        );
-                        ctx.sender.send(reply).await?;
+                        )
+                        .await?;
                     }
                 }
             }
@@ -232,12 +223,11 @@ impl Handler for StatsHandler {
                     "*** ? - This help message",
                 ];
                 for line in &help_lines {
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::RPL_STATSDLINE, // Using generic stats reply
                         vec![nick.clone(), (*line).to_string()],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 }
             }
             _ => {
@@ -246,16 +236,15 @@ impl Handler for StatsHandler {
         }
 
         // RPL_ENDOFSTATS (219): <query> :End of STATS report
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_ENDOFSTATS,
             vec![
                 nick.clone(),
                 query_char.to_string(),
                 "End of STATS report".to_string(),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }

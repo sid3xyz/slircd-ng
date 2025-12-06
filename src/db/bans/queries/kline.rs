@@ -30,4 +30,3 @@ pub async fn get_active_klines(pool: &SqlitePool) -> Result<Vec<Kline>, DbError>
 pub async fn matches_kline(pool: &SqlitePool, user_host: &str) -> Result<Option<Kline>, DbError> {
     matches_ban::<Kline>(pool, user_host).await
 }
-
