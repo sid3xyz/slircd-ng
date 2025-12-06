@@ -132,10 +132,6 @@ impl Handler for TagmsgHandler {
                     // TAGMSG doesn't check +m, so this shouldn't happen
                     unreachable!("TAGMSG should not check moderated mode");
                 }
-                ChannelRouteResult::BlockedSpam => {
-                    // TAGMSG has no text, so spam detection shouldn't trigger
-                    unreachable!("TAGMSG has no text content to check for spam");
-                }
                 ChannelRouteResult::BlockedRegisteredOnly => {
                     send_cannot_send(ctx, &nick, target, "Cannot send to channel (+r)").await?;
                 }

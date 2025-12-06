@@ -255,9 +255,6 @@ impl Handler for PrivmsgHandler {
                     ChannelRouteResult::BlockedModerated => {
                         send_cannot_send(ctx, &nick, target, "Cannot send to channel (+m)").await?;
                     }
-                    ChannelRouteResult::BlockedSpam => {
-                        send_cannot_send(ctx, &nick, target, "Message rejected as spam").await?;
-                    }
                     ChannelRouteResult::BlockedRegisteredOnly => {
                         send_cannot_send(ctx, &nick, target, "Cannot send to channel (+r)").await?;
                     }

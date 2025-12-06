@@ -287,6 +287,7 @@ impl ChannelModeBuilder {
 /// let modes = parse_mlock("+ntk secretkey");
 /// // Returns [+n, +t, +k secretkey]
 /// ```
+#[allow(dead_code)]
 pub fn parse_mlock(mlock: &str) -> Vec<Mode<ChannelMode>> {
     let trimmed = mlock.trim();
     if trimmed.is_empty() {
