@@ -11,6 +11,7 @@ mod network;
 mod security;
 mod services;
 mod state;
+mod telemetry;
 
 use crate::config::Config;
 use crate::db::Database;

@@ -109,6 +109,8 @@ impl ChannelActor {
         };
 
         let msg_arc = Arc::new(msg);
+        let mut recipients_sent = 0usize;
+
         for (uid, sender) in &self.senders {
             if uid == &sender_uid {
                 continue;
@@ -132,6 +134,12 @@ impl ChannelActor {
             }
 
             let _ = sender.send((*msg_arc).clone()).await;
+            recipients_sent += 1;
+        }
+
+        // Record message fan-out metric (Innovation 3)
+        if recipients_sent > 0 {
+            crate::metrics::record_fanout(recipients_sent);
         }
 
         let _ = reply_tx.send(ChannelRouteResult::Sent);

@@ -174,6 +174,10 @@ impl ChannelActor {
 
             if changed {
                 applied_modes.push(mode.clone());
+
+                // Record mode change metric (Innovation 3)
+                let mode_char = proto_mode_to_char(mode_type);
+                crate::metrics::record_mode_change(mode_char);
             }
         }
 
@@ -189,5 +193,40 @@ impl ChannelActor {
         }
 
         let _ = reply_tx.send(Ok(applied_modes));
+    }
+}
+
+/// Convert a protocol channel mode to its character representation.
+fn proto_mode_to_char(mode: &ProtoChannelMode) -> char {
+    match mode {
+        ProtoChannelMode::NoExternalMessages => 'n',
+        ProtoChannelMode::ProtectedTopic => 't',
+        ProtoChannelMode::InviteOnly => 'i',
+        ProtoChannelMode::Moderated => 'm',
+        ProtoChannelMode::Secret => 's',
+        ProtoChannelMode::RegisteredOnly => 'r',
+        ProtoChannelMode::NoColors => 'c',
+        ProtoChannelMode::NoCTCP => 'C',
+        ProtoChannelMode::NoNickChange => 'N',
+        ProtoChannelMode::NoKnock => 'K',
+        ProtoChannelMode::NoInvite => 'V',
+        ProtoChannelMode::NoChannelNotice => 'T',
+        ProtoChannelMode::NoKick => 'Q',
+        ProtoChannelMode::Permanent => 'P',
+        ProtoChannelMode::OperOnly => 'O',
+        ProtoChannelMode::FreeInvite => 'g',
+        ProtoChannelMode::TlsOnly => 'z',
+        ProtoChannelMode::Ban => 'b',
+        ProtoChannelMode::Exception => 'e',
+        ProtoChannelMode::InviteException => 'I',
+        ProtoChannelMode::Quiet => 'q',
+        ProtoChannelMode::Key => 'k',
+        ProtoChannelMode::Limit => 'l',
+        ProtoChannelMode::Founder => 'q',
+        ProtoChannelMode::Admin => 'a',
+        ProtoChannelMode::Oper => 'o',
+        ProtoChannelMode::Halfop => 'h',
+        ProtoChannelMode::Voice => 'v',
+        _ => '?',
     }
 }
