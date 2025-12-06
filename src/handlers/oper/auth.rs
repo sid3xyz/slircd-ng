@@ -5,6 +5,7 @@ use super::super::{
 use async_trait::async_trait;
 use slirc_proto::mode::{Mode, UserMode};
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use crate::state::actor::validation::format_user_mask;
 
 /// Handler for OPER command.
 ///
@@ -138,7 +139,7 @@ impl Handler for OperHandler {
                         .unwrap_or_else(|| "unknown".to_string());
                     (hs_nick, hs_user, ctx.remote_addr.ip().to_string())
                 };
-            let user_mask = format!("{}!{}@{}", user_nick, user_user, user_host);
+            let user_mask = format_user_mask(&user_nick, &user_user, &user_host);
 
             if !matches_hostmask(required_mask, &user_mask) {
                 ctx.handshake.failed_oper_attempts += 1;

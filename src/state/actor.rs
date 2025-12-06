@@ -20,6 +20,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
+pub mod validation;
+
+use self::validation::{create_user_mask, is_banned};
+
 /// Unique identifier for a user (UID string).
 pub type Uid = String;
 
@@ -470,17 +474,12 @@ impl ChannelActor {
         }
 
         // Checks
-        let user_mask = format!("{}!{}@{}", user_context.nickname, user_context.username, user_context.hostname);
+        let user_mask = create_user_mask(&user_context);
 
         // 1. Bans (+b)
-        for ban in &self.bans {
-            if crate::security::matches_ban_or_except(&ban.mask, &user_mask, &user_context) {
-                let is_excepted = self.excepts.iter().any(|e| crate::security::matches_ban_or_except(&e.mask, &user_mask, &user_context));
-                if !is_excepted {
-                    let _ = reply_tx.send(Err("ERR_BANNEDFROMCHAN".to_string()));
-                    return;
-                }
-            }
+        if is_banned(&user_mask, &user_context, &self.bans, &self.excepts) {
+            let _ = reply_tx.send(Err("ERR_BANNEDFROMCHAN".to_string()));
+            return;
         }
 
         // 2. Invite Only (+i)
@@ -742,17 +741,12 @@ impl ChannelActor {
 
         // Check bans (+b) and quiets (+q)
         let is_op = self.member_has_halfop_or_higher(&sender_uid);
+        let user_mask = create_user_mask(&user_context);
 
         if !is_op {
-            let user_mask = format!("{}!{}@{}", user_context.nickname, user_context.username, user_context.hostname);
-            for ban in &self.bans {
-                if crate::security::matches_ban_or_except(&ban.mask, &user_mask, &user_context) {
-                    let is_excepted = self.excepts.iter().any(|e| crate::security::matches_ban_or_except(&e.mask, &user_mask, &user_context));
-                    if !is_excepted {
-                        let _ = reply_tx.send(ChannelRouteResult::BlockedBanned);
-                        return;
-                    }
-                }
+            if is_banned(&user_mask, &user_context, &self.bans, &self.excepts) {
+                let _ = reply_tx.send(ChannelRouteResult::BlockedBanned);
+                return;
             }
 
             for quiet in &self.quiets {
