@@ -16,7 +16,7 @@ Successfully completed comprehensive refactoring of slircd-ng IRC daemon, achiev
 - **Commits:** bb07e92, a7ee364, 1946ecf
 - **Impact:** Improved testability, maintainability, and organization
 
-### ✅ Priority 2: Common Validation Logic  
+### ✅ Priority 2: Common Validation Logic
 - **Goal:** Unify duplicate ban checking and user_mask creation
 - **Result:** Extracted to shared helpers (included in Priority 1)
 - **Impact:** Eliminated 2+ instances of duplicated validation code
