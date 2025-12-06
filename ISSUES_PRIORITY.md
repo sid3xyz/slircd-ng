@@ -19,8 +19,8 @@ None - all issues resolved or documented.
 
 ## Recently Closed Issues (Reference)
 
+- ✅ #12: Channel split-brain (FIXED 533d456 - retry on actor death prevents user-visible errors)
 - ✅ #10: Too many parameters (Accepted - parameters mirror ChannelEvent enum fields)
-- ✅ #12: Channel split-brain (Documented as safe tradeoff - see actor.rs cleanup_if_empty comments)
 - ✅ #16: WHOIS async lock (Fixed 6f98892 - clone data before async ops)
 - ✅ #13: TOCTOU nick claiming (Fixed d6d57b5 - atomic entry() API)
 - ✅ #15: Ghost members (Fixed d6d57b5 - session_id validation)
