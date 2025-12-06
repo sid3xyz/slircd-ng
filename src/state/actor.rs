@@ -1072,10 +1072,8 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_nick_change_updates_user_nicks() {
-        // Create a ChannelActor
-        let mut actor = ChannelActor {
+    fn create_test_channel_actor() -> ChannelActor {
+        ChannelActor {
             name: "#test".to_string(),
             members: im::HashMap::new(),
             user_nicks: HashMap::new(),
@@ -1090,7 +1088,13 @@ mod tests {
             quiets: Vec::new(),
             invites: HashSet::new(),
             kicked_users: HashMap::new(),
-        };
+        }
+    }
+
+    #[tokio::test]
+    async fn test_nick_change_updates_user_nicks() {
+        // Create a ChannelActor
+        let mut actor = create_test_channel_actor();
 
         let uid = "user123".to_string();
         let old_nick = "oldnick".to_string();
@@ -1112,22 +1116,7 @@ mod tests {
     #[tokio::test]
     async fn test_nick_change_ignores_non_member() {
         // Create a ChannelActor
-        let mut actor = ChannelActor {
-            name: "#test".to_string(),
-            members: im::HashMap::new(),
-            user_nicks: HashMap::new(),
-            senders: HashMap::new(),
-            user_caps: HashMap::new(),
-            modes: HashSet::new(),
-            topic: None,
-            created: 0,
-            bans: Vec::new(),
-            excepts: Vec::new(),
-            invex: Vec::new(),
-            quiets: Vec::new(),
-            invites: HashSet::new(),
-            kicked_users: HashMap::new(),
-        };
+        let mut actor = create_test_channel_actor();
 
         let uid = "user123".to_string();
         let new_nick = "newnick".to_string();
