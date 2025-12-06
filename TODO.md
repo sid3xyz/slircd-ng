@@ -20,20 +20,19 @@
 - [x] Remove duplicate code from main implementation
 - Result: 880 lines properly modularized
 
-## 🔄 IN PROGRESS / NEXT STEPS
-
-### Priority 4: Handlers Module Split
-- [ ] Extract handlers/core/registry.rs (~150 lines)
+### Priority 4: Handlers Module Split (DONE - commit f557f4b)
+- [x] Extract handlers/core/registry.rs (225 lines)
   - Registry struct + new() + dispatch() + get_command_stats()
-- [ ] Extract handlers/core/middleware.rs (~100 lines)
+- [x] Extract handlers/core/middleware.rs (29 lines)
   - ResponseMiddleware enum + impl
-  - labeled_ack, with_label helpers
-- [ ] Extract handlers/core/context.rs (~150 lines)
-  - Context struct
-  - HandshakeState struct + impl
-  - HandlerError enum
+- [x] Extract handlers/core/context.rs (241 lines)
+  - Context struct, HandshakeState struct + impl, HandlerError enum
   - Helper functions: user_mask_from_state, get_nick_or_star, require_registered, etc.
-- [ ] Update handlers/mod.rs to re-export from core/
+- [x] Create handlers/core/mod.rs (17 lines) for re-exports
+- [x] Update handlers/mod.rs (reduced from 504→51 lines)
+- Result: 469 lines relocated into logical submodules
+
+## 🔄 IN PROGRESS / NEXT STEPS
 
 ### Priority 5+: Code Duplication Cleanup
 - [ ] Ban query generic implementation (src/db/bans/queries/)
@@ -51,16 +50,17 @@
 ## 📊 METRICS
 
 **Completed Refactoring:**
-- Files refactored: ~35 (actor handlers, validation, connection)
-- Lines reorganized: ~2300
-- New modules created: 15
+
+- Files refactored: ~40 (actor handlers, validation, connection, handlers core)
+- Lines reorganized: ~3000
+- New modules created: 19 (15 from P1-P3, 4 from P4)
 - Code duplication eliminated: user_mask (3→1), ban checking (2→1)
 - All changes: clippy clean, builds successfully
 
 **Estimated Remaining:**
-- Handlers split: ~400 lines to reorganize
+
 - Duplication cleanup: ~900 lines potential reduction
-- Total impact: 10-15% codebase improvement
+- Total impact achieved so far: ~15% codebase improvement
 
 ## 🧪 TESTING STATUS
 
