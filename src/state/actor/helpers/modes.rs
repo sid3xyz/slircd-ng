@@ -1,6 +1,4 @@
-use super::{ChannelActor, ChannelMode, Uid};
-use crate::state::{ListEntry, MemberModes};
-use chrono::Utc;
+use super::super::{ChannelActor, ChannelMode};
 use std::collections::HashSet;
 
 impl ChannelActor {
@@ -34,47 +32,6 @@ impl ChannelActor {
         }
 
         changed
-    }
-
-    pub(crate) fn apply_list_mode(
-        list: &mut Vec<ListEntry>,
-        mask: &str,
-        adding: bool,
-        set_by: &Uid,
-    ) -> bool {
-        if adding {
-            if list.iter().any(|entry| entry.mask == mask) {
-                return false;
-            }
-
-            list.push(ListEntry {
-                mask: mask.to_string(),
-                set_by: set_by.clone(),
-                set_at: Utc::now().timestamp(),
-            });
-            true
-        } else {
-            let original_len = list.len();
-            list.retain(|entry| entry.mask != mask);
-            original_len != list.len()
-        }
-    }
-
-    pub(crate) fn update_member_mode<F>(&mut self, target_uid: &Uid, mut update: F) -> bool
-    where
-        F: FnMut(&mut MemberModes),
-    {
-        if let Some(member) = self.members.get(target_uid).cloned() {
-            let mut updated = member.clone();
-            update(&mut updated);
-
-            if updated != member {
-                self.members.insert(target_uid.clone(), updated);
-                return true;
-            }
-        }
-
-        false
     }
 }
 
