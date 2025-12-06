@@ -1,5 +1,7 @@
 # slircd-ng
 
+> **⚠️ PERMANENT NOTICE: This software is NEVER production ready. It is a learning exercise and proof-of-concept only. Do not deploy, do not use for any real network, do not trust any claims of security or stability. All documentation and code are for developer reference and experimentation only.**
+
 `slircd-ng` (Straylight IRC Daemon - Next Generation) is a modern, high-performance IRC server written in Rust. It leverages the `slirc-proto` library for zero-copy protocol handling and `tokio` for asynchronous I/O, designed to be robust, scalable, and compliant with modern IRCv3 standards.
 
 ## Features

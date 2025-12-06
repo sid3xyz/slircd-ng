@@ -1,6 +1,7 @@
 # Outstanding Issues - Priority Assessment
+**PERMANENT NOTICE: This software is NEVER production ready. All documentation, instructions, and statements herein are for developer reference only.**
 
-**Last Updated:** December 6, 2025  
+**Last Updated:** December 6, 2025
 **Status:** 5 open issues, 9 closed issues
 
 ## Summary
@@ -12,8 +13,8 @@ After completing RFC compliance improvements and architecture audit, the followi
 ## 🔴 Critical Priority (Race Conditions)
 
 ### #12: Critical Race Condition: Channel Removal causing Split-Brain State
-**Impact:** High  
-**Complexity:** High  
+**Impact:** High
+**Complexity:** High
 **Description:** When last user leaves channel, there's a window where new joins could create duplicate channel actors.
 
 **Root Cause:** TOCTOU between checking if channel is empty and removing it from Matrix.channels
@@ -32,8 +33,8 @@ After completing RFC compliance improvements and architecture audit, the followi
 ---
 
 ### #13: Critical Race Condition: Nickname Registration TOCTOU
-**Impact:** High  
-**Complexity:** Medium  
+**Impact:** High
+**Complexity:** Medium
 **Description:** Time-of-check-to-time-of-use gap between checking nick availability and registering it.
 
 **Current Flow:**
@@ -62,8 +63,8 @@ match matrix.nicks.entry(nick_lower) {
 ---
 
 ### #15: Critical Race Condition: Ghost Members (Join/Disconnect Race)
-**Impact:** Medium  
-**Complexity:** High  
+**Impact:** Medium
+**Complexity:** High
 **Description:** User disconnects while JOIN event is in-flight to channel actor.
 
 **Scenario:**
@@ -90,8 +91,8 @@ match matrix.nicks.entry(nick_lower) {
 ## 🟡 High Priority (Performance)
 
 ### #16: Performance Defect: WHOIS handler holds Async Lock
-**Impact:** Medium (performance degradation under load)  
-**Complexity:** Low  
+**Impact:** Medium (performance degradation under load)
+**Complexity:** Low
 **Description:** WHOIS handler holds RwLock while awaiting channel queries.
 
 **Current Issue:**
@@ -118,8 +119,8 @@ let (channels, account) = {
 ## 🟢 Low Priority (Code Quality)
 
 ### #10: Refactor handle_join and handle_message in ChannelActor
-**Impact:** Low (code maintainability)  
-**Complexity:** Medium  
+**Impact:** Low (code maintainability)
+**Complexity:** Medium
 **Description:** Functions have many parameters (>7), suppressed with #[allow(clippy::too_many_arguments)]
 
 **Proposed Solution:**
@@ -166,13 +167,13 @@ async fn handle_join(&mut self, ctx: JoinContext, ...) { }
 
 ## Risk Assessment
 
-| Issue | Likelihood | Impact | Risk Score |
-|-------|------------|--------|------------|
-| #13 (Nick TOCTOU) | Medium | High | 🔴 High |
-| #12 (Split-Brain) | Low | High | 🟡 Medium |
-| #15 (Ghost Members) | Medium | Medium | 🟡 Medium |
-| #16 (WHOIS Lock) | High | Low | 🟡 Medium |
-| #10 (Parameters) | N/A | Low | 🟢 Low |
+| Issue               | Likelihood | Impact | Risk Score |
+| ------------------- | ---------- | ------ | ---------- |
+| #13 (Nick TOCTOU)   | Medium     | High   | 🔴 High     |
+| #12 (Split-Brain)   | Low        | High   | 🟡 Medium   |
+| #15 (Ghost Members) | Medium     | Medium | 🟡 Medium   |
+| #16 (WHOIS Lock)    | High       | Low    | 🟡 Medium   |
+| #10 (Parameters)    | N/A        | Low    | 🟢 Low      |
 
 ---
 

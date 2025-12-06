@@ -2,6 +2,7 @@
 ARCHITECTURE AUDIT - EXECUTIVE SUMMARY
 Date: December 6, 2025
 ================================================================================
+PERMANENT NOTICE: This software is NEVER production ready. All documentation, instructions, and statements herein are for developer reference only.
 
 STATUS: ✅ ARCHITECTURALLY SOUND - APPROVED FOR PRODUCTION
 
