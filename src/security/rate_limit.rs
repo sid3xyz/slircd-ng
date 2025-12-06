@@ -159,12 +159,23 @@ impl RateLimitManager {
 
     /// Record that a connection has ended for an IP.
     pub fn on_connection_end(&self, ip: IpAddr) {
-        if let Some(mut entry) = self.active_connections.get_mut(&ip) {
-            if *entry > 1 {
-                *entry -= 1;
+        // Use entry API for atomic check-and-modify/remove
+        // We need to avoid holding a reference while calling remove()
+        let should_remove = {
+            if let Some(mut entry) = self.active_connections.get_mut(&ip) {
+                if *entry > 1 {
+                    *entry -= 1;
+                    false // Don't remove, we decremented
+                } else {
+                    true // Will remove after dropping the entry
+                }
             } else {
-                self.active_connections.remove(&ip);
+                false // Entry doesn't exist
             }
+        }; // entry is dropped here, releasing the shard lock
+
+        if should_remove {
+            self.active_connections.remove(&ip);
         }
     }
 
