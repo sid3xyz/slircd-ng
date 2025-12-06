@@ -15,16 +15,17 @@
 //! See: <https://modern.ircdocs.horse/ctcp.html>
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state, user_prefix,
+    Context, Handler, HandlerError, HandlerResult, user_mask_from_state, user_prefix,
 };
 use super::common::{
-    ChannelRouteResult, RouteOptions, is_shunned, route_to_channel, route_to_user,
+    ChannelRouteResult, RouteOptions, route_to_channel, route_to_user,
     send_cannot_send, send_no_such_channel, send_no_such_nick,
 };
+use super::validation::{ErrorStrategy, validate_message_send};
 use crate::db::StoreMessageParams;
 use crate::services::route_service_message;
 use async_trait::async_trait;
-use slirc_proto::{ChannelExt, Command, Message, MessageRef, Response, irc_to_lower};
+use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -42,32 +43,6 @@ impl Handler for PrivmsgHandler {
             return Err(HandlerError::NotRegistered);
         }
 
-        // Check shun first - silently ignore if shunned
-        if is_shunned(ctx).await {
-            return Ok(());
-        }
-
-        // Check message rate limit
-        let uid_string = ctx.uid.to_string();
-        if !ctx.matrix.rate_limiter.check_message_rate(&uid_string) {
-            let nick = ctx
-                .handshake
-                .nick
-                .as_ref()
-                .ok_or(HandlerError::NickOrUserMissing)?;
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_TOOMANYTARGETS,
-                vec![
-                    nick.to_string(),
-                    "*".to_string(),
-                    "You are sending messages too quickly. Please wait.".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
-        }
-
         // PRIVMSG <target> <text>
         let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
@@ -79,84 +54,8 @@ impl Handler for PrivmsgHandler {
             return Err(HandlerError::NoTextToSend);
         }
 
-        // Check for repetition spam (always check)
-        if let Some(detector) = &ctx.matrix.spam_detector
-            && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
-                detector.check_message_repetition(&uid_string, text)
-        {
-            debug!(uid = %uid_string, pattern = %pattern, "Message blocked by spam detector");
-            let nick = ctx
-                .handshake
-                .nick
-                .as_ref()
-                .ok_or(HandlerError::NickOrUserMissing)?;
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_TOOMANYTARGETS,
-                vec![
-                    nick.to_string(),
-                    target.to_string(),
-                    "Message blocked: repetition detected.".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
-        }
-
-        // Check for content spam (skip for trusted users)
-        let is_trusted = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_ref.read().await;
-            user.modes.oper || user.account.is_some()
-        } else {
-            false
-        };
-
-        if !is_trusted
-            && let Some(detector) = &ctx.matrix.spam_detector
-            && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
-                detector.check_message(text)
-        {
-            debug!(uid = %uid_string, pattern = %pattern, "Message blocked by spam detector");
-            let nick = ctx
-                .handshake
-                .nick
-                .as_ref()
-                .ok_or(HandlerError::NickOrUserMissing)?;
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_TOOMANYTARGETS,
-                vec![
-                    nick.to_string(),
-                    target.to_string(),
-                    "Message blocked: spam detected.".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
-        }
-
-        // Rate-limit CTCP messages separately to curb floods.
-        if slirc_proto::ctcp::Ctcp::is_ctcp(text)
-            && !ctx.matrix.rate_limiter.check_ctcp_rate(&uid_string)
-        {
-            let nick = ctx
-                .handshake
-                .nick
-                .as_ref()
-                .ok_or(HandlerError::NickOrUserMissing)?
-                .clone();
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_TOOMANYTARGETS,
-                vec![
-                    nick,
-                    "*".to_string(),
-                    "You are sending CTCPs too quickly. Please wait.".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
-        }
+        // Use shared validation (shun, rate limiting, spam detection)
+        validate_message_send(ctx, target, text, ErrorStrategy::SendError).await?;
 
         let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
             .await
