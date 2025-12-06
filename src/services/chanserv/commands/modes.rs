@@ -98,12 +98,13 @@ impl ChanServ {
         // Check if target is in channel
         let in_channel = if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
             let (tx, rx) = tokio::sync::oneshot::channel();
-            let _ = channel_ref.send(crate::state::actor::ChannelEvent::GetMemberModes { uid: target_uid.clone(), reply_tx: tx }).await;
-            if let Ok(Some(_)) = rx.await {
-                true
-            } else {
-                false
-            }
+            let _ = channel_ref
+                .send(crate::state::actor::ChannelEvent::GetMemberModes {
+                    uid: target_uid.clone(),
+                    reply_tx: tx,
+                })
+                .await;
+            matches!(rx.await, Ok(Some(_)))
         } else {
             return self.error_reply(
                 uid,

@@ -123,7 +123,7 @@ pub async fn force_join_channel(
         reply_tx,
     };
 
-    if let Err(_) = channel_ref.send(event).await {
+    if (channel_ref.send(event).await).is_err() {
         return Err(HandlerError::Internal("Channel actor died".to_string()));
     }
 
@@ -253,7 +253,7 @@ pub async fn force_part_channel(
         reply_tx,
     };
 
-    if let Err(_) = channel_sender.send(event).await {
+    if (channel_sender.send(event).await).is_err() {
         // Channel actor died, remove it
         ctx.matrix.channels.remove(channel_lower);
         return Ok(false);

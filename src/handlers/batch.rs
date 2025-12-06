@@ -391,7 +391,7 @@ async fn deliver_multiline_to_channel(
 
     // Get list of members
     let (tx, rx) = tokio::sync::oneshot::channel();
-    if let Err(_) = channel_ref.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await {
+    if (channel_ref.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await).is_err() {
         return Ok(());
     }
     let member_uids = match rx.await {

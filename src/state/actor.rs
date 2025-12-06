@@ -420,6 +420,7 @@ impl ChannelActor {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_join(
         &mut self,
         uid: Uid,
@@ -484,7 +485,16 @@ impl ChannelActor {
         let modes = if let Some(existing) = self.members.get(&uid) {
             existing.clone()
         } else {
-            initial_modes.unwrap_or_default()
+            // Grant operator status to the first user (channel founder)
+            let is_first_user = self.members.is_empty();
+            if is_first_user {
+                MemberModes {
+                    op: true,
+                    ..Default::default()
+                }
+            } else {
+                initial_modes.unwrap_or_default()
+            }
         };
 
         self.members.insert(uid.clone(), modes);
@@ -595,6 +605,7 @@ impl ChannelActor {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_message(
         &mut self,
         sender_uid: Uid,
@@ -898,6 +909,7 @@ impl ChannelActor {
         let _ = reply_tx.send(Ok(applied_modes));
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_kick(
         &mut self,
         sender_uid: Uid,

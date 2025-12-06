@@ -107,7 +107,7 @@ impl Handler for InviteHandler {
                 reply_tx,
             };
 
-            if let Err(_) = channel_tx.send(event).await {
+              if (channel_tx.send(event).await).is_err() {
                  return Ok(());
             }
 
@@ -166,17 +166,41 @@ impl Handler for InviteHandler {
                 Err(_) => {}
             }
         } else {
-             // Channel doesn't exist.
-             let reply = server_reply(
-                server_name,
-                Response::ERR_NOSUCHCHANNEL,
-                vec![
-                    nick.clone(),
-                    channel_name.to_string(),
-                    "No such channel".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
+            // Channel doesn't exist - RFC1459/2812 allows invites to non-existent channels
+            // "There is no requirement that the channel the target user is being
+            // invited to must exist or be a valid channel."
+            
+            let (nick, user, host) = user_mask_from_state(ctx, ctx.uid)
+                .await
+                .ok_or(HandlerError::NickOrUserMissing)?;
+            let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
+
+            // Send INVITE notification to target
+            let invite_msg = Message {
+                tags: None,
+                prefix: Some(sender_prefix.clone()),
+                command: if channel_first {
+                    Command::INVITE(channel_name.to_string(), target_nick.to_string())
+                } else {
+                    Command::INVITE(target_nick.to_string(), channel_name.to_string())
+                },
+            };
+
+            if let Some(target_sender) = ctx.matrix.senders.get(&target_uid) {
+                let _ = target_sender.send(invite_msg).await;
+            }
+
+            // Echo INVITE back to sender
+            let echo_msg = Message {
+                tags: None,
+                prefix: Some(sender_prefix),
+                command: if channel_first {
+                    Command::INVITE(channel_name.to_string(), target_nick.to_string())
+                } else {
+                    Command::INVITE(target_nick.to_string(), channel_name.to_string())
+                },
+            };
+            ctx.sender.send(echo_msg).await?;
         }
 
         Ok(())

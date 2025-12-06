@@ -765,7 +765,7 @@ impl Connection {
                         reply_tx: Some(tx),
                     };
 
-                    if let Ok(_) = channel.send(event).await {
+                    if (channel.send(event).await).is_ok() {
                         if let Ok(remaining) = rx.await
                             && remaining == 0 {
                                 self.matrix.channels.remove(&channel_lower);

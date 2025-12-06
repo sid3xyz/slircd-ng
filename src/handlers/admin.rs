@@ -422,14 +422,14 @@ impl Handler for SamodeHandler {
 
         // Apply modes to channel state
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        if let Err(_) = channel.send(crate::state::actor::ChannelEvent::ApplyModes {
+        if (channel.send(crate::state::actor::ChannelEvent::ApplyModes {
             sender_uid: ctx.uid.to_string(),
             sender_prefix: slirc_proto::Prefix::ServerName(server_name.clone()),
             modes: typed_modes,
             target_uids,
             force: true,
             reply_tx,
-        }).await {
+        }).await).is_err() {
              return Ok(()); // Channel died
         }
 
