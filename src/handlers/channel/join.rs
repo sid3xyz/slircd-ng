@@ -146,8 +146,8 @@ async fn join_channel(
     );
 
     // Check AKICK before joining
-    if ctx.matrix.registered_channels.contains(&channel_lower) {
-        if let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name).await {
+    if ctx.matrix.registered_channels.contains(&channel_lower)
+        && let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name).await {
             let reason = akick.reason.as_deref().unwrap_or("You are banned from this channel");
             let notice = Message {
                 tags: None,
@@ -165,7 +165,6 @@ async fn join_channel(
             info!(nick = %nick, channel = %channel_name, mask = %akick.mask, "AKICK triggered");
             return Ok(());
         }
-    }
 
     // Check auto modes if registered
     let initial_modes = if ctx.matrix.registered_channels.contains(&channel_lower) {

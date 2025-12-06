@@ -81,8 +81,8 @@ impl Handler for NickHandler {
                         reply_tx: tx
                     }).await;
 
-                    if let Ok(info) = rx.await {
-                        if info.modes.contains(&crate::state::actor::ChannelMode::NoNickChange) {
+                    if let Ok(info) = rx.await
+                        && info.modes.contains(&crate::state::actor::ChannelMode::NoNickChange) {
                             let reply = server_reply(
                                 &ctx.matrix.server_info.name,
                                 Response::ERR_NONICKCHANGE,
@@ -98,7 +98,6 @@ impl Handler for NickHandler {
                             ctx.sender.send(reply).await?;
                             return Ok(());
                         }
-                    }
                 }
             }
         }

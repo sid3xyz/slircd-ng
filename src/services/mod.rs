@@ -356,7 +356,7 @@ pub async fn apply_effect(
                 sender_uid: "ChanServ".to_string(),
                 sender_prefix,
                 modes: vec![mode_obj],
-                target_uids: target_uids.into(),
+                target_uids,
                 force: true,
                 reply_tx: tx,
             };
@@ -398,7 +398,7 @@ pub async fn apply_effect(
                 sender_uid: "ChanServ".to_string(),
                 sender_prefix,
                 modes,
-                target_uids: target_uids.into(),
+                target_uids,
                 force: true,
                 reply_tx: tx,
             };
@@ -444,8 +444,8 @@ pub async fn apply_effect(
                 reply_tx: tx,
             };
 
-            if let Ok(_) = channel_sender.send(event).await {
-                if let Ok(Ok(())) = rx.await {
+            if let Ok(_) = channel_sender.send(event).await
+                && let Ok(Ok(())) = rx.await {
                     // Success
                     // Remove channel from user's channel list
                     if let Some(user_ref) = matrix.users.get(&target_uid) {
@@ -453,7 +453,6 @@ pub async fn apply_effect(
                         user_guard.channels.remove(&channel_lower);
                     }
                 }
-            }
 
             info!(channel = %channel, target = %target_nick, kicker = %kicker, reason = %reason, "User kicked by service");
         }

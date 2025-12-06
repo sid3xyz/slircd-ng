@@ -426,7 +426,7 @@ impl Handler for SamodeHandler {
             sender_uid: ctx.uid.to_string(),
             sender_prefix: slirc_proto::Prefix::ServerName(server_name.clone()),
             modes: typed_modes,
-            target_uids: target_uids.into(),
+            target_uids,
             force: true,
             reply_tx,
         }).await {

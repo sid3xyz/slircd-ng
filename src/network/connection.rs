@@ -766,12 +766,11 @@ impl Connection {
                     };
 
                     if let Ok(_) = channel.send(event).await {
-                        if let Ok(remaining) = rx.await {
-                            if remaining == 0 {
+                        if let Ok(remaining) = rx.await
+                            && remaining == 0 {
                                 self.matrix.channels.remove(&channel_lower);
                                 crate::metrics::ACTIVE_CHANNELS.dec();
                             }
-                        }
                     } else {
                          // Actor died
                          self.matrix.channels.remove(&channel_lower);

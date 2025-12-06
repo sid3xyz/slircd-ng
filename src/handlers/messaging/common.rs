@@ -153,8 +153,8 @@ pub async fn route_to_user(
     };
 
     // Spam detection for direct messages (skip TAGMSG).
-    if let Some(detector) = &ctx.matrix.spam_detector {
-        if let Some(text) = match &msg.command {
+    if let Some(detector) = &ctx.matrix.spam_detector
+        && let Some(text) = match &msg.command {
             Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
             _ => None,
         } {
@@ -166,8 +166,8 @@ pub async fn route_to_user(
                 false
             };
 
-            if !is_trusted {
-                if let SpamVerdict::Spam { pattern, .. } = detector.check_message(text) {
+            if !is_trusted
+                && let SpamVerdict::Spam { pattern, .. } = detector.check_message(text) {
                     if !opts.is_notice {
                         let _ = send_cannot_send(
                             ctx,
@@ -180,9 +180,7 @@ pub async fn route_to_user(
                     debug!(pattern = %pattern, "Direct message blocked as spam");
                     return false;
                 }
-            }
         }
-    }
 
     // Check away status and notify sender if requested
     if opts.send_away_reply
