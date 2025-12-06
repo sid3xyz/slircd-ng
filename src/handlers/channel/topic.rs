@@ -67,7 +67,7 @@ impl Handler for TopicHandler {
                 let (reply_tx, reply_rx) = oneshot::channel();
                 let event = ChannelEvent::GetInfo { requester_uid: Some(ctx.uid.to_string()), reply_tx };
 
-                if let Err(_) = channel_tx.send(event).await {
+                 if (channel_tx.send(event).await).is_err() {
                      return Ok(());
                 }
 
@@ -124,7 +124,7 @@ impl Handler for TopicHandler {
                     reply_tx,
                 };
 
-                if let Err(_) = channel_tx.send(event).await {
+                 if (channel_tx.send(event).await).is_err() {
                      return Ok(());
                 }
 

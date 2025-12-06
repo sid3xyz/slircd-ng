@@ -58,7 +58,7 @@ pub async fn handle_channel_mode(
 
     // Get info
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    if let Err(_) = channel.send(crate::state::actor::ChannelEvent::GetInfo { requester_uid: Some(ctx.uid.to_string()), reply_tx }).await {
+    if (channel.send(crate::state::actor::ChannelEvent::GetInfo { requester_uid: Some(ctx.uid.to_string()), reply_tx }).await).is_err() {
         return Err(HandlerError::Internal("Channel actor died".to_string()));
     }
     let info = match reply_rx.await {
@@ -70,7 +70,7 @@ pub async fn handle_channel_mode(
 
     // Get member modes
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    if let Err(_) = channel.send(crate::state::actor::ChannelEvent::GetMemberModes { uid: ctx.uid.to_string(), reply_tx }).await {
+    if (channel.send(crate::state::actor::ChannelEvent::GetMemberModes { uid: ctx.uid.to_string(), reply_tx }).await).is_err() {
         return Err(HandlerError::Internal("Channel actor died".to_string()));
     }
     let member_modes = match reply_rx.await {
@@ -226,14 +226,14 @@ pub async fn handle_channel_mode(
              let prefix = slirc_proto::Prefix::Nickname(nick, user, host);
 
              let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-             if let Err(_) = channel.send(crate::state::actor::ChannelEvent::ApplyModes {
+             if (channel.send(crate::state::actor::ChannelEvent::ApplyModes {
                  sender_uid: ctx.uid.to_string(),
                  sender_prefix: prefix,
                  modes: valid_modes,
                  target_uids,
                  force: false,
                  reply_tx,
-             }).await {
+             }).await).is_err() {
                  return Err(HandlerError::Internal("Channel actor died".to_string()));
              }
 
@@ -315,8 +315,8 @@ async fn send_list_mode(
             _ => return Ok(()),
         };
 
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        if let Err(_) = channel.send(crate::state::actor::ChannelEvent::GetList { mode: mode_char, reply_tx }).await {
+           let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+           if (channel.send(crate::state::actor::ChannelEvent::GetList { mode: mode_char, reply_tx }).await).is_err() {
              return Err(HandlerError::Internal("Channel actor died".to_string()));
         }
 

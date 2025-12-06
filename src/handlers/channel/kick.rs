@@ -84,7 +84,7 @@ impl Handler for KickHandler {
             reply_tx,
         };
 
-        if let Err(_) = channel_tx.send(event).await {
+           if (channel_tx.send(event).await).is_err() {
              return Ok(());
         }
 

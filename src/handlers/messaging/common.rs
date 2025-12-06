@@ -126,7 +126,7 @@ pub async fn route_to_channel(
         reply_tx,
     };
 
-    if let Err(_) = channel_ref.send(event).await {
+    if (channel_ref.send(event).await).is_err() {
         return ChannelRouteResult::NoSuchChannel; // Actor died
     }
 

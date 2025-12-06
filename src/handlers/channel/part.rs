@@ -83,7 +83,7 @@ pub(super) async fn leave_channel_internal(
         reply_tx,
     };
 
-    if let Err(_) = channel_sender.send(event).await {
+    if (channel_sender.send(event).await).is_err() {
         // Channel actor died, remove it
         ctx.matrix.channels.remove(channel_lower);
         return Ok(());
