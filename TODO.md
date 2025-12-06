@@ -34,10 +34,17 @@
 
 ## 🔄 IN PROGRESS / NEXT STEPS
 
-### Priority 5+: Code Duplication Cleanup
-- [ ] Ban query generic implementation (src/db/bans/queries/)
-  - Create GenericBanQueries<T> trait
-  - Consolidate 6 files × 4 functions = ~200 lines reduction
+### Priority 5: Code Duplication Cleanup
+
+✅ **Priority 5a: Ban Query Generic Implementation** (DONE - commit 8bf1dda)
+- [x] Create BanType trait in queries/generic.rs
+- [x] Implement generic CRUD functions (add_ban, remove_ban, get_active_bans, matches_ban)
+- [x] Implement BanType for all 6 ban types (Kline, Dline, Gline, Zline, Rline, Shun)
+- [x] Convert all individual query files to use generic implementation
+- **Result**: 806→610 lines (~196 lines / 24% reduction)
+
+🔄 **Remaining Priority 5 Tasks:**
+
 - [ ] Error reply helper macros (src/handlers/helpers.rs)
   - Create err_reply! macro
   - Replace ~15 boilerplate functions
@@ -51,16 +58,17 @@
 
 **Completed Refactoring:**
 
-- Files refactored: ~40 (actor handlers, validation, connection, handlers core)
-- Lines reorganized: ~3000
-- New modules created: 19 (15 from P1-P3, 4 from P4)
-- Code duplication eliminated: user_mask (3→1), ban checking (2→1)
+- Files refactored: ~45 (actor handlers, validation, connection, handlers core, ban queries)
+- Lines reorganized: ~3200
+- Lines eliminated: ~200 (ban query deduplication)
+- New modules created: 20 (15 from P1-P3, 4 from P4, 1 from P5a)
+- Code duplication eliminated: user_mask (3→1), ban checking (2→1), ban queries (6×84→6×33+generic)
 - All changes: clippy clean, builds successfully
 
 **Estimated Remaining:**
 
-- Duplication cleanup: ~900 lines potential reduction
-- Total impact achieved so far: ~15% codebase improvement
+- Duplication cleanup: ~700 lines potential reduction (error helpers, message validation, service traits)
+- Total impact achieved so far: ~18% codebase improvement
 
 ## 🧪 TESTING STATUS
 
