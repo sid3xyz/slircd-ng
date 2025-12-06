@@ -10,14 +10,15 @@
 //! - **Concurrency**: Each channel runs on its own task, allowing the runtime to distribute load.
 
 use crate::security::UserContext;
-use crate::state::{ListEntry, MemberModes, Topic};
+use crate::state::{ListEntry, Matrix, MemberModes, Topic};
 use chrono::Utc;
 use slirc_proto::{Command, Message, Prefix};
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
+use uuid::Uuid;
 
 /// Unique identifier for a user (UID string).
 pub type Uid = String;
@@ -43,6 +44,7 @@ pub enum ChannelEvent {
         initial_modes: Option<MemberModes>,
         join_msg_extended: Box<Message>,
         join_msg_standard: Box<Message>,
+        session_id: Uuid,
         /// Reply channel for the result (success/error).
         reply_tx: oneshot::Sender<Result<JoinSuccessData, String>>,
     },
@@ -253,6 +255,12 @@ pub enum ChannelMode {
     Limit(usize),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorState {
+    Active,
+    Draining,
+}
+
 /// The Channel Actor.
 ///
 /// Owns the state of a single channel and processes events sequentially.
@@ -275,6 +283,8 @@ pub struct ChannelActor {
     // State
     pub invites: VecDeque<InviteEntry>,
     pub kicked_users: HashMap<Uid, Instant>,
+    matrix: Weak<Matrix>,
+    state: ActorState,
 }
 
 #[derive(Debug, Clone)]
@@ -288,7 +298,7 @@ const INVITE_TTL: Duration = Duration::from_secs(60 * 60); // 1 hour
 
 impl ChannelActor {
     /// Create a new Channel Actor and spawn it.
-    pub fn spawn(name: String) -> mpsc::Sender<ChannelEvent> {
+    pub fn spawn(name: String, matrix: Weak<Matrix>) -> mpsc::Sender<ChannelEvent> {
         let (tx, rx) = mpsc::channel(100);
 
         let mut modes = HashSet::new();
@@ -310,6 +320,8 @@ impl ChannelActor {
             quiets: Vec::new(),
             invites: VecDeque::new(),
             kicked_users: HashMap::new(),
+            matrix,
+            state: ActorState::Active,
         };
 
         tokio::spawn(async move {
@@ -328,8 +340,8 @@ impl ChannelActor {
 
     async fn handle_event(&mut self, event: ChannelEvent) {
         match event {
-            ChannelEvent::Join { uid, nick, sender, caps, user_context, key, initial_modes, join_msg_extended, join_msg_standard, reply_tx } => {
-                self.handle_join(uid, nick, sender, caps, *user_context, key, initial_modes, *join_msg_extended, *join_msg_standard, reply_tx).await;
+            ChannelEvent::Join { uid, nick, sender, caps, user_context, key, initial_modes, join_msg_extended, join_msg_standard, session_id, reply_tx } => {
+                self.handle_join(uid, nick, sender, caps, *user_context, key, initial_modes, *join_msg_extended, *join_msg_standard, session_id, reply_tx).await;
             }
             ChannelEvent::Part { uid, reason, prefix, reply_tx } => {
                 self.handle_part(uid, reason, prefix, reply_tx).await;
@@ -432,8 +444,31 @@ impl ChannelActor {
         initial_modes: Option<MemberModes>,
         join_msg_extended: Message,
         join_msg_standard: Message,
+        session_id: Uuid,
         reply_tx: oneshot::Sender<Result<JoinSuccessData, String>>,
     ) {
+        if self.state == ActorState::Draining {
+            let _ = reply_tx.send(Err("ERR_CHANNEL_TOMBSTONE".to_string()));
+            return;
+        }
+
+        // Validate that the user still exists and the session matches.
+        let session_valid = if let Some(matrix) = self.matrix.upgrade() {
+            if let Some(user_ref) = matrix.users.get(&uid) {
+                let user = user_ref.read().await;
+                user.session_id == session_id
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !session_valid {
+            let _ = reply_tx.send(Err("ERR_SESSION_INVALID".to_string()));
+            return;
+        }
+
         // Checks
         let user_mask = format!("{}!{}@{}", user_context.nickname, user_context.username, user_context.hostname);
 
@@ -547,6 +582,8 @@ impl ChannelActor {
         self.user_nicks.remove(&uid);
 
         let _ = reply_tx.send(Ok(self.members.len()));
+
+        self.cleanup_if_empty();
     }
 
     async fn handle_quit(&mut self, uid: Uid, quit_msg: Message, reply_tx: Option<oneshot::Sender<usize>>) {
@@ -560,6 +597,8 @@ impl ChannelActor {
         if let Some(tx) = reply_tx {
             let _ = tx.send(self.members.len());
         }
+
+        self.cleanup_if_empty();
     }
 
     async fn handle_broadcast(&mut self, message: Message, exclude: Option<Uid>) {
@@ -601,6 +640,23 @@ impl ChannelActor {
                 let _ = sender.send((*msg).clone()).await;
             } else if let Some(fb) = &fallback {
                 let _ = sender.send((**fb).clone()).await;
+            }
+        }
+    }
+
+    fn cleanup_if_empty(&mut self) {
+        if self.state == ActorState::Draining {
+            return;
+        }
+
+        let is_permanent = self.modes.contains(&ChannelMode::Permanent);
+        if self.members.is_empty() && !is_permanent {
+            self.state = ActorState::Draining;
+            if let Some(matrix) = self.matrix.upgrade() {
+                let name_lower = self.name.to_lowercase();
+                if matrix.channels.remove(&name_lower).is_some() {
+                    crate::metrics::ACTIVE_CHANNELS.dec();
+                }
             }
         }
     }
@@ -1263,6 +1319,7 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Weak;
 
     fn create_test_channel_actor() -> ChannelActor {
         ChannelActor {
@@ -1280,6 +1337,8 @@ mod tests {
             quiets: Vec::new(),
             invites: VecDeque::new(),
             kicked_users: HashMap::new(),
+            matrix: Weak::new(),
+            state: ActorState::Active,
         }
     }
 
