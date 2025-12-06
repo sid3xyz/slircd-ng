@@ -10,6 +10,7 @@
 mod common;
 mod notice;
 mod privmsg;
+mod validation;
 
 pub use notice::NoticeHandler;
 pub use privmsg::PrivmsgHandler;

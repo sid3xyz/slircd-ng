@@ -43,12 +43,24 @@
 - [x] Convert all individual query files to use generic implementation
 - **Result**: 806→610 lines (~196 lines / 24% reduction)
 
-🔄 **Remaining Priority 5 Tasks:**
+🔄 **Current Focus: Priority 5b - Message Validation Extraction**
 
-- [ ] Error reply helper macros (src/handlers/helpers.rs)
-  - Create err_reply! macro
-  - Replace ~15 boilerplate functions
-- [ ] Message validation extraction (messaging/privmsg.rs + notice.rs)
+Task breakdown:
+- [ ] Create messaging/validation.rs module
+  - [ ] Extract validate_message_send() function (handles shun/rate/spam checks)
+  - [ ] Add ErrorStrategy enum (SendError vs SilentDrop)
+  - [ ] Parameterize error handling behavior
+- [ ] Update privmsg.rs to use shared validation
+- [ ] Update notice.rs to use shared validation
+- [ ] Verify tests pass, commit changes
+
+**Remaining Priority 5 Tasks:**
+
+- [ ] Error reply helper consolidation (defer - current code is readable)
+  - Current: ~15 error helper functions in helpers.rs
+  - Analysis: Functions have different signatures, macro would reduce readability
+  - Decision: Keep as-is unless significant duplication found
+- [ ] Service command base traits (services/nickserv + chanserv)
   - Extract shared validation pipeline
   - Parameterize error handling strategy
 - [ ] Service command base traits (services/nickserv + chanserv)
