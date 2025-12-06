@@ -9,7 +9,7 @@
 use super::{
     Context, Handler, HandlerResult, TargetUser, err_needmoreparams, err_nosuchchannel,
     err_nosuchnick, force_join_channel, force_part_channel, format_modes_for_log, require_oper,
-    resolve_nick_to_uid, server_notice, server_reply,
+    resolve_nick_to_uid, server_notice,
 };
 use crate::state::MemberModes;
 use async_trait::async_trait;
@@ -257,16 +257,15 @@ impl Handler for SanickHandler {
         // Check if new nick is already in use
         let new_lower = irc_to_lower(new_nick);
         if ctx.matrix.nicks.contains_key(&new_lower) {
-            let reply = server_reply(
-                server_name,
+            ctx.send_reply(
                 Response::ERR_NICKNAMEINUSE,
                 vec![
                     oper_nick.clone(),
                     new_nick.to_string(),
                     "Nickname is already in use".to_string(),
                 ],
-            );
-            ctx.sender.send(reply).await?;
+            )
+            .await?;
             return Ok(());
         }
 

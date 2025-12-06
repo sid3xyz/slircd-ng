@@ -61,7 +61,11 @@ pub trait ServiceBase {
     /// Get user's account ID if identified.
     ///
     /// Returns None if user is not found, not registered, or not identified.
-    fn get_user_account_id(&self, matrix: &Arc<Matrix>, uid: &str) -> impl std::future::Future<Output = Option<i64>> + Send
+    fn get_user_account_id(
+        &self,
+        matrix: &Arc<Matrix>,
+        uid: &str,
+    ) -> impl std::future::Future<Output = Option<i64>> + Send
     where
         Self: Sync,
     {
@@ -137,7 +141,10 @@ pub trait ServiceBase {
                     "{} operation failed",
                     self.service_name()
                 );
-                self.error_reply(uid, &format!("{} failed. Please try again later.", operation))
+                self.error_reply(
+                    uid,
+                    &format!("{} failed. Please try again later.", operation),
+                )
             }
         }
     }

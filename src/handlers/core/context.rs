@@ -95,6 +95,35 @@ impl HandshakeState {
     }
 }
 
+impl<'a> Context<'a> {
+    /// Build and send a server reply in one call.
+    ///
+    /// This is a convenience method that combines `server_reply()` + `sender.send().await?`.
+    /// Reduces the common two-line pattern to a single call.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Before:
+    /// let reply = server_reply(server_name, Response::RPL_VERSION, vec![nick, version]);
+    /// ctx.sender.send(reply).await?;
+    ///
+    /// // After:
+    /// ctx.send_reply(Response::RPL_VERSION, vec![nick, version]).await?;
+    /// ```
+    #[inline]
+    pub async fn send_reply(
+        &self,
+        response: slirc_proto::Response,
+        params: Vec<String>,
+    ) -> Result<(), HandlerError> {
+        use crate::handlers::helpers::server_reply;
+        let reply = server_reply(&self.matrix.server_info.name, response, params);
+        self.sender.send(reply).await?;
+        Ok(())
+    }
+}
+
 /// Errors that can occur during command handling.
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)] // Send variant is large but rarely constructed

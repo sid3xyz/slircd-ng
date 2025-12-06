@@ -4,7 +4,7 @@
 
 use super::super::{
     Context, Handler, HandlerError, HandlerResult, err_needmoreparams, err_noprivileges,
-    err_notregistered, get_oper_info, server_reply,
+    err_notregistered, get_oper_info,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -37,23 +37,21 @@ impl Handler for MapHandler {
         let user_count = ctx.matrix.users.len();
 
         // RPL_MAP (006): <server> [<users>]
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_MAP,
             vec![
                 nick.clone(),
                 format!("`- {} [{} users]", server_name, user_count),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_MAPEND (007): :End of MAP
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_MAPEND,
             vec![nick.clone(), "End of MAP".to_string()],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -84,12 +82,11 @@ impl Handler for RulesHandler {
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_RULESTART (232): :- <server> Server Rules -
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_RULESTART,
             vec![nick.clone(), format!("- {} Server Rules -", server_name)],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // Server rules (could be loaded from config in the future)
         let rules = [
@@ -102,21 +99,19 @@ impl Handler for RulesHandler {
 
         // RPL_RULES (633): :- <rule>
         for rule in &rules {
-            let reply = server_reply(
-                server_name,
+            ctx.send_reply(
                 Response::RPL_RULES,
                 vec![nick.clone(), format!("- {}", rule)],
-            );
-            ctx.sender.send(reply).await?;
+            )
+            .await?;
         }
 
         // RPL_ENDOFRULES (634): :End of RULES command
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_ENDOFRULES,
             vec![nick.clone(), "End of RULES command".to_string()],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -193,12 +188,8 @@ impl Handler for UseripHandler {
         }
 
         // RPL_USERIP (340): <reply> [<reply> ...]
-        let reply = server_reply(
-            server_name,
-            Response::RPL_USERIP,
-            vec![nick.clone(), results.join(" ")],
-        );
-        ctx.sender.send(reply).await?;
+        ctx.send_reply(Response::RPL_USERIP, vec![nick.clone(), results.join(" ")])
+            .await?;
 
         Ok(())
     }
@@ -230,8 +221,7 @@ impl Handler for LinksHandler {
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_LINKS (364): <mask> <server> :<hopcount> <server info>
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_LINKS,
             vec![
                 nick.clone(),
@@ -239,20 +229,19 @@ impl Handler for LinksHandler {
                 server_name.clone(),
                 format!("0 {}", ctx.matrix.server_info.description),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         // RPL_ENDOFLINKS (365): <mask> :End of LINKS list
-        let reply = server_reply(
-            server_name,
+        ctx.send_reply(
             Response::RPL_ENDOFLINKS,
             vec![
                 nick.clone(),
                 "*".to_string(),
                 "End of LINKS list".to_string(),
             ],
-        );
-        ctx.sender.send(reply).await?;
+        )
+        .await?;
 
         Ok(())
     }

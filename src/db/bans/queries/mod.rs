@@ -1,7 +1,7 @@
 //! Database query methods for ban operations.
 
-pub mod generic;
 pub mod dline;
+pub mod generic;
 pub mod gline;
 pub mod kline;
 pub mod rline;

@@ -47,4 +47,3 @@ pub use batch::process_batch_message;
 pub use channel::{TargetUser, force_join_channel, force_part_channel};
 pub use mode::format_modes_for_log;
 pub use monitor::{cleanup_monitors, notify_monitors_offline, notify_monitors_online};
-

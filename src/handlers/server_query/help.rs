@@ -4,7 +4,7 @@
 //! RFC 2812 doesn't define HELP, but it's a common modern extension.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply,
+    Context, Handler, HandlerError, HandlerResult, err_notregistered,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -245,7 +245,6 @@ impl Handler for HelpHandler {
             return Ok(());
         }
 
-        let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
             .handshake
             .nick
@@ -259,97 +258,88 @@ impl Handler for HelpHandler {
                 let topic_upper = topic.to_ascii_uppercase();
                 if let Some((cmd, lines)) = HELP_TOPICS.iter().find(|(c, _)| *c == topic_upper) {
                     // RPL_HELPSTART (704)
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::RPL_HELPSTART,
                         vec![nick.clone(), cmd.to_string(), lines[0].to_string()],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
 
                     // RPL_HELPTXT (705) for additional lines
                     for line in &lines[1..] {
-                        let reply = server_reply(
-                            server_name,
+                        ctx.send_reply(
                             Response::RPL_HELPTXT,
                             vec![nick.clone(), cmd.to_string(), line.to_string()],
-                        );
-                        ctx.sender.send(reply).await?;
+                        )
+                        .await?;
                     }
 
                     // RPL_ENDOFHELP (706)
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::RPL_ENDOFHELP,
                         vec![nick.clone(), cmd.to_string(), "End of /HELP".to_string()],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 } else {
                     // ERR_HELPNOTFOUND (524)
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::ERR_HELPNOTFOUND,
                         vec![
                             nick.clone(),
                             topic.to_string(),
                             "No help available on that topic".to_string(),
                         ],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 }
             }
             None => {
                 // List all commands
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::RPL_HELPSTART,
                     vec![
                         nick.clone(),
                         "index".to_string(),
                         "Available commands:".to_string(),
                     ],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
 
                 // Group commands into lines of ~10 each
                 let commands: Vec<&str> = HELP_TOPICS.iter().map(|(c, _)| *c).collect();
                 for chunk in commands.chunks(10) {
                     let line = chunk.join(" ");
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::RPL_HELPTXT,
                         vec![nick.clone(), "index".to_string(), line],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 }
 
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::RPL_HELPTXT,
                     vec![nick.clone(), "index".to_string(), " ".to_string()],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
 
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::RPL_HELPTXT,
                     vec![
                         nick.clone(),
                         "index".to_string(),
                         "Use /HELP <command> for help on a specific command.".to_string(),
                     ],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
 
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::RPL_ENDOFHELP,
                     vec![
                         nick.clone(),
                         "index".to_string(),
                         "End of /HELP".to_string(),
                     ],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
             }
         }
 
