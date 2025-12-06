@@ -473,7 +473,13 @@ impl ChannelActor {
         self.invites.remove(&uid);
 
         // Basic JOIN implementation
-        let modes = initial_modes.unwrap_or_default();
+        // Fix #14: Preserve existing modes if user is already in channel (rejoin)
+        let modes = if let Some(existing) = self.members.get(&uid) {
+            existing.clone()
+        } else {
+            initial_modes.unwrap_or_default()
+        };
+        
         self.members.insert(uid.clone(), modes);
         self.user_nicks.insert(uid.clone(), nick.clone());
         self.senders.insert(uid.clone(), sender.clone());
@@ -521,6 +527,7 @@ impl ChannelActor {
         self.members.remove(&uid);
         self.senders.remove(&uid);
         self.user_caps.remove(&uid);
+        self.user_nicks.remove(&uid);
 
         let _ = reply_tx.send(Ok(self.members.len()));
     }
@@ -531,6 +538,7 @@ impl ChannelActor {
             self.members.remove(&uid);
             self.senders.remove(&uid);
             self.user_caps.remove(&uid);
+            self.user_nicks.remove(&uid);
         }
         if let Some(tx) = reply_tx {
             let _ = tx.send(self.members.len());
@@ -924,6 +932,7 @@ impl ChannelActor {
         self.members.remove(&target_uid);
         self.senders.remove(&target_uid);
         self.user_caps.remove(&target_uid);
+        self.user_nicks.remove(&target_uid);
         self.kicked_users.insert(target_uid, std::time::Instant::now());
 
         let _ = reply_tx.send(Ok(()));
