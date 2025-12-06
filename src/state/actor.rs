@@ -442,7 +442,7 @@ impl ChannelActor {
             if crate::security::matches_ban_or_except(&ban.mask, &user_mask, &user_context) {
                 let is_excepted = self.excepts.iter().any(|e| crate::security::matches_ban_or_except(&e.mask, &user_mask, &user_context));
                 if !is_excepted {
-                    let _ = reply_tx.send(Err("Cannot join channel (+b)".to_string()));
+                    let _ = reply_tx.send(Err("ERR_BANNEDFROMCHAN".to_string()));
                     return;
                 }
             }
@@ -454,7 +454,7 @@ impl ChannelActor {
             let is_invex = self.invex.iter().any(|i| crate::security::matches_ban_or_except(&i.mask, &user_mask, &user_context));
 
             if !is_invited && !is_invex {
-                let _ = reply_tx.send(Err("Cannot join channel (+i)".to_string()));
+                let _ = reply_tx.send(Err("ERR_INVITEONLYCHAN".to_string()));
                 return;
             }
         }

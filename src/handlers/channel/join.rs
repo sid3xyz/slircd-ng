@@ -330,14 +330,28 @@ async fn join_channel(
             ctx.sender.send(end_names).await?;
         }
         Ok(Err(reason)) => {
-            // Join failed
+            // Join failed - map error codes to proper numerics
+            let response = match reason.as_str() {
+                "ERR_BANNEDFROMCHAN" => Response::ERR_BANNEDFROMCHAN,
+                "ERR_INVITEONLYCHAN" => Response::ERR_INVITEONLYCHAN,
+                "ERR_CHANNELISFULL" => Response::ERR_CHANNELISFULL,
+                "ERR_BADCHANNELKEY" => Response::ERR_BADCHANNELKEY,
+                _ => Response::ERR_UNKNOWNERROR,
+            };
+            let message = match reason.as_str() {
+                "ERR_BANNEDFROMCHAN" => "Cannot join channel (+b)",
+                "ERR_INVITEONLYCHAN" => "Cannot join channel (+i)",
+                "ERR_CHANNELISFULL" => "Cannot join channel (+l)",
+                "ERR_BADCHANNELKEY" => "Cannot join channel (+k)",
+                _ => &reason,
+            };
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
-                Response::ERR_UNKNOWNERROR,
+                response,
                 vec![
                     nick.clone(),
                     channel_name.to_string(),
-                    reason,
+                    message.to_string(),
                 ],
             );
             ctx.sender.send(reply).await?;

@@ -169,7 +169,7 @@ impl Handler for InviteHandler {
             // Channel doesn't exist - RFC1459/2812 allows invites to non-existent channels
             // "There is no requirement that the channel the target user is being
             // invited to must exist or be a valid channel."
-            
+
             let (nick, user, host) = user_mask_from_state(ctx, ctx.uid)
                 .await
                 .ok_or(HandlerError::NickOrUserMissing)?;
