@@ -2,7 +2,7 @@
 **PERMANENT NOTICE: This software is NEVER production ready. All documentation, instructions, and statements herein are for developer reference only.**
 
 **Last Updated:** December 6, 2025
-**Status:** 5 open issues, 9 closed issues
+**Status:** 3 open issues, 11 closed issues
 
 ## Summary
 
@@ -29,62 +29,6 @@ After completing RFC compliance improvements and architecture audit, the followi
 ```
 
 **Blocker:** No current failures observed, but theoretical issue
-
----
-
-### #13: Critical Race Condition: Nickname Registration TOCTOU
-**Impact:** High
-**Complexity:** Medium
-**Description:** Time-of-check-to-time-of-use gap between checking nick availability and registering it.
-
-**Current Flow:**
-```
-1. Check if nick exists in Matrix.nicks (DashMap)
-2. If available, register user
-3. Insert nick into Matrix.nicks
-```
-
-**Proposed Solution:**
-```rust
-// Use DashMap's entry API for atomic check-and-insert
-match matrix.nicks.entry(nick_lower) {
-    Entry::Vacant(e) => {
-        e.insert(uid);
-        // proceed with registration
-    }
-    Entry::Occupied(_) => {
-        // nick taken
-    }
-}
-```
-
-**Blocker:** None - straightforward fix
-
----
-
-### #15: Critical Race Condition: Ghost Members (Join/Disconnect Race)
-**Impact:** Medium
-**Complexity:** High
-**Description:** User disconnects while JOIN event is in-flight to channel actor.
-
-**Scenario:**
-```
-1. User sends JOIN
-2. Handler creates ChannelEvent::Join
-3. User disconnects (sends QUIT to all channels)
-4. JOIN event processes after QUIT
-5. User appears in channel but is disconnected
-```
-
-**Proposed Solution:**
-```rust
-// Add connection state check in JOIN handler
-1. Verify user still connected before sending JOIN event
-2. Add "generation ID" to detect stale events
-3. Channel actor validates user exists before adding
-```
-
-**Blocker:** Requires connection state tracking
 
 ---
 
@@ -145,16 +89,16 @@ async fn handle_join(&mut self, ctx: JoinContext, ...) { }
 
 ## Recommended Priority Order
 
-1. **#13** - Nickname Registration TOCTOU (Easiest critical fix)
-2. **#16** - WHOIS Lock Issue (Quick performance win)
-3. **#15** - Ghost Members (Requires connection state tracking)
-4. **#12** - Split-Brain Channels (Complex, low observed frequency)
-5. **#10** - Parameter Refactor (Code quality, non-blocking)
+1. **#16** - WHOIS Lock Issue (Quick performance win)
+2. **#12** - Split-Brain Channels (Complex, low observed frequency)
+3. **#10** - Parameter Refactor (Code quality, non-blocking)
 
 ---
 
 ## Recently Closed Issues (Reference)
 
+- ✅ #13: TOCTOU nick claiming (Fixed d6d57b5 - atomic entry() API)
+- ✅ #15: Ghost members (Fixed d6d57b5 - session_id validation)
 - ✅ #19: Resource Exhaustion: Unbounded invite list growth (Fixed with TTL + cap)
 - ✅ #20: Memory Leak: user_nicks cleanup (Fixed in PART/QUIT handlers)
 - ✅ #18: Stale Data: user_nicks NICK updates (Fixed with actor event)
@@ -167,13 +111,11 @@ async fn handle_join(&mut self, ctx: JoinContext, ...) { }
 
 ## Risk Assessment
 
-| Issue               | Likelihood | Impact | Risk Score |
-| ------------------- | ---------- | ------ | ---------- |
-| #13 (Nick TOCTOU)   | Medium     | High   | 🔴 High     |
-| #12 (Split-Brain)   | Low        | High   | 🟡 Medium   |
-| #15 (Ghost Members) | Medium     | Medium | 🟡 Medium   |
-| #16 (WHOIS Lock)    | High       | Low    | 🟡 Medium   |
-| #10 (Parameters)    | N/A        | Low    | 🟢 Low      |
+| Issue             | Likelihood | Impact | Risk Score |
+| ----------------- | ---------- | ------ | ---------- |
+| #12 (Split-Brain) | Low        | High   | 🟡 Medium   |
+| #16 (WHOIS Lock)  | High       | Low    | 🟡 Medium   |
+| #10 (Parameters)  | N/A        | Low    | 🟢 Low      |
 
 ---
 
