@@ -9,7 +9,7 @@ use crate::security::UserContext;
 use crate::state::MemberModes;
 use async_trait::async_trait;
 use slirc_proto::{
-    ChannelExt, ChannelMode, Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower,
+    ChannelExt, Command, Message, MessageRef, Prefix, Response, irc_to_lower,
 };
 use tracing::info;
 
@@ -146,23 +146,25 @@ async fn join_channel(
     );
 
     // Check AKICK before joining
-    if let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name).await {
-        let reason = akick.reason.as_deref().unwrap_or("You are banned from this channel");
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::Nickname(
-                "ChanServ".to_string(),
-                "ChanServ".to_string(),
-                "services.".to_string(),
-            )),
-            command: Command::NOTICE(
-                nick.clone(),
-                format!("You are not permitted to be on \x02{}\x02: {}", channel_name, reason),
-            ),
-        };
-        ctx.sender.send(notice).await?;
-        info!(nick = %nick, channel = %channel_name, mask = %akick.mask, "AKICK triggered");
-        return Ok(());
+    if ctx.matrix.registered_channels.contains(&channel_lower) {
+        if let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name).await {
+            let reason = akick.reason.as_deref().unwrap_or("You are banned from this channel");
+            let notice = Message {
+                tags: None,
+                prefix: Some(Prefix::Nickname(
+                    "ChanServ".to_string(),
+                    "ChanServ".to_string(),
+                    "services.".to_string(),
+                )),
+                command: Command::NOTICE(
+                    nick.clone(),
+                    format!("You are not permitted to be on \x02{}\x02: {}", channel_name, reason),
+                ),
+            };
+            ctx.sender.send(notice).await?;
+            info!(nick = %nick, channel = %channel_name, mask = %akick.mask, "AKICK triggered");
+            return Ok(());
+        }
     }
 
     // Check auto modes if registered
@@ -212,6 +214,7 @@ async fn join_channel(
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     let _ = channel_sender.send(crate::state::actor::ChannelEvent::Join {
         uid: ctx.uid.to_string(),
+        nick: nick.clone(),
         sender: ctx.matrix.senders.get(ctx.uid).map(|s| s.clone()).unwrap(),
         caps: ctx.matrix.users.get(ctx.uid).unwrap().read().await.caps.clone(),
         user_context,
@@ -278,32 +281,40 @@ async fn join_channel(
                 ctx.sender.send(topic_who_reply).await?;
             }
 
-            // Send NAMES
-            let mut names_list = Vec::new();
-            for (uid, member_modes) in data.members {
-                if let Some(user) = ctx.matrix.users.get(&uid) {
-                    let user = user.read().await;
-                    let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
-                        format!("{}{}", prefix, user.nick)
-                    } else {
-                        user.nick.clone()
-                    };
-                    names_list.push(nick_with_prefix);
-                }
-            }
-            let channel_symbol = if data.is_secret { "@" } else { "=" };
+            // Send NAMES using GetMembers (oneshot-based, no deadlock)
+            let (members_tx, members_rx) = tokio::sync::oneshot::channel();
+            let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetMembers {
+                reply_tx: members_tx,
+            }).await;
 
-            let names_reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::RPL_NAMREPLY,
-                vec![
-                    nick.clone(),
-                    channel_symbol.to_string(),
-                    data.channel_name.clone(),
-                    names_list.join(" "),
-                ],
-            );
-            ctx.sender.send(names_reply).await?;
+            if let Ok(members) = members_rx.await {
+                let channel_symbol = if data.is_secret { "@" } else { "=" };
+                let mut names_list = Vec::new();
+
+                for (uid, member_modes) in members {
+                    if let Some(user) = ctx.matrix.users.get(&uid) {
+                        let user = user.read().await;
+                        let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
+                            format!("{}{}", prefix, user.nick)
+                        } else {
+                            user.nick.clone()
+                        };
+                        names_list.push(nick_with_prefix);
+                    }
+                }
+
+                let names_reply = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_NAMREPLY,
+                    vec![
+                        nick.clone(),
+                        channel_symbol.to_string(),
+                        data.channel_name.clone(),
+                        names_list.join(" "),
+                    ],
+                );
+                ctx.sender.send(names_reply).await?;
+            }
 
             let end_names = with_label(
                 server_reply(

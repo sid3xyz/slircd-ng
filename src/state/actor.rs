@@ -14,7 +14,7 @@ use crate::state::{ListEntry, MemberModes, Topic};
 use chrono::Utc;
 use slirc_proto::{Command, Message, Prefix};
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
@@ -25,7 +25,6 @@ pub type Uid = String;
 #[derive(Debug)]
 pub struct JoinSuccessData {
     pub topic: Option<Topic>,
-    pub members: Vec<(Uid, MemberModes)>,
     pub channel_name: String,
     pub is_secret: bool,
 }
@@ -36,6 +35,7 @@ pub enum ChannelEvent {
     /// User joining the channel.
     Join {
         uid: Uid,
+        nick: String,
         sender: mpsc::Sender<Message>,
         caps: HashSet<String>,
         user_context: UserContext,
@@ -83,7 +83,7 @@ pub enum ChannelEvent {
     },
     /// Request list of members.
     GetMembers {
-        reply_tx: oneshot::Sender<Vec<(Uid, MemberModes)>>,
+        reply_tx: oneshot::Sender<im::HashMap<Uid, MemberModes>>,
     },
     /// Request member modes.
     GetMemberModes {
@@ -249,7 +249,8 @@ pub enum ChannelMode {
 /// Owns the state of a single channel and processes events sequentially.
 pub struct ChannelActor {
     pub name: String,
-    pub members: HashMap<Uid, MemberModes>,
+    pub members: im::HashMap<Uid, MemberModes>,
+    pub user_nicks: HashMap<Uid, String>,
     pub senders: HashMap<Uid, mpsc::Sender<Message>>,
     pub user_caps: HashMap<Uid, HashSet<String>>,
     pub modes: HashSet<ChannelMode>,
@@ -261,11 +262,9 @@ pub struct ChannelActor {
     pub excepts: Vec<ListEntry>,
     pub invex: Vec<ListEntry>,
     pub quiets: Vec<ListEntry>,
-    pub extended_bans: Vec<ListEntry>,
 
     // State
     pub invites: HashSet<Uid>,
-    pub join_timestamps: VecDeque<Instant>,
     pub kicked_users: HashMap<Uid, Instant>,
 }
 
@@ -280,7 +279,8 @@ impl ChannelActor {
 
         let actor = Self {
             name,
-            members: HashMap::new(),
+            members: im::HashMap::new(),
+            user_nicks: HashMap::new(),
             senders: HashMap::new(),
             user_caps: HashMap::new(),
             modes,
@@ -290,9 +290,7 @@ impl ChannelActor {
             excepts: Vec::new(),
             invex: Vec::new(),
             quiets: Vec::new(),
-            extended_bans: Vec::new(),
             invites: HashSet::new(),
-            join_timestamps: VecDeque::new(),
             kicked_users: HashMap::new(),
         };
 
@@ -312,8 +310,8 @@ impl ChannelActor {
 
     async fn handle_event(&mut self, event: ChannelEvent) {
         match event {
-            ChannelEvent::Join { uid, sender, caps, user_context, key, initial_modes, join_msg_extended, join_msg_standard, reply_tx } => {
-                self.handle_join(uid, sender, caps, user_context, key, initial_modes, join_msg_extended, join_msg_standard, reply_tx).await;
+            ChannelEvent::Join { uid, nick, sender, caps, user_context, key, initial_modes, join_msg_extended, join_msg_standard, reply_tx } => {
+                self.handle_join(uid, nick, sender, caps, user_context, key, initial_modes, join_msg_extended, join_msg_standard, reply_tx).await;
             }
             ChannelEvent::Part { uid, reason, prefix, reply_tx } => {
                 self.handle_part(uid, reason, prefix, reply_tx).await;
@@ -377,8 +375,7 @@ impl ChannelActor {
                 let _ = reply_tx.send(list);
             }
             ChannelEvent::GetMembers { reply_tx } => {
-                let members = self.members.iter().map(|(u, m)| (u.clone(), m.clone())).collect();
-                let _ = reply_tx.send(members);
+                let _ = reply_tx.send(self.members.clone());
             }
             ChannelEvent::GetMemberModes { uid, reply_tx } => {
                 let modes = self.members.get(&uid).cloned();
@@ -405,22 +402,70 @@ impl ChannelActor {
     async fn handle_join(
         &mut self,
         uid: Uid,
+        nick: String,
         sender: mpsc::Sender<Message>,
         caps: HashSet<String>,
-        _user_context: UserContext,
-        _key: Option<String>,
+        user_context: UserContext,
+        key_arg: Option<String>,
         initial_modes: Option<MemberModes>,
         join_msg_extended: Message,
         join_msg_standard: Message,
         reply_tx: oneshot::Sender<Result<JoinSuccessData, String>>,
     ) {
+        // Checks
+        let user_mask = format!("{}!{}@{}", user_context.nickname, user_context.username, user_context.hostname);
+
+        // 1. Bans (+b)
+        for ban in &self.bans {
+            if crate::security::matches_ban_or_except(&ban.mask, &user_mask, &user_context) {
+                let is_excepted = self.excepts.iter().any(|e| crate::security::matches_ban_or_except(&e.mask, &user_mask, &user_context));
+                if !is_excepted {
+                    let _ = reply_tx.send(Err("Cannot join channel (+b)".to_string()));
+                    return;
+                }
+            }
+        }
+
+        // 2. Invite Only (+i)
+        if self.modes.contains(&ChannelMode::InviteOnly) {
+            let is_invited = self.invites.contains(&uid);
+            let is_invex = self.invex.iter().any(|i| crate::security::matches_ban_or_except(&i.mask, &user_mask, &user_context));
+
+            if !is_invited && !is_invex {
+                let _ = reply_tx.send(Err("Cannot join channel (+i)".to_string()));
+                return;
+            }
+        }
+
+        // 3. Limit (+l)
+        for mode in &self.modes {
+            if let ChannelMode::Limit(limit) = mode {
+                if self.members.len() >= *limit {
+                    let _ = reply_tx.send(Err("Cannot join channel (+l)".to_string()));
+                    return;
+                }
+            }
+        }
+
+        // 4. Key (+k)
+        for mode in &self.modes {
+            if let ChannelMode::Key(key) = mode {
+                if key_arg.as_deref() != Some(key) {
+                    let _ = reply_tx.send(Err("Cannot join channel (+k)".to_string()));
+                    return;
+                }
+            }
+        }
+
+        // Consume invite
+        self.invites.remove(&uid);
+
         // Basic JOIN implementation
         let modes = initial_modes.unwrap_or_default();
         self.members.insert(uid.clone(), modes);
-        self.senders.insert(uid.clone(), sender);
-        self.user_caps.insert(uid.clone(), caps);
-
-        // TODO: Implement checks (key, limit, bans, invite-only)
+        self.user_nicks.insert(uid.clone(), nick.clone());
+        self.senders.insert(uid.clone(), sender.clone());
+        self.user_caps.insert(uid.clone(), caps.clone());
 
         self.handle_broadcast_with_cap(
             join_msg_extended,
@@ -429,11 +474,12 @@ impl ChannelActor {
             Some(join_msg_standard),
         ).await;
 
+        let is_secret = self.modes.contains(&ChannelMode::Secret);
+
         let data = JoinSuccessData {
             topic: self.topic.clone(),
-            members: self.members.iter().map(|(u, m)| (u.clone(), m.clone())).collect(),
             channel_name: self.name.clone(),
-            is_secret: self.modes.contains(&ChannelMode::Secret),
+            is_secret,
         };
 
         let _ = reply_tx.send(Ok(data));
@@ -736,8 +782,10 @@ impl ChannelActor {
                 ProtoMode::Oper => {
                     if let Some(nick) = arg {
                         if let Some(target_uid) = target_uids.get(nick) {
-                            if let Some(member) = self.members.get_mut(target_uid) {
-                                member.op = adding;
+                            if let Some(member) = self.members.get(target_uid) {
+                                let mut new_member = member.clone();
+                                new_member.op = adding;
+                                self.members.insert(target_uid.clone(), new_member);
                                 applied_modes.push(mode.clone());
                             }
                         }
@@ -746,8 +794,10 @@ impl ChannelActor {
                 ProtoMode::Voice => {
                     if let Some(nick) = arg {
                         if let Some(target_uid) = target_uids.get(nick) {
-                            if let Some(member) = self.members.get_mut(target_uid) {
-                                member.voice = adding;
+                            if let Some(member) = self.members.get(target_uid) {
+                                let mut new_member = member.clone();
+                                new_member.voice = adding;
+                                self.members.insert(target_uid.clone(), new_member);
                                 applied_modes.push(mode.clone());
                             }
                         }

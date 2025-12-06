@@ -356,7 +356,7 @@ pub async fn apply_effect(
                 sender_uid: "ChanServ".to_string(),
                 sender_prefix,
                 modes: vec![mode_obj],
-                target_uids,
+                target_uids: target_uids.into(),
                 force: true,
                 reply_tx: tx,
             };
@@ -398,7 +398,7 @@ pub async fn apply_effect(
                 sender_uid: "ChanServ".to_string(),
                 sender_prefix,
                 modes,
-                target_uids,
+                target_uids: target_uids.into(),
                 force: true,
                 reply_tx: tx,
             };
