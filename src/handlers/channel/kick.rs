@@ -20,10 +20,17 @@ impl Handler for KickHandler {
             return Err(HandlerError::NotRegistered);
         }
 
+        let kicker_nick = ctx
+            .handshake
+            .nick
+            .as_ref()
+            .ok_or(HandlerError::NickOrUserMissing)?;
+
         // KICK <channel> <nick> [reason]
         let channel_name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let target_nick = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
-        let reason_str = msg.arg(2).unwrap_or(target_nick).to_string();
+        // RFC2812: default comment is the nickname of the user issuing the KICK
+        let reason_str = msg.arg(2).unwrap_or(kicker_nick).to_string();
 
         if channel_name.is_empty() || target_nick.is_empty() {
             return Err(HandlerError::NeedMoreParams);
