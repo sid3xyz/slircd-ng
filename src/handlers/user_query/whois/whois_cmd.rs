@@ -60,7 +60,22 @@ impl Handler for WhoisHandler {
         // Look up target user
         if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
             if let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value()) {
-                let target_user = target_user_ref.read().await;
+                // Clone needed data, drop lock immediately to prevent holding during async ops
+                let (target_nick, target_user_name, target_visible_host, target_realname, 
+                     target_channels, target_modes, target_account, target_away, target_uid_owned) = {
+                    let target_user = target_user_ref.read().await;
+                    (
+                        target_user.nick.clone(),
+                        target_user.user.clone(),
+                        target_user.visible_host.clone(),
+                        target_user.realname.clone(),
+                        target_user.channels.clone(),
+                        target_user.modes.clone(),
+                        target_user.account.clone(),
+                        target_user.away.clone(),
+                        target_user.uid.clone(),
+                    )
+                }; // Lock dropped here
 
                 // RPL_WHOISUSER (311): <nick> <user> <host> * :<realname>
                 let reply = server_reply(
@@ -68,11 +83,11 @@ impl Handler for WhoisHandler {
                     Response::RPL_WHOISUSER,
                     vec![
                         nick.clone(),
-                        target_user.nick.clone(),
-                        target_user.user.clone(),
-                        target_user.visible_host.clone(),
+                        target_nick.clone(),
+                        target_user_name,
+                        target_visible_host,
                         "*".to_string(),
-                        target_user.realname.clone(),
+                        target_realname,
                     ],
                 );
                 ctx.sender.send(reply).await?;
@@ -83,7 +98,7 @@ impl Handler for WhoisHandler {
                     Response::RPL_WHOISSERVER,
                     vec![
                         nick.clone(),
-                        target_user.nick.clone(),
+                        target_nick.clone(),
                         server_name.clone(),
                         ctx.matrix.server_info.description.clone(),
                     ],
@@ -92,13 +107,13 @@ impl Handler for WhoisHandler {
 
                 // RPL_WHOISCHANNELS (319): <nick> :{[@|+]<channel>}
                 // Skip if target is invisible and requester doesn't share any channels
-                let show_channels = if target_user.modes.invisible && target_uid.value() != ctx.uid
+                let show_channels = if target_modes.invisible && target_uid.value() != ctx.uid
                 {
                     // Check if requester shares any channel with target
                     let mut shares_channel = false;
                     if let Some(requester) = ctx.matrix.users.get(ctx.uid) {
                         let requester = requester.read().await;
-                        for ch in &target_user.channels {
+                        for ch in &target_channels {
                             if requester.channels.contains(ch) {
                                 shares_channel = true;
                                 break;
@@ -110,9 +125,9 @@ impl Handler for WhoisHandler {
                     true
                 };
 
-                if show_channels && !target_user.channels.is_empty() {
+                if show_channels && !target_channels.is_empty() {
                     let mut channel_list = Vec::new();
-                    for channel_name in &target_user.channels {
+                    for channel_name in &target_channels {
                         if let Some(channel_sender) = ctx.matrix.channels.get(channel_name) {
                             let (tx, rx) = tokio::sync::oneshot::channel();
                             let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetInfo {
@@ -132,7 +147,7 @@ impl Handler for WhoisHandler {
 
                             let (tx, rx) = tokio::sync::oneshot::channel();
                             let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetMemberModes {
-                                uid: target_user.uid.clone(),
+                                uid: target_uid_owned.clone(),
                                 reply_tx: tx
                             }).await;
 
@@ -157,7 +172,7 @@ impl Handler for WhoisHandler {
                             Response::RPL_WHOISCHANNELS,
                             vec![
                                 nick.clone(),
-                                target_user.nick.clone(),
+                                target_nick.clone(),
                                 channel_list.join(" "),
                             ],
                         );
@@ -166,13 +181,13 @@ impl Handler for WhoisHandler {
                 }
 
                 // RPL_WHOISOPERATOR (313): <nick> :is an IRC operator
-                if target_user.modes.oper {
+                if target_modes.oper {
                     let reply = server_reply(
                         server_name,
                         Response::RPL_WHOISOPERATOR,
                         vec![
                             nick.clone(),
-                            target_user.nick.clone(),
+                            target_nick.clone(),
                             "is an IRC operator".to_string(),
                         ],
                     );
@@ -180,13 +195,13 @@ impl Handler for WhoisHandler {
                 }
 
                 // RPL_WHOISACCOUNT (330): <nick> <account> :is logged in as
-                if let Some(account) = &target_user.account {
+                if let Some(account) = &target_account {
                     let reply = server_reply(
                         server_name,
                         Response::RPL_WHOISACCOUNT,
                         vec![
                             nick.clone(),
-                            target_user.nick.clone(),
+                            target_nick.clone(),
                             account.clone(),
                             "is logged in as".to_string(),
                         ],
@@ -195,13 +210,13 @@ impl Handler for WhoisHandler {
                 }
 
                 // RPL_WHOISSECURE (671): <nick> :is using a secure connection (if TLS)
-                if target_user.modes.secure {
+                if target_modes.secure {
                     let reply = server_reply(
                         server_name,
                         Response::RPL_WHOISSECURE,
                         vec![
                             nick.clone(),
-                            target_user.nick.clone(),
+                            target_nick.clone(),
                             "is using a secure connection".to_string(),
                         ],
                     );
@@ -209,11 +224,11 @@ impl Handler for WhoisHandler {
                 }
 
                 // RPL_AWAY (301): <nick> :<away message>
-                if let Some(away_msg) = &target_user.away {
+                if let Some(away_msg) = &target_away {
                     let reply = server_reply(
                         server_name,
                         Response::RPL_AWAY,
-                        vec![nick.clone(), target_user.nick.clone(), away_msg.clone()],
+                        vec![nick.clone(), target_nick.clone(), away_msg.clone()],
                     );
                     ctx.sender.send(reply).await?;
                 }
@@ -225,7 +240,7 @@ impl Handler for WhoisHandler {
                         Response::RPL_ENDOFWHOIS,
                         vec![
                             nick.clone(),
-                            target_user.nick.clone(),
+                            target_nick.clone(),
                             "End of WHOIS list".to_string(),
                         ],
                     ),
@@ -233,7 +248,7 @@ impl Handler for WhoisHandler {
                 );
                 ctx.sender.send(reply).await?;
 
-                debug!(requester = %nick, target = %target_user.nick, "WHOIS completed");
+                debug!(requester = %nick, target = %target_nick, "WHOIS completed");
             } else {
                 send_no_such_nick(ctx, target).await?;
             }
