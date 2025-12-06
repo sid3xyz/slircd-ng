@@ -61,7 +61,7 @@ impl Handler for WhoisHandler {
         if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
             if let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value()) {
                 // Clone needed data, drop lock immediately to prevent holding during async ops
-                let (target_nick, target_user_name, target_visible_host, target_realname, 
+                let (target_nick, target_user_name, target_visible_host, target_realname,
                      target_channels, target_modes, target_account, target_away, target_uid_owned) = {
                     let target_user = target_user_ref.read().await;
                     (
