@@ -145,6 +145,12 @@ pub enum ChannelEvent {
         required_cap: Option<String>,
         fallback_msg: Option<Message>,
     },
+    /// User nickname change.
+    NickChange {
+        uid: Uid,
+        old_nick: String,
+        new_nick: String,
+    },
 }
 
 /// Snapshot of channel information for queries.
@@ -395,6 +401,9 @@ impl ChannelActor {
             }
             ChannelEvent::Knock { sender_uid, sender_prefix, reply_tx } => {
                 self.handle_knock(sender_uid, sender_prefix, reply_tx).await;
+            }
+            ChannelEvent::NickChange { uid, _old_nick, new_nick } => {
+                self.handle_nick_change(uid, new_nick).await;
             }
         }
     }
@@ -986,6 +995,13 @@ impl ChannelActor {
 
         let _ = reply_tx.send(Ok(()));
     }
+
+    async fn handle_nick_change(&mut self, uid: Uid, new_nick: String) {
+        // Update the user_nicks map with the new nickname
+        if self.user_nicks.contains_key(&uid) {
+            self.user_nicks.insert(uid, new_nick);
+        }
+    }
 }
 
 /// Convert channel modes to string representation (e.g. "+ntk key").
@@ -1051,3 +1067,68 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
         format!("{} {}", flags, params.join(" "))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_channel_actor() -> ChannelActor {
+        ChannelActor {
+            name: "#test".to_string(),
+            members: im::HashMap::new(),
+            user_nicks: HashMap::new(),
+            senders: HashMap::new(),
+            user_caps: HashMap::new(),
+            modes: HashSet::new(),
+            topic: None,
+            created: 0,
+            bans: Vec::new(),
+            excepts: Vec::new(),
+            invex: Vec::new(),
+            quiets: Vec::new(),
+            invites: HashSet::new(),
+            kicked_users: HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_nick_change_updates_user_nicks() {
+        // Create a ChannelActor
+        let mut actor = create_test_channel_actor();
+
+        let uid = "user123".to_string();
+        let old_nick = "oldnick".to_string();
+        let new_nick = "newnick".to_string();
+
+        // Simulate a user having joined the channel
+        actor.user_nicks.insert(uid.clone(), old_nick.clone());
+
+        // Verify old nick is stored
+        assert_eq!(actor.user_nicks.get(&uid), Some(&old_nick));
+
+        // Simulate nick change
+        actor.handle_nick_change(uid.clone(), new_nick.clone()).await;
+
+        // Verify new nick is stored
+        assert_eq!(actor.user_nicks.get(&uid), Some(&new_nick));
+    }
+
+    #[tokio::test]
+    async fn test_nick_change_ignores_non_member() {
+        // Create a ChannelActor
+        let mut actor = create_test_channel_actor();
+
+        let uid = "user123".to_string();
+        let new_nick = "newnick".to_string();
+
+        // Verify user is not in the channel
+        assert_eq!(actor.user_nicks.get(&uid), None);
+
+        // Simulate nick change for a non-member
+        actor.handle_nick_change(uid.clone(), new_nick.clone()).await;
+
+        // Verify nothing was added
+        assert_eq!(actor.user_nicks.get(&uid), None);
+    }
+}
+

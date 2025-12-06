@@ -178,6 +178,15 @@ impl Handler for NickHandler {
                 ctx.matrix
                     .broadcast_to_channel(channel_lower, nick_msg.clone(), Some(ctx.uid))
                     .await;
+                
+                // Update the channel actor's user_nicks map
+                if let Some(channel_sender) = ctx.matrix.channels.get(channel_lower) {
+                    let _ = channel_sender.send(crate::state::actor::ChannelEvent::NickChange {
+                        uid: ctx.uid.to_string(),
+                        _old_nick: old_nick.clone(),
+                        new_nick: nick.to_string(),
+                    }).await;
+                }
             }
 
             // Also update the User state with the new nick
