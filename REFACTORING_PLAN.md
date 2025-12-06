@@ -409,12 +409,12 @@ Multiple handlers perform similar checks:
 
 ## ✅ Final Summary: Code Duplication Cleanup COMPLETE
 
-| Category | Location | Result |
-|----------|----------|--------|
-| Ban queries | `src/db/bans/queries/` | ✅ 196 lines eliminated (Priority 5a - commit 8bf1dda) |
-| Message validation | `src/handlers/messaging/` | ✅ 140 lines eliminated (Priority 5b - commit 59be059) |
-| Service infrastructure | `src/services/` | ✅ 37 lines eliminated (Priority 5c - commit 68d4c93) |
-| **Total eliminated** | | **373 lines** |
+| Category               | Location                  | Result                                                |
+| ---------------------- | ------------------------- | ----------------------------------------------------- |
+| Ban queries            | `src/db/bans/queries/`    | ✅ 196 lines eliminated (Priority 5a - commit 8bf1dda) |
+| Message validation     | `src/handlers/messaging/` | ✅ 140 lines eliminated (Priority 5b - commit 59be059) |
+| Service infrastructure | `src/services/`           | ✅ 37 lines eliminated (Priority 5c - commit 68d4c93)  |
+| **Total eliminated**   |                           | **373 lines**                                         |
 
 ---
 
@@ -423,7 +423,7 @@ Multiple handlers perform similar checks:
 **Actual Results:**
 
 - ✅ Files refactored: ~50
-- ✅ Lines reorganized: ~3600  
+- ✅ Lines reorganized: ~3600
 - ✅ Lines eliminated: ~373 (ban queries: 196, message validation: 140, services: 37)
 - ✅ New modules created: 24
 - ✅ Code duplication eliminated: user_mask, ban checking, ban queries, message validation, service helpers
