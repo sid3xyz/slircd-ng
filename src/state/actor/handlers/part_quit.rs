@@ -29,6 +29,9 @@ impl ChannelActor {
         self.user_caps.remove(&uid);
         self.user_nicks.remove(&uid);
 
+        // Update channel member count metric (Innovation 3)
+        crate::metrics::set_channel_members(&self.name, self.members.len() as i64);
+
         let _ = reply_tx.send(Ok(self.members.len()));
 
         self.cleanup_if_empty();
@@ -46,6 +49,9 @@ impl ChannelActor {
             self.senders.remove(&uid);
             self.user_caps.remove(&uid);
             self.user_nicks.remove(&uid);
+
+            // Update channel member count metric (Innovation 3)
+            crate::metrics::set_channel_members(&self.name, self.members.len() as i64);
         }
         if let Some(tx) = reply_tx {
             let _ = tx.send(self.members.len());

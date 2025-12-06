@@ -1,6 +1,7 @@
 //! Command handler registry and dispatch.
 //!
 //! The `Registry` manages command handlers and provides command usage statistics.
+//! Includes IRC-aware instrumentation for observability (Innovation 3).
 
 use super::context::{Context, Handler, HandlerResult};
 use crate::handlers::{
@@ -38,10 +39,12 @@ use crate::handlers::{
     user_query::{IsonHandler, UserhostHandler, WhoHandler, WhoisHandler, WhowasHandler},
     user_status::{AwayHandler, SetnameHandler, SilenceHandler},
 };
+use crate::telemetry::CommandTimer;
 use slirc_proto::MessageRef;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tracing::{Instrument, debug, span, Level};
 
 /// Registry of command handlers.
 pub struct Registry {
@@ -190,7 +193,8 @@ impl Registry {
     /// Dispatch a message to the appropriate handler.
     ///
     /// Uses `msg.command_name()` to get the command name directly from the
-    /// zero-copy `MessageRef`.
+    /// zero-copy `MessageRef`. Includes IRC-aware instrumentation for tracing
+    /// and metrics (Innovation 3).
     pub async fn dispatch(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let cmd_name = msg.command_name().to_ascii_uppercase();
 
@@ -204,7 +208,49 @@ impl Registry {
                 .expect("Command counter missing for registered handler");
             counter.fetch_add(1, Ordering::Relaxed);
 
-            handler.handle(ctx, msg).await
+            // Extract IRC context for tracing
+            let source_nick = ctx.handshake.nick.as_deref();
+            let channel = msg.arg(0).filter(|a| a.starts_with('#') || a.starts_with('&'));
+            let msgid = crate::telemetry::extract_msgid(msg);
+
+            // Create instrumented span
+            let irc_span = span!(
+                Level::DEBUG,
+                "irc.command",
+                command = %cmd_name,
+                uid = %ctx.uid,
+                source_nick = source_nick,
+                channel = channel,
+                msgid = msgid.as_deref(),
+                remote_addr = %ctx.remote_addr,
+            );
+
+            // Start timing for metrics
+            let _timer = CommandTimer::new(&cmd_name);
+
+            // Execute handler within the span
+            let result = handler.handle(ctx, msg).instrument(irc_span).await;
+
+            // Record errors for metrics
+            if let Err(ref e) = result {
+                let error_kind = match e {
+                    super::context::HandlerError::NeedMoreParams => "need_more_params",
+                    super::context::HandlerError::NoTextToSend => "no_text_to_send",
+                    super::context::HandlerError::NicknameInUse(_) => "nickname_in_use",
+                    super::context::HandlerError::ErroneousNickname(_) => "erroneous_nickname",
+                    super::context::HandlerError::NotRegistered => "not_registered",
+                    super::context::HandlerError::AccessDenied => "access_denied",
+                    super::context::HandlerError::AlreadyRegistered => "already_registered",
+                    super::context::HandlerError::NickOrUserMissing => "nick_or_user_missing",
+                    super::context::HandlerError::Send(_) => "send_error",
+                    super::context::HandlerError::Quit(_) => "quit",
+                    super::context::HandlerError::Internal(_) => "internal_error",
+                };
+                crate::metrics::record_command_error(&cmd_name, error_kind);
+                debug!(command = %cmd_name, error = %e, "Command error");
+            }
+
+            result
         } else {
             // Send ERR_UNKNOWNCOMMAND for unrecognized commands
             use super::context::get_nick_or_star;
@@ -213,6 +259,10 @@ impl Registry {
             // Attach label for labeled-response capability
             let reply = with_label(reply, ctx.label.as_deref());
             ctx.sender.send(reply).await?;
+
+            // Record unknown command metric
+            crate::metrics::record_command_error(&cmd_name, "unknown_command");
+
             Ok(())
         }
     }

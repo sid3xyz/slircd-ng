@@ -111,6 +111,9 @@ impl ChannelActor {
         self.senders.insert(uid.clone(), sender.clone());
         self.user_caps.insert(uid.clone(), caps.clone());
 
+        // Update channel member count metric (Innovation 3)
+        crate::metrics::set_channel_members(&self.name, self.members.len() as i64);
+
         self.handle_broadcast_with_cap(
             join_msg_extended,
             vec![uid.clone()],

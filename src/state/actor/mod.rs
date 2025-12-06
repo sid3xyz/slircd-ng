@@ -316,6 +316,9 @@ impl ChannelActor {
         if self.members.is_empty() && !is_permanent {
             self.state = ActorState::Draining;
 
+            // Remove channel member metrics (Innovation 3)
+            crate::metrics::remove_channel_metrics(&self.name);
+
             if let Some(matrix) = self.matrix.upgrade() {
                 let name_lower = self.name.to_lowercase();
                 if matrix.channels.remove(&name_lower).is_some() {
