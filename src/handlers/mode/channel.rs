@@ -31,7 +31,7 @@ pub async fn handle_channel_mode(
         .nick
         .as_ref()
         .ok_or(HandlerError::NickOrUserMissing)?;
-    let user_name = ctx
+    let _user_name = ctx
         .handshake
         .user
         .as_ref()
@@ -241,7 +241,7 @@ pub async fn handle_channel_mode(
                  Ok(Ok(_)) => {
                      // Success
                  }
-                 Ok(Err(e)) => {
+                Ok(Err(_e)) => {
                      // Generic error
                      // TODO: Handle specific errors
                  }

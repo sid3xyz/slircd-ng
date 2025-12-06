@@ -383,6 +383,7 @@ impl<'a> ChannelRepository<'a> {
 
     /// Update last used timestamp by channel name.
     /// Used to track channel activity for expiration policies.
+    #[allow(dead_code)]
     pub async fn touch_by_name(&self, name: &str) -> Result<(), DbError> {
         let now = chrono::Utc::now().timestamp();
         sqlx::query("UPDATE channels SET last_used_at = ? WHERE name = ? COLLATE NOCASE")

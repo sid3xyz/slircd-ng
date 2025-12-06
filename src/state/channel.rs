@@ -25,7 +25,7 @@ pub struct Topic {
 }
 
 /// Member modes (op, voice, etc.).
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct MemberModes {
     pub owner: bool,  // +q (~)
     pub admin: bool,  // +a (&)
@@ -79,6 +79,7 @@ impl MemberModes {
 
     /// Get the privilege rank (higher number = more privileges).
     /// Returns 0 if no privileges, 5 for owner, 4 for admin, etc.
+    #[allow(dead_code)]
     pub fn rank(&self) -> u8 {
         if self.owner {
             5

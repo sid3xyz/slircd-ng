@@ -148,6 +148,7 @@ pub enum ChannelEvent {
     /// User nickname change.
     NickChange {
         uid: Uid,
+        #[allow(dead_code)] // retained for future auditing/logging
         old_nick: String,
         new_nick: String,
     },
@@ -175,8 +176,6 @@ pub enum ChannelRouteResult {
     BlockedExternal,
     /// Sender is blocked by +m (moderated).
     BlockedModerated,
-    /// Message blocked by spam detection.
-    BlockedSpam,
     /// Sender is blocked by +r (registered-only channel).
     BlockedRegisteredOnly,
     /// Blocked by +C (no CTCP except ACTION).
@@ -223,12 +222,16 @@ pub enum ChannelMode {
     /// +Q: No kicks (prevent KICK command, only services can kick)
     NoKicks,
     /// +j <joins>:<seconds>: Join throttle (limit join rate)
+    #[allow(dead_code)] // Reserved for future channel join controls
     JoinThrottle { joins: u32, seconds: u32 },
     /// +J <seconds>: Join delay after kick (prevent rejoin for N seconds after kick)
+    #[allow(dead_code)] // Reserved for future channel join controls
     JoinDelay(u32),
     /// +L <channel>: Redirect/overflow channel (when +l limit hit, redirect to overflow)
+    #[allow(dead_code)] // Reserved for future redirect support
     Redirect(String),
     /// +f <messages>:<seconds>: Flood protection (kick users exceeding message threshold)
+    #[allow(dead_code)] // Reserved for future flood controls
     FloodProtection { messages: u32, seconds: u32 },
     /// +s: Secret channel (hidden from LIST)
     Secret,
@@ -402,7 +405,7 @@ impl ChannelActor {
             ChannelEvent::Knock { sender_uid, sender_prefix, reply_tx } => {
                 self.handle_knock(sender_uid, sender_prefix, reply_tx).await;
             }
-            ChannelEvent::NickChange { uid, _old_nick, new_nick } => {
+            ChannelEvent::NickChange { uid, old_nick: _, new_nick } => {
                 self.handle_nick_change(uid, new_nick).await;
             }
         }
@@ -599,7 +602,9 @@ impl ChannelActor {
         }
 
         // Check +r (registered-only channel)
-        if modes.contains(&ChannelMode::Registered) && !is_registered {
+        if (modes.contains(&ChannelMode::Registered) || modes.contains(&ChannelMode::RegisteredOnly))
+            && !is_registered
+        {
             let _ = reply_tx.send(ChannelRouteResult::BlockedRegisteredOnly);
             return;
         }
@@ -612,12 +617,7 @@ impl ChannelActor {
 
         // Check +m (moderated)
         if modes.contains(&ChannelMode::Moderated) {
-            let has_voice = if let Some(mm) = self.members.get(&sender_uid) {
-                mm.voice || mm.op || mm.halfop || mm.admin || mm.owner
-            } else {
-                false
-            };
-            if !has_voice {
+            if !self.member_has_voice_or_higher(&sender_uid) {
                  let _ = reply_tx.send(ChannelRouteResult::BlockedModerated);
                  return;
             }
@@ -625,12 +625,7 @@ impl ChannelActor {
 
         // Check +T (no notice)
         if is_notice && modes.contains(&ChannelMode::NoNotice) {
-             let is_op = if let Some(mm) = self.members.get(&sender_uid) {
-                mm.op || mm.halfop || mm.admin || mm.owner
-            } else {
-                false
-            };
-            if !is_op {
+             if !self.member_has_halfop_or_higher(&sender_uid) {
                 let _ = reply_tx.send(ChannelRouteResult::BlockedNotice);
                 return;
             }
@@ -649,11 +644,7 @@ impl ChannelActor {
         }
 
         // Check bans (+b) and quiets (+q)
-        let is_op = if let Some(mm) = self.members.get(&sender_uid) {
-            mm.op || mm.halfop || mm.admin || mm.owner
-        } else {
-            false
-        };
+        let is_op = self.member_has_halfop_or_higher(&sender_uid);
 
         if !is_op {
             let user_mask = format!("{}!{}@{}", user_context.nickname, user_context.username, user_context.hostname);
@@ -733,7 +724,7 @@ impl ChannelActor {
 
         // Basic permission check
         let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
-        let has_priv = sender_modes.op || sender_modes.admin || sender_modes.owner || force;
+        let has_priv = sender_modes.has_op_or_higher() || force;
 
         for mode in modes {
             if !has_priv && !force {
@@ -746,73 +737,140 @@ impl ChannelActor {
 
             use slirc_proto::mode::ChannelMode as ProtoMode;
 
-            match mode_type {
-                ProtoMode::NoExternalMessages => {
-                    if adding { self.modes.insert(ChannelMode::NoExternal); }
-                    else { self.modes.remove(&ChannelMode::NoExternal); }
-                    applied_modes.push(mode.clone());
-                }
-                ProtoMode::ProtectedTopic => {
-                    if adding { self.modes.insert(ChannelMode::TopicLock); }
-                    else { self.modes.remove(&ChannelMode::TopicLock); }
-                    applied_modes.push(mode.clone());
-                }
-                ProtoMode::InviteOnly => {
-                    if adding { self.modes.insert(ChannelMode::InviteOnly); }
-                    else { self.modes.remove(&ChannelMode::InviteOnly); }
-                    applied_modes.push(mode.clone());
-                }
-                ProtoMode::Moderated => {
-                    if adding { self.modes.insert(ChannelMode::Moderated); }
-                    else { self.modes.remove(&ChannelMode::Moderated); }
-                    applied_modes.push(mode.clone());
-                }
-                ProtoMode::Secret => {
-                    if adding { self.modes.insert(ChannelMode::Secret); }
-                    else { self.modes.remove(&ChannelMode::Secret); }
-                    applied_modes.push(mode.clone());
-                }
+            let changed = match mode_type {
+                ProtoMode::NoExternalMessages => self.set_flag_mode(ChannelMode::NoExternal, adding),
+                ProtoMode::ProtectedTopic => self.set_flag_mode(ChannelMode::TopicLock, adding),
+                ProtoMode::InviteOnly => self.set_flag_mode(ChannelMode::InviteOnly, adding),
+                ProtoMode::Moderated => self.set_flag_mode(ChannelMode::Moderated, adding),
+                ProtoMode::Secret => self.set_flag_mode(ChannelMode::Secret, adding),
+                ProtoMode::RegisteredOnly => self.set_flag_mode(ChannelMode::RegisteredOnly, adding),
+                ProtoMode::NoColors => self.set_flag_mode(ChannelMode::NoColors, adding),
+                ProtoMode::NoCTCP => self.set_flag_mode(ChannelMode::NoCtcp, adding),
+                ProtoMode::NoNickChange => self.set_flag_mode(ChannelMode::NoNickChange, adding),
+                ProtoMode::NoKnock => self.set_flag_mode(ChannelMode::NoKnock, adding),
+                ProtoMode::NoInvite => self.set_flag_mode(ChannelMode::NoInvite, adding),
+                ProtoMode::NoChannelNotice => self.set_flag_mode(ChannelMode::NoNotice, adding),
+                ProtoMode::NoKick => self.set_flag_mode(ChannelMode::NoKicks, adding),
+                ProtoMode::Permanent => self.set_flag_mode(ChannelMode::Permanent, adding),
+                ProtoMode::OperOnly => self.set_flag_mode(ChannelMode::OperOnly, adding),
+                ProtoMode::FreeInvite => self.set_flag_mode(ChannelMode::FreeInvite, adding),
+                ProtoMode::TlsOnly => self.set_flag_mode(ChannelMode::TlsOnly, adding),
                 ProtoMode::Ban => {
                     if let Some(mask) = arg {
-                        if adding {
-                            let entry = ListEntry {
-                                mask: mask.to_string(),
-                                set_by: sender_uid.clone(),
-                                set_at: Utc::now().timestamp(),
-                            };
-                            self.bans.push(entry);
-                            applied_modes.push(mode.clone());
+                        Self::apply_list_mode(&mut self.bans, mask, adding, &sender_uid)
+                    } else {
+                        false
+                    }
+                }
+                ProtoMode::Exception => {
+                    if let Some(mask) = arg {
+                        Self::apply_list_mode(&mut self.excepts, mask, adding, &sender_uid)
+                    } else {
+                        false
+                    }
+                }
+                ProtoMode::InviteException => {
+                    if let Some(mask) = arg {
+                        Self::apply_list_mode(&mut self.invex, mask, adding, &sender_uid)
+                    } else {
+                        false
+                    }
+                }
+                ProtoMode::Quiet => {
+                    if let Some(mask) = arg {
+                        Self::apply_list_mode(&mut self.quiets, mask, adding, &sender_uid)
+                    } else {
+                        false
+                    }
+                }
+                ProtoMode::Key => {
+                    if adding {
+                        if let Some(key) = arg {
+                            self.replace_param_mode(
+                                |mode| matches!(mode, ChannelMode::Key(_)),
+                                Some(ChannelMode::Key(key.to_string())),
+                            )
                         } else {
-                            self.bans.retain(|b| b.mask != *mask);
-                            applied_modes.push(mode.clone());
+                            false
                         }
+                    } else {
+                        self.replace_param_mode(|mode| matches!(mode, ChannelMode::Key(_)), None)
+                    }
+                }
+                ProtoMode::Limit => {
+                    if adding {
+                        if let Some(limit) = arg.and_then(|a| a.parse::<usize>().ok()) {
+                            self.replace_param_mode(
+                                |mode| matches!(mode, ChannelMode::Limit(_)),
+                                Some(ChannelMode::Limit(limit)),
+                            )
+                        } else {
+                            false
+                        }
+                    } else {
+                        self.replace_param_mode(|mode| matches!(mode, ChannelMode::Limit(_)), None)
+                    }
+                }
+                ProtoMode::Founder => {
+                    if let Some(nick) = arg {
+                        if let Some(target_uid) = target_uids.get(nick) {
+                            self.update_member_mode(target_uid, |m| m.owner = adding)
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                }
+                ProtoMode::Admin => {
+                    if let Some(nick) = arg {
+                        if let Some(target_uid) = target_uids.get(nick) {
+                            self.update_member_mode(target_uid, |m| m.admin = adding)
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
                     }
                 }
                 ProtoMode::Oper => {
                     if let Some(nick) = arg {
                         if let Some(target_uid) = target_uids.get(nick) {
-                            if let Some(member) = self.members.get(target_uid) {
-                                let mut new_member = member.clone();
-                                new_member.op = adding;
-                                self.members.insert(target_uid.clone(), new_member);
-                                applied_modes.push(mode.clone());
-                            }
+                            self.update_member_mode(target_uid, |m| m.op = adding)
+                        } else {
+                            false
                         }
+                    } else {
+                        false
+                    }
+                }
+                ProtoMode::Halfop => {
+                    if let Some(nick) = arg {
+                        if let Some(target_uid) = target_uids.get(nick) {
+                            self.update_member_mode(target_uid, |m| m.halfop = adding)
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
                     }
                 }
                 ProtoMode::Voice => {
                     if let Some(nick) = arg {
                         if let Some(target_uid) = target_uids.get(nick) {
-                            if let Some(member) = self.members.get(target_uid) {
-                                let mut new_member = member.clone();
-                                new_member.voice = adding;
-                                self.members.insert(target_uid.clone(), new_member);
-                                applied_modes.push(mode.clone());
-                            }
+                            self.update_member_mode(target_uid, |m| m.voice = adding)
+                        } else {
+                            false
                         }
+                    } else {
+                        false
                     }
                 }
-                _ => {}
+                _ => false,
+            };
+
+            if changed {
+                applied_modes.push(mode.clone());
             }
         }
 
@@ -1001,6 +1059,84 @@ impl ChannelActor {
         if self.user_nicks.contains_key(&uid) {
             self.user_nicks.insert(uid, new_nick);
         }
+    }
+
+    fn member_has_voice_or_higher(&self, uid: &Uid) -> bool {
+        self.members
+            .get(uid)
+            .map(|m| m.has_voice_or_higher())
+            .unwrap_or(false)
+    }
+
+    fn member_has_halfop_or_higher(&self, uid: &Uid) -> bool {
+        self.members
+            .get(uid)
+            .map(|m| m.has_halfop_or_higher())
+            .unwrap_or(false)
+    }
+
+    fn set_flag_mode(&mut self, flag: ChannelMode, adding: bool) -> bool {
+        if adding {
+            self.modes.insert(flag)
+        } else {
+            self.modes.remove(&flag)
+        }
+    }
+
+    fn replace_param_mode<F>(&mut self, predicate: F, new_mode: Option<ChannelMode>) -> bool
+    where
+        F: Fn(&ChannelMode) -> bool,
+    {
+        let mut changed = false;
+        self.modes.retain(|mode| {
+            let remove = predicate(mode);
+            if remove {
+                changed = true;
+            }
+            !remove
+        });
+
+        if let Some(mode) = new_mode {
+            changed |= self.modes.insert(mode);
+        }
+
+        changed
+    }
+
+    fn apply_list_mode(list: &mut Vec<ListEntry>, mask: &str, adding: bool, set_by: &Uid) -> bool {
+        if adding {
+            if list.iter().any(|entry| entry.mask == mask) {
+                return false;
+            }
+
+            list.push(ListEntry {
+                mask: mask.to_string(),
+                set_by: set_by.clone(),
+                set_at: Utc::now().timestamp(),
+            });
+            true
+        } else {
+            let original_len = list.len();
+            list.retain(|entry| entry.mask != mask);
+            original_len != list.len()
+        }
+    }
+
+    fn update_member_mode<F>(&mut self, target_uid: &Uid, mut update: F) -> bool
+    where
+        F: FnMut(&mut MemberModes),
+    {
+        if let Some(member) = self.members.get(target_uid).cloned() {
+            let mut updated = member.clone();
+            update(&mut updated);
+
+            if updated != member {
+                self.members.insert(target_uid.clone(), updated);
+                return true;
+            }
+        }
+
+        false
     }
 }
 
