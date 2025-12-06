@@ -10,10 +10,8 @@ name = "slircd"
 path = "src/main.rs"
 
 [dependencies]
-# Protocol core
-slirc-proto = { git = "https://github.com/sid3xyz/slirc-proto", features = [
-    "tokio",
-] }
+# Protocol core (use path for workspace dev, git for standalone builds)
+slirc-proto = { path = "../slirc-proto", features = ["tokio"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
