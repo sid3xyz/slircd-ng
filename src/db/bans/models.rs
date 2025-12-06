@@ -1,5 +1,8 @@
 //! Ban entry models and data structures.
 
+use super::queries::generic::BanType;
+use slirc_proto::wildcard_match;
+
 /// A K-line (user@host ban).
 #[derive(Debug, Clone)]
 pub struct Kline {
@@ -134,4 +137,212 @@ pub(super) fn cidr_match(cidr: &str, ip: &str) -> bool {
     };
 
     (network_u32 & mask) == (ip_u32 & mask)
+}
+
+// ============================================================================
+// BanType trait implementations
+// ============================================================================
+
+impl BanType for Kline {
+    fn table_name() -> &'static str {
+        "klines"
+    }
+
+    fn from_row(
+        mask: String,
+        reason: Option<String>,
+        set_by: String,
+        set_at: i64,
+        expires_at: Option<i64>,
+    ) -> Self {
+        Self {
+            mask,
+            reason,
+            set_by,
+            set_at,
+            expires_at,
+        }
+    }
+
+    fn mask(&self) -> &str {
+        &self.mask
+    }
+
+    fn expires_at(&self) -> Option<i64> {
+        self.expires_at
+    }
+
+    fn matches(&self, user_host: &str) -> bool {
+        wildcard_match(&self.mask, user_host)
+    }
+}
+
+impl BanType for Dline {
+    fn table_name() -> &'static str {
+        "dlines"
+    }
+
+    fn from_row(
+        mask: String,
+        reason: Option<String>,
+        set_by: String,
+        set_at: i64,
+        expires_at: Option<i64>,
+    ) -> Self {
+        Self {
+            mask,
+            reason,
+            set_by,
+            set_at,
+            expires_at,
+        }
+    }
+
+    fn mask(&self) -> &str {
+        &self.mask
+    }
+
+    fn expires_at(&self) -> Option<i64> {
+        self.expires_at
+    }
+
+    fn matches(&self, ip: &str) -> bool {
+        wildcard_match(&self.mask, ip) || cidr_match(&self.mask, ip)
+    }
+}
+
+impl BanType for Gline {
+    fn table_name() -> &'static str {
+        "glines"
+    }
+
+    fn from_row(
+        mask: String,
+        reason: Option<String>,
+        set_by: String,
+        set_at: i64,
+        expires_at: Option<i64>,
+    ) -> Self {
+        Self {
+            mask,
+            reason,
+            set_by,
+            set_at,
+            expires_at,
+        }
+    }
+
+    fn mask(&self) -> &str {
+        &self.mask
+    }
+
+    fn expires_at(&self) -> Option<i64> {
+        self.expires_at
+    }
+
+    fn matches(&self, user_host: &str) -> bool {
+        wildcard_match(&self.mask, user_host)
+    }
+}
+
+impl BanType for Zline {
+    fn table_name() -> &'static str {
+        "zlines"
+    }
+
+    fn from_row(
+        mask: String,
+        reason: Option<String>,
+        set_by: String,
+        set_at: i64,
+        expires_at: Option<i64>,
+    ) -> Self {
+        Self {
+            mask,
+            reason,
+            set_by,
+            set_at,
+            expires_at,
+        }
+    }
+
+    fn mask(&self) -> &str {
+        &self.mask
+    }
+
+    fn expires_at(&self) -> Option<i64> {
+        self.expires_at
+    }
+
+    fn matches(&self, ip: &str) -> bool {
+        wildcard_match(&self.mask, ip) || cidr_match(&self.mask, ip)
+    }
+}
+
+impl BanType for Rline {
+    fn table_name() -> &'static str {
+        "rlines"
+    }
+
+    fn from_row(
+        mask: String,
+        reason: Option<String>,
+        set_by: String,
+        set_at: i64,
+        expires_at: Option<i64>,
+    ) -> Self {
+        Self {
+            mask,
+            reason,
+            set_by,
+            set_at,
+            expires_at,
+        }
+    }
+
+    fn mask(&self) -> &str {
+        &self.mask
+    }
+
+    fn expires_at(&self) -> Option<i64> {
+        self.expires_at
+    }
+
+    fn matches(&self, realname: &str) -> bool {
+        wildcard_match(&self.mask, realname)
+    }
+}
+
+impl BanType for Shun {
+    fn table_name() -> &'static str {
+        "shuns"
+    }
+
+    fn from_row(
+        mask: String,
+        reason: Option<String>,
+        set_by: String,
+        set_at: i64,
+        expires_at: Option<i64>,
+    ) -> Self {
+        Self {
+            mask,
+            reason,
+            set_by,
+            set_at,
+            expires_at,
+        }
+    }
+
+    fn mask(&self) -> &str {
+        &self.mask
+    }
+
+    fn expires_at(&self) -> Option<i64> {
+        self.expires_at
+    }
+
+    fn matches(&self, user_host: &str) -> bool {
+        wildcard_match(&self.mask, user_host)
+    }
 }
