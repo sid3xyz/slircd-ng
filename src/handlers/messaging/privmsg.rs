@@ -83,25 +83,25 @@ impl Handler for PrivmsgHandler {
         if let Some(detector) = &ctx.matrix.spam_detector
             && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
                 detector.check_message_repetition(&uid_string, text)
-            {
-                debug!(uid = %uid_string, pattern = %pattern, "Message blocked by spam detector");
-                let nick = ctx
-                    .handshake
-                    .nick
-                    .as_ref()
-                    .ok_or(HandlerError::NickOrUserMissing)?;
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_TOOMANYTARGETS,
-                    vec![
-                        nick.to_string(),
-                        target.to_string(),
-                        "Message blocked: repetition detected.".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
-                return Ok(());
-            }
+        {
+            debug!(uid = %uid_string, pattern = %pattern, "Message blocked by spam detector");
+            let nick = ctx
+                .handshake
+                .nick
+                .as_ref()
+                .ok_or(HandlerError::NickOrUserMissing)?;
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_TOOMANYTARGETS,
+                vec![
+                    nick.to_string(),
+                    target.to_string(),
+                    "Message blocked: repetition detected.".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
 
         // Check for content spam (skip for trusted users)
         let is_trusted = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
@@ -113,27 +113,27 @@ impl Handler for PrivmsgHandler {
 
         if !is_trusted
             && let Some(detector) = &ctx.matrix.spam_detector
-                && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
-                    detector.check_message(text)
-                {
-                    debug!(uid = %uid_string, pattern = %pattern, "Message blocked by spam detector");
-                    let nick = ctx
-                        .handshake
-                        .nick
-                        .as_ref()
-                        .ok_or(HandlerError::NickOrUserMissing)?;
-                    let reply = server_reply(
-                        &ctx.matrix.server_info.name,
-                        Response::ERR_TOOMANYTARGETS,
-                        vec![
-                            nick.to_string(),
-                            target.to_string(),
-                            "Message blocked: spam detected.".to_string(),
-                        ],
-                    );
-                    ctx.sender.send(reply).await?;
-                    return Ok(());
-                }
+            && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
+                detector.check_message(text)
+        {
+            debug!(uid = %uid_string, pattern = %pattern, "Message blocked by spam detector");
+            let nick = ctx
+                .handshake
+                .nick
+                .as_ref()
+                .ok_or(HandlerError::NickOrUserMissing)?;
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_TOOMANYTARGETS,
+                vec![
+                    nick.to_string(),
+                    target.to_string(),
+                    "Message blocked: spam detected.".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
 
         // Rate-limit CTCP messages separately to curb floods.
         if slirc_proto::ctcp::Ctcp::is_ctcp(text)
@@ -213,7 +213,6 @@ impl Handler for PrivmsgHandler {
 
         if routing_target.is_channel_name() {
             let channel_lower = irc_to_lower(routing_target);
-
 
             // If STATUSMSG, route to specific member subset
             if let Some(prefix_char) = status_prefix {

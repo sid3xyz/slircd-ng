@@ -2,10 +2,10 @@ use super::super::{
     Context, Handler, HandlerResult, err_needmoreparams, get_nick_or_star, matches_hostmask,
     server_reply,
 };
+use crate::state::actor::validation::format_user_mask;
 use async_trait::async_trait;
 use slirc_proto::mode::{Mode, UserMode};
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
-use crate::state::actor::validation::format_user_mask;
 
 /// Handler for OPER command.
 ///

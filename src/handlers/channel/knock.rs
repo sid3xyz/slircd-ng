@@ -94,8 +94,8 @@ impl Handler for KnockHandler {
             reply_tx,
         };
 
-           if (channel_tx.send(event).await).is_err() {
-             return Ok(());
+        if (channel_tx.send(event).await).is_err() {
+            return Ok(());
         }
 
         match reply_rx.await {

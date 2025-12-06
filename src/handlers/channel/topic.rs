@@ -44,14 +44,14 @@ impl Handler for TopicHandler {
 
         // Check if user is in channel
         let user_in_channel = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
-             let user = user.read().await;
-             user.channels.contains(&channel_lower)
+            let user = user.read().await;
+            user.channels.contains(&channel_lower)
         } else {
-             false
+            false
         };
 
         if !user_in_channel {
-             ctx.sender
+            ctx.sender
                 .send(err_notonchannel(
                     &ctx.matrix.server_info.name,
                     nick,
@@ -65,10 +65,13 @@ impl Handler for TopicHandler {
             None => {
                 // Query topic
                 let (reply_tx, reply_rx) = oneshot::channel();
-                let event = ChannelEvent::GetInfo { requester_uid: Some(ctx.uid.to_string()), reply_tx };
+                let event = ChannelEvent::GetInfo {
+                    requester_uid: Some(ctx.uid.to_string()),
+                    reply_tx,
+                };
 
-                 if (channel_tx.send(event).await).is_err() {
-                     return Ok(());
+                if (channel_tx.send(event).await).is_err() {
+                    return Ok(());
                 }
 
                 if let Ok(info) = reply_rx.await {
@@ -97,11 +100,7 @@ impl Handler for TopicHandler {
                             let reply = server_reply(
                                 &ctx.matrix.server_info.name,
                                 Response::RPL_NOTOPIC,
-                                vec![
-                                    nick.to_string(),
-                                    info.name,
-                                    "No topic is set".to_string(),
-                                ],
+                                vec![nick.to_string(), info.name, "No topic is set".to_string()],
                             );
                             ctx.sender.send(reply).await?;
                         }
@@ -124,8 +123,8 @@ impl Handler for TopicHandler {
                     reply_tx,
                 };
 
-                 if (channel_tx.send(event).await).is_err() {
-                     return Ok(());
+                if (channel_tx.send(event).await).is_err() {
+                    return Ok(());
                 }
 
                 match reply_rx.await {
@@ -134,7 +133,7 @@ impl Handler for TopicHandler {
                     }
                     Ok(Err(err_code)) => {
                         if err_code == "ERR_CHANOPRIVSNEEDED" {
-                             let reply = err_chanoprivsneeded(
+                            let reply = err_chanoprivsneeded(
                                 &ctx.matrix.server_info.name,
                                 &nick,
                                 channel_name,

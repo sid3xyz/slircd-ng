@@ -288,10 +288,12 @@ impl Matrix {
         exclude: Option<&str>,
     ) {
         if let Some(sender) = self.channels.get(channel_name) {
-            let _ = sender.send(ChannelEvent::Broadcast {
-                message: msg,
-                exclude: exclude.map(|s| s.to_string()),
-            }).await;
+            let _ = sender
+                .send(ChannelEvent::Broadcast {
+                    message: msg,
+                    exclude: exclude.map(|s| s.to_string()),
+                })
+                .await;
         }
     }
 
@@ -333,12 +335,14 @@ impl Matrix {
         fallback_msg: Option<Message>,
     ) -> usize {
         if let Some(sender) = self.channels.get(channel_name) {
-            let _ = sender.send(ChannelEvent::BroadcastWithCap {
-                message: Box::new(msg),
-                exclude: exclude.iter().map(|s| s.to_string()).collect(),
-                required_cap: required_cap.map(|s| s.to_string()),
-                fallback_msg: fallback_msg.map(Box::new),
-            }).await;
+            let _ = sender
+                .send(ChannelEvent::BroadcastWithCap {
+                    message: Box::new(msg),
+                    exclude: exclude.iter().map(|s| s.to_string()).collect(),
+                    required_cap: required_cap.map(|s| s.to_string()),
+                    fallback_msg: fallback_msg.map(Box::new),
+                })
+                .await;
         }
         0
     }
@@ -387,17 +391,20 @@ impl Matrix {
         for channel_name in &user_channels {
             if let Some(sender) = self.channels.get(channel_name) {
                 let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = sender.send(ChannelEvent::Quit {
-                    uid: target_uid.to_string(),
-                    quit_msg: quit_msg.clone(),
-                    reply_tx: Some(tx),
-                }).await;
+                let _ = sender
+                    .send(ChannelEvent::Quit {
+                        uid: target_uid.to_string(),
+                        quit_msg: quit_msg.clone(),
+                        reply_tx: Some(tx),
+                    })
+                    .await;
 
                 if let Ok(remaining) = rx.await
-                    && remaining == 0 {
-                        self.channels.remove(channel_name);
-                        crate::metrics::ACTIVE_CHANNELS.dec();
-                    }
+                    && remaining == 0
+                {
+                    self.channels.remove(channel_name);
+                    crate::metrics::ACTIVE_CHANNELS.dec();
+                }
             }
         }
 

@@ -43,10 +43,12 @@ impl Handler for NamesHandler {
             for channel_arc in ctx.matrix.channels.iter() {
                 let sender = channel_arc.value();
                 let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = sender.send(crate::state::actor::ChannelEvent::GetInfo {
-                    requester_uid: Some(ctx.uid.to_string()),
-                    reply_tx: tx
-                }).await;
+                let _ = sender
+                    .send(crate::state::actor::ChannelEvent::GetInfo {
+                        requester_uid: Some(ctx.uid.to_string()),
+                        reply_tx: tx,
+                    })
+                    .await;
 
                 let channel_info = match rx.await {
                     Ok(info) => info,
@@ -54,12 +56,18 @@ impl Handler for NamesHandler {
                 };
 
                 // Skip secret channels unless user is a member
-                if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel_info.is_member {
+                if channel_info
+                    .modes
+                    .contains(&crate::state::actor::ChannelMode::Secret)
+                    && !channel_info.is_member
+                {
                     continue;
                 }
 
                 let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = sender.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await;
+                let _ = sender
+                    .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
+                    .await;
                 let members = match rx.await {
                     Ok(m) => m,
                     Err(_) => continue,
@@ -74,7 +82,14 @@ impl Handler for NamesHandler {
                     }
                 }
 
-                let channel_symbol = if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) { "@" } else { "=" };
+                let channel_symbol = if channel_info
+                    .modes
+                    .contains(&crate::state::actor::ChannelMode::Secret)
+                {
+                    "@"
+                } else {
+                    "="
+                };
 
                 let names_reply = server_reply(
                     &ctx.matrix.server_info.name,
@@ -106,10 +121,12 @@ impl Handler for NamesHandler {
 
         if let Some(channel_sender) = ctx.matrix.channels.get(&channel_lower) {
             let (tx, rx) = tokio::sync::oneshot::channel();
-            let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetInfo {
-                requester_uid: Some(ctx.uid.to_string()),
-                reply_tx: tx
-            }).await;
+            let _ = channel_sender
+                .send(crate::state::actor::ChannelEvent::GetInfo {
+                    requester_uid: Some(ctx.uid.to_string()),
+                    reply_tx: tx,
+                })
+                .await;
 
             let channel_info = match rx.await {
                 Ok(info) => info,
@@ -117,7 +134,11 @@ impl Handler for NamesHandler {
             };
 
             // If channel is secret and user is not a member, treat as if it doesn't exist
-            if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel_info.is_member {
+            if channel_info
+                .modes
+                .contains(&crate::state::actor::ChannelMode::Secret)
+                && !channel_info.is_member
+            {
                 let end_names = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::RPL_ENDOFNAMES,
@@ -132,7 +153,9 @@ impl Handler for NamesHandler {
             }
 
             let (tx, rx) = tokio::sync::oneshot::channel();
-            let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await;
+            let _ = channel_sender
+                .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
+                .await;
             let members = match rx.await {
                 Ok(m) => m,
                 Err(_) => return Ok(()),
@@ -152,7 +175,14 @@ impl Handler for NamesHandler {
             // @ = secret (+s)
             // * = private (not used, some IRCds treat +p this way)
             // = = public (default)
-            let channel_symbol = if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) { "@" } else { "=" };
+            let channel_symbol = if channel_info
+                .modes
+                .contains(&crate::state::actor::ChannelMode::Secret)
+            {
+                "@"
+            } else {
+                "="
+            };
 
             let names_reply = server_reply(
                 &ctx.matrix.server_info.name,

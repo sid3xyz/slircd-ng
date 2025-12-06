@@ -1,13 +1,5 @@
 //! Channel-related types and state.
 
-
-
-
-
-
-
-
-
 /// An entry in a list (bans, excepts, invex).
 #[derive(Debug, Clone)]
 pub struct ListEntry {
@@ -111,5 +103,3 @@ impl MemberModes {
         self.owner || self.admin || self.op || self.halfop
     }
 }
-
-

@@ -59,8 +59,7 @@ impl Handler for RegisterHandler {
         let email_arg = msg.arg(1);
         let password_arg = msg.arg(2);
 
-        let (Some(account), Some(email), Some(password)) =
-            (account_arg, email_arg, password_arg)
+        let (Some(account), Some(email), Some(password)) = (account_arg, email_arg, password_arg)
         else {
             let reply = fail_response(
                 server_name,

@@ -1,12 +1,11 @@
 //! PART command handler.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, server_reply,
-    user_mask_from_state,
+    Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state,
 };
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, irc_to_lower, Prefix};
+use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::info;
 
@@ -69,11 +68,7 @@ pub(super) async fn leave_channel_internal(
         }
     };
 
-    let prefix = Prefix::Nickname(
-        nick.to_string(),
-        user_name.to_string(),
-        host.to_string(),
-    );
+    let prefix = Prefix::Nickname(nick.to_string(), user_name.to_string(), host.to_string());
 
     let (reply_tx, reply_rx) = oneshot::channel();
     let event = ChannelEvent::Part {
@@ -99,27 +94,23 @@ pub(super) async fn leave_channel_internal(
             }
 
             if remaining_members == 0 {
-                 ctx.matrix.channels.remove(channel_lower);
-                 crate::metrics::ACTIVE_CHANNELS.dec();
+                ctx.matrix.channels.remove(channel_lower);
+                crate::metrics::ACTIVE_CHANNELS.dec();
             }
 
             info!(nick = %nick, channel = %channel_lower, "User left channel");
         }
         Ok(Err(e)) => {
-             let reply = server_reply(
+            let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_NOTONCHANNEL,
-                vec![
-                    nick.to_string(),
-                    channel_lower.to_string(),
-                    e,
-                ],
+                vec![nick.to_string(), channel_lower.to_string(), e],
             );
             ctx.sender.send(reply).await?;
         }
         Err(_) => {
-             // Actor dropped
-             ctx.matrix.channels.remove(channel_lower);
+            // Actor dropped
+            ctx.matrix.channels.remove(channel_lower);
         }
     }
 

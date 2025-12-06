@@ -104,7 +104,7 @@ pub async fn route_to_channel(
         (context, false)
     };
 
-        // Extract text and tags from message
+    // Extract text and tags from message
     let (text, tags) = match &msg.command {
         Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => (text.clone(), msg.tags.clone()),
         _ => return ChannelRouteResult::Sent, // Should not happen
@@ -136,8 +136,6 @@ pub async fn route_to_channel(
     }
 }
 
-
-
 /// Route a message to a user target, optionally sending RPL_AWAY.
 ///
 /// Returns true if the user was found and message sent, false otherwise.
@@ -157,30 +155,26 @@ pub async fn route_to_user(
         && let Some(text) = match &msg.command {
             Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
             _ => None,
-        } {
-            // Check trust level
-            let is_trusted = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                user.modes.oper || user.account.is_some()
-            } else {
-                false
-            };
-
-            if !is_trusted
-                && let SpamVerdict::Spam { pattern, .. } = detector.check_message(text) {
-                    if !opts.is_notice {
-                        let _ = send_cannot_send(
-                            ctx,
-                            sender_nick,
-                            target_lower,
-                            "Message rejected as spam",
-                        )
-                        .await;
-                    }
-                    debug!(pattern = %pattern, "Direct message blocked as spam");
-                    return false;
-                }
         }
+    {
+        // Check trust level
+        let is_trusted = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+            let user = user_ref.read().await;
+            user.modes.oper || user.account.is_some()
+        } else {
+            false
+        };
+
+        if !is_trusted && let SpamVerdict::Spam { pattern, .. } = detector.check_message(text) {
+            if !opts.is_notice {
+                let _ =
+                    send_cannot_send(ctx, sender_nick, target_lower, "Message rejected as spam")
+                        .await;
+            }
+            debug!(pattern = %pattern, "Direct message blocked as spam");
+            return false;
+        }
+    }
 
     // Check away status and notify sender if requested
     if opts.send_away_reply

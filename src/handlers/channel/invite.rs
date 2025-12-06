@@ -79,10 +79,10 @@ impl Handler for InviteHandler {
         if let Some(channel_tx) = ctx.matrix.channels.get(&channel_lower) {
             // Check if user is on channel
             let user_in_channel = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
-                 let user = user.read().await;
-                 user.channels.contains(&channel_lower)
+                let user = user.read().await;
+                user.channels.contains(&channel_lower)
             } else {
-                 false
+                false
             };
 
             if !user_in_channel {
@@ -107,8 +107,8 @@ impl Handler for InviteHandler {
                 reply_tx,
             };
 
-              if (channel_tx.send(event).await).is_err() {
-                 return Ok(());
+            if (channel_tx.send(event).await).is_err() {
+                return Ok(());
             }
 
             match reply_rx.await {
@@ -134,17 +134,19 @@ impl Handler for InviteHandler {
                     let reply = server_reply(
                         server_name,
                         Response::RPL_INVITING,
-                        vec![nick.clone(), target_nick.to_string(), channel_name.to_string()],
+                        vec![
+                            nick.clone(),
+                            target_nick.to_string(),
+                            channel_name.to_string(),
+                        ],
                     );
                     ctx.sender.send(reply).await?;
                 }
                 Ok(Err(err_code)) => {
                     let reply = match err_code.as_str() {
-                        "ERR_CHANOPRIVSNEEDED" => err_chanoprivsneeded(
-                            server_name,
-                            &nick,
-                            channel_name,
-                        ),
+                        "ERR_CHANOPRIVSNEEDED" => {
+                            err_chanoprivsneeded(server_name, &nick, channel_name)
+                        }
                         "ERR_USERONCHANNEL" => server_reply(
                             server_name,
                             Response::ERR_USERONCHANNEL,

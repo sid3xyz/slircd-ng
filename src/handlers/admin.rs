@@ -7,9 +7,9 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    Context, Handler, HandlerResult, TargetUser, err_needmoreparams,
-    err_nosuchchannel, err_nosuchnick, force_join_channel, force_part_channel,
-    format_modes_for_log, require_oper, resolve_nick_to_uid, server_notice, server_reply,
+    Context, Handler, HandlerResult, TargetUser, err_needmoreparams, err_nosuchchannel,
+    err_nosuchnick, force_join_channel, force_part_channel, format_modes_for_log, require_oper,
+    resolve_nick_to_uid, server_notice, server_reply,
 };
 use crate::state::MemberModes;
 use async_trait::async_trait;
@@ -422,21 +422,31 @@ impl Handler for SamodeHandler {
 
         // Apply modes to channel state
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        if (channel.send(crate::state::actor::ChannelEvent::ApplyModes {
-            sender_uid: ctx.uid.to_string(),
-            sender_prefix: slirc_proto::Prefix::ServerName(server_name.clone()),
-            modes: typed_modes,
-            target_uids,
-            force: true,
-            reply_tx,
-        }).await).is_err() {
-             return Ok(()); // Channel died
+        if (channel
+            .send(crate::state::actor::ChannelEvent::ApplyModes {
+                sender_uid: ctx.uid.to_string(),
+                sender_prefix: slirc_proto::Prefix::ServerName(server_name.clone()),
+                modes: typed_modes,
+                target_uids,
+                force: true,
+                reply_tx,
+            })
+            .await)
+            .is_err()
+        {
+            return Ok(()); // Channel died
         }
 
         let applied_modes = match reply_rx.await {
             Ok(Ok(m)) => m,
             Ok(Err(e)) => {
-                ctx.sender.send(server_notice(server_name, &oper_nick, format!("SAMODE error: {e}"))).await?;
+                ctx.sender
+                    .send(server_notice(
+                        server_name,
+                        &oper_nick,
+                        format!("SAMODE error: {e}"),
+                    ))
+                    .await?;
                 return Ok(());
             }
             Err(_) => return Ok(()),

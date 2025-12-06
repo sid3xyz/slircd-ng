@@ -46,7 +46,12 @@ impl ChanServ {
         let channel_lower = irc_to_lower(channel_name);
         let is_op = if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
             let (tx, rx) = tokio::sync::oneshot::channel();
-            let _ = channel_ref.send(crate::state::actor::ChannelEvent::GetMemberModes { uid: uid.to_string(), reply_tx: tx }).await;
+            let _ = channel_ref
+                .send(crate::state::actor::ChannelEvent::GetMemberModes {
+                    uid: uid.to_string(),
+                    reply_tx: tx,
+                })
+                .await;
             if let Ok(Some(modes)) = rx.await {
                 modes.op
             } else {

@@ -63,11 +63,7 @@ pub fn matches_hostmask(pattern: &str, user_mask: &str) -> bool {
 /// * `mask` - The ban mask (either nick!user@host or $type:pattern)
 /// * `user_mask` - The user's full hostmask (nick!user@host)
 /// * `user_context` - Full user context for extended ban matching
-pub fn matches_ban_or_except(
-    mask: &str,
-    user_mask: &str,
-    user_context: &UserContext,
-) -> bool {
+pub fn matches_ban_or_except(mask: &str, user_mask: &str, user_context: &UserContext) -> bool {
     if mask.starts_with('$') {
         // Extended ban format ($a:account, $r:realname, etc.)
         if let Some(extban) = ExtendedBan::parse(mask) {

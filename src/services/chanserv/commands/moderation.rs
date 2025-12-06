@@ -96,7 +96,9 @@ impl ChanServ {
         let users_to_kick: Vec<String> = {
             if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
                 let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = channel_ref.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await;
+                let _ = channel_ref
+                    .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
+                    .await;
                 if let Ok(members) = rx.await {
                     members
                         .iter()

@@ -1,4 +1,4 @@
-use crate::security::{matches_ban_or_except, UserContext};
+use crate::security::{UserContext, matches_ban_or_except};
 use crate::state::ListEntry;
 
 /// Create IRC user mask (nick!user@host).

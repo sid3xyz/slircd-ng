@@ -84,28 +84,33 @@ impl Handler for NickHandler {
             for channel_lower in &user.channels {
                 if let Some(channel_sender) = ctx.matrix.channels.get(channel_lower) {
                     let (tx, rx) = tokio::sync::oneshot::channel();
-                    let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetInfo {
-                        requester_uid: Some(ctx.uid.to_string()),
-                        reply_tx: tx
-                    }).await;
+                    let _ = channel_sender
+                        .send(crate::state::actor::ChannelEvent::GetInfo {
+                            requester_uid: Some(ctx.uid.to_string()),
+                            reply_tx: tx,
+                        })
+                        .await;
 
                     if let Ok(info) = rx.await
-                        && info.modes.contains(&crate::state::actor::ChannelMode::NoNickChange) {
-                            let reply = server_reply(
-                                &ctx.matrix.server_info.name,
-                                Response::ERR_NONICKCHANGE,
-                                vec![
-                                    ctx.handshake
-                                        .nick
-                                        .clone()
-                                        .unwrap_or_else(|| "*".to_string()),
-                                    info.name.clone(),
-                                    "Cannot change nickname while in this channel (+N)".to_string(),
-                                ],
-                            );
-                            ctx.sender.send(reply).await?;
-                            return Ok(());
-                        }
+                        && info
+                            .modes
+                            .contains(&crate::state::actor::ChannelMode::NoNickChange)
+                    {
+                        let reply = server_reply(
+                            &ctx.matrix.server_info.name,
+                            Response::ERR_NONICKCHANGE,
+                            vec![
+                                ctx.handshake
+                                    .nick
+                                    .clone()
+                                    .unwrap_or_else(|| "*".to_string()),
+                                info.name.clone(),
+                                "Cannot change nickname while in this channel (+N)".to_string(),
+                            ],
+                        );
+                        ctx.sender.send(reply).await?;
+                        return Ok(());
+                    }
                 }
             }
         }
@@ -191,11 +196,13 @@ impl Handler for NickHandler {
 
                 // Update the channel actor's user_nicks map
                 if let Some(channel_sender) = ctx.matrix.channels.get(channel_lower) {
-                    let _ = channel_sender.send(crate::state::actor::ChannelEvent::NickChange {
-                        uid: ctx.uid.to_string(),
-                        old_nick: old_nick.clone(),
-                        new_nick: nick.to_string(),
-                    }).await;
+                    let _ = channel_sender
+                        .send(crate::state::actor::ChannelEvent::NickChange {
+                            uid: ctx.uid.to_string(),
+                            old_nick: old_nick.clone(),
+                            new_nick: nick.to_string(),
+                        })
+                        .await;
                 }
             }
 
