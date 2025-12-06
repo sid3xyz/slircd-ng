@@ -8,6 +8,17 @@
 //! Handlers receive `MessageRef<'_>` which borrows directly from the transport
 //! buffer, avoiding allocations in the hot loop. Use `msg.arg(n)` to access
 //! arguments as `&str` slices.
+//!
+//! ## Typestate Handler System (Innovation 1)
+//!
+//! The handler system is being migrated to use compile-time state enforcement:
+//!
+//! - [`PreRegHandler`]: Commands valid before registration (NICK, USER, CAP, etc.)
+//! - [`PostRegHandler`]: Commands requiring registration (PRIVMSG, JOIN, etc.)
+//! - [`UniversalHandler`]: Commands valid in any state (QUIT, PING, PONG)
+//!
+//! This eliminates runtime `if !registered` checks by making invalid dispatch
+//! a compile-time error. See [`core::traits`] for details.
 
 mod account;
 mod admin;
@@ -33,6 +44,13 @@ pub use core::{
     Context, Handler, HandlerError, HandlerResult, HandshakeState, Registry, ResponseMiddleware,
     get_nick_or_star, get_oper_info, is_user_in_channel, require_oper, require_registered,
     resolve_nick_to_uid, user_mask_from_state,
+};
+
+// Re-export typestate handler traits (Innovation 1)
+// Will be used in Phase 2+ of handler migration
+#[allow(unused_imports)]
+pub use core::{
+    HandlerPhase, PostRegHandler, PreRegHandler, UniversalHandler, command_phase,
 };
 
 // Re-export helper functions for use by handlers
