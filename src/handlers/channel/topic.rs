@@ -2,7 +2,7 @@
 
 use super::super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
-    require_registered, server_reply, user_mask_from_state,
+    is_user_in_channel, require_registered, server_reply, user_mask_from_state,
 };
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -43,14 +43,7 @@ impl Handler for TopicHandler {
         };
 
         // Check if user is in channel
-        let user_in_channel = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
-            let user = user.read().await;
-            user.channels.contains(&channel_lower)
-        } else {
-            false
-        };
-
-        if !user_in_channel {
+        if !is_user_in_channel(ctx, ctx.uid, &channel_lower).await {
             ctx.sender
                 .send(err_notonchannel(
                     &ctx.matrix.server_info.name,

@@ -268,3 +268,16 @@ pub async fn require_oper(ctx: &mut Context<'_>) -> Result<String, ()> {
 
     Ok(nick)
 }
+
+/// Check if a user is in a specific channel.
+///
+/// Returns true if the user (identified by uid) is a member of the channel.
+pub async fn is_user_in_channel(ctx: &Context<'_>, uid: &str, channel_lower: &str) -> bool {
+    if let Some(user_ref) = ctx.matrix.users.get(uid) {
+        let user = user_ref.read().await;
+        user.channels.contains(channel_lower)
+    } else {
+        false
+    }
+}
+

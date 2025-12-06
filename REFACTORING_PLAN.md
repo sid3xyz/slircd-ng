@@ -421,7 +421,7 @@ Multiple handlers perform similar checks:
 | Ban queries            | `src/db/bans/queries/`    | ✅ 196 lines eliminated (Priority 5a - commit 8bf1dda) |
 | Message validation     | `src/handlers/messaging/` | ✅ 140 lines eliminated (Priority 5b - commit 59be059) |
 | Service infrastructure | `src/services/`           | ✅ 37 lines eliminated (Priority 5c - commit 68d4c93)  |
-| Response building      | `src/handlers/`           | ✅ 36 lines eliminated (item 9 - commit 2778394)      |
+| Response building      | `src/handlers/`           | ✅ 36 lines eliminated (item 9 - commit 2778394)       |
 | **Total eliminated**   |                           | **409 lines**                                         |
 
 ---
