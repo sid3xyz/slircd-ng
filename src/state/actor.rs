@@ -463,7 +463,7 @@ impl ChannelActor {
         for mode in &self.modes {
             if let ChannelMode::Limit(limit) = mode
                 && self.members.len() >= *limit {
-                    let _ = reply_tx.send(Err("Cannot join channel (+l)".to_string()));
+                    let _ = reply_tx.send(Err("ERR_CHANNELISFULL".to_string()));
                     return;
                 }
         }
@@ -472,7 +472,7 @@ impl ChannelActor {
         for mode in &self.modes {
             if let ChannelMode::Key(key) = mode
                 && key_arg.as_deref() != Some(key) {
-                    let _ = reply_tx.send(Err("Cannot join channel (+k)".to_string()));
+                    let _ = reply_tx.send(Err("ERR_BADCHANNELKEY".to_string()));
                     return;
                 }
         }
