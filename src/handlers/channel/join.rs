@@ -1,14 +1,14 @@
 //! JOIN command handler and related functionality.
 
 use super::super::{
-    server_reply, user_mask_from_state, user_prefix, with_label, Context, Handler, HandlerError,
-    HandlerResult,
+    Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state, user_prefix,
+    with_label,
 };
 use crate::db::ChannelRepository;
 use crate::security::UserContext;
 use crate::state::MemberModes;
 use async_trait::async_trait;
-use slirc_proto::{irc_to_lower, ChannelExt, Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{ChannelExt, Command, Message, MessageRef, Prefix, Response, irc_to_lower};
 use std::sync::Arc;
 use tracing::info;
 
@@ -164,7 +164,10 @@ async fn join_channel(
             )),
             command: Command::NOTICE(
                 nick.clone(),
-                format!("You are not permitted to be on \x02{}\x02: {}", channel_name, reason),
+                format!(
+                    "You are not permitted to be on \x02{}\x02: {}",
+                    channel_name, reason
+                ),
             ),
         };
         ctx.sender.send(notice).await?;
@@ -279,9 +282,7 @@ async fn join_channel(
                     attempt += 1;
                     continue;
                 }
-                return Err(HandlerError::Internal(
-                    "Channel actor died".to_string(),
-                ));
+                return Err(HandlerError::Internal("Channel actor died".to_string()));
             }
         }
     }
@@ -437,7 +438,11 @@ async fn send_channel_topic(
         let topic_reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_TOPIC,
-            vec![nick.to_string(), data.channel_name.clone(), topic.text.clone()],
+            vec![
+                nick.to_string(),
+                data.channel_name.clone(),
+                topic.text.clone(),
+            ],
         );
         ctx.sender.send(topic_reply).await?;
 
@@ -524,26 +529,11 @@ async fn send_join_error(
     reason: &str,
 ) -> HandlerResult {
     let (response, message) = match reason {
-        "ERR_BANNEDFROMCHAN" => (
-            Response::ERR_BANNEDFROMCHAN,
-            "Cannot join channel (+b)",
-        ),
-        "ERR_INVITEONLYCHAN" => (
-            Response::ERR_INVITEONLYCHAN,
-            "Cannot join channel (+i)",
-        ),
-        "ERR_CHANNELISFULL" => (
-            Response::ERR_CHANNELISFULL,
-            "Cannot join channel (+l)",
-        ),
-        "ERR_BADCHANNELKEY" => (
-            Response::ERR_BADCHANNELKEY,
-            "Cannot join channel (+k)",
-        ),
-        "ERR_SESSION_INVALID" => (
-            Response::ERR_UNKNOWNERROR,
-            "Session expired. Please retry.",
-        ),
+        "ERR_BANNEDFROMCHAN" => (Response::ERR_BANNEDFROMCHAN, "Cannot join channel (+b)"),
+        "ERR_INVITEONLYCHAN" => (Response::ERR_INVITEONLYCHAN, "Cannot join channel (+i)"),
+        "ERR_CHANNELISFULL" => (Response::ERR_CHANNELISFULL, "Cannot join channel (+l)"),
+        "ERR_BADCHANNELKEY" => (Response::ERR_BADCHANNELKEY, "Cannot join channel (+k)"),
+        "ERR_SESSION_INVALID" => (Response::ERR_UNKNOWNERROR, "Session expired. Please retry."),
         "ERR_CHANNEL_TOMBSTONE" => (
             Response::ERR_UNKNOWNERROR,
             "Channel is restarting. Please retry.",
@@ -554,7 +544,11 @@ async fn send_join_error(
     let reply = server_reply(
         &ctx.matrix.server_info.name,
         response,
-        vec![nick.to_string(), channel_name.to_string(), message.to_string()],
+        vec![
+            nick.to_string(),
+            channel_name.to_string(),
+            message.to_string(),
+        ],
     );
     ctx.sender.send(reply).await?;
     Ok(())

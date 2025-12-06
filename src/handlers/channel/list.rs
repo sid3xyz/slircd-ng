@@ -39,10 +39,12 @@ impl Handler for ListHandler {
         for channel_ref in ctx.matrix.channels.iter() {
             let sender = channel_ref.value();
             let (tx, rx) = tokio::sync::oneshot::channel();
-            let _ = sender.send(crate::state::actor::ChannelEvent::GetInfo {
-                requester_uid: Some(ctx.uid.to_string()),
-                reply_tx: tx
-            }).await;
+            let _ = sender
+                .send(crate::state::actor::ChannelEvent::GetInfo {
+                    requester_uid: Some(ctx.uid.to_string()),
+                    reply_tx: tx,
+                })
+                .await;
 
             let channel = match rx.await {
                 Ok(info) => info,
@@ -50,7 +52,11 @@ impl Handler for ListHandler {
             };
 
             // Skip secret channels unless user is a member
-            if channel.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel.is_member {
+            if channel
+                .modes
+                .contains(&crate::state::actor::ChannelMode::Secret)
+                && !channel.is_member
+            {
                 continue;
             }
 

@@ -4,7 +4,7 @@
 //! These functions perform the core channel membership operations without
 //! permission checks, allowing callers to implement their own access control.
 
-use super::super::{Context, HandlerResult, HandlerError, server_reply, with_label};
+use super::super::{Context, HandlerError, HandlerResult, server_reply, with_label};
 use crate::state::MemberModes;
 use slirc_proto::{Command, Message, Prefix, Response, irc_to_lower};
 use tracing::info;
@@ -68,24 +68,27 @@ pub async fn force_join_channel(
         .clone();
 
     // Get user data
-    let (caps, user_context, sender, session_id) = if let Some(user_ref) = ctx.matrix.users.get(target.uid) {
-        let user = user_ref.read().await;
-        let context = crate::security::UserContext::for_registration(
-            "0.0.0.0".parse().unwrap(),
-            user.host.clone(),
-            user.nick.clone(),
-            user.user.clone(),
-            user.realname.clone(),
-            ctx.matrix.server_info.name.clone(),
-            user.account.clone(),
-        );
-        let sender = ctx.matrix.senders.get(target.uid).map(|s| s.clone());
-        (user.caps.clone(), context, sender, user.session_id)
-    } else {
+    let (caps, user_context, sender, session_id) =
+        if let Some(user_ref) = ctx.matrix.users.get(target.uid) {
+            let user = user_ref.read().await;
+            let context = crate::security::UserContext::for_registration(
+                "0.0.0.0".parse().unwrap(),
+                user.host.clone(),
+                user.nick.clone(),
+                user.user.clone(),
+                user.realname.clone(),
+                ctx.matrix.server_info.name.clone(),
+                user.account.clone(),
+            );
+            let sender = ctx.matrix.senders.get(target.uid).map(|s| s.clone());
+            (user.caps.clone(), context, sender, user.session_id)
+        } else {
+            return Ok(());
+        };
+
+    let Some(sender) = sender else {
         return Ok(());
     };
-
-    let Some(sender) = sender else { return Ok(()); };
 
     // Prepare messages
     let prefix = Some(Prefix::Nickname(
@@ -156,16 +159,22 @@ pub async fn force_join_channel(
             let topic_reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::RPL_TOPIC,
-                vec![target.nick.to_string(), join_data.channel_name.clone(), topic.text],
+                vec![
+                    target.nick.to_string(),
+                    join_data.channel_name.clone(),
+                    topic.text,
+                ],
             );
             sender.send(topic_reply).await?;
         }
 
         // Send NAMES using GetMembers (oneshot-based, no deadlock)
         let (members_tx, members_rx) = tokio::sync::oneshot::channel();
-        let _ = channel_ref.send(crate::state::actor::ChannelEvent::GetMembers {
-            reply_tx: members_tx,
-        }).await;
+        let _ = channel_ref
+            .send(crate::state::actor::ChannelEvent::GetMembers {
+                reply_tx: members_tx,
+            })
+            .await;
 
         if let Ok(members) = members_rx.await {
             let channel_symbol = if join_data.is_secret { "@" } else { "=" };
@@ -273,13 +282,13 @@ pub async fn force_part_channel(
             }
 
             if remaining_members == 0 {
-                 ctx.matrix.channels.remove(channel_lower);
-                 crate::metrics::ACTIVE_CHANNELS.dec();
+                ctx.matrix.channels.remove(channel_lower);
+                crate::metrics::ACTIVE_CHANNELS.dec();
             }
 
             Ok(true)
         }
         Ok(Err(_)) => Ok(false), // User not in channel
-        Err(_) => Ok(false), // Actor dropped
+        Err(_) => Ok(false),     // Actor dropped
     }
 }

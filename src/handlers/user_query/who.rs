@@ -64,10 +64,12 @@ impl Handler for WhoHandler {
                 let channel_lower = irc_to_lower(mask_str);
                 if let Some(channel_sender) = ctx.matrix.channels.get(&channel_lower) {
                     let (tx, rx) = tokio::sync::oneshot::channel();
-                    let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetInfo {
-                        requester_uid: Some(ctx.uid.to_string()),
-                        reply_tx: tx
-                    }).await;
+                    let _ = channel_sender
+                        .send(crate::state::actor::ChannelEvent::GetInfo {
+                            requester_uid: Some(ctx.uid.to_string()),
+                            reply_tx: tx,
+                        })
+                        .await;
 
                     let channel_info = match rx.await {
                         Ok(info) => info,
@@ -75,12 +77,18 @@ impl Handler for WhoHandler {
                     };
 
                     // If channel is secret and user is not a member, return nothing (as if channel doesn't exist)
-                    if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel_info.is_member {
+                    if channel_info
+                        .modes
+                        .contains(&crate::state::actor::ChannelMode::Secret)
+                        && !channel_info.is_member
+                    {
                         return Ok(());
                     }
 
                     let (tx, rx) = tokio::sync::oneshot::channel();
-                    let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await;
+                    let _ = channel_sender
+                        .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
+                        .await;
                     let members = match rx.await {
                         Ok(m) => m,
                         Err(_) => return Ok(()),
@@ -140,11 +148,12 @@ impl Handler for WhoHandler {
                 };
 
                 // Pre-collect requester's channel memberships for invisible checking
-                let requester_channels: Vec<String> = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                    user_ref.read().await.channels.iter().cloned().collect()
-                } else {
-                    Vec::new()
-                };
+                let requester_channels: Vec<String> =
+                    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+                        user_ref.read().await.channels.iter().cloned().collect()
+                    } else {
+                        Vec::new()
+                    };
 
                 for user_ref in ctx.matrix.users.iter() {
                     let user = user_ref.read().await;

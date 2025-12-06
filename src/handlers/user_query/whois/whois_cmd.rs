@@ -61,8 +61,17 @@ impl Handler for WhoisHandler {
         if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
             if let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value()) {
                 // Clone needed data, drop lock immediately to prevent holding during async ops
-                let (target_nick, target_user_name, target_visible_host, target_realname,
-                     target_channels, target_modes, target_account, target_away, target_uid_owned) = {
+                let (
+                    target_nick,
+                    target_user_name,
+                    target_visible_host,
+                    target_realname,
+                    target_channels,
+                    target_modes,
+                    target_account,
+                    target_away,
+                    target_uid_owned,
+                ) = {
                     let target_user = target_user_ref.read().await;
                     (
                         target_user.nick.clone(),
@@ -107,8 +116,7 @@ impl Handler for WhoisHandler {
 
                 // RPL_WHOISCHANNELS (319): <nick> :{[@|+]<channel>}
                 // Skip if target is invisible and requester doesn't share any channels
-                let show_channels = if target_modes.invisible && target_uid.value() != ctx.uid
-                {
+                let show_channels = if target_modes.invisible && target_uid.value() != ctx.uid {
                     // Check if requester shares any channel with target
                     let mut shares_channel = false;
                     if let Some(requester) = ctx.matrix.users.get(ctx.uid) {
@@ -130,10 +138,12 @@ impl Handler for WhoisHandler {
                     for channel_name in &target_channels {
                         if let Some(channel_sender) = ctx.matrix.channels.get(channel_name) {
                             let (tx, rx) = tokio::sync::oneshot::channel();
-                            let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetInfo {
-                                requester_uid: Some(ctx.uid.to_string()),
-                                reply_tx: tx
-                            }).await;
+                            let _ = channel_sender
+                                .send(crate::state::actor::ChannelEvent::GetInfo {
+                                    requester_uid: Some(ctx.uid.to_string()),
+                                    reply_tx: tx,
+                                })
+                                .await;
 
                             let channel_info = match rx.await {
                                 Ok(info) => info,
@@ -141,15 +151,21 @@ impl Handler for WhoisHandler {
                             };
 
                             // Skip secret channels unless requester is a member
-                            if channel_info.modes.contains(&crate::state::actor::ChannelMode::Secret) && !channel_info.is_member {
+                            if channel_info
+                                .modes
+                                .contains(&crate::state::actor::ChannelMode::Secret)
+                                && !channel_info.is_member
+                            {
                                 continue;
                             }
 
                             let (tx, rx) = tokio::sync::oneshot::channel();
-                            let _ = channel_sender.send(crate::state::actor::ChannelEvent::GetMemberModes {
-                                uid: target_uid_owned.clone(),
-                                reply_tx: tx
-                            }).await;
+                            let _ = channel_sender
+                                .send(crate::state::actor::ChannelEvent::GetMemberModes {
+                                    uid: target_uid_owned.clone(),
+                                    reply_tx: tx,
+                                })
+                                .await;
 
                             let prefix = if let Ok(Some(modes)) = rx.await {
                                 if modes.op {
@@ -170,11 +186,7 @@ impl Handler for WhoisHandler {
                         let reply = server_reply(
                             server_name,
                             Response::RPL_WHOISCHANNELS,
-                            vec![
-                                nick.clone(),
-                                target_nick.clone(),
-                                channel_list.join(" "),
-                            ],
+                            vec![nick.clone(), target_nick.clone(), channel_list.join(" ")],
                         );
                         ctx.sender.send(reply).await?;
                     }

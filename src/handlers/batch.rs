@@ -391,7 +391,11 @@ async fn deliver_multiline_to_channel(
 
     // Get list of members
     let (tx, rx) = tokio::sync::oneshot::channel();
-    if (channel_ref.send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx }).await).is_err() {
+    if (channel_ref
+        .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
+        .await)
+        .is_err()
+    {
         return Ok(());
     }
     let member_uids = match rx.await {
@@ -403,9 +407,9 @@ async fn deliver_multiline_to_channel(
     let mut members: Vec<(String, String)> = Vec::new();
     for uid in member_uids {
         let nick = if let Some(user) = ctx.matrix.users.get(&uid) {
-             user.read().await.nick.clone()
+            user.read().await.nick.clone()
         } else {
-             uid.clone()
+            uid.clone()
         };
         members.push((uid, nick));
     }

@@ -15,8 +15,7 @@
 //! (`send_list_mode`, `get_list_mode_query`) to a separate `channel_lists.rs`.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply,
-    with_label,
+    Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, with_label,
 };
 use slirc_proto::{ChannelMode, Mode, Response, irc_to_lower};
 
@@ -58,7 +57,14 @@ pub async fn handle_channel_mode(
 
     // Get info
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    if (channel.send(crate::state::actor::ChannelEvent::GetInfo { requester_uid: Some(ctx.uid.to_string()), reply_tx }).await).is_err() {
+    if (channel
+        .send(crate::state::actor::ChannelEvent::GetInfo {
+            requester_uid: Some(ctx.uid.to_string()),
+            reply_tx,
+        })
+        .await)
+        .is_err()
+    {
         return Err(HandlerError::Internal("Channel actor died".to_string()));
     }
     let info = match reply_rx.await {
@@ -70,14 +76,24 @@ pub async fn handle_channel_mode(
 
     // Get member modes
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    if (channel.send(crate::state::actor::ChannelEvent::GetMemberModes { uid: ctx.uid.to_string(), reply_tx }).await).is_err() {
+    if (channel
+        .send(crate::state::actor::ChannelEvent::GetMemberModes {
+            uid: ctx.uid.to_string(),
+            reply_tx,
+        })
+        .await)
+        .is_err()
+    {
         return Err(HandlerError::Internal("Channel actor died".to_string()));
     }
     let member_modes = match reply_rx.await {
         Ok(m) => m,
         Err(_) => return Err(HandlerError::Internal("Channel actor died".to_string())),
     };
-    let is_op = member_modes.as_ref().map(|m| m.op || m.admin || m.owner).unwrap_or(false);
+    let is_op = member_modes
+        .as_ref()
+        .map(|m| m.op || m.admin || m.owner)
+        .unwrap_or(false);
 
     if modes.is_empty() {
         // Query: return current modes
@@ -104,15 +120,10 @@ pub async fn handle_channel_mode(
         let time_reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_CREATIONTIME,
-            vec![
-                nick.clone(),
-                canonical_name,
-                info.created.to_string(),
-            ],
+            vec![nick.clone(), canonical_name, info.created.to_string()],
         );
         ctx.sender.send(time_reply).await?;
     } else {
-
         // Check for list mode queries (Type A modes with no argument)
         // Users can query these lists without being op
         if let Some(list_query) = get_list_mode_query(modes) {
@@ -201,52 +212,60 @@ pub async fn handle_channel_mode(
         }
 
         if !valid_modes.is_empty() {
-             // Resolve target UIDs for user modes
-             let mut target_uids = std::collections::HashMap::new();
-             for mode in &valid_modes {
-                 match mode.mode() {
-                     ChannelMode::Oper | ChannelMode::Voice => {
-                         if let Some(nick) = mode.arg() {
-                             let nick_lower = irc_to_lower(nick);
-                             if let Some(uid) = ctx.matrix.nicks.get(&nick_lower) {
-                                 target_uids.insert(nick.to_string(), uid.value().clone());
-                             }
-                         }
-                     }
-                     _ => {}
-                 }
-             }
+            // Resolve target UIDs for user modes
+            let mut target_uids = std::collections::HashMap::new();
+            for mode in &valid_modes {
+                match mode.mode() {
+                    ChannelMode::Oper | ChannelMode::Voice => {
+                        if let Some(nick) = mode.arg() {
+                            let nick_lower = irc_to_lower(nick);
+                            if let Some(uid) = ctx.matrix.nicks.get(&nick_lower) {
+                                target_uids.insert(nick.to_string(), uid.value().clone());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
 
-             let (nick, user, host) = if let Some(u) = ctx.matrix.users.get(ctx.uid) {
-                 let u = u.read().await;
-                 (u.nick.clone(), u.user.clone(), u.host.clone())
-             } else {
-                 (ctx.handshake.nick.clone().unwrap_or_default(), ctx.handshake.user.clone().unwrap_or_default(), "unknown".to_string())
-             };
-             let prefix = slirc_proto::Prefix::Nickname(nick, user, host);
+            let (nick, user, host) = if let Some(u) = ctx.matrix.users.get(ctx.uid) {
+                let u = u.read().await;
+                (u.nick.clone(), u.user.clone(), u.host.clone())
+            } else {
+                (
+                    ctx.handshake.nick.clone().unwrap_or_default(),
+                    ctx.handshake.user.clone().unwrap_or_default(),
+                    "unknown".to_string(),
+                )
+            };
+            let prefix = slirc_proto::Prefix::Nickname(nick, user, host);
 
-             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-             if (channel.send(crate::state::actor::ChannelEvent::ApplyModes {
-                 sender_uid: ctx.uid.to_string(),
-                 sender_prefix: prefix,
-                 modes: valid_modes,
-                 target_uids,
-                 force: false,
-                 reply_tx,
-             }).await).is_err() {
-                 return Err(HandlerError::Internal("Channel actor died".to_string()));
-             }
+            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+            if (channel
+                .send(crate::state::actor::ChannelEvent::ApplyModes {
+                    sender_uid: ctx.uid.to_string(),
+                    sender_prefix: prefix,
+                    modes: valid_modes,
+                    target_uids,
+                    force: false,
+                    reply_tx,
+                })
+                .await)
+                .is_err()
+            {
+                return Err(HandlerError::Internal("Channel actor died".to_string()));
+            }
 
-             match reply_rx.await {
-                 Ok(Ok(_)) => {
-                     // Success
-                 }
+            match reply_rx.await {
+                Ok(Ok(_)) => {
+                    // Success
+                }
                 Ok(Err(_e)) => {
-                     // Generic error
-                     // TODO: Handle specific errors
-                 }
-                 Err(_) => return Err(HandlerError::Internal("Channel actor died".to_string())),
-             }
+                    // Generic error
+                    // TODO: Handle specific errors
+                }
+                Err(_) => return Err(HandlerError::Internal("Channel actor died".to_string())),
+            }
         }
     }
 
@@ -315,9 +334,16 @@ async fn send_list_mode(
             _ => return Ok(()),
         };
 
-           let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-           if (channel.send(crate::state::actor::ChannelEvent::GetList { mode: mode_char, reply_tx }).await).is_err() {
-             return Err(HandlerError::Internal("Channel actor died".to_string()));
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        if (channel
+            .send(crate::state::actor::ChannelEvent::GetList {
+                mode: mode_char,
+                reply_tx,
+            })
+            .await)
+            .is_err()
+        {
+            return Err(HandlerError::Internal("Channel actor died".to_string()));
         }
 
         let list = match reply_rx.await {
@@ -354,9 +380,6 @@ async fn send_list_mode(
 
     Ok(())
 }
-
-
-
 
 /// Format applied modes for logging (e.g., "+o+v nick1 nick2").
 /// Public so SAMODE can use it for operator confirmation messages.

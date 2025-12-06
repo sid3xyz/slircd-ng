@@ -91,8 +91,8 @@ impl Handler for KickHandler {
             reply_tx,
         };
 
-           if (channel_tx.send(event).await).is_err() {
-             return Ok(());
+        if (channel_tx.send(event).await).is_err() {
+            return Ok(());
         }
 
         match reply_rx.await {
@@ -113,24 +113,20 @@ impl Handler for KickHandler {
             }
             Ok(Err(err_code)) => {
                 let reply = match err_code.as_str() {
-                    "ERR_CHANOPRIVSNEEDED" => err_chanoprivsneeded(
-                        &ctx.matrix.server_info.name,
-                        &nick,
-                        channel_name,
-                    ),
+                    "ERR_CHANOPRIVSNEEDED" => {
+                        err_chanoprivsneeded(&ctx.matrix.server_info.name, &nick, channel_name)
+                    }
                     "ERR_USERNOTINCHANNEL" => err_usernotinchannel(
                         &ctx.matrix.server_info.name,
                         &nick,
                         target_nick,
                         channel_name,
                     ),
-                    _ => {
-                         server_reply(
-                            &ctx.matrix.server_info.name,
-                            Response::ERR_UNKNOWNERROR,
-                            vec![nick.clone(), "Unknown error during KICK".to_string()],
-                        )
-                    }
+                    _ => server_reply(
+                        &ctx.matrix.server_info.name,
+                        Response::ERR_UNKNOWNERROR,
+                        vec![nick.clone(), "Unknown error during KICK".to_string()],
+                    ),
                 };
                 ctx.sender.send(reply).await?;
             }

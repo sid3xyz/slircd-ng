@@ -379,12 +379,12 @@ pub async fn apply_effect(
 
             let mut target_uids = std::collections::HashMap::new();
             for mode in &modes {
-                 if let Some(nick) = mode.arg() {
-                     let nick_lower = irc_to_lower(nick);
-                     if let Some(uid) = matrix.nicks.get(&nick_lower).map(|r| r.clone()) {
-                         target_uids.insert(nick.to_string(), uid);
-                     }
-                 }
+                if let Some(nick) = mode.arg() {
+                    let nick_lower = irc_to_lower(nick);
+                    if let Some(uid) = matrix.nicks.get(&nick_lower).map(|r| r.clone()) {
+                        target_uids.insert(nick.to_string(), uid);
+                    }
+                }
             }
 
             let sender_prefix = Prefix::Nickname(
@@ -427,11 +427,8 @@ pub async fn apply_effect(
                 return;
             };
 
-            let sender_prefix = Prefix::Nickname(
-                kicker.clone(),
-                kicker.clone(),
-                "services.".to_string(),
-            );
+            let sender_prefix =
+                Prefix::Nickname(kicker.clone(), kicker.clone(), "services.".to_string());
 
             let (tx, rx) = tokio::sync::oneshot::channel();
             let event = crate::state::actor::ChannelEvent::Kick {
@@ -445,14 +442,15 @@ pub async fn apply_effect(
             };
 
             if let Ok(_) = channel_sender.send(event).await
-                && let Ok(Ok(())) = rx.await {
-                    // Success
-                    // Remove channel from user's channel list
-                    if let Some(user_ref) = matrix.users.get(&target_uid) {
-                        let mut user_guard = user_ref.write().await;
-                        user_guard.channels.remove(&channel_lower);
-                    }
+                && let Ok(Ok(())) = rx.await
+            {
+                // Success
+                // Remove channel from user's channel list
+                if let Some(user_ref) = matrix.users.get(&target_uid) {
+                    let mut user_guard = user_ref.write().await;
+                    user_guard.channels.remove(&channel_lower);
                 }
+            }
 
             info!(channel = %channel, target = %target_nick, kicker = %kicker, reason = %reason, "User kicked by service");
         }

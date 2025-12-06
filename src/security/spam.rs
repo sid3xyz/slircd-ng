@@ -17,9 +17,9 @@
 
 use aho_corasick::AhoCorasick;
 use dashmap::DashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 use std::time::{Duration, Instant};
 use tracing::debug;
 
@@ -496,8 +496,14 @@ mod tests {
         let msg = "Hello world";
 
         // First 2 messages allowed
-        assert_eq!(service.check_message_repetition(uid, msg), SpamVerdict::Clean);
-        assert_eq!(service.check_message_repetition(uid, msg), SpamVerdict::Clean);
+        assert_eq!(
+            service.check_message_repetition(uid, msg),
+            SpamVerdict::Clean
+        );
+        assert_eq!(
+            service.check_message_repetition(uid, msg),
+            SpamVerdict::Clean
+        );
 
         // Third message blocked
         assert!(matches!(
