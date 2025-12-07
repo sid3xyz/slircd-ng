@@ -1,11 +1,12 @@
 use super::super::{
     Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star,
+    user_mask_from_state,
 };
-use super::get_user_full_info;
+use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
 
-/// Handler for WALLOPS command.
+/// Handler for WALLOPS command. Uses capability-based authorization (Innovation 4).
 ///
 /// `WALLOPS :message`
 ///
@@ -28,17 +29,23 @@ impl Handler for WallopsHandler {
             }
         };
 
-        let Some((sender_nick, sender_user, sender_host, is_oper)) = get_user_full_info(ctx).await
+        // Get sender's identity
+        let Some((sender_nick, sender_user, sender_host)) = user_mask_from_state(ctx, ctx.uid).await
         else {
             return Ok(());
         };
 
-        if !is_oper {
-            ctx.sender
-                .send(err_noprivileges(server_name, &sender_nick))
-                .await?;
-            return Ok(());
-        }
+        // Request GlobalNotice capability from authority (Innovation 4)
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let _wallops_cap = match authority.request_global_notice_cap(ctx.uid).await {
+            Some(cap) => cap,
+            None => {
+                ctx.sender
+                    .send(err_noprivileges(server_name, &sender_nick))
+                    .await?;
+                return Ok(());
+            }
+        };
 
         let wallops_msg = Message {
             tags: None,

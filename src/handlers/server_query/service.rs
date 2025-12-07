@@ -6,7 +6,7 @@
 //! SERVLIST lists registered services - we return an empty list.
 //! SQUERY routes messages to services like NickServ/ChanServ.
 
-use super::super::{Context, Handler, HandlerResult, err_notregistered};
+use super::super::{Context, Handler, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -58,12 +58,7 @@ pub struct ServlistHandler;
 #[async_trait]
 impl Handler for ServlistHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
 
@@ -94,12 +89,7 @@ pub struct SqueryHandler;
 #[async_trait]
 impl Handler for SqueryHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
 

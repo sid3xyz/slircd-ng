@@ -1,11 +1,12 @@
 use super::super::{
-    Context, Handler, HandlerResult, err_nosuchnick, require_oper, resolve_nick_to_uid,
-    server_reply,
+    Context, Handler, HandlerResult, err_noprivileges, err_nosuchnick, get_nick_or_star,
+    resolve_nick_to_uid, server_reply,
 };
+use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
-/// Handler for TRACE command.
+/// Handler for TRACE command. Uses capability-based authorization (Innovation 4).
 ///
 /// `TRACE [target]`
 ///
@@ -17,10 +18,17 @@ pub struct TraceHandler;
 impl Handler for TraceHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
+        let oper_nick = get_nick_or_star(ctx).await;
 
-        let Ok(oper_nick) = require_oper(ctx).await else {
+        // Request oper capability from authority (Innovation 4)
+        // TRACE requires oper privileges (uses KillCap as a general oper check)
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        if authority.request_kill_cap(ctx.uid).await.is_none() {
+            ctx.sender
+                .send(err_noprivileges(server_name, &oper_nick))
+                .await?;
             return Ok(());
-        };
+        }
 
         let target = msg.arg(0);
 

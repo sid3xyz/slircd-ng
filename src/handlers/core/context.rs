@@ -250,25 +250,6 @@ pub async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
     Some((user.nick.clone(), user.modes.oper))
 }
 
-/// Check if the current user is an IRC operator.
-///
-/// Returns `Ok(nick)` if they are an oper, or sends `ERR_NOPRIVILEGES` and returns `Err(())`.
-pub async fn require_oper(ctx: &mut Context<'_>) -> Result<String, ()> {
-    let server_name = &ctx.matrix.server_info.name;
-
-    let Some((nick, is_oper)) = get_oper_info(ctx).await else {
-        return Err(());
-    };
-
-    if !is_oper {
-        use crate::handlers::helpers::err_noprivileges;
-        let _ = ctx.sender.send(err_noprivileges(server_name, &nick)).await;
-        return Err(());
-    }
-
-    Ok(nick)
-}
-
 /// Check if a user is in a specific channel.
 ///
 /// Returns true if the user (identified by uid) is a member of the channel.

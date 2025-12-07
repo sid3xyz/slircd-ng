@@ -16,8 +16,6 @@ pub use trace::TraceHandler;
 pub use vhost::VhostHandler;
 pub use wallops::WallopsHandler;
 
-use super::Context;
-
 /// Validate hostname per RFC 952/1123 rules.
 pub(super) fn is_valid_hostname(hostname: &str) -> bool {
     if hostname.is_empty() || hostname.len() > 253 {
@@ -45,18 +43,4 @@ pub(super) fn is_valid_hostname(hostname: &str) -> bool {
     }
 
     true
-}
-
-/// Get full user info for message construction.
-pub(super) async fn get_user_full_info(
-    ctx: &Context<'_>,
-) -> Option<(String, String, String, bool)> {
-    let user_ref = ctx.matrix.users.get(ctx.uid)?;
-    let user = user_ref.read().await;
-    Some((
-        user.nick.clone(),
-        user.user.clone(),
-        user.host.clone(),
-        user.modes.oper,
-    ))
 }

@@ -7,7 +7,7 @@
 
 use crate::db::StoredMessage;
 use crate::handlers::{
-    Context, Handler, HandlerResult, err_needmoreparams, err_notregistered, get_nick_or_star,
+    Context, Handler, HandlerResult, err_needmoreparams, get_nick_or_star,
 };
 use async_trait::async_trait;
 use slirc_proto::{
@@ -26,12 +26,7 @@ pub struct ChatHistoryHandler;
 #[async_trait]
 impl Handler for ChatHistoryHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let nick = get_nick_or_star(ctx).await;
         let server_name = &ctx.matrix.server_info.name;

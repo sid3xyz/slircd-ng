@@ -1,11 +1,12 @@
 use super::super::{
-    Context, Handler, HandlerResult, err_needmoreparams, err_nosuchnick, require_oper,
-    resolve_nick_to_uid, server_notice,
+    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, err_nosuchnick,
+    get_nick_or_star, resolve_nick_to_uid, server_notice,
 };
+use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
 
-/// Handler for CHGHOST command.
+/// Handler for CHGHOST command. Uses capability-based authorization (Innovation 4).
 ///
 /// `CHGHOST <nick> <new_user> <new_host>`
 ///
@@ -18,10 +19,16 @@ pub struct ChghostHandler;
 impl Handler for ChghostHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
+        let oper_nick = get_nick_or_star(ctx).await;
 
-        let Ok(oper_nick) = require_oper(ctx).await else {
+        // Request oper capability from authority (Innovation 4)
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        if authority.request_kill_cap(ctx.uid).await.is_none() {
+            ctx.sender
+                .send(err_noprivileges(server_name, &oper_nick))
+                .await?;
             return Ok(());
-        };
+        }
 
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,

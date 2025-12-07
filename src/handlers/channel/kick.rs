@@ -16,9 +16,7 @@ pub struct KickHandler;
 #[async_trait]
 impl Handler for KickHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            return Err(HandlerError::NotRegistered);
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let kicker_nick = ctx
             .handshake

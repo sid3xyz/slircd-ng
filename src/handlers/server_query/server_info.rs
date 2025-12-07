@@ -1,6 +1,6 @@
 //! MOTD and related handlers.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, err_notregistered};
+use super::super::{Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -17,12 +17,7 @@ pub struct MotdHandler;
 #[async_trait]
 impl Handler for MotdHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
@@ -71,12 +66,7 @@ pub struct VersionHandler;
 #[async_trait]
 impl Handler for VersionHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
@@ -116,12 +106,7 @@ pub struct TimeHandler;
 #[async_trait]
 impl Handler for TimeHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
@@ -154,12 +139,7 @@ pub struct AdminHandler;
 #[async_trait]
 impl Handler for AdminHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
@@ -214,12 +194,7 @@ pub struct InfoHandler;
 #[async_trait]
 impl Handler for InfoHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let nick = ctx
             .handshake
@@ -266,12 +241,7 @@ pub struct LusersHandler;
 #[async_trait]
 impl Handler for LusersHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let nick = ctx
             .handshake

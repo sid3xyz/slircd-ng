@@ -39,9 +39,7 @@ pub struct TagmsgHandler;
 #[async_trait]
 impl Handler for TagmsgHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            return Err(HandlerError::NotRegistered);
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // Check shun first - silently ignore if shunned
         if is_shunned(ctx).await {

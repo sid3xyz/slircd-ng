@@ -8,9 +8,10 @@
 
 use super::{
     Context, Handler, HandlerResult, TargetUser, err_needmoreparams, err_nosuchchannel,
-    err_nosuchnick, force_join_channel, force_part_channel, format_modes_for_log, require_oper,
-    resolve_nick_to_uid, server_notice,
+    err_noprivileges, err_nosuchnick, force_join_channel, force_part_channel,
+    format_modes_for_log, get_nick_or_star, resolve_nick_to_uid, server_notice,
 };
+use crate::caps::CapabilityAuthority;
 use crate::state::MemberModes;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower};
@@ -34,7 +35,13 @@ impl Handler for SajoinHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Ok(oper_nick) = require_oper(ctx).await else {
+        // Get nick and check admin capability
+        let oper_nick = get_nick_or_star(ctx).await;
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
+            ctx.sender
+                .send(err_noprivileges(server_name, &oper_nick))
+                .await?;
             return Ok(());
         };
 
@@ -132,7 +139,13 @@ impl Handler for SapartHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Ok(oper_nick) = require_oper(ctx).await else {
+        // Get nick and check admin capability
+        let oper_nick = get_nick_or_star(ctx).await;
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
+            ctx.sender
+                .send(err_noprivileges(server_name, &oper_nick))
+                .await?;
             return Ok(());
         };
 
@@ -221,7 +234,13 @@ impl Handler for SanickHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Ok(oper_nick) = require_oper(ctx).await else {
+        // Get nick and check admin capability
+        let oper_nick = get_nick_or_star(ctx).await;
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
+            ctx.sender
+                .send(err_noprivileges(server_name, &oper_nick))
+                .await?;
             return Ok(());
         };
 
@@ -347,7 +366,13 @@ impl Handler for SamodeHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Ok(oper_nick) = require_oper(ctx).await else {
+        // Get nick and check admin capability
+        let oper_nick = get_nick_or_star(ctx).await;
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
+            ctx.sender
+                .send(err_noprivileges(server_name, &oper_nick))
+                .await?;
             return Ok(());
         };
 

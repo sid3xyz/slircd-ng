@@ -40,28 +40,37 @@
 //! }
 //! ```
 //!
-//! # Migration Path
+//! # Migration Status
 //!
-//! Phase 1 (this module): Core types and Authority
-//! Phase 2: Migrate handlers to use capability tokens
-//! Phase 3: Remove legacy permission checks
+//! - Phase 1 ✅ Core types and Authority
+//! - Phase 2 ✅ 9 handler files migrated to use capability tokens:
+//!   - `handlers/admin.rs` - SA* commands
+//!   - `handlers/oper/kill.rs` - KILL command
+//!   - `handlers/oper/vhost.rs` - VHOST command
+//!   - `handlers/oper/trace.rs` - TRACE command
+//!   - `handlers/oper/chghost.rs` - CHGHOST command
+//!   - `handlers/oper/wallops.rs` - WALLOPS command
+//!   - `handlers/oper/admin.rs` - DIE/REHASH/RESTART commands
+//!   - `handlers/bans/shun.rs` - SHUN/UNSHUN commands
+//!   - `handlers/bans/xlines/mod.rs` - K/G/D/Z/R-LINE commands
+//! - Phase 3: Remove legacy permission checks (ongoing)
 
-// Allow dead_code during Phase 1 - handlers will be migrated in Phase 2
+// Allow dead_code for capability types not yet used by handlers (Phase 3 pending)
 #![allow(dead_code)]
 
 mod authority;
 mod irc;
 mod tokens;
 
-// Re-export types for use by handlers in Phase 2
-// Allow unused_imports during Phase 1 - these will be used when handlers migrate
-#[allow(unused_imports)]
+// Re-export authority (used by 9 handler files)
 pub use authority::CapabilityAuthority;
+
+// Re-export capability types - channel caps pending Phase 3 migration
 #[allow(unused_imports)]
 pub use irc::{
-    // Channel capabilities
+    // Channel capabilities (pending migration)
     BanCap, InviteCap, KickCap, TopicCap, ChannelModeCap, VoiceCap,
-    // Oper capabilities
+    // Oper capabilities (in use)
     KillCap, KlineCap, DlineCap, GlineCap, RehashCap, DieCap, RestartCap,
     // Special capabilities
     BypassFloodCap, BypassModeCap, GlobalNoticeCap,

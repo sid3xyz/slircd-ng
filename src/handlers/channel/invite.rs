@@ -3,8 +3,7 @@
 //! RFC 2812 - Channel invitation
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
-    err_notregistered, server_reply, user_mask_from_state,
+    Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel, server_reply, user_mask_from_state,
 };
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -21,12 +20,7 @@ pub struct InviteHandler;
 #[async_trait]
 impl Handler for InviteHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx

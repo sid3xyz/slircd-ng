@@ -1,7 +1,7 @@
 //! WHOWAS handler for historical user information.
 
 use crate::handlers::{
-    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply,
+    Context, Handler, HandlerError, HandlerResult, server_reply,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -17,12 +17,7 @@ pub struct WhowasHandler;
 #[async_trait]
 impl Handler for WhowasHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // WHOWAS <nick> [count [server]]
         let target = msg.arg(0).unwrap_or("");

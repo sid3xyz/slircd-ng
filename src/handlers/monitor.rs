@@ -3,7 +3,7 @@
 //! Implements presence notification via MONITOR.
 //! Reference: <https://ircv3.net/specs/extensions/monitor>
 
-use super::{Context, Handler, HandlerResult, err_notregistered, server_reply, with_label};
+use super::{Context, Handler, HandlerResult, server_reply, with_label};
 use async_trait::async_trait;
 use dashmap::DashSet;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -24,12 +24,7 @@ pub struct MonitorHandler;
 #[async_trait]
 impl Handler for MonitorHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx

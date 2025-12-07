@@ -1,7 +1,7 @@
 //! ISON handler for online status queries.
 
 use crate::handlers::{
-    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply,
+    Context, Handler, HandlerError, HandlerResult, server_reply,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -16,12 +16,7 @@ pub struct IsonHandler;
 #[async_trait]
 impl Handler for IsonHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx

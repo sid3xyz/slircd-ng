@@ -21,7 +21,7 @@ pub mod traits;
 // Re-export commonly used types
 pub use context::{
     Context, Handler, HandlerError, HandlerResult, HandshakeState, get_nick_or_star, get_oper_info,
-    is_user_in_channel, require_oper, require_registered, resolve_nick_to_uid,
+    is_user_in_channel, require_registered, resolve_nick_to_uid,
     user_mask_from_state,
 };
 pub use middleware::ResponseMiddleware;

@@ -3,7 +3,7 @@
 //! Handles user status management and IRCv3 profile updates.
 
 use super::user_mask_from_state;
-use super::{Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply};
+use super::{Context, Handler, HandlerError, HandlerResult, server_reply};
 use async_trait::async_trait;
 use slirc_proto::{Command, MessageRef, Response};
 use tracing::debug;
@@ -19,12 +19,7 @@ pub struct AwayHandler;
 #[async_trait]
 impl Handler for AwayHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
@@ -145,12 +140,7 @@ pub struct SetnameHandler;
 #[async_trait]
 impl Handler for SetnameHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // Check if client has negotiated setname capability
         if !ctx.handshake.capabilities.contains("setname") {
@@ -249,12 +239,7 @@ pub struct SilenceHandler;
 #[async_trait]
 impl Handler for SilenceHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx

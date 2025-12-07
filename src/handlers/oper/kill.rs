@@ -1,8 +1,8 @@
 use super::super::{
     Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, err_nosuchnick,
-    get_nick_or_star, resolve_nick_to_uid,
+    get_nick_or_star, resolve_nick_to_uid, user_mask_from_state,
 };
-use super::get_user_full_info;
+use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
 
@@ -11,6 +11,7 @@ use slirc_proto::{Command, Message, MessageRef, Prefix};
 /// `KILL nickname :reason`
 ///
 /// Disconnects a user from the network. Requires operator privileges.
+/// Uses capability-based authorization (Innovation 4).
 pub struct KillHandler;
 
 #[async_trait]
@@ -30,17 +31,25 @@ impl Handler for KillHandler {
         };
         let reason = msg.arg(1).unwrap_or("No reason given");
 
-        let Some((killer_nick, killer_user, killer_host, is_oper)) = get_user_full_info(ctx).await
+        // Get killer's identity
+        let Some((killer_nick, killer_user, killer_host)) = user_mask_from_state(ctx, ctx.uid).await
         else {
             return Ok(());
         };
 
-        if !is_oper {
-            ctx.sender
-                .send(err_noprivileges(server_name, &killer_nick))
-                .await?;
-            return Ok(());
-        }
+        // Request KILL capability from authority (Innovation 4)
+        // This replaces the legacy `if !is_oper` check with capability-based auth
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let _kill_cap = match authority.request_kill_cap(ctx.uid).await {
+            Some(cap) => cap, // Authorization granted - cap proves it
+            None => {
+                // Not an operator - no capability granted
+                ctx.sender
+                    .send(err_noprivileges(server_name, &killer_nick))
+                    .await?;
+                return Ok(());
+            }
+        };
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             ctx.sender

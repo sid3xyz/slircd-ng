@@ -3,8 +3,7 @@
 //! Additional server query commands for network information.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_needmoreparams, err_noprivileges,
-    err_notregistered, get_oper_info,
+    Context, Handler, HandlerError, HandlerResult, err_needmoreparams, err_noprivileges, get_oper_info,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -20,12 +19,7 @@ pub struct MapHandler;
 #[async_trait]
 impl Handler for MapHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
@@ -67,12 +61,7 @@ pub struct RulesHandler;
 #[async_trait]
 impl Handler for RulesHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
@@ -128,12 +117,7 @@ pub struct UseripHandler;
 #[async_trait]
 impl Handler for UseripHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
@@ -206,12 +190,7 @@ pub struct LinksHandler;
 #[async_trait]
 impl Handler for LinksHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
