@@ -346,6 +346,70 @@ impl CapabilityAuthority {
         }
     }
 
+    /// Request capability to set Z-lines.
+    ///
+    /// Returns `Some(Cap<ZlineCap>)` if the user is an IRC operator.
+    #[instrument(skip(self), level = "trace")]
+    pub async fn request_zline_cap(&self, uid: &str) -> Option<Cap<ZlineCap>> {
+        let nick = self.get_nick(uid).await;
+
+        if self.is_oper(uid).await {
+            self.log_grant::<ZlineCap>(&nick, uid, &());
+            Some(Cap::new(()))
+        } else {
+            self.log_denial::<ZlineCap>(&nick, uid, &());
+            None
+        }
+    }
+
+    /// Request capability to set R-lines.
+    ///
+    /// Returns `Some(Cap<RlineCap>)` if the user is an IRC operator.
+    #[instrument(skip(self), level = "trace")]
+    pub async fn request_rline_cap(&self, uid: &str) -> Option<Cap<RlineCap>> {
+        let nick = self.get_nick(uid).await;
+
+        if self.is_oper(uid).await {
+            self.log_grant::<RlineCap>(&nick, uid, &());
+            Some(Cap::new(()))
+        } else {
+            self.log_denial::<RlineCap>(&nick, uid, &());
+            None
+        }
+    }
+
+    /// Request capability to SHUN users.
+    ///
+    /// Returns `Some(Cap<ShunCap>)` if the user is an IRC operator.
+    #[instrument(skip(self), level = "trace")]
+    pub async fn request_shun_cap(&self, uid: &str) -> Option<Cap<ShunCap>> {
+        let nick = self.get_nick(uid).await;
+
+        if self.is_oper(uid).await {
+            self.log_grant::<ShunCap>(&nick, uid, &());
+            Some(Cap::new(()))
+        } else {
+            self.log_denial::<ShunCap>(&nick, uid, &());
+            None
+        }
+    }
+
+    /// Request capability for SA* admin commands.
+    ///
+    /// Returns `Some(Cap<AdminCap>)` if the user is an IRC operator.
+    #[instrument(skip(self), level = "trace")]
+    pub async fn request_admin_cap(&self, uid: &str) -> Option<Cap<AdminCap>> {
+        let nick = self.get_nick(uid).await;
+
+        if self.is_oper(uid).await {
+            self.log_grant::<AdminCap>(&nick, uid, &());
+            Some(Cap::new(()))
+        } else {
+            self.log_denial::<AdminCap>(&nick, uid, &());
+            None
+        }
+    }
+
     /// Request capability to REHASH the server.
     ///
     /// Returns `Some(Cap<RehashCap>)` if the user is an IRC operator.

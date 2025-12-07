@@ -42,7 +42,7 @@ mod user_status;
 // Re-export core types
 pub use core::{
     Context, Handler, HandlerError, HandlerResult, HandshakeState, Registry, ResponseMiddleware,
-    get_nick_or_star, get_oper_info, is_user_in_channel, require_oper, require_registered,
+    get_nick_or_star, get_oper_info, is_user_in_channel, require_registered,
     resolve_nick_to_uid, user_mask_from_state,
 };
 
@@ -56,7 +56,7 @@ pub use core::{
 // Re-export helper functions for use by handlers
 pub use helpers::{
     err_chanoprivsneeded, err_needmoreparams, err_noprivileges, err_nosuchchannel, err_nosuchnick,
-    err_notonchannel, err_notregistered, err_usernotinchannel, labeled_ack, matches_hostmask,
+    err_notonchannel, err_usernotinchannel, labeled_ack, matches_hostmask,
     server_notice, server_reply, user_prefix, with_label,
 };
 

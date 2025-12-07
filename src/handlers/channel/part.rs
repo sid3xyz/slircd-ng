@@ -15,9 +15,7 @@ pub struct PartHandler;
 #[async_trait]
 impl Handler for PartHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            return Err(HandlerError::NotRegistered);
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // PART <channels> [reason]
         let channels_str = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;

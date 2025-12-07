@@ -4,10 +4,9 @@
 //! This is less disruptive than traditional bans and useful for dealing with
 //! automated abuse.
 
+use crate::caps::CapabilityAuthority;
 use crate::db::Shun;
-use crate::handlers::{
-    Context, Handler, HandlerResult, err_needmoreparams, require_oper, server_notice,
-};
+use crate::handlers::{Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star, server_notice};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -23,7 +22,13 @@ impl Handler for ShunHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Ok(nick) = require_oper(ctx).await else {
+        // Get nick and check capability
+        let nick = get_nick_or_star(ctx).await;
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
+            ctx.sender
+                .send(err_noprivileges(server_name, &nick))
+                .await?;
             return Ok(());
         };
 
@@ -94,7 +99,13 @@ impl Handler for UnshunHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
-        let Ok(nick) = require_oper(ctx).await else {
+        // Get nick and check capability
+        let nick = get_nick_or_star(ctx).await;
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
+            ctx.sender
+                .send(err_noprivileges(server_name, &nick))
+                .await?;
             return Ok(());
         };
 

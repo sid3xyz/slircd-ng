@@ -39,9 +39,7 @@ pub struct PrivmsgHandler;
 #[async_trait]
 impl Handler for PrivmsgHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            return Err(HandlerError::NotRegistered);
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // PRIVMSG <target> <text>
         let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;

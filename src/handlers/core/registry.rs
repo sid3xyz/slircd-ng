@@ -2,8 +2,18 @@
 //!
 //! The `Registry` manages command handlers and provides command usage statistics.
 //! Includes IRC-aware instrumentation for observability (Innovation 3).
+//!
+//! ## Typestate Dispatch (Innovation 1)
+//!
+//! Handlers are classified by registration phase:
+//! - **Pre-registration**: NICK, USER, PASS, CAP, etc. (valid before registration)
+//! - **Post-registration**: PRIVMSG, JOIN, etc. (require registration)
+//! - **Universal**: QUIT, PING, PONG (valid in any state)
+//!
+//! The registry dispatches based on connection state, eliminating runtime checks.
 
 use super::context::{Context, Handler, HandlerResult};
+use super::traits::{HandlerPhase, command_phase};
 use crate::handlers::{
     account::RegisterHandler,
     admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler},
@@ -195,8 +205,29 @@ impl Registry {
     /// Uses `msg.command_name()` to get the command name directly from the
     /// zero-copy `MessageRef`. Includes IRC-aware instrumentation for tracing
     /// and metrics (Innovation 3).
+    ///
+    /// ## Typestate Dispatch (Innovation 1)
+    ///
+    /// Before invoking the handler, checks if the command is valid for the
+    /// current registration state. Post-registration commands on unregistered
+    /// connections return `ERR_NOTREGISTERED` without invoking the handler.
+    /// This eliminates the need for runtime checks in individual handlers.
     pub async fn dispatch(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let cmd_name = msg.command_name().to_ascii_uppercase();
+
+        // Typestate dispatch: Check if command is valid for current registration state
+        let phase = command_phase(&cmd_name);
+        if !ctx.handshake.registered && phase == HandlerPhase::PostReg {
+            // Command requires registration but client isn't registered
+            use super::context::HandlerError;
+            debug!(
+                command = %cmd_name,
+                uid = %ctx.uid,
+                "Command rejected: not registered"
+            );
+            crate::metrics::record_command_error(&cmd_name, "not_registered");
+            return Err(HandlerError::NotRegistered);
+        }
 
         if let Some(handler) = self.handlers.get(cmd_name.as_str()) {
             // Increment command counter (counters are created for all handlers in new())

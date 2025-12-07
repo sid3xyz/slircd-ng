@@ -1,7 +1,7 @@
 //! WHO handler for listing users matching a mask.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_notregistered, server_reply, with_label,
+    Context, Handler, HandlerError, HandlerResult, server_reply, with_label,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -28,12 +28,7 @@ fn get_member_prefixes(member_modes: &crate::state::MemberModes, multi_prefix: b
 #[async_trait]
 impl Handler for WhoHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // WHO [mask] [o]
         let mask = msg.arg(0);

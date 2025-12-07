@@ -217,6 +217,10 @@ error_reply! {
 
 error_reply! {
     /// Create ERR_NOTREGISTERED reply (451) - you have not registered.
+    /// NOTE: This helper is no longer used since registration checks are
+    /// handled centrally by the registry typestate dispatch (Innovation 1).
+    /// Kept for potential future use.
+    #[allow(dead_code)]
     err_notregistered(ERR_NOTREGISTERED, "You have not registered") => {
         server_name: &str
     }

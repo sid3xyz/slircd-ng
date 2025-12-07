@@ -125,6 +125,50 @@ impl Capability for GlineCap {
     const NAME: &'static str = "oper:gline";
 }
 
+/// Capability to set Z-lines (global IP bans, skips DNS).
+///
+/// Scope: Unit (global).
+/// Required: IRC operator with zline privilege.
+pub struct ZlineCap;
+
+impl Capability for ZlineCap {
+    type Scope = ();
+    const NAME: &'static str = "oper:zline";
+}
+
+/// Capability to set R-lines (bans by realname/GECOS).
+///
+/// Scope: Unit (global).
+/// Required: IRC operator with rline privilege.
+pub struct RlineCap;
+
+impl Capability for RlineCap {
+    type Scope = ();
+    const NAME: &'static str = "oper:rline";
+}
+
+/// Capability to SHUN users (silent ignore without disconnect).
+///
+/// Scope: Unit (global).
+/// Required: IRC operator with shun privilege.
+pub struct ShunCap;
+
+impl Capability for ShunCap {
+    type Scope = ();
+    const NAME: &'static str = "oper:shun";
+}
+
+/// Capability for SA* admin commands (SAJOIN, SAPART, SAMODE, SANICK).
+///
+/// Scope: Unit (global).
+/// Required: IRC operator with admin privilege.
+pub struct AdminCap;
+
+impl Capability for AdminCap {
+    type Scope = ();
+    const NAME: &'static str = "oper:admin";
+}
+
 /// Capability to REHASH the server configuration.
 ///
 /// Scope: Unit (global).

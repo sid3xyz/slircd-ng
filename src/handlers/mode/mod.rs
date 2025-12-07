@@ -21,9 +21,7 @@ pub struct ModeHandler;
 #[async_trait]
 impl Handler for ModeHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            return Err(HandlerError::NotRegistered);
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // MODE <target> [modes [params]]
         let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;

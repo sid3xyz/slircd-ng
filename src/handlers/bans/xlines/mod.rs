@@ -10,10 +10,9 @@
 //! Uses a trait-based generic handler system to minimize code duplication.
 
 use super::common::{BanType, disconnect_matching_ban};
+use crate::caps::CapabilityAuthority;
 use crate::db::{Database, DbError};
-use crate::handlers::{
-    Context, Handler, HandlerResult, err_needmoreparams, require_oper, server_notice,
-};
+use crate::handlers::{Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star, server_notice};
 use crate::state::Matrix;
 use async_trait::async_trait;
 use ipnet::IpNet;
@@ -42,6 +41,11 @@ pub trait BanConfig: Send + Sync + 'static {
 
     /// BanType for disconnect_matching_ban.
     fn ban_type(&self) -> BanType;
+
+    /// Check if the user has the appropriate capability for this ban type.
+    ///
+    /// Returns `true` if the user is authorized, `false` otherwise.
+    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool;
 
     /// Add ban to database.
     async fn add_to_db(
@@ -84,9 +88,15 @@ impl<C: BanConfig> Handler for GenericBanAddHandler<C> {
         let server_name = &ctx.matrix.server_info.name;
         let cmd_name = self.config.command_name();
 
-        let Ok(nick) = require_oper(ctx).await else {
+        // Get nick and check capability
+        let nick = get_nick_or_star(ctx).await;
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        if !self.config.check_capability(&authority, ctx.uid).await {
+            ctx.sender
+                .send(err_noprivileges(server_name, &nick))
+                .await?;
             return Ok(());
-        };
+        }
 
         // Parse target (mask/ip/pattern)
         let target = match msg.arg(0) {
@@ -155,9 +165,15 @@ impl<C: BanConfig> Handler for GenericBanRemoveHandler<C> {
         let server_name = &ctx.matrix.server_info.name;
         let cmd_name = self.config.unset_command_name();
 
-        let Ok(nick) = require_oper(ctx).await else {
+        // Get nick and check capability
+        let nick = get_nick_or_star(ctx).await;
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        if !self.config.check_capability(&authority, ctx.uid).await {
+            ctx.sender
+                .send(err_noprivileges(server_name, &nick))
+                .await?;
             return Ok(());
-        };
+        }
 
         // Parse target
         let target = match msg.arg(0) {
@@ -245,6 +261,10 @@ impl BanConfig for KlineConfig {
         BanType::Kline
     }
 
+    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
+        authority.request_kline_cap(uid).await.is_some()
+    }
+
     async fn add_to_db(
         &self,
         db: &Database,
@@ -296,6 +316,10 @@ impl BanConfig for GlineConfig {
         BanType::Gline
     }
 
+    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
+        authority.request_gline_cap(uid).await.is_some()
+    }
+
     async fn add_to_db(
         &self,
         db: &Database,
@@ -345,6 +369,10 @@ impl BanConfig for DlineConfig {
 
     fn ban_type(&self) -> BanType {
         BanType::Dline
+    }
+
+    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
+        authority.request_dline_cap(uid).await.is_some()
     }
 
     async fn add_to_db(
@@ -408,6 +436,10 @@ impl BanConfig for ZlineConfig {
         BanType::Zline
     }
 
+    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
+        authority.request_zline_cap(uid).await.is_some()
+    }
+
     async fn add_to_db(
         &self,
         db: &Database,
@@ -467,6 +499,10 @@ impl BanConfig for RlineConfig {
 
     fn ban_type(&self) -> BanType {
         BanType::Rline
+    }
+
+    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
+        authority.request_rline_cap(uid).await.is_some()
     }
 
     async fn add_to_db(

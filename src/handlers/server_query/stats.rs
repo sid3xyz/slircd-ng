@@ -1,7 +1,7 @@
 //! STATS handler for server statistics.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_notregistered,
+    Context, Handler, HandlerError, HandlerResult,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -27,12 +27,7 @@ pub struct StatsHandler;
 #[async_trait]
 impl Handler for StatsHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let nick = ctx
             .handshake

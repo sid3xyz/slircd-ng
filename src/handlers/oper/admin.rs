@@ -1,19 +1,31 @@
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, require_oper, server_notice, server_reply,
+    Context, Handler, HandlerError, HandlerResult, err_noprivileges, get_nick_or_star,
+    server_notice, server_reply,
 };
+use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use tokio::sync::mpsc;
 
+/// Handler for DIE command. Uses capability-based authorization (Innovation 4).
 pub struct DieHandler;
 
 #[async_trait]
 impl Handler for DieHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
+        let nick = get_nick_or_star(ctx).await;
 
-        let Ok(nick) = require_oper(ctx).await else {
-            return Ok(());
+        // Request DIE capability from authority (Innovation 4)
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let _die_cap = match authority.request_die_cap(ctx.uid).await {
+            Some(cap) => cap,
+            None => {
+                ctx.sender
+                    .send(err_noprivileges(server_name, &nick))
+                    .await?;
+                return Ok(());
+            }
         };
 
         ctx.sender
@@ -38,15 +50,25 @@ impl Handler for DieHandler {
     }
 }
 
+/// Handler for REHASH command. Uses capability-based authorization (Innovation 4).
 pub struct RehashHandler;
 
 #[async_trait]
 impl Handler for RehashHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
+        let nick = get_nick_or_star(ctx).await;
 
-        let Ok(nick) = require_oper(ctx).await else {
-            return Ok(());
+        // Request REHASH capability from authority (Innovation 4)
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let _rehash_cap = match authority.request_rehash_cap(ctx.uid).await {
+            Some(cap) => cap,
+            None => {
+                ctx.sender
+                    .send(err_noprivileges(server_name, &nick))
+                    .await?;
+                return Ok(());
+            }
         };
 
         let reply = server_reply(
@@ -103,15 +125,25 @@ impl Handler for RehashHandler {
     }
 }
 
+/// Handler for RESTART command. Uses capability-based authorization (Innovation 4).
 pub struct RestartHandler;
 
 #[async_trait]
 impl Handler for RestartHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
+        let nick = get_nick_or_star(ctx).await;
 
-        let Ok(nick) = require_oper(ctx).await else {
-            return Ok(());
+        // Request RESTART capability from authority (Innovation 4)
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let _restart_cap = match authority.request_restart_cap(ctx.uid).await {
+            Some(cap) => cap,
+            None => {
+                ctx.sender
+                    .send(err_noprivileges(server_name, &nick))
+                    .await?;
+                return Ok(());
+            }
         };
 
         ctx.sender

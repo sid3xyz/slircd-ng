@@ -4,7 +4,7 @@
 //! RFC 2812 doesn't define HELP, but it's a common modern extension.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_notregistered,
+    Context, Handler, HandlerError, HandlerResult,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -238,12 +238,7 @@ pub struct HelpHandler;
 #[async_trait]
 impl Handler for HelpHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if !ctx.handshake.registered {
-            ctx.sender
-                .send(err_notregistered(&ctx.matrix.server_info.name))
-                .await?;
-            return Ok(());
-        }
+        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let nick = ctx
             .handshake
