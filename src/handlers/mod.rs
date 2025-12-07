@@ -47,9 +47,7 @@ pub use core::{
 };
 
 // Re-export typestate handler traits (Innovation 1)
-// Will be used in Phase 2+ of handler migration
-#[allow(unused_imports)]
-pub use core::{HandlerPhase, PostRegHandler, PreRegHandler, UniversalHandler, command_phase};
+pub use core::{PostRegHandler, PreRegHandler, UniversalHandler};
 
 // Re-export helper functions for use by handlers
 pub use helpers::{

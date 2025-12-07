@@ -15,7 +15,15 @@ The "Innovation 1 Phase 2" refactoring to implement compile-time protocol state 
 | ------------------------------------------ | ----------------- |
 | `cargo build -p slircd-ng`                 | ✅ PASS            |
 | `cargo clippy -p slircd-ng -- -D warnings` | ✅ PASS            |
-| `cargo test -p slircd-ng`                  | ✅ PASS (87 tests) |
+| `cargo test -p slircd-ng`                  | ✅ PASS (86 tests) |
+
+## Final Cleanup
+
+Dead code removed in final pass:
+- `wrap_pre_reg()` and `wrap_registered()` helper functions (unused)
+- `HandlerPhase` enum and `command_phase()` function (unused, registration handled by Registry structure)
+- Unused `uid()` and `remote_addr()` methods on TypedContext
+- `traits.rs` reduced from ~333 lines to ~206 lines
 
 ## Migration Statistics
 
