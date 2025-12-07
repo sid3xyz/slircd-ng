@@ -150,9 +150,24 @@ pub async fn handle_channel_mode(
                     if let Some(target_nick) = mode.arg() {
                         let target_lower = irc_to_lower(target_nick);
                         match ctx.matrix.nicks.get(&target_lower) {
-                            Some(_) => {
-                                // Valid target
-                                valid_modes.push(mode.clone());
+                            Some(target_uid) => {
+                                // Check if target is in the channel
+                                if info.is_member(target_uid) {
+                                    valid_modes.push(mode.clone());
+                                } else {
+                                    // ERR_USERNOTINCHANNEL (441)
+                                    let reply = server_reply(
+                                        &ctx.matrix.server_info.name,
+                                        Response::ERR_USERNOTINCHANNEL,
+                                        vec![
+                                            nick.to_string(),
+                                            target_nick.to_string(),
+                                            canonical_name.clone(),
+                                            "They aren't on that channel".to_string(),
+                                        ],
+                                    );
+                                    ctx.sender.send(reply).await?;
+                                }
                             }
                             None => {
                                 // ERR_NOSUCHNICK (401)
