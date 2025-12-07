@@ -238,7 +238,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             format!("NETWORK={}", network),
             "CASEMAPPING=rfc1459".to_string(),
             "CHANTYPES=#&+!".to_string(), // All RFC 2811 channel types
-            "PREFIX=(ov)@+".to_string(),
+            "PREFIX=(qaohv)~&@%+".to_string(), // Channel member prefixes: owner, admin, op, halfop, voice
             // CHANMODES=A,B,C,D format:
             // A=list modes (always param), B=param when set/unset, C=param when set only, D=no param
             // A=beIq (ban, exception, invex, quiet)
@@ -265,7 +265,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             "MODES=6".to_string(),
             "MAXTARGETS=4".to_string(),
             "MONITOR=100".to_string(),  // Max monitored nicks per client
-            "STATUSMSG=@+".to_string(), // Prefixes for status messages
+            "STATUSMSG=~&@%+".to_string(), // Prefixes for status messages (matches PREFIX)
             "are supported by this server".to_string(),
         ],
     );

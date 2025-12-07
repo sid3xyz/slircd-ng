@@ -3,7 +3,7 @@ use super::{ChannelActor, ChannelMode, ChannelRouteResult, Uid};
 use crate::security::UserContext;
 use slirc_proto::message::Tag;
 use slirc_proto::{Command, Message};
-use std::sync::Arc;
+use std::borrow::Cow;
 use tokio::sync::oneshot;
 
 impl ChannelActor {
@@ -14,6 +14,7 @@ impl ChannelActor {
         text: String,
         tags: Option<Vec<Tag>>,
         is_notice: bool,
+        is_tagmsg: bool,
         user_context: UserContext,
         is_registered: bool,
         is_tls: bool,
@@ -94,35 +95,105 @@ impl ChannelActor {
         }
 
         // Broadcast
-        let msg = Message {
-            tags,
+        // Generate server-side tags
+        let timestamp = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let msgid = uuid::Uuid::new_v4().to_string();
+
+        // Build target with status prefix if present (for STATUSMSG)
+        let target = if let Some(prefix) = status_prefix {
+            format!("{}{}", prefix, self.name)
+        } else {
+            self.name.clone()
+        };
+
+        let base_msg = Message {
+            tags: tags.clone(),
             prefix: Some(slirc_proto::Prefix::Nickname(
                 user_context.nickname.clone(),
                 user_context.username.clone(),
                 user_context.hostname.clone(),
             )),
-            command: if is_notice {
-                Command::NOTICE(self.name.clone(), text)
+            command: if is_tagmsg {
+                Command::TAGMSG(target.clone())
+            } else if is_notice {
+                Command::NOTICE(target.clone(), text.clone())
             } else {
-                Command::PRIVMSG(self.name.clone(), text)
+                Command::PRIVMSG(target.clone(), text.clone())
             },
         };
 
-        let msg_arc = Arc::new(msg);
         let mut recipients_sent = 0usize;
 
+        // Check if sender has echo-message capability for self-echo
+        let sender_caps = self.user_caps.get(&sender_uid);
+        let sender_has_echo = sender_caps
+            .map(|caps| caps.contains("echo-message"))
+            .unwrap_or(false);
+
         for (uid, sender) in &self.senders {
+            let user_caps = self.user_caps.get(uid);
+            
             if uid == &sender_uid {
+                // Echo back to sender if they have echo-message capability
+                if sender_has_echo {
+                    // Check sender's caps for tag handling
+                    let sender_has_message_tags = user_caps.map(|caps| caps.contains("message-tags")).unwrap_or(false);
+                    let sender_has_server_time = user_caps.map(|caps| caps.contains("server-time")).unwrap_or(false);
+                    
+                    // Start with fresh tags based on sender's capabilities
+                    let mut echo_tags: Vec<Tag> = Vec::new();
+                    
+                    // Add server-time if sender has the capability
+                    if sender_has_server_time {
+                        echo_tags.push(Tag(Cow::Borrowed("time"), Some(timestamp.clone())));
+                    }
+                    
+                    // If sender has message-tags, include client-only tags and msgid
+                    if sender_has_message_tags {
+                        // Preserve client-only tags from original message
+                        if let Some(ref orig_tags) = tags {
+                            for tag in orig_tags {
+                                if tag.0.starts_with('+') {
+                                    echo_tags.push(tag.clone());
+                                }
+                            }
+                        }
+                        // Add msgid
+                        echo_tags.push(Tag(Cow::Borrowed("msgid"), Some(msgid.clone())));
+                    }
+                    
+                    // Always preserve the label tag if present (for labeled-response)
+                    if let Some(ref orig_tags) = tags {
+                        for tag in orig_tags {
+                            if tag.0.as_ref() == "label" {
+                                echo_tags.push(tag.clone());
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Build echo message with computed tags
+                    let mut echo_msg = base_msg.clone();
+                    echo_msg.tags = if echo_tags.is_empty() { None } else { Some(echo_tags) };
+                    
+                    let _ = sender.send(echo_msg).await;
+                    recipients_sent += 1;
+                }
                 continue;
             }
 
             if let Some(prefix) = status_prefix {
                 if let Some(modes) = self.members.get(uid) {
+                    // Check if recipient has the required status level for STATUSMSG
+                    // Each prefix sends to users with that status or higher
                     let has_status = match prefix {
+                        '~' => modes.owner,
+                        '&' => modes.admin || modes.owner,
                         '@' => modes.op || modes.admin || modes.owner,
-                        '+' => {
-                            modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
-                        }
+                        '%' => modes.halfop || modes.op || modes.admin || modes.owner,
+                        '+' => modes.voice || modes.halfop || modes.op || modes.admin || modes.owner,
                         _ => false,
                     };
                     if !has_status {
@@ -133,7 +204,44 @@ impl ChannelActor {
                 }
             }
 
-            let _ = sender.send((*msg_arc).clone()).await;
+            // Build message for this recipient with appropriate tags
+            let mut recipient_msg = base_msg.clone();
+            
+            // Check recipient's capabilities
+            let has_message_tags = user_caps.map(|caps| caps.contains("message-tags")).unwrap_or(false);
+            let has_server_time = user_caps.map(|caps| caps.contains("server-time")).unwrap_or(false);
+            
+            // For TAGMSG, only send to recipients with message-tags capability
+            if is_tagmsg && !has_message_tags {
+                continue;
+            }
+            
+            // Build recipient's tags based on their capabilities
+            let mut recipient_tags: Vec<Tag> = Vec::new();
+            
+            // Add server-time if recipient has the capability (independent of message-tags)
+            if has_server_time {
+                recipient_tags.push(Tag(Cow::Borrowed("time"), Some(timestamp.clone())));
+            }
+            
+            if has_message_tags {
+                // With message-tags, include client-only tags and msgid
+                // Preserve client-only tags from original message
+                if let Some(ref orig_tags) = tags {
+                    for tag in orig_tags {
+                        if tag.0.starts_with('+') {
+                            recipient_tags.push(tag.clone());
+                        }
+                    }
+                }
+                // Add msgid
+                recipient_tags.push(Tag(Cow::Borrowed("msgid"), Some(msgid.clone())));
+            }
+            // Note: label tag is NOT included for non-sender recipients
+            
+            recipient_msg.tags = if recipient_tags.is_empty() { None } else { Some(recipient_tags) };
+
+            let _ = sender.send(recipient_msg).await;
             recipients_sent += 1;
         }
 
