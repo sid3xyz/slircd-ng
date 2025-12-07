@@ -1,8 +1,6 @@
 //! WHOIS handler for detailed user information queries.
 
-use crate::handlers::{
-    Context, Handler, HandlerError, HandlerResult, server_reply, with_label,
-};
+use crate::handlers::{Context, Handler, HandlerError, HandlerResult, server_reply, with_label};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tracing::debug;

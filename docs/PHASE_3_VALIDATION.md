@@ -25,22 +25,22 @@ Verify slircd-ng handles production-scale load: 1000+ concurrent connections wit
 ### Test Scenarios
 
 | Scenario | Connections | Channels | Messages/sec | Duration |
-|----------|-------------|----------|--------------|----------|
-| Baseline | 100 | 10 | 100 | 5 min |
-| Medium | 500 | 50 | 500 | 10 min |
-| High | 1000 | 100 | 1000 | 30 min |
-| Spike | 1000 → 2000 | 100 | 2000 | 5 min |
-| Soak | 500 | 50 | 200 | 4 hours |
+| -------- | ----------- | -------- | ------------ | -------- |
+| Baseline | 100         | 10       | 100          | 5 min    |
+| Medium   | 500         | 50       | 500          | 10 min   |
+| High     | 1000        | 100      | 1000         | 30 min   |
+| Spike    | 1000 → 2000 | 100      | 2000         | 5 min    |
+| Soak     | 500         | 50       | 200          | 4 hours  |
 
 ### Performance Targets
 
-| Metric | Target | Acceptable |
-|--------|--------|------------|
-| Connection latency (p99) | < 50ms | < 100ms |
-| Message latency (p99) | < 10ms | < 50ms |
-| Memory per connection | < 10KB | < 50KB |
-| CPU usage (1000 conn) | < 25% | < 50% |
-| No failed connections | 100% | > 99.9% |
+| Metric                   | Target | Acceptable |
+| ------------------------ | ------ | ---------- |
+| Connection latency (p99) | < 50ms | < 100ms    |
+| Message latency (p99)    | < 10ms | < 50ms     |
+| Memory per connection    | < 10KB | < 50KB     |
+| CPU usage (1000 conn)    | < 25%  | < 50%      |
+| No failed connections    | 100%   | > 99.9%    |
 
 ### Implementation Steps
 
@@ -123,14 +123,14 @@ cargo run -p slircd-load-test -- --scenario baseline
 
 ### Files to Create
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| tests/load/Cargo.toml | Create | 20 |
-| tests/load/src/main.rs | Create | 100 |
-| tests/load/src/generator.rs | Create | 300 |
-| tests/load/src/client.rs | Create | 200 |
-| tests/load/src/analyze.rs | Create | 150 |
-| tests/load/scenarios/*.toml | Create | 100 |
+| File                        | Action | Lines (est.) |
+| --------------------------- | ------ | ------------ |
+| tests/load/Cargo.toml       | Create | 20           |
+| tests/load/src/main.rs      | Create | 100          |
+| tests/load/src/generator.rs | Create | 300          |
+| tests/load/src/client.rs    | Create | 200          |
+| tests/load/src/analyze.rs   | Create | 150          |
+| tests/load/scenarios/*.toml | Create | 100          |
 
 ---
 
@@ -146,15 +146,15 @@ Identify and remediate security vulnerabilities before production deployment.
 
 ### Audit Scope
 
-| Area | Focus |
-|------|-------|
-| Authentication | SASL implementation, password handling |
-| Authorization | Capability system, oper permissions |
-| Input Validation | Message parsing, command parameters |
-| DoS Resistance | Rate limiting, resource limits |
-| TLS | Certificate handling, cipher suites |
-| Data Protection | Password storage, PII handling |
-| Dependencies | Known CVEs in dependencies |
+| Area             | Focus                                  |
+| ---------------- | -------------------------------------- |
+| Authentication   | SASL implementation, password handling |
+| Authorization    | Capability system, oper permissions    |
+| Input Validation | Message parsing, command parameters    |
+| DoS Resistance   | Rate limiting, resource limits         |
+| TLS              | Certificate handling, cipher suites    |
+| Data Protection  | Password storage, PII handling         |
+| Dependencies     | Known CVEs in dependencies             |
 
 ### Implementation Steps
 
@@ -236,12 +236,12 @@ STEP 8: Document findings
 
 ### Files to Create/Modify
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| docs/SECURITY_AUDIT.md | Create | 200 |
-| fuzz/Cargo.toml | Create | 15 |
-| fuzz/fuzz_targets/*.rs | Create | 100 |
-| Various fixes | Modify | Variable |
+| File                   | Action | Lines (est.) |
+| ---------------------- | ------ | ------------ |
+| docs/SECURITY_AUDIT.md | Create | 200          |
+| fuzz/Cargo.toml        | Create | 15           |
+| fuzz/fuzz_targets/*.rs | Create | 100          |
+| Various fixes          | Modify | Variable     |
 
 ---
 
@@ -322,12 +322,12 @@ STEP 6: Gradual promotion
 
 ### Files to Create
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| scripts/migrate_from_slircd.sh | Create | 100 |
-| deploy/haproxy.cfg | Create | 50 |
-| docs/ROLLBACK.md | Create | 50 |
-| docs/BETA_OBSERVATIONS.md | Create | ongoing |
+| File                           | Action | Lines (est.) |
+| ------------------------------ | ------ | ------------ |
+| scripts/migrate_from_slircd.sh | Create | 100          |
+| deploy/haproxy.cfg             | Create | 50           |
+| docs/ROLLBACK.md               | Create | 50           |
+| docs/BETA_OBSERVATIONS.md      | Create | ongoing      |
 
 ---
 
@@ -385,15 +385,15 @@ STEP 5: Generic IRCd support
 
 ### Files to Create
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| tools/slircd-export/Cargo.toml | Create | 15 |
-| tools/slircd-export/src/main.rs | Create | 200 |
-| tools/slircd-migrate/Cargo.toml | Create | 15 |
-| tools/slircd-migrate/src/main.rs | Create | 100 |
-| tools/slircd-migrate/src/transform.rs | Create | 150 |
-| tools/slircd-migrate/src/import.rs | Create | 150 |
-| tools/slircd-migrate/src/validate.rs | Create | 100 |
+| File                                  | Action | Lines (est.) |
+| ------------------------------------- | ------ | ------------ |
+| tools/slircd-export/Cargo.toml        | Create | 15           |
+| tools/slircd-export/src/main.rs       | Create | 200          |
+| tools/slircd-migrate/Cargo.toml       | Create | 15           |
+| tools/slircd-migrate/src/main.rs      | Create | 100          |
+| tools/slircd-migrate/src/transform.rs | Create | 150          |
+| tools/slircd-migrate/src/import.rs    | Create | 150          |
+| tools/slircd-migrate/src/validate.rs  | Create | 100          |
 
 ---
 
@@ -482,15 +482,15 @@ OUTPUT: docs/SECURITY_AUDIT.md with findings and remediations
 
 Before considering slircd-ng production-ready:
 
-| Requirement | Status | Evidence |
-|-------------|--------|----------|
-| Load test 1000+ connections | ⬜ | Load test report |
-| Security audit no critical | ⬜ | SECURITY_AUDIT.md |
-| Beta deployment 1 week | ⬜ | BETA_OBSERVATIONS.md |
-| Migration tools tested | ⬜ | Migration test log |
-| Documentation complete | ⬜ | docs/ directory |
-| irctest ≥ 80% | ⬜ | irctest report |
-| All Phase 1-2 complete | ⬜ | Roadmap checkboxes |
+| Requirement                 | Status | Evidence             |
+| --------------------------- | ------ | -------------------- |
+| Load test 1000+ connections | ⬜      | Load test report     |
+| Security audit no critical  | ⬜      | SECURITY_AUDIT.md    |
+| Beta deployment 1 week      | ⬜      | BETA_OBSERVATIONS.md |
+| Migration tools tested      | ⬜      | Migration test log   |
+| Documentation complete      | ⬜      | docs/ directory      |
+| irctest ≥ 80%               | ⬜      | irctest report       |
+| All Phase 1-2 complete      | ⬜      | Roadmap checkboxes   |
 
 **Certification Date:** ___________
 **Certified By:** ___________

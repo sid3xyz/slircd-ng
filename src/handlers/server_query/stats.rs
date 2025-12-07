@@ -1,8 +1,6 @@
 //! STATS handler for server statistics.
 
-use super::super::{
-    Context, Handler, HandlerError, HandlerResult,
-};
+use super::super::{Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use std::time::{SystemTime, UNIX_EPOCH};

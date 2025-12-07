@@ -72,11 +72,24 @@ pub use authority::CapabilityAuthority;
 #[allow(unused_imports)]
 pub use irc::{
     // Channel capabilities (Phase 3 migrated)
-    BanCap, InviteCap, KickCap, TopicCap, ChannelModeCap, VoiceCap,
-    // Oper capabilities (in use)
-    KillCap, KlineCap, DlineCap, GlineCap, RehashCap, DieCap, RestartCap,
+    BanCap,
     // Special capabilities
-    BypassFloodCap, BypassModeCap, GlobalNoticeCap,
+    BypassFloodCap,
+    BypassModeCap,
+    ChannelModeCap,
+    DieCap,
+    DlineCap,
+    GlineCap,
+    GlobalNoticeCap,
+    InviteCap,
+    KickCap,
+    // Oper capabilities (in use)
+    KillCap,
+    KlineCap,
+    RehashCap,
+    RestartCap,
+    TopicCap,
+    VoiceCap,
 };
 #[allow(unused_imports)]
 pub use tokens::{Cap, Capability};

@@ -12,7 +12,10 @@
 use super::common::{BanType, disconnect_matching_ban};
 use crate::caps::CapabilityAuthority;
 use crate::db::{Database, DbError};
-use crate::handlers::{Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star, server_notice};
+use crate::handlers::{
+    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star,
+    server_notice,
+};
 use crate::state::Matrix;
 use async_trait::async_trait;
 use ipnet::IpNet;

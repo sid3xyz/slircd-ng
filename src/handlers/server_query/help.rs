@@ -3,9 +3,7 @@
 //! Returns help text for IRC commands.
 //! RFC 2812 doesn't define HELP, but it's a common modern extension.
 
-use super::super::{
-    Context, Handler, HandlerError, HandlerResult,
-};
+use super::super::{Context, Handler, HandlerError, HandlerResult};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 

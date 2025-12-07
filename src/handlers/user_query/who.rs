@@ -1,8 +1,6 @@
 //! WHO handler for listing users matching a mask.
 
-use super::super::{
-    Context, Handler, HandlerError, HandlerResult, server_reply, with_label,
-};
+use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply, with_label};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 

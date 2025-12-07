@@ -30,7 +30,8 @@ impl Handler for WallopsHandler {
         };
 
         // Get sender's identity
-        let Some((sender_nick, sender_user, sender_host)) = user_mask_from_state(ctx, ctx.uid).await
+        let Some((sender_nick, sender_user, sender_host)) =
+            user_mask_from_state(ctx, ctx.uid).await
         else {
             return Ok(());
         };

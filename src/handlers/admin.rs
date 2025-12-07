@@ -7,8 +7,8 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    Context, Handler, HandlerResult, TargetUser, err_needmoreparams, err_nosuchchannel,
-    err_noprivileges, err_nosuchnick, force_join_channel, force_part_channel,
+    Context, Handler, HandlerResult, TargetUser, err_needmoreparams, err_noprivileges,
+    err_nosuchchannel, err_nosuchnick, force_join_channel, force_part_channel,
     format_modes_for_log, get_nick_or_star, resolve_nick_to_uid, server_notice,
 };
 use crate::caps::CapabilityAuthority;

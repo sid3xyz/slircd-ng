@@ -3,7 +3,8 @@
 //! Additional server query commands for network information.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_needmoreparams, err_noprivileges, get_oper_info,
+    Context, Handler, HandlerError, HandlerResult, err_needmoreparams, err_noprivileges,
+    get_oper_info,
 };
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};

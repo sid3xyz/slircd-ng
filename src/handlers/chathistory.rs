@@ -6,9 +6,7 @@
 //! - IRCv3 chathistory: <https://ircv3.net/specs/extensions/chathistory>
 
 use crate::db::StoredMessage;
-use crate::handlers::{
-    Context, Handler, HandlerResult, err_needmoreparams, get_nick_or_star,
-};
+use crate::handlers::{Context, Handler, HandlerResult, err_needmoreparams, get_nick_or_star};
 use async_trait::async_trait;
 use slirc_proto::{
     BatchSubCommand, ChatHistorySubCommand, Command, Message, MessageRef, MessageReference, Prefix,

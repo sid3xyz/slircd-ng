@@ -32,7 +32,8 @@ impl Handler for KillHandler {
         let reason = msg.arg(1).unwrap_or("No reason given");
 
         // Get killer's identity
-        let Some((killer_nick, killer_user, killer_host)) = user_mask_from_state(ctx, ctx.uid).await
+        let Some((killer_nick, killer_user, killer_host)) =
+            user_mask_from_state(ctx, ctx.uid).await
         else {
             return Ok(());
         };

@@ -55,7 +55,7 @@ use slirc_proto::MessageRef;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::{Instrument, debug, span, Level};
+use tracing::{Instrument, Level, debug, span};
 
 /// Registry of command handlers.
 ///
@@ -251,10 +251,8 @@ impl Registry {
 
         // Typestate dispatch: Look up handler in phase-appropriate map
         // Universal handlers are always available, then check phase-specific map
-        let handler: Option<&Box<dyn Handler>> = self
-            .universal_handlers
-            .get(cmd_name.as_str())
-            .or_else(|| {
+        let handler: Option<&Box<dyn Handler>> =
+            self.universal_handlers.get(cmd_name.as_str()).or_else(|| {
                 if ctx.handshake.registered {
                     // Registered: check post-reg handlers, then pre-reg (for NICK changes etc.)
                     self.post_reg_handlers
@@ -275,7 +273,9 @@ impl Registry {
 
             // Extract IRC context for tracing
             let source_nick = ctx.handshake.nick.as_deref();
-            let channel = msg.arg(0).filter(|a| a.starts_with('#') || a.starts_with('&'));
+            let channel = msg
+                .arg(0)
+                .filter(|a| a.starts_with('#') || a.starts_with('&'));
             let msgid = crate::telemetry::extract_msgid(msg);
 
             // Create instrumented span

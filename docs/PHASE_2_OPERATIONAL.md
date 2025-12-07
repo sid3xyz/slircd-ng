@@ -24,14 +24,14 @@ Capture every state-changing operation in an append-only log. This enables audit
 
 ### Event Types
 
-| Category | Events |
-|----------|--------|
-| User | UserConnect, UserDisconnect, UserNickChange, UserModeChange |
-| Channel | ChannelCreate, ChannelDestroy, ChannelJoin, ChannelPart, ChannelKick |
-| Channel State | TopicChange, ModeChange, BanAdd, BanRemove |
-| Message | PrivmsgSent, NoticeSent (optional, high volume) |
-| Services | NickRegister, NickIdentify, ChanRegister, ChanFlags |
-| Oper | OperLogin, Kill, Kline, Rehash |
+| Category      | Events                                                               |
+| ------------- | -------------------------------------------------------------------- |
+| User          | UserConnect, UserDisconnect, UserNickChange, UserModeChange          |
+| Channel       | ChannelCreate, ChannelDestroy, ChannelJoin, ChannelPart, ChannelKick |
+| Channel State | TopicChange, ModeChange, BanAdd, BanRemove                           |
+| Message       | PrivmsgSent, NoticeSent (optional, high volume)                      |
+| Services      | NickRegister, NickIdentify, ChanRegister, ChanFlags                  |
+| Oper          | OperLogin, Kill, Kline, Rehash                                       |
 
 ### Database Schema
 
@@ -109,17 +109,17 @@ curl -u admin:password http://localhost:8080/admin/events?from=2025-01-01
 
 ### Files to Create/Modify
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| src/events/mod.rs | Create | 150 |
-| src/events/store.rs | Create | 200 |
-| src/events/bus.rs | Create | 80 |
-| src/state/actor/mod.rs | Modify | +50 |
-| src/connection/mod.rs | Modify | +30 |
-| src/services/nickserv/mod.rs | Modify | +20 |
-| src/services/chanserv/mod.rs | Modify | +20 |
-| src/http/admin.rs | Create | 100 |
-| migrations/003_events.sql | Create | 20 |
+| File                         | Action | Lines (est.) |
+| ---------------------------- | ------ | ------------ |
+| src/events/mod.rs            | Create | 150          |
+| src/events/store.rs          | Create | 200          |
+| src/events/bus.rs            | Create | 80           |
+| src/state/actor/mod.rs       | Modify | +50          |
+| src/connection/mod.rs        | Modify | +30          |
+| src/services/nickserv/mod.rs | Modify | +20          |
+| src/services/chanserv/mod.rs | Modify | +20          |
+| src/http/admin.rs            | Create | 100          |
+| migrations/003_events.sql    | Create | 20           |
 
 ---
 
@@ -179,12 +179,12 @@ struct PluginApi {
     // Registration
     fn register_command(&self, name: &str, handler: CommandHandler);
     fn register_event_listener(&self, event: EventType, handler: EventHandler);
-    
+
     // Read-only queries
     fn get_user(&self, uid: &str) -> Option<UserSnapshot>;
     fn get_channel(&self, name: &str) -> Option<ChannelSnapshot>;
     fn list_channels(&self) -> Vec<String>;
-    
+
     // Actions (capability-gated)
     fn send_privmsg(&self, target: &str, message: &str) -> Result<()>;
     fn send_notice(&self, target: &str, message: &str) -> Result<()>;
@@ -251,7 +251,7 @@ function plugin.on_load(api)
     api.register_event_listener("user.connect", function(event)
         api.send_notice(event.nick, "Welcome to our IRC network!")
     end)
-    
+
     api.register_command("GREET", function(ctx, args)
         local target = args[1] or ctx.nick
         api.send_privmsg(ctx.channel, "Hello, " .. target .. "!")
@@ -283,16 +283,16 @@ EOF
 
 ### Files to Create/Modify
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| src/plugins/mod.rs | Create | 100 |
-| src/plugins/manager.rs | Create | 200 |
-| src/plugins/lua.rs | Create | 300 |
-| src/handlers/oper/plugin.rs | Create | 80 |
-| src/handlers/core/registry.rs | Modify | +30 |
-| src/events/bus.rs | Modify | +20 |
-| Cargo.toml | Modify | +3 |
-| plugins/example/init.lua | Create | 30 |
+| File                          | Action | Lines (est.) |
+| ----------------------------- | ------ | ------------ |
+| src/plugins/mod.rs            | Create | 100          |
+| src/plugins/manager.rs        | Create | 200          |
+| src/plugins/lua.rs            | Create | 300          |
+| src/handlers/oper/plugin.rs   | Create | 80           |
+| src/handlers/core/registry.rs | Modify | +30          |
+| src/events/bus.rs             | Modify | +20          |
+| Cargo.toml                    | Modify | +3           |
+| plugins/example/init.lua      | Create | 30           |
 
 ---
 
@@ -348,13 +348,13 @@ curl http://localhost:8080/admin/replay?at=2025-01-01T12:00:00Z | jq .
 
 ### Files to Create/Modify
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| src/replay/mod.rs | Create | 50 |
-| src/replay/reconstructor.rs | Create | 150 |
-| src/replay/diff.rs | Create | 100 |
-| src/bin/slircd-replay.rs | Create | 80 |
-| src/http/admin.rs | Modify | +30 |
+| File                        | Action | Lines (est.) |
+| --------------------------- | ------ | ------------ |
+| src/replay/mod.rs           | Create | 50           |
+| src/replay/reconstructor.rs | Create | 150          |
+| src/replay/diff.rs          | Create | 100          |
+| src/bin/slircd-replay.rs    | Create | 80           |
+| src/http/admin.rs           | Modify | +30          |
 
 ---
 
@@ -371,7 +371,7 @@ curl http://localhost:8080/admin/replay?at=2025-01-01T12:00:00Z | jq .
    [Unit]
    Description=SLIRC IRC Daemon
    After=network.target
-   
+
    [Service]
    Type=notify
    ExecStart=/usr/local/bin/slircd /etc/slircd/config.toml
@@ -379,7 +379,7 @@ curl http://localhost:8080/admin/replay?at=2025-01-01T12:00:00Z | jq .
    Restart=on-failure
    User=slircd
    Group=slircd
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
@@ -412,13 +412,13 @@ curl http://localhost:8080/admin/replay?at=2025-01-01T12:00:00Z | jq .
 
 ### Files to Create
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| deploy/slircd.service | Create | 25 |
-| deploy/docker-compose.yml | Create | 30 |
-| deploy/Dockerfile | Create | 40 |
-| deploy/grafana/dashboards/*.json | Create | 500 |
-| docs/RUNBOOK.md | Create | 200 |
+| File                             | Action | Lines (est.) |
+| -------------------------------- | ------ | ------------ |
+| deploy/slircd.service            | Create | 25           |
+| deploy/docker-compose.yml        | Create | 30           |
+| deploy/Dockerfile                | Create | 40           |
+| deploy/grafana/dashboards/*.json | Create | 500          |
+| docs/RUNBOOK.md                  | Create | 200          |
 
 ---
 
@@ -474,11 +474,11 @@ When assigning this phase to AI agents:
 ```
 TASK: Implement event sourcing for slircd-ng
 CONTEXT: Read PHASE_2_OPERATIONAL.md section 2.1
-FILES TO READ FIRST: 
+FILES TO READ FIRST:
   - src/state/actor/mod.rs (channel events)
   - src/connection/mod.rs (user events)
   - slirc-proto/src/crdt/clock.rs (LamportClock)
-CONSTRAINTS: 
+CONSTRAINTS:
   - Use SQLite for persistence (existing pattern)
   - Use tokio::sync::broadcast for in-memory fanout
   - Events must be serializable to JSON

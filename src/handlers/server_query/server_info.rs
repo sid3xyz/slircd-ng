@@ -1,6 +1,8 @@
 //! MOTD and related handlers.
 
+use super::super::core::traits::{StatefulPostRegHandler, TypedContext};
 use super::super::{Context, Handler, HandlerError, HandlerResult};
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -124,6 +126,169 @@ impl Handler for TimeHandler {
             vec![nick.clone(), server_name.clone(), time_string],
         )
         .await?;
+
+        Ok(())
+    }
+}
+
+/// Typestate-based handler for TIME command (Phase 2 proof-of-concept).
+///
+/// This is the compile-time safe version of `TimeHandler`, demonstrating
+/// the Innovation 1 typestate protocol pattern.
+///
+/// ## Benefits over TimeHandler
+///
+/// - `ctx.nick()` returns `&str`, not `Option<&str>` - no runtime check needed!
+/// - Compile-time guarantee that this handler only runs for registered connections
+/// - No `HandlerError::NickOrUserMissing` error path possible
+///
+/// ## Example Usage
+///
+/// ```ignore
+/// // With legacy Handler trait:
+/// let nick = ctx.handshake.nick.as_ref()
+///     .ok_or(HandlerError::NickOrUserMissing)?;  // Runtime check!
+///
+/// // With StatefulPostRegHandler trait:
+/// let nick = ctx.nick();  // Compile-time guarantee: always valid!
+/// ```
+#[allow(dead_code)] // Phase 2 proof-of-concept - will be registered in Phase 3
+pub struct TimeHandlerStateful;
+
+#[async_trait]
+impl StatefulPostRegHandler for TimeHandlerStateful {
+    async fn handle_registered(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        // Compile-time guarantee: nick is always present for Registered connections
+        let nick = ctx.nick(); // Returns &str, not Option!
+        let server_name = &ctx.inner().matrix.server_info.name;
+
+        // RPL_TIME (391): <server> :<string showing server's local time>
+        let now = chrono::Local::now();
+        let time_string = now.format("%A %B %d %Y -- %H:%M:%S %z").to_string();
+
+        ctx.inner()
+            .send_reply(
+                Response::RPL_TIME,
+                vec![nick.to_string(), server_name.clone(), time_string],
+            )
+            .await?;
+
+        Ok(())
+    }
+}
+
+/// Stateful handler for ADMIN command using typestate pattern (Phase 2).
+///
+/// Uses `TypedContext<Registered>` which guarantees at compile time that:
+/// - Nick is always present (`ctx.nick()` returns `&str`, not `Option`)
+/// - User is always present
+/// - All registration requirements have been met
+#[allow(dead_code)] // Phase 2 proof-of-concept - will be registered in Phase 3
+pub struct AdminHandlerStateful;
+
+#[async_trait]
+impl StatefulPostRegHandler for AdminHandlerStateful {
+    async fn handle_registered(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        // Compile-time guarantee: nick is always present for Registered connections
+        let nick = ctx.nick(); // Returns &str, not Option!
+        let server_name = &ctx.inner().matrix.server_info.name;
+
+        // RPL_ADMINME (256): <server> :Administrative info
+        ctx.inner()
+            .send_reply(
+                Response::RPL_ADMINME,
+                vec![
+                    nick.to_string(),
+                    server_name.clone(),
+                    "Administrative info".to_string(),
+                ],
+            )
+            .await?;
+
+        // RPL_ADMINLOC1 (257): :<admin info>
+        ctx.inner()
+            .send_reply(
+                Response::RPL_ADMINLOC1,
+                vec![nick.to_string(), "slircd-ng IRC Server".to_string()],
+            )
+            .await?;
+
+        // RPL_ADMINLOC2 (258): :<admin info>
+        ctx.inner()
+            .send_reply(
+                Response::RPL_ADMINLOC2,
+                vec![
+                    nick.to_string(),
+                    ctx.inner().matrix.server_info.network.clone(),
+                ],
+            )
+            .await?;
+
+        // RPL_ADMINEMAIL (259): :<admin email>
+        ctx.inner()
+            .send_reply(
+                Response::RPL_ADMINEMAIL,
+                vec![nick.to_string(), format!("admin@{}", server_name)],
+            )
+            .await?;
+
+        Ok(())
+    }
+}
+
+/// Stateful handler for INFO command using typestate pattern (Phase 2).
+///
+/// Uses `TypedContext<Registered>` which guarantees at compile time that:
+/// - Nick is always present (`ctx.nick()` returns `&str`, not `Option`)
+/// - User is always present
+/// - All registration requirements have been met
+#[allow(dead_code)] // Phase 2 proof-of-concept - will be registered in Phase 3
+pub struct InfoHandlerStateful;
+
+#[async_trait]
+impl StatefulPostRegHandler for InfoHandlerStateful {
+    async fn handle_registered(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        // Compile-time guarantee: nick is always present for Registered connections
+        let nick = ctx.nick(); // Returns &str, not Option!
+
+        let info_lines = [
+            format!("slircd-ng v{} - High-performance IRC daemon", VERSION),
+            "https://github.com/sid3xyz/slircd-ng".to_string(),
+            "".to_string(),
+            "Built with Rust and Tokio async runtime".to_string(),
+            "Zero-copy message parsing via slirc-proto".to_string(),
+            "DashMap concurrent state management".to_string(),
+            "".to_string(),
+            format!("Server: {}", ctx.inner().matrix.server_info.name),
+            format!("Network: {}", ctx.inner().matrix.server_info.network),
+        ];
+
+        // RPL_INFO (371): :<string>
+        for line in &info_lines {
+            ctx.inner()
+                .send_reply(Response::RPL_INFO, vec![nick.to_string(), line.clone()])
+                .await?;
+        }
+
+        // RPL_ENDOFINFO (374): :End of INFO list
+        ctx.inner()
+            .send_reply(
+                Response::RPL_ENDOFINFO,
+                vec![nick.to_string(), "End of INFO list".to_string()],
+            )
+            .await?;
 
         Ok(())
     }
@@ -329,7 +494,10 @@ impl Handler for LusersHandler {
         .await?;
 
         // RPL_LOCALUSERS (265): <u> <m> :Current local users <u>, max <m>
-        let max_local = ctx.matrix.max_local_users.load(std::sync::atomic::Ordering::Relaxed);
+        let max_local = ctx
+            .matrix
+            .max_local_users
+            .load(std::sync::atomic::Ordering::Relaxed);
         ctx.send_reply(
             Response::RPL_LOCALUSERS,
             vec![
@@ -342,7 +510,10 @@ impl Handler for LusersHandler {
         .await?;
 
         // RPL_GLOBALUSERS (266): <u> <m> :Current global users <u>, max <m>
-        let max_global = ctx.matrix.max_global_users.load(std::sync::atomic::Ordering::Relaxed);
+        let max_global = ctx
+            .matrix
+            .max_global_users
+            .load(std::sync::atomic::Ordering::Relaxed);
         ctx.send_reply(
             Response::RPL_GLOBALUSERS,
             vec![

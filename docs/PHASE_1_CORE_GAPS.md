@@ -111,15 +111,15 @@ wscat -c wss://localhost:6697 --no-check
 
 ### Files to Create/Modify
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| src/transport/mod.rs | Create | 50 |
-| src/transport/tcp.rs | Create | 80 |
-| src/transport/websocket.rs | Create | 120 |
-| src/server.rs | Modify | +40 |
-| src/connection/mod.rs | Modify | +20 |
-| src/config.rs | Modify | +30 |
-| Cargo.toml | Modify | +2 |
+| File                       | Action | Lines (est.) |
+| -------------------------- | ------ | ------------ |
+| src/transport/mod.rs       | Create | 50           |
+| src/transport/tcp.rs       | Create | 80           |
+| src/transport/websocket.rs | Create | 120          |
+| src/server.rs              | Modify | +40          |
+| src/connection/mod.rs      | Modify | +20          |
+| src/config.rs              | Modify | +30          |
+| Cargo.toml                 | Modify | +2           |
 
 ---
 
@@ -135,15 +135,15 @@ Implement extended channel modes that SLIRCd supports for channel management and
 
 ### Mode Specifications
 
-| Mode | Name | Behavior |
-|------|------|----------|
-| +f | Flood Protection | `+f [5j]:10` = 5 joins in 10 seconds triggers +i |
-| +L | Link Channel | `+L #overflow` = redirect when +l limit reached |
-| +q | Quiet | `+q nick!*@*` = can join but cannot speak |
-| +R | Registered Only | Only SASL-authenticated users can join |
-| +M | Moderated Registered | Only registered users can speak (+m for others) |
-| +N | No Nick Change | Cannot change nick while in channel |
-| +c | No Colors | Strip mIRC color codes from messages |
+| Mode | Name                 | Behavior                                         |
+| ---- | -------------------- | ------------------------------------------------ |
+| +f   | Flood Protection     | `+f [5j]:10` = 5 joins in 10 seconds triggers +i |
+| +L   | Link Channel         | `+L #overflow` = redirect when +l limit reached  |
+| +q   | Quiet                | `+q nick!*@*` = can join but cannot speak        |
+| +R   | Registered Only      | Only SASL-authenticated users can join           |
+| +M   | Moderated Registered | Only registered users can speak (+m for others)  |
+| +N   | No Nick Change       | Cannot change nick while in channel              |
+| +c   | No Colors            | Strip mIRC color codes from messages             |
 
 ### Implementation Steps
 
@@ -217,14 +217,14 @@ STEP 9: Update MODE display
 
 ### Files to Modify
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| src/state/actor/modes.rs | Modify | +100 |
-| src/state/actor/handlers/modes.rs | Modify | +150 |
-| src/state/actor/handlers/join.rs | Modify | +50 |
-| src/state/actor/handlers/message.rs | Modify | +80 |
-| src/handlers/channel/mode.rs | Modify | +40 |
-| src/handlers/user_state/nick.rs | Modify | +30 |
+| File                                | Action | Lines (est.) |
+| ----------------------------------- | ------ | ------------ |
+| src/state/actor/modes.rs            | Modify | +100         |
+| src/state/actor/handlers/modes.rs   | Modify | +150         |
+| src/state/actor/handlers/join.rs    | Modify | +50          |
+| src/state/actor/handlers/message.rs | Modify | +80          |
+| src/handlers/channel/mode.rs        | Modify | +40          |
+| src/handlers/user_state/nick.rs     | Modify | +30          |
 
 ---
 
@@ -240,15 +240,15 @@ Allow runtime configuration reload via SIGHUP without disconnecting clients. Ess
 
 ### Reloadable Configuration
 
-| Config Section | Reloadable | Notes |
-|----------------|------------|-------|
-| [server] listen | ❌ No | Requires restart |
-| [server] motd | ✅ Yes | Reload file |
-| [server] name | ❌ No | Protocol identity |
-| [tls] cert/key | ✅ Yes | New connections use new certs |
-| [operators] | ✅ Yes | Add/remove opers |
-| [olines] | ✅ Yes | Oper auth rules |
-| [klines] | ✅ Yes | Ban patterns (also in DB) |
+| Config Section  | Reloadable | Notes                         |
+| --------------- | ---------- | ----------------------------- |
+| [server] listen | ❌ No       | Requires restart              |
+| [server] motd   | ✅ Yes      | Reload file                   |
+| [server] name   | ❌ No       | Protocol identity             |
+| [tls] cert/key  | ✅ Yes      | New connections use new certs |
+| [operators]     | ✅ Yes      | Add/remove opers              |
+| [olines]        | ✅ Yes      | Oper auth rules               |
+| [klines]        | ✅ Yes      | Ban patterns (also in DB)     |
 
 ### Implementation Steps
 
@@ -301,12 +301,12 @@ kill -HUP $(pgrep slircd)
 
 ### Files to Create/Modify
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| src/signals.rs | Create | 60 |
-| src/config.rs | Modify | +40 |
-| src/server.rs | Modify | +30 |
-| src/handlers/oper/rehash.rs | Modify | +10 |
+| File                        | Action | Lines (est.) |
+| --------------------------- | ------ | ------------ |
+| src/signals.rs              | Create | 60           |
+| src/config.rs               | Modify | +40          |
+| src/server.rs               | Modify | +30          |
+| src/handlers/oper/rehash.rs | Modify | +10          |
 
 ---
 
@@ -331,13 +331,13 @@ SLIRCD_BIN=/home/straylight/target/debug/slircd \
 
 ### Focus Areas
 
-| Test Category | Priority | Files |
-|---------------|----------|-------|
+| Test Category           | Priority | Files                      |
+| ----------------------- | -------- | -------------------------- |
 | Connection Registration | Critical | connection_registration.py |
-| Channel Operations | High | channel.py, channel_*.py |
-| User Modes | Medium | modes.py |
-| NAMES/WHO/WHOIS | Medium | names.py, who.py, whois.py |
-| Services Integration | Low | services.py |
+| Channel Operations      | High     | channel.py, channel_*.py   |
+| User Modes              | Medium   | modes.py                   |
+| NAMES/WHO/WHOIS         | Medium   | names.py, who.py, whois.py |
+| Services Integration    | Low      | services.py                |
 
 ### Implementation Steps
 
@@ -391,11 +391,11 @@ SLIRCD_BIN=/home/straylight/target/debug/slircd \
 
 ### Files to Create/Modify
 
-| File | Action | Lines (est.) |
-|------|--------|--------------|
-| docs/IRCTEST_DEVIATIONS.md | Create | 100 |
-| Various handlers | Modify | +200 total |
-| .github/workflows/test.yml | Modify | +30 |
+| File                       | Action | Lines (est.) |
+| -------------------------- | ------ | ------------ |
+| docs/IRCTEST_DEVIATIONS.md | Create | 100          |
+| Various handlers           | Modify | +200 total   |
+| .github/workflows/test.yml | Modify | +30          |
 
 ---
 
