@@ -2,15 +2,17 @@
 //!
 //! Contains the Matrix (shared server state) and related entities.
 //!
-//! ## Protocol State Machine (Innovation 1)
+//! ## Protocol State Machine (Innovation 1 Phase 3)
 //!
-//! The `machine` submodule provides typestate types for compile-time
-//! enforcement of protocol state transitions. See [`machine`] for details.
+//! The `session` module provides true typestate types for compile-time
+//! enforcement of protocol state transitions. State types hold actual data,
+//! not just markers. See [`session`] for details.
 
 mod channel;
 mod machine;
 mod matrix;
 mod mode_builder;
+pub mod session;
 mod uid;
 mod user;
 
@@ -19,13 +21,15 @@ pub use matrix::Matrix;
 pub mod actor;
 pub use user::{User, UserModes};
 
-// Protocol state machine types (Innovation 1: Typestate)
-// Will be used in Phase 2+ of handler migration
+// Session state types (Innovation 1 Phase 3: True Typestate)
+pub use session::{ConnectionState, RegisteredState, UnregisteredState};
+
+// Legacy protocol state machine types (to be removed after Phase 3 migration)
 #[allow(unused_imports)]
 pub use machine::{
-    AnyConnectionState,
+    AnyConnectionState as LegacyAnyConnectionState,
     CanNegotiate,
-    ConnectionState,
+    ConnectionState as LegacyConnectionState,
     IsRegistered,
     Negotiating,
     POST_REG_COMMANDS,
@@ -38,6 +42,7 @@ pub use machine::{
     requires_registration,
     valid_pre_registration,
 };
+
 // Exports used by matrix.rs internally
 
 #[allow(unused_imports)]

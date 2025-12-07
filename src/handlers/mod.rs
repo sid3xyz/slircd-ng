@@ -23,8 +23,8 @@
 mod account;
 mod admin;
 mod bans;
-mod batch;
-mod cap;
+pub mod batch;
+pub mod cap;
 mod channel;
 mod chathistory;
 mod connection;
@@ -57,7 +57,8 @@ pub use helpers::{
 };
 
 // Re-export types used by other modules
-pub use batch::process_batch_message;
+pub use batch::{process_batch_message, BatchState};
+pub use cap::SaslState;
 pub use channel::{TargetUser, force_join_channel, force_part_channel};
 pub use mode::format_modes_for_log;
 pub use monitor::{cleanup_monitors, notify_monitors_offline, notify_monitors_online};
