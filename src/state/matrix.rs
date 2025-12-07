@@ -32,6 +32,7 @@ use dashmap::{DashMap, DashSet};
 use slirc_proto::Message;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use std::time::Instant;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
@@ -113,6 +114,12 @@ pub struct Matrix {
 
     /// ChanServ service singleton.
     pub chanserv: chanserv::ChanServ,
+
+    /// Maximum local user count (historical peak).
+    pub max_local_users: AtomicUsize,
+
+    /// Maximum global user count (historical peak).
+    pub max_global_users: AtomicUsize,
 
     /// Shutdown signal broadcaster.
     /// When DIE command is issued, a message is sent on this channel.
@@ -252,6 +259,8 @@ impl Matrix {
             ip_deny_list: std::sync::RwLock::new(ip_deny_list),
             nickserv: nickserv::NickServ::new(db.clone()),
             chanserv: chanserv::ChanServ::new(db),
+            max_local_users: AtomicUsize::new(0),
+            max_global_users: AtomicUsize::new(0),
             shutdown_tx,
         }
     }

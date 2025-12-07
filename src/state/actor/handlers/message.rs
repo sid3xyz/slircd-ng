@@ -134,22 +134,22 @@ impl ChannelActor {
 
         for (uid, sender) in &self.senders {
             let user_caps = self.user_caps.get(uid);
-            
+
             if uid == &sender_uid {
                 // Echo back to sender if they have echo-message capability
                 if sender_has_echo {
                     // Check sender's caps for tag handling
                     let sender_has_message_tags = user_caps.map(|caps| caps.contains("message-tags")).unwrap_or(false);
                     let sender_has_server_time = user_caps.map(|caps| caps.contains("server-time")).unwrap_or(false);
-                    
+
                     // Start with fresh tags based on sender's capabilities
                     let mut echo_tags: Vec<Tag> = Vec::new();
-                    
+
                     // Add server-time if sender has the capability
                     if sender_has_server_time {
                         echo_tags.push(Tag(Cow::Borrowed("time"), Some(timestamp.clone())));
                     }
-                    
+
                     // If sender has message-tags, include client-only tags and msgid
                     if sender_has_message_tags {
                         // Preserve client-only tags from original message
@@ -163,7 +163,7 @@ impl ChannelActor {
                         // Add msgid
                         echo_tags.push(Tag(Cow::Borrowed("msgid"), Some(msgid.clone())));
                     }
-                    
+
                     // Always preserve the label tag if present (for labeled-response)
                     if let Some(ref orig_tags) = tags {
                         for tag in orig_tags {
@@ -173,11 +173,11 @@ impl ChannelActor {
                             }
                         }
                     }
-                    
+
                     // Build echo message with computed tags
                     let mut echo_msg = base_msg.clone();
                     echo_msg.tags = if echo_tags.is_empty() { None } else { Some(echo_tags) };
-                    
+
                     let _ = sender.send(echo_msg).await;
                     recipients_sent += 1;
                 }
@@ -206,24 +206,24 @@ impl ChannelActor {
 
             // Build message for this recipient with appropriate tags
             let mut recipient_msg = base_msg.clone();
-            
+
             // Check recipient's capabilities
             let has_message_tags = user_caps.map(|caps| caps.contains("message-tags")).unwrap_or(false);
             let has_server_time = user_caps.map(|caps| caps.contains("server-time")).unwrap_or(false);
-            
+
             // For TAGMSG, only send to recipients with message-tags capability
             if is_tagmsg && !has_message_tags {
                 continue;
             }
-            
+
             // Build recipient's tags based on their capabilities
             let mut recipient_tags: Vec<Tag> = Vec::new();
-            
+
             // Add server-time if recipient has the capability (independent of message-tags)
             if has_server_time {
                 recipient_tags.push(Tag(Cow::Borrowed("time"), Some(timestamp.clone())));
             }
-            
+
             if has_message_tags {
                 // With message-tags, include client-only tags and msgid
                 // Preserve client-only tags from original message
@@ -238,7 +238,7 @@ impl ChannelActor {
                 recipient_tags.push(Tag(Cow::Borrowed("msgid"), Some(msgid.clone())));
             }
             // Note: label tag is NOT included for non-sender recipients
-            
+
             recipient_msg.tags = if recipient_tags.is_empty() { None } else { Some(recipient_tags) };
 
             let _ = sender.send(recipient_msg).await;
