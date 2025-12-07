@@ -27,15 +27,12 @@
 //!
 //! Existing handlers implement the `Handler` trait. To migrate:
 //!
-//! 1. For pre-reg handlers: implement `StatefulPreRegHandler` instead
-//! 2. For post-reg handlers: implement `StatefulPostRegHandler` instead
+//! 1. For pre-reg handlers: implement `PreRegHandler` instead
+//! 2. For post-reg handlers: implement `PostRegHandler` instead
 //! 3. Gain compile-time safety - no runtime registration checks needed!
 
-// Phase 2 foundation code - will be used as handlers are migrated
-#![allow(dead_code)]
-
 use super::context::{Context, HandlerResult};
-use crate::state::{PreRegistration, ProtocolState, Registered};
+use crate::state::{ProtocolState, Registered};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 use std::marker::PhantomData;
@@ -134,17 +131,6 @@ impl<'a, S: ProtocolState> TypedContext<'a, S> {
         unsafe { &mut *self.inner }
     }
 
-    /// Get the user's unique ID
-    #[inline]
-    pub fn uid(&self) -> &str {
-        self.inner().uid
-    }
-
-    /// Get the remote address
-    #[inline]
-    pub fn remote_addr(&self) -> std::net::SocketAddr {
-        self.inner().remote_addr
-    }
 }
 
 /// Extension methods available only for registered connections.
@@ -185,33 +171,7 @@ impl<'a> TypedContext<'a, Registered> {
     }
 }
 
-/// Wrap a context as pre-registration (for use by registry).
-///
-/// # Panics in debug builds
-/// Panics if the connection is already registered.
-pub fn wrap_pre_reg<'a, S: PreRegistration>(ctx: &'a mut Context<'a>) -> TypedContext<'a, S> {
-    debug_assert!(
-        !ctx.handshake.registered,
-        "wrap_pre_reg called on registered connection"
-    );
-    TypedContext::new_unchecked(ctx)
-}
 
-/// Wrap a context as registered (for use by registry).
-///
-/// # Panics in debug builds
-/// Panics if the connection is not registered.
-pub fn wrap_registered<'a>(ctx: &'a mut Context<'a>) -> TypedContext<'a, Registered> {
-    debug_assert!(
-        ctx.handshake.registered,
-        "wrap_registered called on unregistered connection"
-    );
-    debug_assert!(
-        ctx.handshake.nick.is_some() && ctx.handshake.user.is_some(),
-        "wrap_registered called but nick/user missing"
-    );
-    TypedContext::new_unchecked(ctx)
-}
 
 // ============================================================================
 // Blanket Implementations
@@ -225,96 +185,7 @@ impl<T: UniversalHandler> PreRegHandler for T {
     }
 }
 
-// ============================================================================
-// Handler Command Metadata
-// ============================================================================
 
-/// Metadata about a command handler's registration requirements.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HandlerPhase {
-    /// Valid only before registration (NICK during handshake)
-    PreReg,
-    /// Valid only after registration (PRIVMSG, JOIN, etc.)
-    PostReg,
-    /// Valid in any state (QUIT, PING, PONG)
-    Universal,
-}
-
-impl HandlerPhase {
-    /// Check if this phase is valid for unregistered connections.
-    #[inline]
-    pub const fn valid_unregistered(&self) -> bool {
-        matches!(self, HandlerPhase::PreReg | HandlerPhase::Universal)
-    }
-
-    /// Check if this phase is valid for registered connections.
-    #[inline]
-    pub const fn valid_registered(&self) -> bool {
-        matches!(self, HandlerPhase::PostReg | HandlerPhase::Universal)
-    }
-}
-
-/// Get the handler phase for a command.
-///
-/// Returns the appropriate phase based on IRC protocol rules.
-pub fn command_phase(command: &str) -> HandlerPhase {
-    let upper = command.to_ascii_uppercase();
-    match upper.as_str() {
-        // Universal commands (valid in any state)
-        "QUIT" | "PING" | "PONG" => HandlerPhase::Universal,
-
-        // Pre-registration commands
-        "NICK" | "USER" | "PASS" | "CAP" | "AUTHENTICATE" | "WEBIRC" | "REGISTER" => {
-            HandlerPhase::PreReg
-        }
-
-        // Everything else requires registration
-        _ => HandlerPhase::PostReg,
-    }
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_command_phase_classification() {
-        // Universal
-        assert_eq!(command_phase("QUIT"), HandlerPhase::Universal);
-        assert_eq!(command_phase("PING"), HandlerPhase::Universal);
-        assert_eq!(command_phase("PONG"), HandlerPhase::Universal);
-
-        // Pre-reg
-        assert_eq!(command_phase("NICK"), HandlerPhase::PreReg);
-        assert_eq!(command_phase("USER"), HandlerPhase::PreReg);
-        assert_eq!(command_phase("CAP"), HandlerPhase::PreReg);
-
-        // Post-reg
-        assert_eq!(command_phase("PRIVMSG"), HandlerPhase::PostReg);
-        assert_eq!(command_phase("JOIN"), HandlerPhase::PostReg);
-        assert_eq!(command_phase("MODE"), HandlerPhase::PostReg);
-
-        // Case insensitive
-        assert_eq!(command_phase("quit"), HandlerPhase::Universal);
-        assert_eq!(command_phase("Nick"), HandlerPhase::PreReg);
-    }
-
-    #[test]
-    fn test_phase_validity() {
-        assert!(HandlerPhase::PreReg.valid_unregistered());
-        assert!(!HandlerPhase::PreReg.valid_registered());
-
-        assert!(!HandlerPhase::PostReg.valid_unregistered());
-        assert!(HandlerPhase::PostReg.valid_registered());
-
-        assert!(HandlerPhase::Universal.valid_unregistered());
-        assert!(HandlerPhase::Universal.valid_registered());
-    }
-}
 
 use std::ops::{Deref, DerefMut};
 

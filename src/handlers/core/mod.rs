@@ -43,12 +43,5 @@ pub use context::{
 pub use middleware::ResponseMiddleware;
 pub use registry::Registry;
 
-// Re-export typestate handler traits (Innovation 1 - Phase 1)
-#[allow(unused_imports)] // Foundation code - will be used as handlers migrate
-pub use traits::{HandlerPhase, PostRegHandler, PreRegHandler, UniversalHandler, command_phase};
-
-// Re-export compile-time typestate types (Innovation 1 - Phase 2)
-#[allow(unused_imports)] // Foundation code - will be used as handlers migrate
-pub use traits::{
-    TypedContext, wrap_pre_reg, wrap_registered,
-};
+// Re-export typestate handler traits (Innovation 1)
+pub use traits::{PostRegHandler, PreRegHandler, UniversalHandler};
