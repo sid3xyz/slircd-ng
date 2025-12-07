@@ -28,6 +28,7 @@ const SUPPORTED_CAPS: &[&str] = &[
     "chghost",
     "monitor",
     "cap-notify",
+    "account-tag",
     "draft/multiline",
     "draft/account-registration",
     "draft/chathistory",
