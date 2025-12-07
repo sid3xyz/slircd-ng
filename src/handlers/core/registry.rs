@@ -61,7 +61,7 @@ use tracing::{Instrument, debug, span, Level};
 ///
 /// Handlers are organized into three maps by registration phase (Innovation 1):
 /// - `pre_reg_handlers`: Commands valid before registration
-/// - `post_reg_handlers`: Commands requiring registration  
+/// - `post_reg_handlers`: Commands requiring registration
 /// - `universal_handlers`: Commands valid in any state
 pub struct Registry {
     /// Handlers for pre-registration commands (NICK, USER, PASS, CAP, etc.)
@@ -106,7 +106,7 @@ impl Registry {
         // ====================================================================
         // Post-registration handlers (require completed registration)
         // ====================================================================
-        
+
         // Channel handlers
         post_reg_handlers.insert("JOIN", Box::new(JoinHandler));
         post_reg_handlers.insert("PART", Box::new(PartHandler));

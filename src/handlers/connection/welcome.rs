@@ -174,6 +174,11 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
 
     crate::metrics::CONNECTED_USERS.inc();
 
+    // Update peak user counts
+    let current_count = ctx.matrix.users.len();
+    ctx.matrix.max_local_users.fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
+    ctx.matrix.max_global_users.fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
+
     info!(nick = %nick, user = %user, uid = %ctx.uid, account = ?ctx.handshake.account, "Client registered");
 
     // 001 RPL_WELCOME

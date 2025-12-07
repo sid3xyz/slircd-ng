@@ -329,25 +329,27 @@ impl Handler for LusersHandler {
         .await?;
 
         // RPL_LOCALUSERS (265): <u> <m> :Current local users <u>, max <m>
+        let max_local = ctx.matrix.max_local_users.load(std::sync::atomic::Ordering::Relaxed);
         ctx.send_reply(
             Response::RPL_LOCALUSERS,
             vec![
                 nick.clone(),
                 total_users.to_string(),
-                total_users.to_string(), // max = current for now
-                format!("Current local users {}, max {}", total_users, total_users),
+                max_local.to_string(),
+                format!("Current local users {}, max {}", total_users, max_local),
             ],
         )
         .await?;
 
         // RPL_GLOBALUSERS (266): <u> <m> :Current global users <u>, max <m>
+        let max_global = ctx.matrix.max_global_users.load(std::sync::atomic::Ordering::Relaxed);
         ctx.send_reply(
             Response::RPL_GLOBALUSERS,
             vec![
                 nick.clone(),
                 total_users.to_string(),
-                total_users.to_string(),
-                format!("Current global users {}, max {}", total_users, total_users),
+                max_global.to_string(),
+                format!("Current global users {}, max {}", total_users, max_global),
             ],
         )
         .await?;
