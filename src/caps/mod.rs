@@ -55,7 +55,7 @@
 //!   - `handlers/bans/xlines/mod.rs` - K/G/D/Z/R-LINE commands
 //! - Phase 3 ✅ Channel handlers migrated (3 handlers):
 //!   - `handlers/channel/kick.rs` - KICK command
-//!   - `handlers/channel/topic.rs` - TOPIC command  
+//!   - `handlers/channel/topic.rs` - TOPIC command
 //!   - `handlers/channel/invite.rs` - INVITE command
 
 // Allow dead_code for capability types not yet used by handlers (Phase 3 pending)

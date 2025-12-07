@@ -4,14 +4,20 @@
 //! command handler system, including the handler registry, context types,
 //! and middleware for response routing.
 //!
-//! ## Typestate Handler Traits (Innovation 1)
+//! ## Typestate Handler System (Innovation 1) - COMPLETE ✅
 //!
-//! The `traits` submodule provides state-aware handler traits:
+//! The Registry implements phase-separated dispatch using three handler maps:
+//! - `pre_reg_handlers`: Commands valid before registration (NICK, USER, etc.)
+//! - `post_reg_handlers`: Commands requiring registration (PRIVMSG, JOIN, etc.)
+//! - `universal_handlers`: Commands valid in any state (QUIT, PING, PONG)
+//!
+//! Post-registration handlers are structurally inaccessible to unregistered
+//! clients - the dispatch path simply doesn't include them.
+//!
+//! The `traits` submodule provides state-aware handler traits for future use:
 //! - [`PreRegHandler`]: For commands valid before registration
 //! - [`PostRegHandler`]: For commands requiring registration
 //! - [`UniversalHandler`]: For commands valid in any state
-//!
-//! See [`traits`] for migration guidance.
 
 pub mod context;
 pub mod middleware;
