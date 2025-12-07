@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS message_history (
     sender TEXT NOT NULL,           -- Sender's nickname
     message_data BLOB NOT NULL,     -- JSON envelope (MessageEnvelope)
     nanotime INTEGER NOT NULL,      -- Nanosecond timestamp for precise ordering
-    account TEXT                    -- Sender's account name (if logged in)
+    account TEXT,                   -- Sender's account name (if logged in)
+    target_account TEXT             -- Target's account name (if logged in, for DMs)
 );
 
 -- Index for channel-based queries (most common)
@@ -14,3 +15,6 @@ CREATE INDEX IF NOT EXISTS idx_history_target_time ON message_history(target, na
 
 -- Index for msgid lookups (for message reference resolution)
 CREATE INDEX IF NOT EXISTS idx_history_msgid ON message_history(msgid);
+
+-- Index for target account lookups (for DM history filtering)
+CREATE INDEX IF NOT EXISTS idx_history_target_account ON message_history(target_account);

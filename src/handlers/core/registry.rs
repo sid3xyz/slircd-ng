@@ -94,6 +94,7 @@ impl Registry {
         universal_handlers.insert("PONG", Box::new(PongHandler));
         universal_handlers.insert("NICK", Box::new(NickHandler));
         universal_handlers.insert("CAP", Box::new(CapHandler));
+        universal_handlers.insert("REGISTER", Box::new(RegisterHandler));
 
         // ====================================================================
         // Pre-registration handlers (valid before registration completes)
@@ -103,7 +104,7 @@ impl Registry {
         pre_reg_handlers.insert("USER", Box::new(UserHandler));
         pre_reg_handlers.insert("PASS", Box::new(PassHandler));
         pre_reg_handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
-        pre_reg_handlers.insert("REGISTER", Box::new(RegisterHandler));
+        // REGISTER moved to universal_handlers to support post-connection registration
 
         // ====================================================================
         // Post-registration handlers (require completed registration)

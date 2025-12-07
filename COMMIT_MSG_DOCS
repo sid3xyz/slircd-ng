@@ -1,0 +1,27 @@
+feat: Overhaul documentation and implement Chat History
+
+This commit consolidates recent work on documentation and the Chat History
+extension.
+
+**Documentation**:
+- Rewrote root and `slircd-ng` READMEs to explicitly define the project
+  as a "Research IRC Ecosystem" with a "No Users, No Mercy" philosophy.
+- Detailed the 4 Core Innovations: Typestate Protocol, CRDT Linking,
+  Observability, and Capability Security.
+- Updated Quickstart and Architecture sections.
+
+**Features**:
+- **Chat History**: Implemented full support for IRCv3 `CHATHISTORY`.
+  - Added `src/db/history.rs` for SQLite-backed message storage.
+  - Updated `PrivmsgHandler` to persist messages to the database.
+  - Implemented `CHATHISTORY` command handler with `BEFORE`, `AFTER`,
+    and `LATEST` targeting.
+- **Registration**: Moved `REGISTER` command to `UniversalHandler` to
+  allow account registration at any connection state.
+
+**Database**:
+- Added `migrations/003_history.sql` to create `messages` and `targets` tables.
+
+**Refactoring**:
+- Cleaned up `messaging` module structure.
+- Updated `Registry` dispatch logic.

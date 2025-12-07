@@ -122,7 +122,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
 
         if target.is_channel_name() {
             let channel_lower = irc_to_lower(target);
-            match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
+            match route_to_channel(ctx, &channel_lower, out_msg, &opts, None, None).await {
                 ChannelRouteResult::Sent => {
                     debug!(from = %nick, to = %target, "TAGMSG to channel");
                     // Suppress ACK for echo-message with labels (echo IS the response)
@@ -157,7 +157,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
             }
         } else {
             let target_lower = irc_to_lower(target);
-            if route_to_user(ctx, &target_lower, out_msg, &opts, &nick).await {
+            if route_to_user(ctx, &target_lower, out_msg, &opts, &nick, None, None).await {
                 debug!(from = %nick, to = %target, "TAGMSG to user");
             } else {
                 send_no_such_nick(ctx, &nick, target).await?;
