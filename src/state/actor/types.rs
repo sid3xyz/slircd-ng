@@ -156,6 +156,7 @@ pub struct ChannelInfo {
     pub created: i64,
     pub modes: HashSet<ChannelMode>,
     pub is_member: bool,
+    pub members: HashSet<Uid>,
 }
 
 /// Result of attempting to route a message to a channel.
@@ -241,8 +242,6 @@ pub enum ChannelMode {
     /// +S: SSL-only (only TLS connections can join)
     #[allow(dead_code)] // Used in modes.rs but not fully enforced yet
     SSLOnly,
-    /// +z: TLS-only (alias for +S or similar, standard IRCv3 name)
-    TlsOnly,
     /// +k <key>: Channel key required to join
     Key(String),
     /// +l <limit>: User limit

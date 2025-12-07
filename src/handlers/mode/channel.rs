@@ -152,7 +152,7 @@ pub async fn handle_channel_mode(
                         match ctx.matrix.nicks.get(&target_lower) {
                             Some(target_uid) => {
                                 // Check if target is in the channel
-                                if info.is_member(target_uid) {
+                                if info.members.contains(target_uid.value()) {
                                     valid_modes.push(mode.clone());
                                 } else {
                                     // ERR_USERNOTINCHANNEL (441)

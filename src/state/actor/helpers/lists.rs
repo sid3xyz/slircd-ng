@@ -1,6 +1,7 @@
 use super::super::{ChannelActor, Uid};
 use crate::state::ListEntry;
 use chrono::Utc;
+use slirc_proto::casemap::irc_eq;
 
 impl ChannelActor {
     pub(crate) fn apply_list_mode(
@@ -15,7 +16,7 @@ impl ChannelActor {
         // For now, we assume exact string match for removal.
 
         if adding {
-            if list.iter().any(|entry| entry.mask == mask) {
+            if list.iter().any(|entry| irc_eq(&entry.mask, mask)) {
                 return false;
             }
 
@@ -27,8 +28,7 @@ impl ChannelActor {
             true
         } else {
             let original_len = list.len();
-            // TODO: Should this be case-insensitive?
-            list.retain(|entry| entry.mask != mask);
+            list.retain(|entry| !irc_eq(&entry.mask, mask));
             original_len != list.len()
         }
     }
