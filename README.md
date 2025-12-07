@@ -1,8 +1,15 @@
 # slircd-ng: The Research IRC Daemon
 
-> **⚠️ PERMANENT NOTICE: This software is NEVER production ready. It is a learning exercise and proof-of-concept only. Do not deploy, do not use for any real network, do not trust any claims of security or stability. All documentation and code are for developer reference and experimentation only.**
+> **⚠️ AI RESEARCH EXPERIMENT: This software is a proof-of-concept developed using AI agents. It is NEVER production ready. Do not deploy, do not use for any real network.**
 
 `slircd-ng` is a next-generation IRC server written in Rust. It serves as a testbed for radical architectural experiments in the IRC protocol, prioritizing correctness, type safety, and distributed consistency over backward compatibility or legacy support.
+
+## AI-Driven Development
+
+This project represents an **execution of a test using AI to develop software**. It demonstrates the capacity of AI agents to:
+1.  Design and implement complex systems (Actors, CRDTs).
+2.  Enforce strict type safety (Typestate Pattern).
+3.  Maintain high test coverage and specification compliance.
 
 ## Development Philosophy: NO USERS, NO MERCY
 
