@@ -35,6 +35,7 @@ use std::time::Instant;
 /// operate on this state. Nick and user are `Option` because they haven't
 /// been provided yet.
 #[derive(Debug, Default)]
+#[allow(dead_code)] // Phase 3: New typestate types not yet wired into connection loop
 pub struct UnregisteredState {
     /// Nick provided by NICK command.
     pub nick: Option<String>,
@@ -68,6 +69,7 @@ pub struct UnregisteredState {
     pub pass_received: Option<String>,
 }
 
+#[allow(dead_code)] // Phase 3: Methods will be used when connection loop switches to ConnectionState
 impl UnregisteredState {
     /// Create a new unregistered state.
     pub fn new(is_tls: bool, certfp: Option<String>) -> Self {
@@ -95,6 +97,7 @@ impl UnregisteredState {
     ///
     /// This is the "Parse, Don't Validate" pattern — we parse the unregistered
     /// state into a registered state once, rather than checking a flag repeatedly.
+    #[allow(clippy::result_large_err)] // By design: Err returns self to continue registration
     pub fn try_register(self) -> Result<RegisteredState, Self> {
         match (&self.nick, &self.user) {
             (Some(nick), Some(user)) if !self.cap_negotiating => {
@@ -134,6 +137,7 @@ impl UnregisteredState {
 /// - `ctx.state.user` is always valid (no unwrap needed)
 /// - The connection has completed the full registration handshake
 #[derive(Debug)]
+#[allow(dead_code)] // Phase 3: New typestate types not yet wired into connection loop
 pub struct RegisteredState {
     /// Nick — guaranteed present after registration.
     pub nick: String,
@@ -159,6 +163,7 @@ pub struct RegisteredState {
     pub active_batch_ref: Option<String>,
 }
 
+#[allow(dead_code)] // Phase 3: Methods will be used when handlers use RegisteredState
 impl RegisteredState {
     /// Check if a capability is enabled.
     #[inline]
@@ -181,6 +186,7 @@ impl RegisteredState {
 ///
 /// Used by the connection loop to track which phase the connection is in.
 /// This replaces the `registered: bool` flag with an explicit enum.
+#[allow(dead_code)] // Phase 3: New typestate types not yet wired into connection loop
 pub enum ConnectionState {
     /// Connection is in pre-registration phase.
     Unregistered(UnregisteredState),
@@ -188,6 +194,7 @@ pub enum ConnectionState {
     Registered(RegisteredState),
 }
 
+#[allow(dead_code)] // Phase 3: Methods will be used when connection loop switches to ConnectionState
 impl ConnectionState {
     /// Create a new connection in unregistered state.
     pub fn new(is_tls: bool, certfp: Option<String>) -> Self {

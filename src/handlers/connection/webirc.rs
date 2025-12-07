@@ -47,7 +47,7 @@ impl WebircHandler {
 impl PreRegHandler for WebircHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         // WEBIRC must be sent before registration
-        if ctx.handshake.registered || ctx.handshake.nick.is_some() || ctx.handshake.user.is_some()
+        if ctx.state.registered || ctx.state.nick.is_some() || ctx.state.user.is_some()
         {
             // Silently ignore WEBIRC after registration has started
             debug!("WEBIRC rejected: registration already started");
@@ -108,9 +108,9 @@ impl PreRegHandler for WebircHandler {
         }
 
         // Store WEBIRC info in handshake state
-        ctx.handshake.webirc_used = true;
-        ctx.handshake.webirc_ip = Some(ip.to_string());
-        ctx.handshake.webirc_host = Some(hostname.to_string());
+        ctx.state.webirc_used = true;
+        ctx.state.webirc_ip = Some(ip.to_string());
+        ctx.state.webirc_host = Some(hostname.to_string());
 
         info!(
             gateway = %gateway,

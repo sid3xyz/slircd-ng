@@ -34,7 +34,7 @@ impl PostRegHandler for InviteHandler {
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;

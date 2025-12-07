@@ -51,7 +51,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         }
 
         // Check if client has message-tags capability
-        if !ctx.handshake.capabilities.contains("message-tags") {
+        if !ctx.state.capabilities.contains("message-tags") {
             debug!("TAGMSG ignored: client lacks message-tags capability");
             return Ok(());
         }
@@ -64,12 +64,12 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         }
 
         let _nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
         let _user_name = ctx
-            .handshake
+            .state
             .user
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
@@ -126,7 +126,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                 ChannelRouteResult::Sent => {
                     debug!(from = %nick, to = %target, "TAGMSG to channel");
                     // Suppress ACK for echo-message with labels (echo IS the response)
-                    if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                    if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                         ctx.suppress_labeled_ack = true;
                     }
                 }

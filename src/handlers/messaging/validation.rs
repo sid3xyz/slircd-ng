@@ -46,7 +46,7 @@ pub async fn validate_message_send(
 
     let uid_string = ctx.uid.to_string();
     let nick = ctx
-        .handshake
+        .state
         .nick
         .as_ref()
         .ok_or(HandlerError::NickOrUserMissing)?;

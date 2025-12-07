@@ -34,7 +34,7 @@ impl PostRegHandler for MonitorHandler {
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
-            .handshake
+            .state
             .nick
             .clone()
             .unwrap_or_else(|| "*".to_string());

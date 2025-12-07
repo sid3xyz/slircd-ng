@@ -23,7 +23,7 @@ use slirc_proto::{MessageRef, Response};
 /// ```ignore
 /// impl Handler for VersionHandler {
 ///     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-///         let nick = ctx.handshake.nick.as_ref()
+///         let nick = ctx.state.nick.as_ref()
 ///             .ok_or(HandlerError::NickOrUserMissing)?;  // Runtime check!
 ///         // ...
 ///     }

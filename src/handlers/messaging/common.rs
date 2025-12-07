@@ -128,7 +128,7 @@ pub async fn route_to_channel(
         is_tagmsg,
         user_context: Box::new(user_context),
         is_registered,
-        is_tls: ctx.handshake.is_tls,
+        is_tls: ctx.state.is_tls,
         status_prefix: opts.status_prefix,
         timestamp,
         msgid,
@@ -338,9 +338,9 @@ pub async fn route_to_user(
         crate::metrics::MESSAGES_SENT.inc();
 
         // Echo message back to sender if they have echo-message capability
-        if ctx.handshake.capabilities.contains("echo-message") {
-            let has_message_tags = ctx.handshake.capabilities.contains("message-tags");
-            let has_server_time = ctx.handshake.capabilities.contains("server-time");
+        if ctx.state.capabilities.contains("echo-message") {
+            let has_message_tags = ctx.state.capabilities.contains("message-tags");
+            let has_server_time = ctx.state.capabilities.contains("server-time");
 
             let mut echo_msg = msg.clone();
 

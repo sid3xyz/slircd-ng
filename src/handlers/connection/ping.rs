@@ -17,7 +17,7 @@ impl UniversalHandler for PingHandler {
             Some(t) if !t.is_empty() => t,
             _ => {
                 // No token provided - return ERR_NEEDMOREPARAMS (461)
-                let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
+                let nick = ctx.state.nick.as_deref().unwrap_or("*");
                 let reply = err_needmoreparams(&ctx.matrix.server_info.name, nick, "PING");
                 let reply = with_label(reply, ctx.label.as_deref());
                 ctx.sender.send(reply).await?;

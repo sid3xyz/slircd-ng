@@ -153,7 +153,7 @@ impl PostRegHandler for SetnameHandler {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // Check if client has negotiated setname capability
-        if !ctx.handshake.capabilities.contains("setname") {
+        if !ctx.state.capabilities.contains("setname") {
             debug!("SETNAME rejected: client has not negotiated setname capability");
             return Ok(());
         }
@@ -193,7 +193,7 @@ impl PostRegHandler for SetnameHandler {
         };
 
         // Also update handshake state
-        ctx.handshake.realname = Some(new_realname.to_string());
+        ctx.state.realname = Some(new_realname.to_string());
 
         // Broadcast SETNAME to all channels the user is in (for clients with setname cap)
         let setname_msg = slirc_proto::Message {
@@ -257,7 +257,7 @@ impl PostRegHandler for SilenceHandler {
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;

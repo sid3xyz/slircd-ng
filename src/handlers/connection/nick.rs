@@ -29,7 +29,7 @@ impl UniversalHandler for NickHandler {
                 &ctx.matrix.server_info.name,
                 Response::ERR_ERRONEOUSNICKNAME,
                 vec![
-                    ctx.handshake
+                    ctx.state
                         .nick
                         .clone()
                         .unwrap_or_else(|| "*".to_string()),
@@ -44,7 +44,7 @@ impl UniversalHandler for NickHandler {
         let nick_lower = irc_to_lower(nick);
 
         // Check if nick is exactly the same (no-op) - return silently
-        if ctx.handshake.nick.as_ref().is_some_and(|old| old == nick) {
+        if ctx.state.nick.as_ref().is_some_and(|old| old == nick) {
             return Ok(());
         }
 
@@ -57,7 +57,7 @@ impl UniversalHandler for NickHandler {
                         &ctx.matrix.server_info.name,
                         Response::ERR_NICKNAMEINUSE,
                         vec![
-                            ctx.handshake
+                            ctx.state
                                 .nick
                                 .clone()
                                 .unwrap_or_else(|| "*".to_string()),
@@ -77,7 +77,7 @@ impl UniversalHandler for NickHandler {
 
         // Check +N (no nick change) on any channel the user is in
         // Only applies to registered (connected) users changing their nick
-        if ctx.handshake.registered
+        if ctx.state.registered
             && let Some(user_ref) = ctx.matrix.users.get(ctx.uid)
         {
             let user = user_ref.read().await;
@@ -100,7 +100,7 @@ impl UniversalHandler for NickHandler {
                             &ctx.matrix.server_info.name,
                             Response::ERR_NONICKCHANGE,
                             vec![
-                                ctx.handshake
+                                ctx.state
                                     .nick
                                     .clone()
                                     .unwrap_or_else(|| "*".to_string()),
@@ -116,27 +116,27 @@ impl UniversalHandler for NickHandler {
         }
 
         // Save old nick for NICK change notification (before removing from index)
-        let old_nick_for_change = if ctx.handshake.registered {
-            ctx.handshake.nick.clone()
+        let old_nick_for_change = if ctx.state.registered {
+            ctx.state.nick.clone()
         } else {
             None
         };
 
         // Check if this is a case-only change (qux -> QUX)
         let is_case_only_change = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .map(|old| irc_to_lower(old) == nick_lower)
             .unwrap_or(false);
 
         // Remove old nick from index if changing
-        if let Some(old_nick) = &ctx.handshake.nick {
+        if let Some(old_nick) = &ctx.state.nick {
             let old_nick_lower = irc_to_lower(old_nick);
 
             // Only notify MONITOR watchers if the lowercase nick is changing
             // (not for case-only changes like qux -> QUX)
-            if ctx.handshake.registered && !is_case_only_change {
+            if ctx.state.registered && !is_case_only_change {
                 notify_monitors_offline(ctx.matrix, old_nick).await;
             }
 
@@ -152,7 +152,7 @@ impl UniversalHandler for NickHandler {
         ctx.matrix
             .nicks
             .insert(nick_lower.clone(), ctx.uid.to_string());
-        ctx.handshake.nick = Some(nick.to_string());
+        ctx.state.nick = Some(nick.to_string());
 
         // Send NICK change message for registered users
         if let Some(old_nick) = old_nick_for_change {
@@ -215,7 +215,7 @@ impl UniversalHandler for NickHandler {
 
         // Notify MONITOR watchers that new nick is online (only for already-registered users)
         // Skip notification for case-only changes (already computed above)
-        if ctx.handshake.registered && !is_case_only_change {
+        if ctx.state.registered && !is_case_only_change {
             // Get user info for the hostmask
             if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
                 let user = user_ref.read().await;
@@ -264,7 +264,7 @@ impl UniversalHandler for NickHandler {
         }
 
         // Check if we can complete registration
-        if ctx.handshake.can_register() {
+        if ctx.state.can_register() {
             send_welcome_burst(ctx).await?;
         }
 

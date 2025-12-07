@@ -1,7 +1,16 @@
-//! Command handler context, state, and core types.
+//! Command handler context and core types (Innovation 1 Phase 3).
 //!
-//! Defines the `Context` struct passed to all handlers, `HandshakeState`
-//! for connection registration tracking, and the `Handler` trait.
+//! Defines the `Context<'a, S>` struct passed to all handlers. The type parameter
+//! `S` is the session state type.
+//!
+//! ## Migration Status
+//!
+//! Currently `S` defaults to `HandshakeState` for backward compatibility.
+//! As handlers are migrated, they will use:
+//! - `Context<'a, UnregisteredState>` — for pre-registration handlers
+//! - `Context<'a, RegisteredState>` — for post-registration handlers
+//!
+//! Once all handlers are migrated, `HandshakeState` will be deleted.
 
 use super::middleware::ResponseMiddleware;
 use super::registry::Registry;
@@ -17,27 +26,69 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 
 /// Handler context passed to each command handler.
-pub struct Context<'a> {
+///
+/// Generic over session state type `S`. During migration, defaults to
+/// `HandshakeState` for backward compatibility.
+pub struct Context<'a, S = HandshakeState> {
     /// The user's unique ID.
     pub uid: &'a str,
     /// Shared server state.
     pub matrix: &'a Arc<Matrix>,
-    /// Sender for outgoing messages to this client (can capture for labeled-response).
+    /// Sender for outgoing messages to this client.
     pub sender: ResponseMiddleware<'a>,
-    /// Current handshake state.
-    pub handshake: &'a mut HandshakeState,
+    /// Session state (type varies by registration phase).
+    pub state: &'a mut S,
     /// Database for services.
     pub db: &'a Database,
     /// Remote address of the client.
     pub remote_addr: SocketAddr,
     /// Label from incoming message for labeled-response (IRCv3).
-    /// If present, should be echoed back on all responses.
     pub label: Option<String>,
     /// Suppress automatic labeled-response ACK/BATCH wrapping.
-    /// Set to true by handlers that manually apply labels (e.g., multiline BATCH).
     pub suppress_labeled_ack: bool,
     /// Command registry (for STATS m command usage tracking).
     pub registry: &'a Arc<Registry>,
+}
+
+impl<'a, S> Context<'a, S> {
+    /// Create a new context.
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)] // Phase 3: Will be used when connection loop switches to ConnectionState
+    pub fn new(
+        uid: &'a str,
+        matrix: &'a Arc<Matrix>,
+        sender: ResponseMiddleware<'a>,
+        state: &'a mut S,
+        db: &'a Database,
+        remote_addr: SocketAddr,
+        label: Option<String>,
+        registry: &'a Arc<Registry>,
+    ) -> Self {
+        Self {
+            uid,
+            matrix,
+            sender,
+            state,
+            db,
+            remote_addr,
+            label,
+            suppress_labeled_ack: false,
+            registry,
+        }
+    }
+
+    /// Build and send a server reply in one call.
+    #[inline]
+    pub async fn send_reply(
+        &self,
+        response: slirc_proto::Response,
+        params: Vec<String>,
+    ) -> Result<(), HandlerError> {
+        use crate::handlers::helpers::server_reply;
+        let reply = server_reply(&self.matrix.server_info.name, response, params);
+        self.sender.send(reply).await?;
+        Ok(())
+    }
 }
 
 /// State tracked during client registration handshake.
@@ -91,35 +142,6 @@ impl HandshakeState {
     /// Also requires CAP negotiation to be finished if it was started.
     pub fn can_register(&self) -> bool {
         self.nick.is_some() && self.user.is_some() && !self.registered && !self.cap_negotiating
-    }
-}
-
-impl<'a> Context<'a> {
-    /// Build and send a server reply in one call.
-    ///
-    /// This is a convenience method that combines `server_reply()` + `sender.send().await?`.
-    /// Reduces the common two-line pattern to a single call.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // Before:
-    /// let reply = server_reply(server_name, Response::RPL_VERSION, vec![nick, version]);
-    /// ctx.sender.send(reply).await?;
-    ///
-    /// // After:
-    /// ctx.send_reply(Response::RPL_VERSION, vec![nick, version]).await?;
-    /// ```
-    #[inline]
-    pub async fn send_reply(
-        &self,
-        response: slirc_proto::Response,
-        params: Vec<String>,
-    ) -> Result<(), HandlerError> {
-        use crate::handlers::helpers::server_reply;
-        let reply = server_reply(&self.matrix.server_info.name, response, params);
-        self.sender.send(reply).await?;
-        Ok(())
     }
 }
 

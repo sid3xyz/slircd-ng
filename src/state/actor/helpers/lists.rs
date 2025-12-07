@@ -1,4 +1,4 @@
-use super::super::{ChannelActor, Uid};
+use super::super::ChannelActor;
 use crate::state::ListEntry;
 use chrono::Utc;
 use slirc_proto::casemap::irc_eq;

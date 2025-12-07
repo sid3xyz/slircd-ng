@@ -30,7 +30,7 @@ impl PostRegHandler for MapHandler {
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
@@ -76,7 +76,7 @@ impl PostRegHandler for RulesHandler {
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
@@ -136,7 +136,7 @@ impl PostRegHandler for UseripHandler {
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
@@ -213,7 +213,7 @@ impl PostRegHandler for LinksHandler {
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;

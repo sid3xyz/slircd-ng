@@ -107,7 +107,7 @@ impl PostRegHandler for NoticeHandler {
                 .await;
                 debug!(from = %nick, to = %target, prefix = %prefix_char, "NOTICE STATUSMSG");
                 // Suppress ACK for echo-message with labels (echo IS the response)
-                if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                     ctx.suppress_labeled_ack = true;
                 }
             } else if let ChannelRouteResult::Sent =
@@ -115,7 +115,7 @@ impl PostRegHandler for NoticeHandler {
             {
                 debug!(from = %nick, to = %target, "NOTICE to channel");
                 // Suppress ACK for echo-message with labels (echo IS the response)
-                if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                     ctx.suppress_labeled_ack = true;
                 }
             }

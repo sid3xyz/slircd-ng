@@ -242,8 +242,8 @@ pub async fn handle_channel_mode(
                 (u.nick.clone(), u.user.clone(), u.host.clone())
             } else {
                 (
-                    ctx.handshake.nick.clone().unwrap_or_default(),
-                    ctx.handshake.user.clone().unwrap_or_default(),
+                    ctx.state.nick.clone().unwrap_or_default(),
+                    ctx.state.user.clone().unwrap_or_default(),
                     "unknown".to_string(),
                 )
             };
