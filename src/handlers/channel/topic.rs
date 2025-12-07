@@ -1,9 +1,12 @@
 //! TOPIC command handler.
+//!
+//! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
     is_user_in_channel, require_registered, server_reply, user_mask_from_state,
 };
+use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -108,11 +111,18 @@ impl Handler for TopicHandler {
                     .ok_or(HandlerError::NickOrUserMissing)?;
                 let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
 
+                // Request TOPIC capability from authority (Innovation 4)
+                let authority = CapabilityAuthority::new(ctx.matrix.clone());
+                let has_topic_cap = authority
+                    .request_topic_cap(ctx.uid, channel_name)
+                    .await
+                    .is_some();
+
                 let event = ChannelEvent::SetTopic {
                     sender_uid: ctx.uid.to_string(),
                     sender_prefix,
                     topic: topic_text.to_string(),
-                    force: false,
+                    force: has_topic_cap,
                     reply_tx,
                 };
 
