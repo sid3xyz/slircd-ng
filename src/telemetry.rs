@@ -172,11 +172,7 @@ impl Drop for CommandTimer {
 /// // ... handle command ...
 /// // span is automatically closed when dropped
 /// ```
-pub fn create_irc_span(
-    command: &str,
-    channel: Option<&str>,
-    source_nick: Option<&str>,
-) -> Span {
+pub fn create_irc_span(command: &str, channel: Option<&str>, source_nick: Option<&str>) -> Span {
     let mut ctx = IrcTraceContext::new().with_command(command);
 
     if let Some(ch) = channel {
@@ -201,11 +197,7 @@ pub fn create_channel_span(channel: &str, operation: &str) -> Span {
 }
 
 /// Create a span for message routing with fan-out tracking.
-pub fn create_message_span(
-    channel: &str,
-    sender: &str,
-    recipients: usize,
-) -> Span {
+pub fn create_message_span(channel: &str, sender: &str, recipients: usize) -> Span {
     // Also record fan-out metric
     crate::metrics::record_fanout(recipients);
 

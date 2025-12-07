@@ -23,11 +23,20 @@ pub use user::{User, UserModes};
 // Will be used in Phase 2+ of handler migration
 #[allow(unused_imports)]
 pub use machine::{
-    AnyConnectionState, CanNegotiate, ConnectionState, IsRegistered, Negotiating,
-    PreRegistration, ProtocolState, Registered, Unregistered,
+    AnyConnectionState,
+    CanNegotiate,
+    ConnectionState,
+    IsRegistered,
+    Negotiating,
+    POST_REG_COMMANDS,
+    PRE_REG_COMMANDS,
+    PreRegistration,
+    ProtocolState,
+    Registered,
+    Unregistered,
     // Classification helpers
-    requires_registration, valid_pre_registration,
-    PRE_REG_COMMANDS, POST_REG_COMMANDS,
+    requires_registration,
+    valid_pre_registration,
 };
 // Exports used by matrix.rs internally
 

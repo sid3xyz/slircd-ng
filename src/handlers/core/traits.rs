@@ -31,7 +31,10 @@
 //! 2. For post-reg handlers: implement `StatefulPostRegHandler` instead
 //! 3. Gain compile-time safety - no runtime registration checks needed!
 
-use super::context::{Context, HandlerError, HandlerResult};
+// Phase 2 foundation code - will be used as handlers are migrated
+#![allow(dead_code)]
+
+use super::context::{Context, HandlerResult};
 use crate::state::{IsRegistered, PreRegistration, ProtocolState, Registered};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
@@ -60,7 +63,7 @@ use std::marker::PhantomData;
 /// async fn handle_privmsg(ctx: &mut TypedContext<'_, Registered>, msg: &MessageRef<'_>) {
 ///     // Compile-time guarantee: nick is always present
 ///     let nick = ctx.nick();  // Returns &str, not Option!
-///     
+///
 ///     // If you tried to call this with TypedContext<Unregistered>, it wouldn't compile
 /// }
 /// ```
@@ -84,9 +87,9 @@ impl<'a, S: ProtocolState> TypedContext<'a, S> {
     /// # Safety
     /// This is only safe when the protocol state matches what `S` claims.
     #[inline]
-    pub fn new_unchecked(ctx: &'a mut Context<'_>) -> Self {
+    pub fn new_unchecked(ctx: &'a mut Context<'a>) -> Self {
         Self {
-            inner: ctx as *mut Context<'_> as *mut Context<'a>,
+            inner: ctx as *mut Context<'a>,
             _state: PhantomData,
             _lifetime: PhantomData,
         }
@@ -161,7 +164,7 @@ impl<'a> TypedContext<'a, Registered> {
 ///
 /// # Panics in debug builds
 /// Panics if the connection is already registered.
-pub fn wrap_pre_reg<'a, S: PreRegistration>(ctx: &'a mut Context<'_>) -> TypedContext<'a, S> {
+pub fn wrap_pre_reg<'a, S: PreRegistration>(ctx: &'a mut Context<'a>) -> TypedContext<'a, S> {
     debug_assert!(
         !ctx.handshake.registered,
         "wrap_pre_reg called on registered connection"
@@ -173,7 +176,7 @@ pub fn wrap_pre_reg<'a, S: PreRegistration>(ctx: &'a mut Context<'_>) -> TypedCo
 ///
 /// # Panics in debug builds
 /// Panics if the connection is not registered.
-pub fn wrap_registered<'a>(ctx: &'a mut Context<'_>) -> TypedContext<'a, Registered> {
+pub fn wrap_registered<'a>(ctx: &'a mut Context<'a>) -> TypedContext<'a, Registered> {
     debug_assert!(
         ctx.handshake.registered,
         "wrap_registered called on unregistered connection"
@@ -475,22 +478,24 @@ pub trait StatefulUniversalHandler: Send + Sync {
 /// `StatefulPostRegHandler` trait while still being usable in the existing
 /// registry infrastructure.
 ///
-/// The registry performs the runtime state check and wraps the context.
+/// **Note:** Due to lifetime constraints in async trait methods, direct
+/// integration requires modifying the Registry to use a typed dispatch path.
+/// See `examples.rs` for migration patterns.
 pub struct RegisteredHandlerAdapter<H: StatefulPostRegHandler>(pub H);
 
-#[async_trait]
-impl<H: StatefulPostRegHandler> super::context::Handler for RegisteredHandlerAdapter<H> {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        // Runtime safety check (debug builds will panic, release will error)
-        if !ctx.handshake.registered {
-            return Err(HandlerError::NotRegistered);
-        }
-
-        // SAFETY: We just verified registration above
-        let mut typed_ctx = TypedContext::<Registered>::new_unchecked(ctx);
-        self.0.handle_registered(&mut typed_ctx, msg).await
+impl<H: StatefulPostRegHandler> RegisteredHandlerAdapter<H> {
+    /// Create a new adapter wrapping a StatefulPostRegHandler.
+    pub fn new(handler: H) -> Self {
+        Self(handler)
     }
 }
+
+// Note: Direct Handler impl for RegisteredHandlerAdapter is not possible with
+// current lifetime constraints. The adapter is provided for future use when
+// the Handler trait signature is updated to use explicit lifetimes.
+//
+// For now, use StatefulPostRegHandler directly in new code, and gradually
+// migrate the Registry to support typed dispatch.
 
 // ============================================================================
 // Tests

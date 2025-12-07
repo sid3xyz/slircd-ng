@@ -5,7 +5,8 @@
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel, server_reply, user_mask_from_state,
+    Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
+    server_reply, user_mask_from_state,
 };
 use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;

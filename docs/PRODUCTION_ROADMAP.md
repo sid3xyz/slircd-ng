@@ -11,11 +11,11 @@
 
 This document outlines the path from slircd-ng v0.1.0 to production-grade feature parity with SLIRCd. The work is organized into three phases over an estimated 7-10 weeks.
 
-| Phase | Focus | Duration | Key Deliverables |
-|-------|-------|----------|------------------|
-| 1 | Core Feature Gaps | 3-4 weeks | WebSocket, Extended Modes, Hot Reload, irctest 80%+ |
-| 2 | Operational Maturity | 2-3 weeks | Event Sourcing, Plugin System, State Replay |
-| 3 | Validation & Deployment | 2-3 weeks | Load Testing, Security Audit, Beta Deployment |
+| Phase | Focus                   | Duration  | Key Deliverables                                    |
+| ----- | ----------------------- | --------- | --------------------------------------------------- |
+| 1     | Core Feature Gaps       | 3-4 weeks | WebSocket, Extended Modes, Hot Reload, irctest 80%+ |
+| 2     | Operational Maturity    | 2-3 weeks | Event Sourcing, Plugin System, State Replay         |
+| 3     | Validation & Deployment | 2-3 weeks | Load Testing, Security Audit, Beta Deployment       |
 
 ---
 
@@ -59,11 +59,11 @@ This document outlines the path from slircd-ng v0.1.0 to production-grade featur
 
 Detailed implementation guides are organized by phase:
 
-| Document | Description |
-|----------|-------------|
-| [PHASE_1_CORE_GAPS.md](./PHASE_1_CORE_GAPS.md) | WebSocket, extended modes, hot reload, irctest compliance |
-| [PHASE_2_OPERATIONAL.md](./PHASE_2_OPERATIONAL.md) | Event sourcing, plugin system, state replay |
-| [PHASE_3_VALIDATION.md](./PHASE_3_VALIDATION.md) | Load testing, security audit, deployment |
+| Document                                           | Description                                               |
+| -------------------------------------------------- | --------------------------------------------------------- |
+| [PHASE_1_CORE_GAPS.md](./PHASE_1_CORE_GAPS.md)     | WebSocket, extended modes, hot reload, irctest compliance |
+| [PHASE_2_OPERATIONAL.md](./PHASE_2_OPERATIONAL.md) | Event sourcing, plugin system, state replay               |
+| [PHASE_3_VALIDATION.md](./PHASE_3_VALIDATION.md)   | Load testing, security audit, deployment                  |
 
 ---
 
@@ -75,16 +75,16 @@ This project uses specialized AI agents for development. See:
 
 ### Recommended Agent Assignments
 
-| Phase | Primary Agent | Supporting Agents |
-|-------|--------------|-------------------|
-| 1.1 WebSocket | server-engineer | protocol-architect |
-| 1.2 Extended Modes | server-engineer | qa-compliance-lead |
-| 1.3 Hot Reload | server-engineer | security-ops |
-| 1.4 irctest | qa-compliance-lead | protocol-architect |
-| 2.1 Event Sourcing | server-engineer | observability-engineer |
-| 2.2 Plugin System | server-engineer | security-ops |
-| 3.1 Load Testing | qa-compliance-lead | observability-engineer |
-| 3.2 Security Audit | security-ops | capability-security |
+| Phase              | Primary Agent      | Supporting Agents      |
+| ------------------ | ------------------ | ---------------------- |
+| 1.1 WebSocket      | server-engineer    | protocol-architect     |
+| 1.2 Extended Modes | server-engineer    | qa-compliance-lead     |
+| 1.3 Hot Reload     | server-engineer    | security-ops           |
+| 1.4 irctest        | qa-compliance-lead | protocol-architect     |
+| 2.1 Event Sourcing | server-engineer    | observability-engineer |
+| 2.2 Plugin System  | server-engineer    | security-ops           |
+| 3.1 Load Testing   | qa-compliance-lead | observability-engineer |
+| 3.2 Security Audit | security-ops       | capability-security    |
 
 ---
 
@@ -114,13 +114,13 @@ This project uses specialized AI agents for development. See:
 
 Previous planning documents have been superseded by this roadmap:
 
-| Superseded Document | Status | Notes |
-|---------------------|--------|-------|
-| `IMPLEMENTATION_PLAN.md` | ✅ Complete | Channel actor migration finished |
-| `REF_ARCH_PLAN.md` | ✅ Complete | Read/write operation refactor done |
-| `REFACTORING_PLAN.md` | ✅ Complete | Priority 1-5 refactoring done |
-| `TODO.md` | ✅ Complete | All items addressed |
-| `ISSUES_PRIORITY.md` | ✅ Complete | 0 open issues |
+| Superseded Document      | Status     | Notes                              |
+| ------------------------ | ---------- | ---------------------------------- |
+| `IMPLEMENTATION_PLAN.md` | ✅ Complete | Channel actor migration finished   |
+| `REF_ARCH_PLAN.md`       | ✅ Complete | Read/write operation refactor done |
+| `REFACTORING_PLAN.md`    | ✅ Complete | Priority 1-5 refactoring done      |
+| `TODO.md`                | ✅ Complete | All items addressed                |
+| `ISSUES_PRIORITY.md`     | ✅ Complete | 0 open issues                      |
 
 Innovation status:
 - `INNOVATION_1_TYPESTATE_PROTOCOL.md` - ✅ Complete

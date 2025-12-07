@@ -107,7 +107,9 @@ pub async fn route_to_channel(
     // Extract text and tags from message
     // TAGMSG has no text body, just tags
     let (text, tags, is_tagmsg) = match &msg.command {
-        Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => (text.clone(), msg.tags.clone(), false),
+        Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => {
+            (text.clone(), msg.tags.clone(), false)
+        }
         Command::TAGMSG(_) => (String::new(), msg.tags.clone(), true),
         _ => return ChannelRouteResult::Sent, // Should not happen
     };

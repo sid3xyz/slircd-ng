@@ -6,7 +6,10 @@
 
 use crate::caps::CapabilityAuthority;
 use crate::db::Shun;
-use crate::handlers::{Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star, server_notice};
+use crate::handlers::{
+    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star,
+    server_notice,
+};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 

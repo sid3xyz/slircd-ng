@@ -30,6 +30,7 @@
 //! - Handler cannot be called with unregistered connection
 
 pub mod context;
+pub mod examples;
 pub mod middleware;
 pub mod registry;
 pub mod traits;
@@ -37,18 +38,17 @@ pub mod traits;
 // Re-export commonly used types
 pub use context::{
     Context, Handler, HandlerError, HandlerResult, HandshakeState, get_nick_or_star, get_oper_info,
-    is_user_in_channel, require_registered, resolve_nick_to_uid,
-    user_mask_from_state,
+    is_user_in_channel, require_registered, resolve_nick_to_uid, user_mask_from_state,
 };
 pub use middleware::ResponseMiddleware;
 pub use registry::Registry;
 
 // Re-export typestate handler traits (Innovation 1 - Phase 1)
-pub use traits::{
-    HandlerPhase, PostRegHandler, PreRegHandler, UniversalHandler, command_phase,
-};
+#[allow(unused_imports)] // Foundation code - will be used as handlers migrate
+pub use traits::{HandlerPhase, PostRegHandler, PreRegHandler, UniversalHandler, command_phase};
 
 // Re-export compile-time typestate types (Innovation 1 - Phase 2)
+#[allow(unused_imports)] // Foundation code - will be used as handlers migrate
 pub use traits::{
     RegisteredHandlerAdapter, StatefulPostRegHandler, StatefulPreRegHandler,
     StatefulUniversalHandler, TypedContext, wrap_pre_reg, wrap_registered,

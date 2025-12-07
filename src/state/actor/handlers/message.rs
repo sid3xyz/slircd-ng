@@ -139,8 +139,12 @@ impl ChannelActor {
                 // Echo back to sender if they have echo-message capability
                 if sender_has_echo {
                     // Check sender's caps for tag handling
-                    let sender_has_message_tags = user_caps.map(|caps| caps.contains("message-tags")).unwrap_or(false);
-                    let sender_has_server_time = user_caps.map(|caps| caps.contains("server-time")).unwrap_or(false);
+                    let sender_has_message_tags = user_caps
+                        .map(|caps| caps.contains("message-tags"))
+                        .unwrap_or(false);
+                    let sender_has_server_time = user_caps
+                        .map(|caps| caps.contains("server-time"))
+                        .unwrap_or(false);
 
                     // Start with fresh tags based on sender's capabilities
                     let mut echo_tags: Vec<Tag> = Vec::new();
@@ -176,7 +180,11 @@ impl ChannelActor {
 
                     // Build echo message with computed tags
                     let mut echo_msg = base_msg.clone();
-                    echo_msg.tags = if echo_tags.is_empty() { None } else { Some(echo_tags) };
+                    echo_msg.tags = if echo_tags.is_empty() {
+                        None
+                    } else {
+                        Some(echo_tags)
+                    };
 
                     let _ = sender.send(echo_msg).await;
                     recipients_sent += 1;
@@ -193,7 +201,9 @@ impl ChannelActor {
                         '&' => modes.admin || modes.owner,
                         '@' => modes.op || modes.admin || modes.owner,
                         '%' => modes.halfop || modes.op || modes.admin || modes.owner,
-                        '+' => modes.voice || modes.halfop || modes.op || modes.admin || modes.owner,
+                        '+' => {
+                            modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
+                        }
                         _ => false,
                     };
                     if !has_status {
@@ -208,8 +218,12 @@ impl ChannelActor {
             let mut recipient_msg = base_msg.clone();
 
             // Check recipient's capabilities
-            let has_message_tags = user_caps.map(|caps| caps.contains("message-tags")).unwrap_or(false);
-            let has_server_time = user_caps.map(|caps| caps.contains("server-time")).unwrap_or(false);
+            let has_message_tags = user_caps
+                .map(|caps| caps.contains("message-tags"))
+                .unwrap_or(false);
+            let has_server_time = user_caps
+                .map(|caps| caps.contains("server-time"))
+                .unwrap_or(false);
 
             // For TAGMSG, only send to recipients with message-tags capability
             if is_tagmsg && !has_message_tags {
@@ -239,7 +253,11 @@ impl ChannelActor {
             }
             // Note: label tag is NOT included for non-sender recipients
 
-            recipient_msg.tags = if recipient_tags.is_empty() { None } else { Some(recipient_tags) };
+            recipient_msg.tags = if recipient_tags.is_empty() {
+                None
+            } else {
+                Some(recipient_tags)
+            };
 
             let _ = sender.send(recipient_msg).await;
             recipients_sent += 1;

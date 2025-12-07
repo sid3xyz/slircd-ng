@@ -176,8 +176,12 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
 
     // Update peak user counts
     let current_count = ctx.matrix.users.len();
-    ctx.matrix.max_local_users.fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
-    ctx.matrix.max_global_users.fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
+    ctx.matrix
+        .max_local_users
+        .fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
+    ctx.matrix
+        .max_global_users
+        .fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
 
     info!(nick = %nick, user = %user, uid = %ctx.uid, account = ?ctx.handshake.account, "Client registered");
 
@@ -269,7 +273,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
             "AWAYLEN=200".to_string(),
             "MODES=6".to_string(),
             "MAXTARGETS=4".to_string(),
-            "MONITOR=100".to_string(),  // Max monitored nicks per client
+            "MONITOR=100".to_string(),     // Max monitored nicks per client
             "STATUSMSG=~&@%+".to_string(), // Prefixes for status messages (matches PREFIX)
             "are supported by this server".to_string(),
         ],

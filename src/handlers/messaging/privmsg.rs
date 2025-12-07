@@ -129,7 +129,9 @@ impl Handler for PrivmsgHandler {
                         // If user has echo-message, suppress ACK - the echo IS the response
                         // This is for labeled-response: when echo-message echoes back,
                         // we don't need a separate ACK
-                        if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                        if ctx.label.is_some()
+                            && ctx.handshake.capabilities.contains("echo-message")
+                        {
                             ctx.suppress_labeled_ack = true;
                         }
 

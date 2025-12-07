@@ -154,12 +154,8 @@ pub fn init() {
     REGISTRY
         .register(Box::new(CHANNEL_MEMBERS.clone()))
         .unwrap();
-    REGISTRY
-        .register(Box::new(MESSAGE_FANOUT.clone()))
-        .unwrap();
-    REGISTRY
-        .register(Box::new(COMMAND_ERRORS.clone()))
-        .unwrap();
+    REGISTRY.register(Box::new(MESSAGE_FANOUT.clone())).unwrap();
+    REGISTRY.register(Box::new(COMMAND_ERRORS.clone())).unwrap();
     REGISTRY
         .register(Box::new(CHANNEL_MODE_CHANGES.clone()))
         .unwrap();

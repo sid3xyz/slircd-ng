@@ -1,8 +1,6 @@
 //! WHOWAS handler for historical user information.
 
-use crate::handlers::{
-    Context, Handler, HandlerError, HandlerResult, server_reply,
-};
+use crate::handlers::{Context, Handler, HandlerError, HandlerResult, server_reply};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 

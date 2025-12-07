@@ -261,4 +261,3 @@ pub async fn is_user_in_channel(ctx: &Context<'_>, uid: &str, channel_lower: &st
         false
     }
 }
-
