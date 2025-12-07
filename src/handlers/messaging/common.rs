@@ -72,6 +72,8 @@ pub async fn route_to_channel(
     channel_lower: &str,
     msg: Message,
     opts: &RouteOptions,
+    timestamp: Option<String>,
+    msgid: Option<String>,
 ) -> ChannelRouteResult {
     let Some(channel_ref) = ctx.matrix.channels.get(channel_lower) else {
         return ChannelRouteResult::NoSuchChannel;
@@ -128,6 +130,8 @@ pub async fn route_to_channel(
         is_registered,
         is_tls: ctx.handshake.is_tls,
         status_prefix: opts.status_prefix,
+        timestamp,
+        msgid,
         reply_tx,
     };
 
@@ -150,8 +154,12 @@ pub async fn route_to_user(
     msg: Message,
     opts: &RouteOptions,
     sender_nick: &str,
+    timestamp: Option<String>,
+    msgid: Option<String>,
 ) -> bool {
-    let Some(target_uid) = ctx.matrix.nicks.get(target_lower) else {
+    let target_uid = if let Some(uid) = ctx.matrix.nicks.get(target_lower) {
+        uid.clone()
+    } else {
         return false;
     };
 
@@ -183,7 +191,7 @@ pub async fn route_to_user(
 
     // Check away status and notify sender if requested
     if opts.send_away_reply
-        && let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value())
+        && let Some(target_user_ref) = ctx.matrix.users.get(&target_uid)
     {
         let target_user = target_user_ref.read().await;
         if let Some(away_msg) = &target_user.away {
@@ -201,7 +209,7 @@ pub async fn route_to_user(
     }
 
     // Check +R (registered-only PMs) - target only accepts PMs from identified users
-    if let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value()) {
+    if let Some(target_user_ref) = ctx.matrix.users.get(&target_uid) {
         let target_user = target_user_ref.read().await;
         if target_user.modes.registered_only {
             // Check if sender is identified
@@ -271,17 +279,19 @@ pub async fn route_to_user(
     }
 
     // Send to target user with appropriate tags based on their capabilities
-    let timestamp = chrono::Utc::now()
-        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-        .to_string();
-    let msgid = uuid::Uuid::new_v4().to_string();
+    let timestamp = timestamp.unwrap_or_else(|| {
+        chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string()
+    });
+    let msgid = msgid.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     // Check if this is a TAGMSG
     let _is_tagmsg = matches!(msg.command, Command::TAGMSG(_));
 
-    if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
+    if let Some(sender) = ctx.matrix.senders.get(&target_uid) {
         // Check target's capabilities and build appropriate message
-        let msg_for_target = if let Some(user_ref) = ctx.matrix.users.get(target_uid.value()) {
+        let msg_for_target = if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
             let user = user_ref.read().await;
             let has_message_tags = user.caps.contains("message-tags");
             let has_server_time = user.caps.contains("server-time");

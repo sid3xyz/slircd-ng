@@ -157,6 +157,8 @@ impl ChannelActor {
                 is_registered,
                 is_tls,
                 status_prefix,
+                timestamp,
+                msgid,
                 reply_tx,
             } => {
                 self.handle_message(
@@ -169,6 +171,8 @@ impl ChannelActor {
                     is_registered,
                     is_tls,
                     status_prefix,
+                    timestamp,
+                    msgid,
                     reply_tx,
                 )
                 .await;

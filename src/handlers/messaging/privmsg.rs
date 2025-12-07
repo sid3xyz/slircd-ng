@@ -28,6 +28,8 @@ use crate::db::StoreMessageParams;
 use crate::services::route_service_message;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
+use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::{DateTime, Utc};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -92,6 +94,19 @@ impl PostRegHandler for PrivmsgHandler {
             })
             .collect();
 
+        // Generate timestamp once for consistency between live message and history
+        // Truncate to milliseconds to match IRCv3 server-time precision and avoid
+        // discrepancies between stored time and time tag.
+        let now = SystemTime::now();
+        let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
+        let millis = duration.as_millis() as i64;
+        let nanotime = millis * 1_000_000;
+
+        // Re-create DateTime from truncated millis to ensure consistency
+        let dt = DateTime::<Utc>::from_timestamp(millis / 1000, (millis % 1000) as u32 * 1_000_000).unwrap_or_default();
+        let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let msgid = Uuid::new_v4().to_string();
+
         // Build the outgoing message with preserved tags (client tags + label)
         let out_msg = Message {
             tags: if preserved_tags.is_empty() {
@@ -120,7 +135,7 @@ impl PostRegHandler for PrivmsgHandler {
 
             // If STATUSMSG, route to specific member subset
             if let Some(prefix_char) = status_prefix {
-                route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char).await?;
+                route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char, Some(timestamp_iso.clone()), Some(msgid.clone())).await?;
                 debug!(from = %nick, to = %target, prefix = %prefix_char, "PRIVMSG STATUSMSG");
                 // Suppress ACK for echo-message with labels (echo IS the response)
                 if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
@@ -128,7 +143,7 @@ impl PostRegHandler for PrivmsgHandler {
                 }
             } else {
                 // Regular channel message
-                match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
+                match route_to_channel(ctx, &channel_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone())).await {
                     ChannelRouteResult::Sent => {
                         debug!(from = %nick, to = %target, "PRIVMSG to channel");
 
@@ -142,7 +157,6 @@ impl PostRegHandler for PrivmsgHandler {
                         }
 
                         // Store message in history for CHATHISTORY support
-                        let msgid = Uuid::new_v4().to_string();
                         let prefix = format!("{}!{}@{}", nick, user_name, host);
                         let account = ctx.handshake.account.as_deref();
 
@@ -153,6 +167,8 @@ impl PostRegHandler for PrivmsgHandler {
                             prefix: &prefix,
                             text,
                             account,
+                            target_account: None,
+                            nanotime: Some(nanotime),
                         };
 
                         if let Err(e) = ctx.db.history().store_message(params).await {
@@ -185,8 +201,41 @@ impl PostRegHandler for PrivmsgHandler {
                     }
                 }
             }
-        } else if route_to_user(ctx, &irc_to_lower(routing_target), out_msg, &opts, &nick).await {
+        } else if route_to_user(ctx, &irc_to_lower(routing_target), out_msg, &opts, &nick, Some(timestamp_iso.clone()), Some(msgid.clone())).await {
             debug!(from = %nick, to = %target, "PRIVMSG to user");
+
+            // Store message in history for CHATHISTORY support (DMs)
+            let prefix = format!("{}!{}@{}", nick, user_name, host);
+            let account = ctx.handshake.account.as_deref();
+
+            // Lookup target account
+            let target_lower = irc_to_lower(routing_target);
+            let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(&target_lower) {
+                 let uid = uid_ref.value();
+                 if let Some(user_ref) = ctx.matrix.users.get(uid) {
+                     let user = user_ref.read().await;
+                     user.account.clone()
+                 } else {
+                     None
+                 }
+            } else {
+                 None
+            };
+
+            let params = StoreMessageParams {
+                msgid: &msgid,
+                channel: target, // For DMs, channel is the recipient nick
+                sender_nick: &nick,
+                prefix: &prefix,
+                text,
+                account,
+                target_account: target_account.as_deref(),
+                nanotime: Some(nanotime),
+            };
+
+            if let Err(e) = ctx.db.history().store_message(params).await {
+                debug!(error = %e, "Failed to store DM in history");
+            }
         } else {
             send_no_such_nick(ctx, &nick, target).await?;
         }
@@ -242,6 +291,8 @@ pub(super) async fn route_statusmsg(
     original_target: &str, // Keep @#chan or +#chan in the message
     msg: Message,
     prefix_char: char,
+    timestamp: Option<String>,
+    msgid: Option<String>,
 ) -> HandlerResult {
     let opts = RouteOptions {
         send_away_reply: false,
@@ -250,7 +301,7 @@ pub(super) async fn route_statusmsg(
         status_prefix: Some(prefix_char),
     };
 
-    if route_to_channel(ctx, channel_lower, msg, &opts).await == ChannelRouteResult::NoSuchChannel {
+    if route_to_channel(ctx, channel_lower, msg, &opts, timestamp, msgid).await == ChannelRouteResult::NoSuchChannel {
         let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
         send_no_such_channel(ctx, nick, original_target).await?;
     }

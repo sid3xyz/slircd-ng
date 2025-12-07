@@ -101,6 +101,8 @@ impl PostRegHandler for NoticeHandler {
                     target,
                     out_msg,
                     prefix_char,
+                    None,
+                    None,
                 )
                 .await;
                 debug!(from = %nick, to = %target, prefix = %prefix_char, "NOTICE STATUSMSG");
@@ -109,7 +111,7 @@ impl PostRegHandler for NoticeHandler {
                     ctx.suppress_labeled_ack = true;
                 }
             } else if let ChannelRouteResult::Sent =
-                route_to_channel(ctx, &channel_lower, out_msg, &opts).await
+                route_to_channel(ctx, &channel_lower, out_msg, &opts, None, None).await
             {
                 debug!(from = %nick, to = %target, "NOTICE to channel");
                 // Suppress ACK for echo-message with labels (echo IS the response)
@@ -120,7 +122,7 @@ impl PostRegHandler for NoticeHandler {
             // All errors silently ignored for NOTICE
         } else {
             let target_lower = irc_to_lower(routing_target);
-            if route_to_user(ctx, &target_lower, out_msg, &opts, &nick).await {
+            if route_to_user(ctx, &target_lower, out_msg, &opts, &nick, None, None).await {
                 debug!(from = %nick, to = %target, "NOTICE to user");
             }
             // User not found: silently ignored for NOTICE

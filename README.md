@@ -1,75 +1,107 @@
-# slircd-ng
+# slircd-ng: The Research IRC Daemon
 
 > **⚠️ PERMANENT NOTICE: This software is NEVER production ready. It is a learning exercise and proof-of-concept only. Do not deploy, do not use for any real network, do not trust any claims of security or stability. All documentation and code are for developer reference and experimentation only.**
 
-`slircd-ng` (Straylight IRC Daemon - Next Generation) is a modern, high-performance IRC server written in Rust. It leverages the `slirc-proto` library for zero-copy protocol handling and `tokio` for asynchronous I/O, designed to be robust, scalable, and compliant with modern IRCv3 standards.
+`slircd-ng` is a next-generation IRC server written in Rust. It serves as a testbed for radical architectural experiments in the IRC protocol, prioritizing correctness, type safety, and distributed consistency over backward compatibility or legacy support.
 
-## Features
+## Development Philosophy: NO USERS, NO MERCY
 
-- **High Performance**: Built on a zero-copy parsing architecture using `slirc-proto`.
-- **IRCv3 Compliance**: Native support for:
-  - Capability Negotiation (`CAP`)
-  - SASL Authentication (`PLAIN`, `SCRAM-SHA-256`)
-  - Message Tags (`@time`, `@msgid`, `@account`)
-  - Batch (`BATCH`)
-  - Chat History (`CHATHISTORY`)
-  - Monitor (`MONITOR`)
-  - Account Tracking (`account-tag`, `account-notify`)
-- **Persistence**: SQLite backend for storing:
-  - Registered channels and topics
-  - Operator bans (G-lines, K-lines, Z-lines, D-lines)
-  - Shuns
-- **Security**:
-  - IP Cloaking
-  - Granular ban system (Global, Local, IP, Duration-based)
-  - Rate limiting
-- **Observability**: Integrated `tracing` for structured logging and metrics.
+- **Zero Users**: We have no users to support. Breaking changes are encouraged if they improve the architecture.
+- **No Workarounds**: If a feature requires changing 50 files to be "correct", we change 50 files. We do not build compatibility shims.
+- **Aggressive Refactoring**: Legacy code is deleted immediately. There are no `_old` or `_deprecated` modules.
+- **Innovation First**: We build reference implementations of new ideas, not just another IRCd.
+
+## The 4 Innovations
+
+`slircd-ng` is built around four core architectural innovations:
+
+### 1. Typestate Protocol (Innovation 1)
+
+**Status:** ✅ Complete
+
+We enforce the IRC protocol state machine at **compile time**.
+
+- **TypedContext**: Handlers receive a `TypedContext<Registered>` that guarantees the connection is fully authenticated.
+- **Zero Runtime Checks**: It is impossible to compile code that checks `if !registered` in a hot path.
+- **Split Traits**: `PreRegHandler`, `PostRegHandler`, and `UniversalHandler` traits ensure commands are only dispatched in valid states.
+
+### 2. CRDT Server Linking (Innovation 2)
+
+**Status:** 🚧 In Progress (Primitives Complete)
+
+We are replacing the traditional spanning-tree linking protocol with **Conflict-free Replicated Data Types (CRDTs)**.
+
+- **Mathematically Proven Convergence**: Any two servers that receive the same updates will converge to the same state.
+- **Primitives**: `LamportClock`, `GSet`, `LwwRegister`, and `ORSet` are implemented.
+- **Goal**: True multi-master replication for channels and users.
+
+### 3. Protocol-Aware Observability (Innovation 3)
+
+**Status:** ✅ Complete
+
+Observability is a first-class citizen, not an afterthought.
+
+- **Structured Logging**: Every log line carries a `trace_id` and `span_id`.
+- **Metrics**: Prometheus metrics for command latency, channel fanout, and error rates are built-in.
+- **Command Timer**: RAII guards automatically record duration for every command dispatch.
+
+### 4. Capability-Based Security (Innovation 4)
+
+**Status:** ✅ Complete
+
+We replaced `if is_oper()` checks with unforgeable **Capability Tokens**.
+
+- **Token Auth**: A function can only perform a privileged action (like `KILL` or `SHUN`) if it possesses the corresponding `Cap<T>` token.
+- **Unforgeable**: Tokens can only be minted by the `CapabilityAuthority`.
+- **Granular**: Permissions are typed (e.g., `Cap<KillCap>`, `Cap<ShunCap>`), preventing privilege escalation.
 
 ## Architecture
 
-`slircd-ng` uses a hybrid architecture:
-
-- **Gateway**: Handles incoming TCP/TLS connections and framing.
-- **Matrix**: The central shared state container, managing the global view of users and channels.
-- **Actors**: Channels are implemented as actors to serialize state updates and prevent race conditions.
-- **Handlers**: Command handlers operate on `MessageRef` types, minimizing memory allocations during command processing.
+- **Zero-Copy Parsing**: Built on `slirc-proto`, using `MessageRef<'a>` to parse commands without allocation.
+- **Lock-Free State**: Uses `DashMap` for high-concurrency access to the global user/channel registry.
+- **Actor Model**: Channels are implemented as actors (Tokio tasks) to serialize updates and prevent race conditions.
+- **Async I/O**: Fully asynchronous networking stack based on `tokio`.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Rust 1.70+
-- SQLite
+- Rust (latest stable)
+- Python 3 (for compliance testing)
 
-### Configuration
-
-Copy the example configuration:
+### Building
 
 ```bash
-cp config.toml.example config.toml
+cargo build -p slircd-ng
 ```
-
-Edit `config.toml` to set your server name, network info, and listen ports.
 
 ### Running
 
-Run the server:
-
 ```bash
-cargo run --release
+cargo run -p slircd-ng -- config.toml
 ```
 
-The server will create and initialize `slircd.db` automatically if configured.
+### Testing
 
-### Database
+Run the unit test suite:
 
-`slircd-ng` uses `sqlx` with SQLite. Migrations are embedded and run on startup.
+```bash
+cargo test -p slircd-ng
+```
 
-## Development
+Run the compliance suite (requires `irctest` setup):
 
-- **Build**: `cargo build`
-- **Test**: `cargo test`
-- **Lint**: `cargo clippy`
+```bash
+./scripts/run_compliance.sh
+```
+
+## Directory Structure
+
+- `src/handlers/`: Command handlers (organized by typestate phase).
+- `src/state/`: Core state machines and CRDT definitions.
+- `src/caps/`: Capability security system.
+- `src/crdt/`: CRDT primitives.
+- `docs/innovations/`: Detailed design documents for the 4 innovations.
 
 ## License
 

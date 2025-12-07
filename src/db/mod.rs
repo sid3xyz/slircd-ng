@@ -14,7 +14,7 @@ mod history;
 pub use accounts::AccountRepository;
 pub use bans::{BanRepository, Dline, Gline, Kline, Shun, Zline};
 pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
-pub use history::{HistoryRepository, StoreMessageParams, StoredMessage};
+pub use history::{HistoryRepository, StoreMessageParams, StoredMessage, MessageEnvelope};
 
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};

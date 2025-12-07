@@ -58,6 +58,8 @@ pub enum ChannelEvent {
         is_registered: bool,
         is_tls: bool,
         status_prefix: Option<char>,
+        timestamp: Option<String>,
+        msgid: Option<String>,
         reply_tx: oneshot::Sender<ChannelRouteResult>,
     },
     /// Request channel information (for LIST/WHO/NAMES).

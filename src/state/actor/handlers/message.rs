@@ -19,6 +19,8 @@ impl ChannelActor {
         is_registered: bool,
         is_tls: bool,
         status_prefix: Option<char>,
+        timestamp: Option<String>,
+        msgid: Option<String>,
         reply_tx: oneshot::Sender<ChannelRouteResult>,
     ) {
         let is_member = self.members.contains_key(&sender_uid);
@@ -96,10 +98,12 @@ impl ChannelActor {
 
         // Broadcast
         // Generate server-side tags
-        let timestamp = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
-        let msgid = uuid::Uuid::new_v4().to_string();
+        let timestamp = timestamp.unwrap_or_else(|| {
+            chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string()
+        });
+        let msgid = msgid.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
         // Build target with status prefix if present (for STATUSMSG)
         let target = if let Some(prefix) = status_prefix {

@@ -30,6 +30,7 @@ const SUPPORTED_CAPS: &[&str] = &[
     "cap-notify",
     "draft/multiline",
     "draft/account-registration",
+    "draft/chathistory",
 ];
 
 /// Maximum bytes allowed in a multiline batch message.
