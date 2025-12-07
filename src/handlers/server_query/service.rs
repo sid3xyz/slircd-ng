@@ -6,7 +6,9 @@
 //! SERVLIST lists registered services - we return an empty list.
 //! SQUERY routes messages to services like NickServ/ChanServ.
 
-use super::super::{Context, Handler, HandlerResult};
+use super::super::{HandlerResult, PostRegHandler};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -19,30 +21,19 @@ use slirc_proto::{MessageRef, Response};
 pub struct ServiceHandler;
 
 #[async_trait]
-impl Handler for ServiceHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for ServiceHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // If already registered as a user, send ERR_ALREADYREGISTERED
-        if ctx.handshake.registered {
-            let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
-            ctx.send_reply(
-                Response::ERR_ALREADYREGISTERED,
-                vec![nick.to_string(), "You are already registered".to_string()],
-            )
-            .await?;
-            return Ok(());
-        }
-
-        // SERVICE registration is not supported for clients
-        // Send ERR_NOPRIVILEGES (481) - most servers do this
+        let nick = ctx.nick();
         ctx.send_reply(
-            Response::ERR_NOPRIVILEGES,
-            vec![
-                "*".to_string(),
-                "SERVICE command is not available".to_string(),
-            ],
+            Response::ERR_ALREADYREGISTERED,
+            vec![nick.to_string(), "You are already registered".to_string()],
         )
         .await?;
-
         Ok(())
     }
 }
@@ -56,11 +47,15 @@ impl Handler for ServiceHandler {
 pub struct ServlistHandler;
 
 #[async_trait]
-impl Handler for ServlistHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for ServlistHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
+        let nick = ctx.nick();
 
         // RPL_SERVLISTEND (235) - no services to list
         // Format: <nick> <mask> <type> :End of service listing
@@ -87,11 +82,15 @@ impl Handler for ServlistHandler {
 pub struct SqueryHandler;
 
 #[async_trait]
-impl Handler for SqueryHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for SqueryHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
+        let nick = ctx.nick();
 
         let service_name = match msg.arg(0) {
             Some(s) if !s.is_empty() => s,

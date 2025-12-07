@@ -1,7 +1,7 @@
 //! MOTD and related handlers.
 
-use super::super::core::traits::{StatefulPostRegHandler, TypedContext};
-use super::super::{Context, Handler, HandlerError, HandlerResult};
+use super::super::core::traits::{PostRegHandler, TypedContext};
+use super::super::HandlerResult;
 use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -17,22 +17,22 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub struct MotdHandler;
 
 #[async_trait]
-impl Handler for MotdHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for MotdHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx.nick();
 
         // RPL_MOTDSTART (375): :- <server> Message of the day -
         ctx.send_reply(
             Response::RPL_MOTDSTART,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 format!("- {} Message of the day -", server_name),
             ],
         )
@@ -42,7 +42,7 @@ impl Handler for MotdHandler {
         for line in &ctx.matrix.server_info.motd_lines {
             ctx.send_reply(
                 Response::RPL_MOTD,
-                vec![nick.clone(), format!("- {}", line)],
+                vec![nick.to_string(), format!("- {}", line)],
             )
             .await?;
         }
@@ -50,7 +50,7 @@ impl Handler for MotdHandler {
         // RPL_ENDOFMOTD (376): :End of MOTD command
         ctx.send_reply(
             Response::RPL_ENDOFMOTD,
-            vec![nick.clone(), "End of MOTD command".to_string()],
+            vec![nick.to_string(), "End of MOTD command".to_string()],
         )
         .await?;
 
@@ -66,16 +66,16 @@ impl Handler for MotdHandler {
 pub struct VersionHandler;
 
 #[async_trait]
-impl Handler for VersionHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for VersionHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx.nick();
 
         // RPL_VERSION (351): <version>.<debuglevel> <server> :<comments>
         #[cfg(debug_assertions)]
@@ -86,7 +86,7 @@ impl Handler for VersionHandler {
         ctx.send_reply(
             Response::RPL_VERSION,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 version_str,
                 server_name.clone(),
                 "slircd-ng IRC daemon".to_string(),
@@ -106,16 +106,15 @@ impl Handler for VersionHandler {
 pub struct TimeHandler;
 
 #[async_trait]
-impl Handler for TimeHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
-
+impl PostRegHandler for TimeHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        // Compile-time guarantee: nick is always present for Registered connections
+        let nick = ctx.nick(); // Returns &str, not Option!
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_TIME (391): <server> :<string showing server's local time>
         let now = chrono::Local::now();
@@ -123,172 +122,9 @@ impl Handler for TimeHandler {
 
         ctx.send_reply(
             Response::RPL_TIME,
-            vec![nick.clone(), server_name.clone(), time_string],
+            vec![nick.to_string(), server_name.clone(), time_string],
         )
         .await?;
-
-        Ok(())
-    }
-}
-
-/// Typestate-based handler for TIME command (Phase 2 proof-of-concept).
-///
-/// This is the compile-time safe version of `TimeHandler`, demonstrating
-/// the Innovation 1 typestate protocol pattern.
-///
-/// ## Benefits over TimeHandler
-///
-/// - `ctx.nick()` returns `&str`, not `Option<&str>` - no runtime check needed!
-/// - Compile-time guarantee that this handler only runs for registered connections
-/// - No `HandlerError::NickOrUserMissing` error path possible
-///
-/// ## Example Usage
-///
-/// ```ignore
-/// // With legacy Handler trait:
-/// let nick = ctx.handshake.nick.as_ref()
-///     .ok_or(HandlerError::NickOrUserMissing)?;  // Runtime check!
-///
-/// // With StatefulPostRegHandler trait:
-/// let nick = ctx.nick();  // Compile-time guarantee: always valid!
-/// ```
-#[allow(dead_code)] // Phase 2 proof-of-concept - will be registered in Phase 3
-pub struct TimeHandlerStateful;
-
-#[async_trait]
-impl StatefulPostRegHandler for TimeHandlerStateful {
-    async fn handle_registered(
-        &self,
-        ctx: &mut TypedContext<'_, Registered>,
-        _msg: &MessageRef<'_>,
-    ) -> HandlerResult {
-        // Compile-time guarantee: nick is always present for Registered connections
-        let nick = ctx.nick(); // Returns &str, not Option!
-        let server_name = &ctx.inner().matrix.server_info.name;
-
-        // RPL_TIME (391): <server> :<string showing server's local time>
-        let now = chrono::Local::now();
-        let time_string = now.format("%A %B %d %Y -- %H:%M:%S %z").to_string();
-
-        ctx.inner()
-            .send_reply(
-                Response::RPL_TIME,
-                vec![nick.to_string(), server_name.clone(), time_string],
-            )
-            .await?;
-
-        Ok(())
-    }
-}
-
-/// Stateful handler for ADMIN command using typestate pattern (Phase 2).
-///
-/// Uses `TypedContext<Registered>` which guarantees at compile time that:
-/// - Nick is always present (`ctx.nick()` returns `&str`, not `Option`)
-/// - User is always present
-/// - All registration requirements have been met
-#[allow(dead_code)] // Phase 2 proof-of-concept - will be registered in Phase 3
-pub struct AdminHandlerStateful;
-
-#[async_trait]
-impl StatefulPostRegHandler for AdminHandlerStateful {
-    async fn handle_registered(
-        &self,
-        ctx: &mut TypedContext<'_, Registered>,
-        _msg: &MessageRef<'_>,
-    ) -> HandlerResult {
-        // Compile-time guarantee: nick is always present for Registered connections
-        let nick = ctx.nick(); // Returns &str, not Option!
-        let server_name = &ctx.inner().matrix.server_info.name;
-
-        // RPL_ADMINME (256): <server> :Administrative info
-        ctx.inner()
-            .send_reply(
-                Response::RPL_ADMINME,
-                vec![
-                    nick.to_string(),
-                    server_name.clone(),
-                    "Administrative info".to_string(),
-                ],
-            )
-            .await?;
-
-        // RPL_ADMINLOC1 (257): :<admin info>
-        ctx.inner()
-            .send_reply(
-                Response::RPL_ADMINLOC1,
-                vec![nick.to_string(), "slircd-ng IRC Server".to_string()],
-            )
-            .await?;
-
-        // RPL_ADMINLOC2 (258): :<admin info>
-        ctx.inner()
-            .send_reply(
-                Response::RPL_ADMINLOC2,
-                vec![
-                    nick.to_string(),
-                    ctx.inner().matrix.server_info.network.clone(),
-                ],
-            )
-            .await?;
-
-        // RPL_ADMINEMAIL (259): :<admin email>
-        ctx.inner()
-            .send_reply(
-                Response::RPL_ADMINEMAIL,
-                vec![nick.to_string(), format!("admin@{}", server_name)],
-            )
-            .await?;
-
-        Ok(())
-    }
-}
-
-/// Stateful handler for INFO command using typestate pattern (Phase 2).
-///
-/// Uses `TypedContext<Registered>` which guarantees at compile time that:
-/// - Nick is always present (`ctx.nick()` returns `&str`, not `Option`)
-/// - User is always present
-/// - All registration requirements have been met
-#[allow(dead_code)] // Phase 2 proof-of-concept - will be registered in Phase 3
-pub struct InfoHandlerStateful;
-
-#[async_trait]
-impl StatefulPostRegHandler for InfoHandlerStateful {
-    async fn handle_registered(
-        &self,
-        ctx: &mut TypedContext<'_, Registered>,
-        _msg: &MessageRef<'_>,
-    ) -> HandlerResult {
-        // Compile-time guarantee: nick is always present for Registered connections
-        let nick = ctx.nick(); // Returns &str, not Option!
-
-        let info_lines = [
-            format!("slircd-ng v{} - High-performance IRC daemon", VERSION),
-            "https://github.com/sid3xyz/slircd-ng".to_string(),
-            "".to_string(),
-            "Built with Rust and Tokio async runtime".to_string(),
-            "Zero-copy message parsing via slirc-proto".to_string(),
-            "DashMap concurrent state management".to_string(),
-            "".to_string(),
-            format!("Server: {}", ctx.inner().matrix.server_info.name),
-            format!("Network: {}", ctx.inner().matrix.server_info.network),
-        ];
-
-        // RPL_INFO (371): :<string>
-        for line in &info_lines {
-            ctx.inner()
-                .send_reply(Response::RPL_INFO, vec![nick.to_string(), line.clone()])
-                .await?;
-        }
-
-        // RPL_ENDOFINFO (374): :End of INFO list
-        ctx.inner()
-            .send_reply(
-                Response::RPL_ENDOFINFO,
-                vec![nick.to_string(), "End of INFO list".to_string()],
-            )
-            .await?;
 
         Ok(())
     }
@@ -302,22 +138,21 @@ impl StatefulPostRegHandler for InfoHandlerStateful {
 pub struct AdminHandler;
 
 #[async_trait]
-impl Handler for AdminHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
-
+impl PostRegHandler for AdminHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        // Compile-time guarantee: nick is always present for Registered connections
+        let nick = ctx.nick(); // Returns &str, not Option!
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
 
         // RPL_ADMINME (256): <server> :Administrative info
         ctx.send_reply(
             Response::RPL_ADMINME,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 server_name.clone(),
                 "Administrative info".to_string(),
             ],
@@ -327,27 +162,34 @@ impl Handler for AdminHandler {
         // RPL_ADMINLOC1 (257): :<admin info>
         ctx.send_reply(
             Response::RPL_ADMINLOC1,
-            vec![nick.clone(), "slircd-ng IRC Server".to_string()],
+            vec![nick.to_string(), "slircd-ng IRC Server".to_string()],
         )
         .await?;
 
         // RPL_ADMINLOC2 (258): :<admin info>
         ctx.send_reply(
             Response::RPL_ADMINLOC2,
-            vec![nick.clone(), ctx.matrix.server_info.network.clone()],
+            vec![
+                nick.to_string(),
+                ctx.matrix.server_info.network.clone(),
+            ],
         )
         .await?;
 
         // RPL_ADMINEMAIL (259): :<admin email>
         ctx.send_reply(
             Response::RPL_ADMINEMAIL,
-            vec![nick.clone(), format!("admin@{}", server_name)],
+            vec![nick.to_string(), format!("admin@{}", server_name)],
         )
         .await?;
 
         Ok(())
     }
 }
+
+
+
+
 
 /// Handler for INFO command.
 ///
@@ -357,15 +199,14 @@ impl Handler for AdminHandler {
 pub struct InfoHandler;
 
 #[async_trait]
-impl Handler for InfoHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
-        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
-
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+impl PostRegHandler for InfoHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        // Compile-time guarantee: nick is always present for Registered connections
+        let nick = ctx.nick(); // Returns &str, not Option!
 
         let info_lines = [
             format!("slircd-ng v{} - High-performance IRC daemon", VERSION),
@@ -381,14 +222,14 @@ impl Handler for InfoHandler {
 
         // RPL_INFO (371): :<string>
         for line in &info_lines {
-            ctx.send_reply(Response::RPL_INFO, vec![nick.clone(), line.clone()])
+            ctx.send_reply(Response::RPL_INFO, vec![nick.to_string(), line.clone()])
                 .await?;
         }
 
         // RPL_ENDOFINFO (374): :End of INFO list
         ctx.send_reply(
             Response::RPL_ENDOFINFO,
-            vec![nick.clone(), "End of INFO list".to_string()],
+            vec![nick.to_string(), "End of INFO list".to_string()],
         )
         .await?;
 
@@ -404,15 +245,15 @@ impl Handler for InfoHandler {
 pub struct LusersHandler;
 
 #[async_trait]
-impl Handler for LusersHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for LusersHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx.nick();
 
         // Count users and channels
         let total_users = ctx.matrix.users.len();
@@ -436,7 +277,7 @@ impl Handler for LusersHandler {
         ctx.send_reply(
             Response::RPL_LUSERCLIENT,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 format!(
                     "There are {} users and {} invisible on 1 servers",
                     visible_users, invisible_count
@@ -449,7 +290,7 @@ impl Handler for LusersHandler {
         ctx.send_reply(
             Response::RPL_LUSEROP,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 oper_count.to_string(),
                 "operator(s) online".to_string(),
             ],
@@ -465,7 +306,7 @@ impl Handler for LusersHandler {
         ctx.send_reply(
             Response::RPL_LUSERUNKNOWN,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 unregistered_count.to_string(),
                 "unknown connection(s)".to_string(),
             ],
@@ -476,7 +317,7 @@ impl Handler for LusersHandler {
         ctx.send_reply(
             Response::RPL_LUSERCHANNELS,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 channel_count.to_string(),
                 "channels formed".to_string(),
             ],
@@ -487,7 +328,7 @@ impl Handler for LusersHandler {
         ctx.send_reply(
             Response::RPL_LUSERME,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 format!("I have {} clients and 0 servers", total_users),
             ],
         )
@@ -501,7 +342,7 @@ impl Handler for LusersHandler {
         ctx.send_reply(
             Response::RPL_LOCALUSERS,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 total_users.to_string(),
                 max_local.to_string(),
                 format!("Current local users {}, max {}", total_users, max_local),
@@ -517,7 +358,7 @@ impl Handler for LusersHandler {
         ctx.send_reply(
             Response::RPL_GLOBALUSERS,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 total_users.to_string(),
                 max_global.to_string(),
                 format!("Current global users {}, max {}", total_users, max_global),

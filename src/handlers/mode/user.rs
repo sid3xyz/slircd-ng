@@ -3,22 +3,19 @@
 //! Handles MODE commands for users: `MODE <nick> [+/-modes]`
 //! Users can only query/change their own modes.
 
-use super::super::{Context, HandlerError, HandlerResult, server_reply, user_prefix};
-use crate::state::UserModes;
+use super::super::{HandlerResult, server_reply, user_prefix};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::{Registered, UserModes};
 use slirc_proto::{Command, Message, Mode, Response, UserMode, irc_eq};
 use tracing::debug;
 
 /// Handle user mode query/change.
 pub async fn handle_user_mode(
-    ctx: &mut Context<'_>,
+    ctx: &mut TypedContext<'_, Registered>,
     target: &str,
     modes: &[Mode<UserMode>],
 ) -> HandlerResult {
-    let nick = ctx
-        .handshake
-        .nick
-        .as_ref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx.nick();
 
     // Can only query/change your own modes
     if !irc_eq(target, nick) {
@@ -26,7 +23,7 @@ pub async fn handle_user_mode(
             &ctx.matrix.server_info.name,
             Response::ERR_USERSDONTMATCH,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 "Can't change mode for other users".to_string(),
             ],
         );
@@ -47,7 +44,7 @@ pub async fn handle_user_mode(
         let reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_UMODEIS,
-            vec![nick.clone(), mode_string],
+            vec![nick.to_string(), mode_string],
         );
         ctx.sender.send(reply).await?;
     } else {
@@ -64,13 +61,10 @@ pub async fn handle_user_mode(
                 tags: None,
                 prefix: Some(user_prefix(
                     nick,
-                    ctx.handshake
-                        .user
-                        .as_ref()
-                        .ok_or(HandlerError::NickOrUserMissing)?,
+                    ctx.user(),
                     &host,
                 )),
-                command: Command::UserMODE(nick.clone(), applied.clone()),
+                command: Command::UserMODE(nick.to_string(), applied.clone()),
             };
             ctx.sender.send(mode_msg.clone()).await?;
             debug!(nick = %nick, modes = ?applied, "User modes changed");
@@ -81,7 +75,7 @@ pub async fn handle_user_mode(
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_UMODEUNKNOWNFLAG,
-                vec![nick.clone(), format!("Unknown mode flag: {}", mode)],
+                vec![nick.to_string(), format!("Unknown mode flag: {}", mode)],
             );
             ctx.sender.send(reply).await?;
         }

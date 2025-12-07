@@ -3,7 +3,9 @@
 //! Handles user status management and IRCv3 profile updates.
 
 use super::user_mask_from_state;
-use super::{Context, Handler, HandlerError, HandlerResult, server_reply};
+use super::{HandlerError, HandlerResult, PostRegHandler, server_reply};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{Command, MessageRef, Response};
 use tracing::debug;
@@ -17,8 +19,12 @@ use tracing::debug;
 pub struct AwayHandler;
 
 #[async_trait]
-impl Handler for AwayHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for AwayHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
@@ -138,8 +144,12 @@ impl Handler for AwayHandler {
 pub struct SetnameHandler;
 
 #[async_trait]
-impl Handler for SetnameHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for SetnameHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // Check if client has negotiated setname capability
@@ -237,8 +247,12 @@ impl Handler for SetnameHandler {
 pub struct SilenceHandler;
 
 #[async_trait]
-impl Handler for SilenceHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for SilenceHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;

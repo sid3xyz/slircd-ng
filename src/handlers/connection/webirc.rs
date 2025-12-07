@@ -1,6 +1,6 @@
 //! WEBIRC command handler for trusted web gateways.
 
-use super::super::{Context, Handler, HandlerResult};
+use super::super::{Context, HandlerResult, PreRegHandler};
 use crate::config::WebircBlock;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, wildcard_match};
@@ -44,7 +44,7 @@ impl WebircHandler {
 }
 
 #[async_trait]
-impl Handler for WebircHandler {
+impl PreRegHandler for WebircHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         // WEBIRC must be sent before registration
         if ctx.handshake.registered || ctx.handshake.nick.is_some() || ctx.handshake.user.is_some()

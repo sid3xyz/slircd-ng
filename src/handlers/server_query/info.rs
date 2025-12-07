@@ -3,9 +3,11 @@
 //! Additional server query commands for network information.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_needmoreparams, err_noprivileges,
+    HandlerError, HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges,
     get_oper_info,
 };
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -18,8 +20,12 @@ use slirc_proto::{MessageRef, Response};
 pub struct MapHandler;
 
 #[async_trait]
-impl Handler for MapHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for MapHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
@@ -60,8 +66,12 @@ impl Handler for MapHandler {
 pub struct RulesHandler;
 
 #[async_trait]
-impl Handler for RulesHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for RulesHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
@@ -116,8 +126,12 @@ impl Handler for RulesHandler {
 pub struct UseripHandler;
 
 #[async_trait]
-impl Handler for UseripHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for UseripHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
@@ -189,8 +203,12 @@ impl Handler for UseripHandler {
 pub struct LinksHandler;
 
 #[async_trait]
-impl Handler for LinksHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for LinksHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;

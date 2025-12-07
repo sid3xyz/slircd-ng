@@ -6,7 +6,7 @@
 #![allow(dead_code)] // Example code for documentation
 
 use super::context::HandlerResult;
-use super::traits::{StatefulPostRegHandler, TypedContext};
+use super::traits::{PostRegHandler, TypedContext};
 use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -49,8 +49,8 @@ pub struct VersionHandlerStateful;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[async_trait]
-impl StatefulPostRegHandler for VersionHandlerStateful {
-    async fn handle_registered(
+impl PostRegHandler for VersionHandlerStateful {
+    async fn handle(
         &self,
         ctx: &mut TypedContext<'_, Registered>,
         _msg: &MessageRef<'_>,

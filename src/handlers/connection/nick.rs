@@ -1,8 +1,8 @@
 //! NICK command handler for connection registration.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, notify_monitors_offline, notify_monitors_online,
-    server_reply,
+    Context, HandlerError, HandlerResult, UniversalHandler, notify_monitors_offline,
+    notify_monitors_online, server_reply,
 };
 use super::welcome::send_welcome_burst;
 use async_trait::async_trait;
@@ -15,7 +15,7 @@ use tracing::{debug, info};
 pub struct NickHandler;
 
 #[async_trait]
-impl Handler for NickHandler {
+impl UniversalHandler for NickHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         // NICK <nickname>
         let nick = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;

@@ -1,6 +1,8 @@
 //! NAMES command handler.
 
-use super::super::{Context, Handler, HandlerResult, require_registered, server_reply};
+use super::super::{HandlerResult, PostRegHandler, server_reply};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 
@@ -19,9 +21,13 @@ fn get_member_prefix(member_modes: &crate::state::MemberModes, multi_prefix: boo
 }
 
 #[async_trait]
-impl Handler for NamesHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        let (nick, _user) = require_registered(ctx)?;
+impl PostRegHandler for NamesHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        let (nick, _user) = ctx.nick_user();
 
         // Check if the user has multi-prefix CAP enabled
         let multi_prefix = if let Some(user) = ctx.matrix.users.get(ctx.uid) {

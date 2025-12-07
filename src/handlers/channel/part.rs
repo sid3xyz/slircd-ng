@@ -1,8 +1,10 @@
 //! PART command handler.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state,
+    Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
 };
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
@@ -13,8 +15,12 @@ use tracing::info;
 pub struct PartHandler;
 
 #[async_trait]
-impl Handler for PartHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for PartHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // PART <channels> [reason]

@@ -5,9 +5,11 @@
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel,
+    HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded, err_notonchannel,
     server_reply, user_mask_from_state,
 };
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -22,8 +24,12 @@ use tokio::sync::oneshot;
 pub struct InviteHandler;
 
 #[async_trait]
-impl Handler for InviteHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for InviteHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;

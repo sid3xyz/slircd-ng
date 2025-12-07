@@ -1,6 +1,6 @@
 //! USER command handler for connection registration.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply};
+use super::super::{Context, HandlerError, HandlerResult, PreRegHandler, server_reply};
 use super::welcome::send_welcome_burst;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -10,7 +10,7 @@ use tracing::debug;
 pub struct UserHandler;
 
 #[async_trait]
-impl Handler for UserHandler {
+impl PreRegHandler for UserHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         if ctx.handshake.registered {
             let reply = server_reply(

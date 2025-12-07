@@ -41,8 +41,8 @@ mod user_status;
 
 // Re-export core types
 pub use core::{
-    Context, Handler, HandlerError, HandlerResult, HandshakeState, Registry, ResponseMiddleware,
-    get_nick_or_star, get_oper_info, is_user_in_channel, require_registered, resolve_nick_to_uid,
+    Context, HandlerError, HandlerResult, HandshakeState, Registry, ResponseMiddleware,
+    get_nick_or_star, get_oper_info, is_user_in_channel, resolve_nick_to_uid,
     user_mask_from_state,
 };
 

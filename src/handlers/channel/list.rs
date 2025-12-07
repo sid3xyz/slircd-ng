@@ -1,6 +1,8 @@
 //! LIST command handler.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult, server_reply};
+use super::super::{HandlerError, HandlerResult, PostRegHandler, server_reply};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -12,8 +14,12 @@ use slirc_proto::{MessageRef, Response};
 pub struct ListHandler;
 
 #[async_trait]
-impl Handler for ListHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for ListHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;

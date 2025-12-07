@@ -6,10 +6,11 @@
 
 use crate::caps::CapabilityAuthority;
 use crate::db::Shun;
+use crate::handlers::core::traits::TypedContext;
 use crate::handlers::{
-    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star,
-    server_notice,
+    HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, server_notice,
 };
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -21,16 +22,20 @@ use slirc_proto::MessageRef;
 pub struct ShunHandler;
 
 #[async_trait]
-impl Handler for ShunHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for ShunHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
         // Get nick and check capability
-        let nick = get_nick_or_star(ctx).await;
+        let nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
             ctx.sender
-                .send(err_noprivileges(server_name, &nick))
+                .send(err_noprivileges(server_name, nick))
                 .await?;
             return Ok(());
         };
@@ -40,7 +45,7 @@ impl Handler for ShunHandler {
             Some(m) if !m.is_empty() => m,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "SHUN"))
+                    .send(err_needmoreparams(server_name, nick, "SHUN"))
                     .await?;
                 return Ok(());
             }
@@ -51,7 +56,7 @@ impl Handler for ShunHandler {
         if let Err(e) = ctx
             .db
             .bans()
-            .add_shun(mask, Some(reason), &nick, None)
+            .add_shun(mask, Some(reason), nick, None)
             .await
         {
             tracing::error!(error = %e, "Failed to add shun to database");
@@ -63,7 +68,7 @@ impl Handler for ShunHandler {
                 Shun {
                     mask: mask.to_string(),
                     reason: Some(reason.to_string()),
-                    set_by: nick.clone(),
+                    set_by: nick.to_string(),
                     set_at: now,
                     expires_at: None,
                 },
@@ -81,7 +86,7 @@ impl Handler for ShunHandler {
         ctx.sender
             .send(server_notice(
                 server_name,
-                &nick,
+                nick,
                 format!("Shun added: {mask} ({reason})"),
             ))
             .await?;
@@ -98,16 +103,20 @@ impl Handler for ShunHandler {
 pub struct UnshunHandler;
 
 #[async_trait]
-impl Handler for UnshunHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for UnshunHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
         // Get nick and check capability
-        let nick = get_nick_or_star(ctx).await;
+        let nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
             ctx.sender
-                .send(err_noprivileges(server_name, &nick))
+                .send(err_noprivileges(server_name, nick))
                 .await?;
             return Ok(());
         };
@@ -117,36 +126,44 @@ impl Handler for UnshunHandler {
             Some(m) if !m.is_empty() => m,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "UNSHUN"))
+                    .send(err_needmoreparams(server_name, nick, "UNSHUN"))
                     .await?;
                 return Ok(());
             }
         };
 
-        // Remove shun from database
-        let removed = match ctx.db.bans().remove_shun(mask).await {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to remove shun from database");
-                false
-            }
-        };
-
-        if removed {
-            // Also remove from in-memory cache
-            ctx.matrix.shuns.remove(mask);
-            tracing::info!(oper = %nick, mask = %mask, "UNSHUN removed");
+        // Remove from database
+        if let Err(e) = ctx.db.bans().remove_shun(mask).await {
+            tracing::error!(error = %e, "Failed to remove shun from database");
         }
 
-        // Send confirmation
-        let text = if removed {
-            format!("Shun removed: {mask}")
+        // Remove from in-memory cache
+        let removed = ctx.matrix.shuns.remove(mask).is_some();
+
+        if removed {
+            tracing::info!(
+                oper = %nick,
+                mask = %mask,
+                "SHUN removed"
+            );
+
+            // Send confirmation
+            ctx.sender
+                .send(server_notice(
+                    server_name,
+                    nick,
+                    format!("Shun removed: {mask}"),
+                ))
+                .await?;
         } else {
-            format!("No shun found for: {mask}")
-        };
-        ctx.sender
-            .send(server_notice(server_name, &nick, &text))
-            .await?;
+            ctx.sender
+                .send(server_notice(
+                    server_name,
+                    nick,
+                    format!("Shun not found: {mask}"),
+                ))
+                .await?;
+        }
 
         Ok(())
     }

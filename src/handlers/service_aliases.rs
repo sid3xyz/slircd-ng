@@ -2,7 +2,9 @@
 //!
 //! Provides shortcut commands for interacting with IRC services.
 
-use super::{Context, Handler, HandlerError, HandlerResult};
+use super::{HandlerResult, PostRegHandler};
+use super::core::traits::TypedContext;
+use crate::state::Registered;
 use crate::services::route_service_message;
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
@@ -15,15 +17,15 @@ use slirc_proto::MessageRef;
 pub struct NsHandler;
 
 #[async_trait]
-impl Handler for NsHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for NsHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx.nick();
 
         // Join all args into the command text
         let text = msg.args().join(" ");
@@ -44,15 +46,15 @@ impl Handler for NsHandler {
 pub struct CsHandler;
 
 #[async_trait]
-impl Handler for CsHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for CsHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx.nick();
 
         // Join all args into the command text
         let text = msg.args().join(" ");

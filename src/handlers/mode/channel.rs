@@ -15,26 +15,20 @@
 //! (`send_list_mode`, `get_list_mode_query`) to a separate `channel_lists.rs`.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, with_label,
+    HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, with_label,
 };
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use slirc_proto::{ChannelMode, Mode, Response, irc_to_lower};
 
 /// Handle channel mode query/change.
 pub async fn handle_channel_mode(
-    ctx: &mut Context<'_>,
+    ctx: &mut TypedContext<'_, Registered>,
     channel_name: &str,
     modes: &[Mode<ChannelMode>],
 ) -> HandlerResult {
-    let nick = ctx
-        .handshake
-        .nick
-        .as_ref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
-    let _user_name = ctx
-        .handshake
-        .user
-        .as_ref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx.nick();
+    let _user_name = ctx.user();
     let channel_lower = irc_to_lower(channel_name);
 
     // Get channel
@@ -45,7 +39,7 @@ pub async fn handle_channel_mode(
                 &ctx.matrix.server_info.name,
                 Response::ERR_NOSUCHCHANNEL,
                 vec![
-                    nick.clone(),
+                    nick.to_string(),
                     channel_name.to_string(),
                     "No such channel".to_string(),
                 ],
@@ -98,7 +92,7 @@ pub async fn handle_channel_mode(
     if modes.is_empty() {
         // Query: return current modes
         let mode_string = crate::state::actor::modes_to_string(&info.modes);
-        let mut params = vec![nick.clone(), canonical_name.clone()];
+        let mut params = vec![nick.to_string(), canonical_name.to_string()];
         if let Some((flags, rest)) = mode_string.split_once(' ') {
             params.push(flags.to_string());
             params.extend(rest.split(' ').map(|s| s.to_string()));
@@ -120,7 +114,7 @@ pub async fn handle_channel_mode(
         let time_reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_CREATIONTIME,
-            vec![nick.clone(), canonical_name, info.created.to_string()],
+            vec![nick.to_string(), canonical_name.to_string(), info.created.to_string()],
         );
         ctx.sender.send(time_reply).await?;
     } else {
@@ -166,7 +160,7 @@ pub async fn handle_channel_mode(
                                     &ctx.matrix.server_info.name,
                                     Response::ERR_NOSUCHNICK,
                                     vec![
-                                        nick.clone(),
+                                        nick.to_string(),
                                         target_nick.to_string(),
                                         "No such nick/channel".to_string(),
                                     ],
@@ -188,7 +182,7 @@ pub async fn handle_channel_mode(
                                     &ctx.matrix.server_info.name,
                                     Response::ERR_INVALIDKEY,
                                     vec![
-                                        nick.clone(),
+                                        nick.to_string(),
                                         canonical_name.clone(),
                                         key.to_string(),
                                         "Invalid channel key".to_string(),
@@ -293,16 +287,12 @@ fn get_list_mode_query(modes: &[Mode<ChannelMode>]) -> Option<ChannelMode> {
 
 /// Send a list mode's entries for a channel.
 async fn send_list_mode(
-    ctx: &mut Context<'_>,
+    ctx: &mut TypedContext<'_, Registered>,
     channel_lower: &str,
     canonical_name: &str,
     list_mode: ChannelMode,
 ) -> HandlerResult {
-    let nick = ctx
-        .handshake
-        .nick
-        .as_ref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = ctx.nick();
 
     if let Some(channel) = ctx.matrix.channels.get(channel_lower) {
         // Get the appropriate list and response codes based on mode type
@@ -356,7 +346,7 @@ async fn send_list_mode(
                 &ctx.matrix.server_info.name,
                 reply_code,
                 vec![
-                    nick.clone(),
+                    nick.to_string(),
                     canonical_name.to_string(),
                     entry.mask.clone(),
                     entry.set_by.clone(),
@@ -370,7 +360,7 @@ async fn send_list_mode(
             &ctx.matrix.server_info.name,
             end_code,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 canonical_name.to_string(),
                 end_msg.to_string(),
             ],

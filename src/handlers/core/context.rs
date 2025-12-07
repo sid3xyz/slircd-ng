@@ -9,8 +9,7 @@ use crate::db::Database;
 use crate::handlers::batch::BatchState;
 use crate::handlers::cap::SaslState;
 use crate::state::Matrix;
-use async_trait::async_trait;
-use slirc_proto::{Message, MessageRef};
+use slirc_proto::Message;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -159,16 +158,6 @@ pub enum HandlerError {
 /// Result type for command handlers.
 pub type HandlerResult = Result<(), HandlerError>;
 
-/// Trait implemented by all command handlers.
-///
-/// Handlers receive a borrowed `MessageRef` that references the transport buffer
-/// directly. Use `msg.arg(n)` to access arguments as `&str` slices.
-#[async_trait]
-pub trait Handler: Send + Sync {
-    /// Handle an incoming message.
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult;
-}
-
 // ============================================================================
 // User lookup helpers (Phase 1.1: DRY refactoring)
 // ============================================================================
@@ -188,45 +177,6 @@ pub async fn get_nick_or_star(ctx: &Context<'_>) -> String {
     } else {
         "*".to_string()
     }
-}
-
-/// Get nick and user from handshake state.
-///
-/// Returns `Ok((nick, user))` if both are set, `Err(HandlerError::NickOrUserMissing)` otherwise.
-/// Use this in handlers that require registration to be complete.
-#[inline]
-#[allow(clippy::result_large_err)]
-pub fn get_nick_user<'a>(ctx: &'a Context<'_>) -> Result<(&'a str, &'a str), HandlerError> {
-    let nick = ctx
-        .handshake
-        .nick
-        .as_deref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
-    let user = ctx
-        .handshake
-        .user
-        .as_deref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
-    Ok((nick, user))
-}
-
-/// Check registration and get nick/user in one call.
-///
-/// Returns `Err(HandlerError::NotRegistered)` if not registered,
-/// `Err(HandlerError::NickOrUserMissing)` if nick/user missing (bug),
-/// or `Ok((nick, user))` on success.
-///
-/// This is the recommended way to start post-registration handlers:
-/// ```ignore
-/// let (nick, user) = require_registered(ctx)?;
-/// ```
-#[inline]
-#[allow(clippy::result_large_err)]
-pub fn require_registered<'a>(ctx: &'a Context<'_>) -> Result<(&'a str, &'a str), HandlerError> {
-    if !ctx.handshake.registered {
-        return Err(HandlerError::NotRegistered);
-    }
-    get_nick_user(ctx)
 }
 
 /// Fetch the current nick, user, and visible host for a given UID from Matrix.

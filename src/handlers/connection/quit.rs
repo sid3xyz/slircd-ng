@@ -1,6 +1,6 @@
 //! QUIT handler for terminating client sessions.
 
-use crate::handlers::{Context, Handler, HandlerError, HandlerResult};
+use crate::handlers::{Context, HandlerError, HandlerResult, UniversalHandler};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 use tracing::info;
@@ -9,7 +9,7 @@ use tracing::info;
 pub struct QuitHandler;
 
 #[async_trait]
-impl Handler for QuitHandler {
+impl UniversalHandler for QuitHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let quit_msg = msg.arg(0).map(|s| s.to_string());
 
