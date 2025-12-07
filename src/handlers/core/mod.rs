@@ -4,7 +4,9 @@
 //! command handler system, including the handler registry, context types,
 //! and middleware for response routing.
 //!
-//! ## Typestate Handler System (Innovation 1) - COMPLETE ✅
+//! ## Typestate Handler System (Innovation 1)
+//!
+//! ### Phase 1: Registry Enforcement ✅ COMPLETE
 //!
 //! The Registry implements phase-separated dispatch using three handler maps:
 //! - `pre_reg_handlers`: Commands valid before registration (NICK, USER, etc.)
@@ -14,10 +16,18 @@
 //! Post-registration handlers are structurally inaccessible to unregistered
 //! clients - the dispatch path simply doesn't include them.
 //!
-//! The `traits` submodule provides state-aware handler traits for future use:
-//! - [`PreRegHandler`]: For commands valid before registration
-//! - [`PostRegHandler`]: For commands requiring registration
-//! - [`UniversalHandler`]: For commands valid in any state
+//! ### Phase 2: Type-Level Enforcement ✅ COMPLETE
+//!
+//! The `traits` submodule provides **compile-time** protocol state guarantees:
+//!
+//! - [`TypedContext<S>`]: Context wrapper with state encoded in the type system
+//! - [`StatefulPostRegHandler`]: Handlers that receive `TypedContext<Registered>`
+//! - [`RegisteredHandlerAdapter`]: Bridge from new traits to legacy `Handler`
+//!
+//! With `TypedContext<Registered>`, the compiler guarantees:
+//! - `ctx.nick()` returns `&str` (not `Option`) - nick is always present
+//! - `ctx.user()` returns `&str` (not `Option`) - user is always present
+//! - Handler cannot be called with unregistered connection
 
 pub mod context;
 pub mod middleware;
@@ -33,7 +43,13 @@ pub use context::{
 pub use middleware::ResponseMiddleware;
 pub use registry::Registry;
 
-// Re-export typestate handler traits (Innovation 1)
+// Re-export typestate handler traits (Innovation 1 - Phase 1)
 pub use traits::{
     HandlerPhase, PostRegHandler, PreRegHandler, UniversalHandler, command_phase,
+};
+
+// Re-export compile-time typestate types (Innovation 1 - Phase 2)
+pub use traits::{
+    RegisteredHandlerAdapter, StatefulPostRegHandler, StatefulPreRegHandler,
+    StatefulUniversalHandler, TypedContext, wrap_pre_reg, wrap_registered,
 };

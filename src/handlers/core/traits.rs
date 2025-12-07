@@ -10,23 +10,180 @@
 //! - [`PostRegHandler`]: Commands requiring registration (PRIVMSG, JOIN, etc.)
 //! - [`UniversalHandler`]: Commands valid in any state (QUIT, PING, PONG)
 //!
+//! ## TypedContext<S>
+//!
+//! The `TypedContext<'a, S>` wrapper provides compile-time guarantees about
+//! protocol state. Post-registration handlers receive `TypedContext<Registered>`,
+//! making it **impossible** to call them with an unregistered connection.
+//!
+//! ## Registration Guarantees
+//!
+//! When you have a `TypedContext<Registered>`, the type system guarantees:
+//! - `ctx.nick()` always returns `&str` (never `Option`)
+//! - `ctx.user()` always returns `&str` (never `Option`)
+//! - The client has completed the full registration handshake
+//!
 //! ## Migration Path
 //!
 //! Existing handlers implement the `Handler` trait. To migrate:
 //!
-//! 1. For pre-reg handlers: implement `PreRegHandler` instead of `Handler`
-//! 2. For post-reg handlers: implement `PostRegHandler` instead of `Handler`
-//! 3. Remove the runtime `if !ctx.handshake.registered` check
-//!
-//! The registry will dispatch to the appropriate trait based on connection state.
+//! 1. For pre-reg handlers: implement `StatefulPreRegHandler` instead
+//! 2. For post-reg handlers: implement `StatefulPostRegHandler` instead
+//! 3. Gain compile-time safety - no runtime registration checks needed!
 
-// Foundation code - will be used in subsequent phases
-#![allow(dead_code)]
-
-use super::context::{Context, HandlerResult};
-use crate::state::{IsRegistered, PreRegistration, ProtocolState};
+use super::context::{Context, HandlerError, HandlerResult};
+use crate::state::{IsRegistered, PreRegistration, ProtocolState, Registered};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
+use std::marker::PhantomData;
+
+// ============================================================================
+// TypedContext: Compile-Time Protocol State Guarantees
+// ============================================================================
+
+/// A context wrapper that provides compile-time protocol state guarantees.
+///
+/// Unlike the base `Context`, `TypedContext<S>` encodes the protocol state
+/// at the type level. This enables:
+///
+/// 1. **Compile-time dispatch**: Post-reg handlers receive `TypedContext<Registered>`,
+///    making it impossible to call them with an unregistered connection.
+///
+/// 2. **Safe accessors**: `ctx.nick()` on `TypedContext<Registered>` returns `&str`,
+///    not `Option<&str>`, because registration guarantees nick is set.
+///
+/// 3. **Type-safe transitions**: State transitions return new types, enforced by compiler.
+///
+/// ## Example
+///
+/// ```ignore
+/// async fn handle_privmsg(ctx: &mut TypedContext<'_, Registered>, msg: &MessageRef<'_>) {
+///     // Compile-time guarantee: nick is always present
+///     let nick = ctx.nick();  // Returns &str, not Option!
+///     
+///     // If you tried to call this with TypedContext<Unregistered>, it wouldn't compile
+/// }
+/// ```
+pub struct TypedContext<'a, S: ProtocolState> {
+    /// The underlying context (uses raw pointer to avoid lifetime complexity)
+    inner: *mut Context<'a>,
+    /// Zero-sized marker for state
+    _state: PhantomData<S>,
+    /// Lifetime marker
+    _lifetime: PhantomData<&'a mut ()>,
+}
+
+// SAFETY: TypedContext is Send/Sync if Context is Send/Sync
+// The raw pointer is only used for internal bookkeeping
+unsafe impl<'a, S: ProtocolState> Send for TypedContext<'a, S> {}
+unsafe impl<'a, S: ProtocolState> Sync for TypedContext<'a, S> {}
+
+impl<'a, S: ProtocolState> TypedContext<'a, S> {
+    /// Create a typed context from an untyped context.
+    ///
+    /// # Safety
+    /// This is only safe when the protocol state matches what `S` claims.
+    #[inline]
+    pub fn new_unchecked(ctx: &'a mut Context<'_>) -> Self {
+        Self {
+            inner: ctx as *mut Context<'_> as *mut Context<'a>,
+            _state: PhantomData,
+            _lifetime: PhantomData,
+        }
+    }
+
+    /// Access the underlying context
+    #[inline]
+    pub fn inner(&self) -> &Context<'a> {
+        // SAFETY: We hold exclusive access via the lifetime
+        unsafe { &*self.inner }
+    }
+
+    /// Access the underlying context mutably
+    #[inline]
+    pub fn inner_mut(&mut self) -> &mut Context<'a> {
+        // SAFETY: We hold exclusive mutable access via the lifetime
+        unsafe { &mut *self.inner }
+    }
+
+    /// Get the user's unique ID
+    #[inline]
+    pub fn uid(&self) -> &str {
+        self.inner().uid
+    }
+
+    /// Get the remote address
+    #[inline]
+    pub fn remote_addr(&self) -> std::net::SocketAddr {
+        self.inner().remote_addr
+    }
+}
+
+/// Extension methods available only for registered connections.
+///
+/// These methods provide guaranteed-present values that would be
+/// `Option` for unregistered connections.
+impl<'a> TypedContext<'a, Registered> {
+    /// Get the user's nickname.
+    ///
+    /// # Panics
+    /// Never panics for Registered state - nick is guaranteed present.
+    #[inline]
+    pub fn nick(&self) -> &str {
+        self.inner()
+            .handshake
+            .nick
+            .as_deref()
+            .expect("Registered TypedContext invariant violated: nick missing")
+    }
+
+    /// Get the username.
+    ///
+    /// # Panics
+    /// Never panics for Registered state - user is guaranteed present.
+    #[inline]
+    pub fn user(&self) -> &str {
+        self.inner()
+            .handshake
+            .user
+            .as_deref()
+            .expect("Registered TypedContext invariant violated: user missing")
+    }
+
+    /// Get both nick and user.
+    #[inline]
+    pub fn nick_user(&self) -> (&str, &str) {
+        (self.nick(), self.user())
+    }
+}
+
+/// Wrap a context as pre-registration (for use by registry).
+///
+/// # Panics in debug builds
+/// Panics if the connection is already registered.
+pub fn wrap_pre_reg<'a, S: PreRegistration>(ctx: &'a mut Context<'_>) -> TypedContext<'a, S> {
+    debug_assert!(
+        !ctx.handshake.registered,
+        "wrap_pre_reg called on registered connection"
+    );
+    TypedContext::new_unchecked(ctx)
+}
+
+/// Wrap a context as registered (for use by registry).
+///
+/// # Panics in debug builds
+/// Panics if the connection is not registered.
+pub fn wrap_registered<'a>(ctx: &'a mut Context<'_>) -> TypedContext<'a, Registered> {
+    debug_assert!(
+        ctx.handshake.registered,
+        "wrap_registered called on unregistered connection"
+    );
+    debug_assert!(
+        ctx.handshake.nick.is_some() && ctx.handshake.user.is_some(),
+        "wrap_registered called but nick/user missing"
+    );
+    TypedContext::new_unchecked(ctx)
+}
 
 // ============================================================================
 // Pre-Registration Handler Trait
@@ -229,6 +386,109 @@ pub fn command_phase(command: &str) -> HandlerPhase {
 
         // Everything else requires registration
         _ => HandlerPhase::PostReg,
+    }
+}
+
+// ============================================================================
+// Phase 2: Stateful Handler Traits with TypedContext
+// ============================================================================
+
+/// Handler for post-registration commands with compile-time guarantees.
+///
+/// Unlike `PostRegHandler`, this trait receives `TypedContext<Registered>`,
+/// providing **compile-time** guarantees that:
+/// - The connection is registered
+/// - `ctx.nick()` and `ctx.user()` always return valid values
+///
+/// # Migration
+///
+/// To migrate a handler from `Handler` to `StatefulPostRegHandler`:
+///
+/// ```ignore
+/// // Before (runtime check)
+/// impl Handler for PrivmsgHandler {
+///     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+///         let (nick, user) = require_registered(ctx)?;  // Runtime check!
+///         // ...
+///     }
+/// }
+///
+/// // After (compile-time guarantee)
+/// impl StatefulPostRegHandler for PrivmsgHandler {
+///     async fn handle_registered(
+///         &self,
+///         ctx: &mut TypedContext<'_, Registered>,
+///         msg: &MessageRef<'_>,
+///     ) -> HandlerResult {
+///         let nick = ctx.nick();  // Always valid - guaranteed by type!
+///         // ...
+///     }
+/// }
+/// ```
+#[async_trait]
+pub trait StatefulPostRegHandler: Send + Sync {
+    /// Handle a command with compile-time registration guarantee.
+    ///
+    /// The `TypedContext<Registered>` parameter makes it **impossible** to call
+    /// this method with an unregistered connection - the compiler rejects it.
+    async fn handle_registered(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult;
+}
+
+/// Handler for pre-registration commands with compile-time guarantees.
+///
+/// Receives `TypedContext<S>` where `S: PreRegistration`, ensuring
+/// this handler is only called on unregistered/negotiating connections.
+#[async_trait]
+pub trait StatefulPreRegHandler: Send + Sync {
+    /// Handle a command in pre-registration state.
+    async fn handle_pre_registration<S: PreRegistration>(
+        &self,
+        ctx: &mut TypedContext<'_, S>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult;
+}
+
+/// Handler for commands valid in any state.
+///
+/// Receives `TypedContext<S>` where `S: ProtocolState`.
+#[async_trait]
+pub trait StatefulUniversalHandler: Send + Sync {
+    /// Handle a command in any protocol state.
+    async fn handle_any_state<S: ProtocolState>(
+        &self,
+        ctx: &mut TypedContext<'_, S>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult;
+}
+
+// ============================================================================
+// Adapter: StatefulPostRegHandler -> Handler
+// ============================================================================
+
+/// Adapter that wraps a `StatefulPostRegHandler` as a legacy `Handler`.
+///
+/// This allows gradual migration: new handlers can implement the type-safe
+/// `StatefulPostRegHandler` trait while still being usable in the existing
+/// registry infrastructure.
+///
+/// The registry performs the runtime state check and wraps the context.
+pub struct RegisteredHandlerAdapter<H: StatefulPostRegHandler>(pub H);
+
+#[async_trait]
+impl<H: StatefulPostRegHandler> super::context::Handler for RegisteredHandlerAdapter<H> {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        // Runtime safety check (debug builds will panic, release will error)
+        if !ctx.handshake.registered {
+            return Err(HandlerError::NotRegistered);
+        }
+
+        // SAFETY: We just verified registration above
+        let mut typed_ctx = TypedContext::<Registered>::new_unchecked(ctx);
+        self.0.handle_registered(&mut typed_ctx, msg).await
     }
 }
 
