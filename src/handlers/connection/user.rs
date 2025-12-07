@@ -12,12 +12,12 @@ pub struct UserHandler;
 #[async_trait]
 impl PreRegHandler for UserHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if ctx.handshake.registered {
+        if ctx.state.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_ALREADYREGISTERED,
                 vec![
-                    ctx.handshake
+                    ctx.state
                         .nick
                         .clone()
                         .unwrap_or_else(|| "*".to_string()),
@@ -37,13 +37,13 @@ impl PreRegHandler for UserHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        ctx.handshake.user = Some(username.to_string());
-        ctx.handshake.realname = Some(realname.to_string());
+        ctx.state.user = Some(username.to_string());
+        ctx.state.realname = Some(realname.to_string());
 
         debug!(user = %username, realname = %realname, uid = %ctx.uid, "User set");
 
         // Check if we can complete registration
-        if ctx.handshake.can_register() {
+        if ctx.state.can_register() {
             send_welcome_burst(ctx).await?;
         }
 

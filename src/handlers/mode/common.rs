@@ -23,7 +23,7 @@ pub async fn parse_channel_modes(
         Err(e) => {
             debug!(error = ?e, "Failed to parse channel modes");
             let nick = ctx
-                .handshake
+                .state
                 .nick
                 .as_ref()
                 .ok_or(HandlerError::NickOrUserMissing)?;
@@ -56,7 +56,7 @@ pub async fn parse_user_modes(
         Err(e) => {
             debug!(error = ?e, "Failed to parse user modes");
             let nick = ctx
-                .handshake
+                .state
                 .nick
                 .as_ref()
                 .ok_or(HandlerError::NickOrUserMissing)?;

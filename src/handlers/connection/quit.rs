@@ -15,7 +15,7 @@ impl UniversalHandler for QuitHandler {
 
         info!(
             uid = %ctx.uid,
-            nick = ?ctx.handshake.nick,
+            nick = ?ctx.state.nick,
             message = ?quit_msg,
             "Client quit"
         );

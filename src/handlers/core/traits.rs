@@ -145,7 +145,7 @@ impl<'a> TypedContext<'a, Registered> {
     #[inline]
     pub fn nick(&self) -> &str {
         self.inner()
-            .handshake
+            .state
             .nick
             .as_deref()
             .expect("Registered TypedContext invariant violated: nick missing")
@@ -158,7 +158,7 @@ impl<'a> TypedContext<'a, Registered> {
     #[inline]
     pub fn user(&self) -> &str {
         self.inner()
-            .handshake
+            .state
             .user
             .as_deref()
             .expect("Registered TypedContext invariant violated: user missing")

@@ -24,6 +24,7 @@ const MAX_HISTORY_LIMIT: u32 = 100;
 pub struct ChatHistoryHandler;
 
 impl ChatHistoryHandler {
+    #[allow(clippy::too_many_arguments)] // Complex query dispatch needs all context
     async fn execute_query(
         &self,
         ctx: &TypedContext<'_, Registered>,
@@ -34,7 +35,7 @@ impl ChatHistoryHandler {
         is_dm: bool,
         msg: &MessageRef<'_>,
     ) -> Result<Vec<StoredMessage>, DbError> {
-        let account = ctx.handshake.account.as_deref();
+        let account = ctx.state.account.as_deref();
         match subcommand {
             ChatHistorySubCommand::LATEST => {
                 let msgref_str = msg.arg(2).unwrap_or("*");
@@ -60,12 +61,10 @@ impl ChatHistoryHandler {
                                 } else {
                                     ctx.db.history().query_latest_after(target, n, limit).await
                                 }
+                            } else if is_dm {
+                                ctx.db.history().query_dm_latest(nick, account, target, limit).await
                             } else {
-                                if is_dm {
-                                    ctx.db.history().query_dm_latest(nick, account, target, limit).await
-                                } else {
-                                    ctx.db.history().query_latest(target, limit).await
-                                }
+                                ctx.db.history().query_latest(target, limit).await
                             }
                         }
                         Ok(MessageReference::Timestamp(ts)) => {
@@ -138,7 +137,7 @@ impl ChatHistoryHandler {
                             ctx.db.history().lookup_msgid_nanotime(target, &id).await?
                         };
 
-                        let msg = if let Some(_) = n {
+                        let msg = if n.is_some() {
                             ctx.db.history().get_message_by_id(&id).await?
                         } else {
                             None
@@ -171,15 +170,15 @@ impl ChatHistoryHandler {
                 debug!("AROUND limits: limit={} before={} after={}", limit, before_limit, after_limit);
 
                 let mut before = if is_dm {
-                    ctx.db.history().query_dm_before(nick, account, target, nanos, before_limit as u32).await?
+                    ctx.db.history().query_dm_before(nick, account, target, nanos, before_limit).await?
                 } else {
-                    ctx.db.history().query_before(target, nanos, before_limit as u32).await?
+                    ctx.db.history().query_before(target, nanos, before_limit).await?
                 };
 
                 let after = if is_dm {
-                    ctx.db.history().query_dm_after(nick, account, target, nanos, after_limit as u32).await?
+                    ctx.db.history().query_dm_after(nick, account, target, nanos, after_limit).await?
                 } else {
-                    ctx.db.history().query_after(target, nanos, after_limit as u32).await?
+                    ctx.db.history().query_after(target, nanos, after_limit).await?
                 };
 
                 before.reverse();
@@ -227,12 +226,10 @@ impl ChatHistoryHandler {
                     } else {
                         ctx.db.history().query_between(target, start_nanos, end_nanos, limit).await
                     }
+                } else if is_dm {
+                    ctx.db.history().query_dm_between_desc(nick, account, target, end_nanos, start_nanos, limit).await
                 } else {
-                    if is_dm {
-                        ctx.db.history().query_dm_between_desc(nick, account, target, end_nanos, start_nanos, limit).await
-                    } else {
-                        ctx.db.history().query_between_desc(target, end_nanos, start_nanos, limit).await
-                    }
+                    ctx.db.history().query_between_desc(target, end_nanos, start_nanos, limit).await
                 }
             }
             ChatHistorySubCommand::TARGETS => {

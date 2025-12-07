@@ -28,7 +28,7 @@ impl PostRegHandler for KickHandler {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let kicker_nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;

@@ -46,7 +46,7 @@ impl PostRegHandler for WhowasHandler {
                 &ctx.matrix.server_info.name,
                 Response::ERR_NONICKNAMEGIVEN,
                 vec![
-                    ctx.handshake
+                    ctx.state
                         .nick
                         .clone()
                         .unwrap_or_else(|| "*".to_string()),
@@ -59,7 +59,7 @@ impl PostRegHandler for WhowasHandler {
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;

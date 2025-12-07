@@ -138,7 +138,7 @@ impl PostRegHandler for PrivmsgHandler {
                 route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char, Some(timestamp_iso.clone()), Some(msgid.clone())).await?;
                 debug!(from = %nick, to = %target, prefix = %prefix_char, "PRIVMSG STATUSMSG");
                 // Suppress ACK for echo-message with labels (echo IS the response)
-                if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                     ctx.suppress_labeled_ack = true;
                 }
             } else {
@@ -151,14 +151,14 @@ impl PostRegHandler for PrivmsgHandler {
                         // This is for labeled-response: when echo-message echoes back,
                         // we don't need a separate ACK
                         if ctx.label.is_some()
-                            && ctx.handshake.capabilities.contains("echo-message")
+                            && ctx.state.capabilities.contains("echo-message")
                         {
                             ctx.suppress_labeled_ack = true;
                         }
 
                         // Store message in history for CHATHISTORY support
                         let prefix = format!("{}!{}@{}", nick, user_name, host);
-                        let account = ctx.handshake.account.as_deref();
+                        let account = ctx.state.account.as_deref();
 
                         let params = StoreMessageParams {
                             msgid: &msgid,
@@ -206,7 +206,7 @@ impl PostRegHandler for PrivmsgHandler {
 
             // Store message in history for CHATHISTORY support (DMs)
             let prefix = format!("{}!{}@{}", nick, user_name, host);
-            let account = ctx.handshake.account.as_deref();
+            let account = ctx.state.account.as_deref();
 
             // Lookup target account
             let target_lower = irc_to_lower(routing_target);
@@ -302,7 +302,7 @@ pub(super) async fn route_statusmsg(
     };
 
     if route_to_channel(ctx, channel_lower, msg, &opts, timestamp, msgid).await == ChannelRouteResult::NoSuchChannel {
-        let nick = ctx.handshake.nick.as_deref().unwrap_or("*");
+        let nick = ctx.state.nick.as_deref().unwrap_or("*");
         send_no_such_channel(ctx, nick, original_target).await?;
     }
 

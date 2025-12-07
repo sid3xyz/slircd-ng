@@ -38,7 +38,7 @@ impl PostRegHandler for JoinHandler {
         let uid_string = ctx.uid.to_string();
         if !ctx.matrix.rate_limiter.check_join_rate(&uid_string) {
             let nick = ctx
-                .handshake
+                .state
                 .nick
                 .clone()
                 .unwrap_or_else(|| "*".to_string());
@@ -86,7 +86,7 @@ impl PostRegHandler for JoinHandler {
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHCHANNEL,
                     vec![
-                        ctx.handshake
+                        ctx.state
                             .nick
                             .clone()
                             .unwrap_or_else(|| "*".to_string()),
@@ -135,7 +135,7 @@ async fn join_channel(
     };
 
     let ip_addr = ctx
-        .handshake
+        .state
         .webirc_ip
         .as_ref()
         .and_then(|ip| ip.parse().ok())
@@ -360,10 +360,10 @@ async fn check_akick(
         let user_state = user_ref.read().await;
         user_state.host.clone()
     } else if let Some(h) = ctx
-        .handshake
+        .state
         .webirc_host
         .clone()
-        .or(ctx.handshake.webirc_ip.clone())
+        .or(ctx.state.webirc_ip.clone())
     {
         h
     } else {
@@ -398,7 +398,7 @@ async fn handle_join_success(
     }
 
     // Send JOIN message to user
-    let self_join_msg = if ctx.handshake.capabilities.contains("extended-join") {
+    let self_join_msg = if ctx.state.capabilities.contains("extended-join") {
         extended_join_msg.clone()
     } else {
         standard_join_msg.clone()

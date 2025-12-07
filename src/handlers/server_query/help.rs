@@ -245,7 +245,7 @@ impl PostRegHandler for HelpHandler {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let nick = ctx
-            .handshake
+            .state
             .nick
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;

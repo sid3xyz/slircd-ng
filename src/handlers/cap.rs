@@ -52,7 +52,7 @@ impl UniversalHandler for CapHandler {
 
         // Clone nick upfront to avoid borrowing issues
         let nick = ctx
-            .handshake
+            .state
             .nick
             .clone()
             .unwrap_or_else(|| "*".to_string());
@@ -99,19 +99,19 @@ async fn handle_ls(ctx: &mut Context<'_>, nick: &str, version_arg: Option<&str>)
     let version: u32 = version_arg.and_then(|v| v.parse().ok()).unwrap_or(301);
 
     // Set CAP negotiation flag
-    ctx.handshake.cap_negotiating = true;
-    ctx.handshake.cap_version = version;
+    ctx.state.cap_negotiating = true;
+    ctx.state.cap_version = version;
 
     // CAP LS 302+ implicitly enables cap-notify per IRCv3 spec
     // https://ircv3.net/specs/extensions/capability-negotiation#cap-notify
     if version >= 302 {
-        ctx.handshake.capabilities.insert("cap-notify".to_string());
+        ctx.state.capabilities.insert("cap-notify".to_string());
     }
 
     // Build capability list (include EXTERNAL if TLS with cert)
     let cap_list = build_cap_list(
         version,
-        ctx.handshake.is_tls && ctx.handshake.certfp.is_some(),
+        ctx.state.is_tls && ctx.state.certfp.is_some(),
         &ctx.matrix.config.account_registration,
     );
 
@@ -137,7 +137,7 @@ async fn handle_ls(ctx: &mut Context<'_>, nick: &str, version_arg: Option<&str>)
 /// Handle CAP LIST - list currently enabled capabilities.
 async fn handle_list(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
     let enabled: String = ctx
-        .handshake
+        .state
         .capabilities
         .iter()
         .cloned()
@@ -180,10 +180,10 @@ async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -
 
         if SUPPORTED_CAPS.contains(&cap_base) {
             if is_removal {
-                ctx.handshake.capabilities.remove(cap_base);
+                ctx.state.capabilities.remove(cap_base);
                 accepted.push(format!("-{}", cap_base));
             } else {
-                ctx.handshake.capabilities.insert(cap_base.to_string());
+                ctx.state.capabilities.insert(cap_base.to_string());
                 accepted.push(cap_base.to_string());
             }
         } else {
@@ -222,11 +222,11 @@ async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -
 
         // If user is registered, sync capabilities to their User in Matrix
         // This enables mid-session CAP REQ (e.g., requesting message-tags after registration)
-        if ctx.handshake.registered
+        if ctx.state.registered
             && let Some(user_ref) = ctx.matrix.users.get(ctx.uid)
         {
             let mut user = user_ref.write().await;
-            user.caps = ctx.handshake.capabilities.clone();
+            user.caps = ctx.state.capabilities.clone();
             debug!(uid = %ctx.uid, caps = ?user.caps, "Synced caps to Matrix user");
         }
     }
@@ -236,16 +236,16 @@ async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -
 
 /// Handle CAP END - end capability negotiation.
 async fn handle_end(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
-    ctx.handshake.cap_negotiating = false;
+    ctx.state.cap_negotiating = false;
 
     info!(
         nick = %nick,
-        capabilities = ?ctx.handshake.capabilities,
+        capabilities = ?ctx.state.capabilities,
         "CAP negotiation complete"
     );
 
     // If registration is pending (both NICK and USER received), complete it now
-    if ctx.handshake.can_register() {
+    if ctx.state.can_register() {
         send_welcome_burst(ctx).await?;
     }
 
@@ -316,24 +316,24 @@ impl PreRegHandler for AuthenticateHandler {
 
         // Clone nick upfront to avoid borrowing issues
         let nick = ctx
-            .handshake
+            .state
             .nick
             .clone()
             .unwrap_or_else(|| "*".to_string());
 
         // Check if SASL is enabled
-        if !ctx.handshake.capabilities.contains("sasl") {
+        if !ctx.state.capabilities.contains("sasl") {
             // SASL not enabled, ignore
             debug!(nick = %nick, "AUTHENTICATE received but SASL not enabled");
             return Ok(());
         }
 
         // Handle SASL flow
-        match ctx.handshake.sasl_state.clone() {
+        match ctx.state.sasl_state.clone() {
             SaslState::None => {
                 // Client is initiating SASL with mechanism name
                 if data.eq_ignore_ascii_case("PLAIN") {
-                    ctx.handshake.sasl_state = SaslState::WaitingForData;
+                    ctx.state.sasl_state = SaslState::WaitingForData;
                     // Send empty challenge (AUTHENTICATE +)
                     let reply = Message {
                         tags: None,
@@ -344,20 +344,20 @@ impl PreRegHandler for AuthenticateHandler {
                     debug!(nick = %nick, "SASL PLAIN: sent challenge");
                 } else if data.eq_ignore_ascii_case("EXTERNAL") {
                     // EXTERNAL uses TLS client certificate
-                    if !ctx.handshake.is_tls {
+                    if !ctx.state.is_tls {
                         send_sasl_fail(ctx, &nick, "EXTERNAL requires TLS connection").await?;
-                        ctx.handshake.sasl_state = SaslState::None;
+                        ctx.state.sasl_state = SaslState::None;
                         return Ok(());
                     }
 
-                    let Some(certfp) = ctx.handshake.certfp.as_ref() else {
+                    let Some(certfp) = ctx.state.certfp.as_ref() else {
                         send_sasl_fail(ctx, &nick, "No client certificate presented").await?;
-                        ctx.handshake.sasl_state = SaslState::None;
+                        ctx.state.sasl_state = SaslState::None;
                         return Ok(());
                     };
 
                     // Send empty challenge to get optional authzid
-                    ctx.handshake.sasl_state = SaslState::WaitingForExternal;
+                    ctx.state.sasl_state = SaslState::WaitingForExternal;
                     let reply = Message {
                         tags: None,
                         prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
@@ -368,7 +368,7 @@ impl PreRegHandler for AuthenticateHandler {
                 } else {
                     // Unsupported mechanism
                     send_sasl_fail(ctx, &nick, "Unsupported SASL mechanism").await?;
-                    ctx.handshake.sasl_state = SaslState::None;
+                    ctx.state.sasl_state = SaslState::None;
                 }
             }
             SaslState::WaitingForExternal => {
@@ -376,7 +376,7 @@ impl PreRegHandler for AuthenticateHandler {
                 if data == "*" {
                     // Client aborting
                     send_sasl_fail(ctx, &nick, "SASL authentication aborted").await?;
-                    ctx.handshake.sasl_state = SaslState::None;
+                    ctx.state.sasl_state = SaslState::None;
                 } else {
                     // data is either "+" (empty) or base64-encoded authzid
                     let authzid = if data == "+" {
@@ -388,7 +388,7 @@ impl PreRegHandler for AuthenticateHandler {
                     };
 
                     let certfp = ctx
-                        .handshake
+                        .state
                         .certfp
                         .as_ref()
                         .expect("checked above")
@@ -404,7 +404,7 @@ impl PreRegHandler for AuthenticateHandler {
                                 warn!(nick = %nick, authzid = %az, account = %account.name, "SASL EXTERNAL authzid mismatch");
                                 send_sasl_fail(ctx, &nick, "Authorization identity mismatch")
                                     .await?;
-                                ctx.handshake.sasl_state = SaslState::None;
+                                ctx.state.sasl_state = SaslState::None;
                                 return Ok(());
                             }
 
@@ -416,24 +416,24 @@ impl PreRegHandler for AuthenticateHandler {
                             );
 
                             let user = ctx
-                                .handshake
+                                .state
                                 .user
                                 .clone()
                                 .unwrap_or_else(|| "*".to_string());
                             send_sasl_success(ctx, &nick, &user, &account.name).await?;
-                            ctx.handshake.sasl_state = SaslState::Authenticated;
-                            ctx.handshake.account = Some(account.name);
+                            ctx.state.sasl_state = SaslState::Authenticated;
+                            ctx.state.account = Some(account.name);
                         }
                         Ok(None) => {
                             warn!(nick = %nick, certfp = %certfp, "SASL EXTERNAL: no account with this certificate");
                             send_sasl_fail(ctx, &nick, "Certificate not registered to any account")
                                 .await?;
-                            ctx.handshake.sasl_state = SaslState::None;
+                            ctx.state.sasl_state = SaslState::None;
                         }
                         Err(e) => {
                             warn!(nick = %nick, certfp = %certfp, error = ?e, "SASL EXTERNAL database error");
                             send_sasl_fail(ctx, &nick, "Authentication failed").await?;
-                            ctx.handshake.sasl_state = SaslState::None;
+                            ctx.state.sasl_state = SaslState::None;
                         }
                     }
                 }
@@ -447,26 +447,26 @@ impl PreRegHandler for AuthenticateHandler {
 
                 if data == "*" {
                     // Client aborting
-                    ctx.handshake.sasl_buffer.clear();
+                    ctx.state.sasl_buffer.clear();
                     send_sasl_fail(ctx, &nick, "SASL authentication aborted").await?;
-                    ctx.handshake.sasl_state = SaslState::None;
+                    ctx.state.sasl_state = SaslState::None;
                 } else {
                     // Accumulate the chunk
                     // "+" alone means empty chunk (final when previous was exactly 400 bytes)
                     if data != "+" {
-                        ctx.handshake.sasl_buffer.push_str(data);
+                        ctx.state.sasl_buffer.push_str(data);
                     }
 
                     // Check if more data is expected
                     // If this chunk is exactly 400 bytes, wait for more
                     if data.len() == 400 {
                         // More data expected, wait for next AUTHENTICATE
-                        debug!(nick = %nick, chunk_len = data.len(), total_len = ctx.handshake.sasl_buffer.len(), "SASL: accumulated chunk, waiting for more");
+                        debug!(nick = %nick, chunk_len = data.len(), total_len = ctx.state.sasl_buffer.len(), "SASL: accumulated chunk, waiting for more");
                         return Ok(());
                     }
 
                     // We have the complete payload, process it
-                    let full_data = std::mem::take(&mut ctx.handshake.sasl_buffer);
+                    let full_data = std::mem::take(&mut ctx.state.sasl_buffer);
                     debug!(nick = %nick, total_len = full_data.len(), "SASL: processing complete payload");
 
                     // Try to decode and validate
@@ -488,25 +488,25 @@ impl PreRegHandler for AuthenticateHandler {
 
                                     // Send success
                                     let user = ctx
-                                        .handshake
+                                        .state
                                         .user
                                         .clone()
                                         .unwrap_or_else(|| "*".to_string());
                                     send_sasl_success(ctx, &nick, &user, &account.name).await?;
-                                    ctx.handshake.sasl_state = SaslState::Authenticated;
-                                    ctx.handshake.account = Some(account.name);
+                                    ctx.state.sasl_state = SaslState::Authenticated;
+                                    ctx.state.account = Some(account.name);
                                 }
                                 Err(e) => {
                                     warn!(nick = %nick, account = %account_name, error = ?e, "SASL authentication failed");
                                     send_sasl_fail(ctx, &nick, "Invalid credentials").await?;
-                                    ctx.handshake.sasl_state = SaslState::None;
+                                    ctx.state.sasl_state = SaslState::None;
                                 }
                             }
                         }
                         Err(e) => {
                             debug!(nick = %nick, error = %e, "SASL PLAIN decode failed");
                             send_sasl_fail(ctx, &nick, "Invalid SASL credentials").await?;
-                            ctx.handshake.sasl_state = SaslState::None;
+                            ctx.state.sasl_state = SaslState::None;
                         }
                     }
                 }
@@ -564,10 +564,10 @@ async fn send_sasl_success(
 ) -> HandlerResult {
     // Use effective host (WEBIRC/TLS-aware) for prefix
     let host = ctx
-        .handshake
+        .state
         .webirc_host
         .clone()
-        .or(ctx.handshake.webirc_ip.clone())
+        .or(ctx.state.webirc_ip.clone())
         .unwrap_or_else(|| ctx.remote_addr.ip().to_string());
 
     // RPL_LOGGEDIN (900)

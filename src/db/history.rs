@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use slirc_proto::irc_to_lower;
 use sqlx::SqlitePool;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{info, warn};
 
 /// Row type from database query: (msgid, target, sender, message_data, nanotime, account)
 type HistoryRow = (String, String, String, Vec<u8>, i64, Option<String>);
@@ -411,6 +410,7 @@ impl<'a> HistoryRepository<'a> {
     }
 
     /// Query messages around a timestamp (CHATHISTORY AROUND).
+    #[allow(dead_code)] // Part of CHATHISTORY API - will be used when AROUND is implemented
     pub async fn query_around(
         &self,
         target: &str,

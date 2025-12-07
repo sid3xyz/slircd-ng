@@ -16,7 +16,7 @@ pub struct PassHandler;
 impl PreRegHandler for PassHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         // PASS must be sent before NICK/USER (RFC 2812 Section 3.1.1)
-        if ctx.handshake.registered {
+        if ctx.state.registered {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_ALREADYREGISTERED,
@@ -27,7 +27,7 @@ impl PreRegHandler for PassHandler {
         }
 
         // PASS must come before NICK/USER
-        if ctx.handshake.nick.is_some() || ctx.handshake.user.is_some() {
+        if ctx.state.nick.is_some() || ctx.state.user.is_some() {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_ALREADYREGISTERED,
@@ -58,7 +58,7 @@ impl PreRegHandler for PassHandler {
             }
         };
 
-        ctx.handshake.pass_received = Some(password.to_string());
+        ctx.state.pass_received = Some(password.to_string());
         debug!("PASS received");
 
         Ok(())

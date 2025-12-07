@@ -77,7 +77,7 @@ impl PostRegHandler for BatchHandler {
 
             if batch_type.eq_ignore_ascii_case("draft/multiline") {
                 // Check if client has the capability
-                if !ctx.handshake.capabilities.contains("draft/multiline") {
+                if !ctx.state.capabilities.contains("draft/multiline") {
                     send_fail(
                         ctx,
                         &server_name,
@@ -120,7 +120,7 @@ impl PostRegHandler for BatchHandler {
                     .collect();
 
                 // Store in context
-                ctx.handshake.active_batch = Some(BatchState {
+                ctx.state.active_batch = Some(BatchState {
                     batch_type: "draft/multiline".to_string(),
                     target: target.to_string(),
                     lines: Vec::new(),
@@ -129,7 +129,7 @@ impl PostRegHandler for BatchHandler {
                     response_label,
                     client_tags,
                 });
-                ctx.handshake.active_batch_ref = Some(stripped.to_string());
+                ctx.state.active_batch_ref = Some(stripped.to_string());
 
                 // CRITICAL: Suppress the automatic labeled-response ACK for BATCH +
                 // The label will be applied manually to the BATCH echo when BATCH - is processed
@@ -137,7 +137,7 @@ impl PostRegHandler for BatchHandler {
             }
         } else if let Some(stripped) = ref_tag.strip_prefix('-') {
             // End a batch
-            if let Some(ref active_ref) = ctx.handshake.active_batch_ref {
+            if let Some(ref active_ref) = ctx.state.active_batch_ref {
                 if active_ref != stripped {
                     send_fail(
                         ctx,
@@ -154,8 +154,8 @@ impl PostRegHandler for BatchHandler {
             }
 
             // Process the completed batch
-            if let Some(batch) = ctx.handshake.active_batch.take() {
-                ctx.handshake.active_batch_ref = None;
+            if let Some(batch) = ctx.state.active_batch.take() {
+                ctx.state.active_batch_ref = None;
 
                 if batch.batch_type == "draft/multiline" {
                     process_multiline_batch(ctx, &batch, &nick, &server_name).await?;
@@ -382,7 +382,7 @@ async fn deliver_multiline_to_channel(
             &ctx.matrix.server_info.name,
             slirc_proto::Response::ERR_NOSUCHCHANNEL,
             vec![
-                ctx.handshake.nick.clone().unwrap_or_default(),
+                ctx.state.nick.clone().unwrap_or_default(),
                 batch.target.clone(),
                 "No such channel".to_string(),
             ],
@@ -533,7 +533,7 @@ async fn deliver_multiline_to_user(
             &ctx.matrix.server_info.name,
             slirc_proto::Response::ERR_NOSUCHNICK,
             vec![
-                ctx.handshake.nick.clone().unwrap_or_default(),
+                ctx.state.nick.clone().unwrap_or_default(),
                 target_nick.to_string(),
                 "No such nick".to_string(),
             ],

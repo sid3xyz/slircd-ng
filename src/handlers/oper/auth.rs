@@ -53,8 +53,8 @@ impl PostRegHandler for OperHandler {
 
         let now = std::time::Instant::now();
 
-        if ctx.handshake.failed_oper_attempts >= MAX_OPER_ATTEMPTS
-            && let Some(last_attempt) = ctx.handshake.last_oper_attempt
+        if ctx.state.failed_oper_attempts >= MAX_OPER_ATTEMPTS
+            && let Some(last_attempt) = ctx.state.last_oper_attempt
         {
             let elapsed = now.duration_since(last_attempt).as_millis() as u64;
             if elapsed < LOCKOUT_DELAY_MS {
@@ -71,14 +71,14 @@ impl PostRegHandler for OperHandler {
                     ],
                 );
                 ctx.sender.send(reply).await?;
-                tracing::warn!(nick = %nick, attempts = ctx.handshake.failed_oper_attempts, "OPER brute-force lockout active");
+                tracing::warn!(nick = %nick, attempts = ctx.state.failed_oper_attempts, "OPER brute-force lockout active");
                 return Ok(());
             } else {
-                ctx.handshake.failed_oper_attempts = 0;
+                ctx.state.failed_oper_attempts = 0;
             }
         }
 
-        if let Some(last_attempt) = ctx.handshake.last_oper_attempt {
+        if let Some(last_attempt) = ctx.state.last_oper_attempt {
             let elapsed = now.duration_since(last_attempt).as_millis() as u64;
             if elapsed < OPER_DELAY_MS {
                 let remaining_ms = OPER_DELAY_MS - elapsed;
@@ -86,7 +86,7 @@ impl PostRegHandler for OperHandler {
             }
         }
 
-        ctx.handshake.last_oper_attempt = Some(now);
+        ctx.state.last_oper_attempt = Some(now);
 
         let oper_block = ctx
             .matrix
@@ -96,11 +96,11 @@ impl PostRegHandler for OperHandler {
             .find(|block| block.name == name);
 
         let Some(oper_block) = oper_block else {
-            ctx.handshake.failed_oper_attempts += 1;
+            ctx.state.failed_oper_attempts += 1;
             tracing::warn!(
                 nick = %nick,
                 oper_name = %name,
-                attempts = ctx.handshake.failed_oper_attempts,
+                attempts = ctx.state.failed_oper_attempts,
                 "OPER failed: unknown oper name"
             );
             let reply = server_reply(
@@ -113,11 +113,11 @@ impl PostRegHandler for OperHandler {
         };
 
         if !oper_block.verify_password(password) {
-            ctx.handshake.failed_oper_attempts += 1;
+            ctx.state.failed_oper_attempts += 1;
             tracing::warn!(
                 nick = %nick,
                 oper_name = %name,
-                attempts = ctx.handshake.failed_oper_attempts,
+                attempts = ctx.state.failed_oper_attempts,
                 "OPER failed: incorrect password"
             );
             let reply = server_reply(
@@ -135,9 +135,9 @@ impl PostRegHandler for OperHandler {
                     let user = user_ref.read().await;
                     (user.nick.clone(), user.user.clone(), user.host.clone())
                 } else {
-                    let hs_nick = ctx.handshake.nick.clone().unwrap_or_else(|| nick.clone());
+                    let hs_nick = ctx.state.nick.clone().unwrap_or_else(|| nick.clone());
                     let hs_user = ctx
-                        .handshake
+                        .state
                         .user
                         .clone()
                         .unwrap_or_else(|| "unknown".to_string());
@@ -146,13 +146,13 @@ impl PostRegHandler for OperHandler {
             let user_mask = format_user_mask(&user_nick, &user_user, &user_host);
 
             if !matches_hostmask(required_mask, &user_mask) {
-                ctx.handshake.failed_oper_attempts += 1;
+                ctx.state.failed_oper_attempts += 1;
                 tracing::warn!(
                     nick = %nick,
                     oper_name = %name,
                     user_mask = %user_mask,
                     required_mask = %required_mask,
-                    attempts = ctx.handshake.failed_oper_attempts,
+                    attempts = ctx.state.failed_oper_attempts,
                     "OPER failed: hostmask mismatch"
                 );
                 let reply = server_reply(
@@ -165,7 +165,7 @@ impl PostRegHandler for OperHandler {
             }
         }
 
-        ctx.handshake.failed_oper_attempts = 0;
+        ctx.state.failed_oper_attempts = 0;
 
         let (user_nick, user_user, user_host) =
             if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {

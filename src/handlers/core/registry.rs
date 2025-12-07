@@ -259,7 +259,7 @@ impl Registry {
         }
 
         // Extract IRC context for tracing
-        let source_nick = ctx.handshake.nick.as_deref();
+        let source_nick = ctx.state.nick.as_deref();
         let channel = msg
             .arg(0)
             .filter(|a| a.starts_with('#') || a.starts_with('&'));
@@ -283,10 +283,10 @@ impl Registry {
         // Execute handler within the span
         let result = if let Some(handler) = self.universal_handlers.get(cmd_str) {
             handler.handle(ctx, msg).instrument(irc_span).await
-        } else if ctx.handshake.registered {
+        } else if ctx.state.registered {
             if let Some(handler) = self.post_reg_handlers.get(cmd_str) {
                 // Create TypedContext<Registered>
-                // SAFETY: We checked ctx.handshake.registered
+                // SAFETY: We checked ctx.state.registered
                 let mut typed_ctx = crate::handlers::core::traits::TypedContext::<
                     crate::state::Registered,
                 >::new_unchecked(ctx);

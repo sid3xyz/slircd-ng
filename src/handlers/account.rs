@@ -34,13 +34,13 @@ impl UniversalHandler for RegisterHandler {
 
         // Get current nick or "*"
         let nick = ctx
-            .handshake
+            .state
             .nick
             .clone()
             .unwrap_or_else(|| "*".to_string());
 
         // Check if user is fully registered (has received 001)
-        let is_registered = ctx.handshake.registered;
+        let is_registered = ctx.state.registered;
 
         // If before_connect is disabled, user must be fully registered
         if !acct_cfg.before_connect && !is_registered {

@@ -10,21 +10,21 @@ use tracing::info;
 /// Send the welcome burst (001-005 + MOTD) after successful registration.
 pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
     let nick = ctx
-        .handshake
+        .state
         .nick
         .as_ref()
         .ok_or(HandlerError::NickOrUserMissing)?;
     let user = ctx
-        .handshake
+        .state
         .user
         .as_ref()
         .ok_or(HandlerError::NickOrUserMissing)?;
-    let realname = ctx.handshake.realname.as_ref().cloned().unwrap_or_default();
+    let realname = ctx.state.realname.as_ref().cloned().unwrap_or_default();
     let server_name = &ctx.matrix.server_info.name;
     let network = &ctx.matrix.server_info.network;
     let remote_ip = ctx.remote_addr.ip().to_string();
-    let webirc_ip = ctx.handshake.webirc_ip.clone();
-    let webirc_host = ctx.handshake.webirc_host.clone();
+    let webirc_ip = ctx.state.webirc_ip.clone();
+    let webirc_host = ctx.state.webirc_host.clone();
 
     // Prefer WEBIRC-provided host/IP when available (trusted gateway path)
     let ban_host = webirc_host
@@ -35,7 +35,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
 
     // Check server password if configured
     if let Some(required_password) = &ctx.matrix.config.server.password {
-        match &ctx.handshake.pass_received {
+        match &ctx.state.pass_received {
             None => {
                 // No password provided but one is required
                 let reply = server_reply(
@@ -138,7 +138,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         return Err(HandlerError::NotRegistered);
     }
 
-    ctx.handshake.registered = true;
+    ctx.state.registered = true;
 
     // Create user in Matrix with cloaking from security config
     let security_config = &ctx.matrix.config.security;
@@ -150,18 +150,18 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         host.clone(),
         &security_config.cloak_secret,
         &security_config.cloak_suffix,
-        ctx.handshake.capabilities.clone(),
-        ctx.handshake.certfp.clone(),
+        ctx.state.capabilities.clone(),
+        ctx.state.certfp.clone(),
     );
 
     // Set account and +r if authenticated via SASL
-    if let Some(account_name) = &ctx.handshake.account {
+    if let Some(account_name) = &ctx.state.account {
         user_obj.modes.registered = true;
         user_obj.account = Some(account_name.clone());
     }
 
     // Set +Z if TLS connection
-    if ctx.handshake.is_tls {
+    if ctx.state.is_tls {
         user_obj.modes.secure = true;
     }
 
@@ -183,7 +183,7 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         .max_global_users
         .fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
 
-    info!(nick = %nick, user = %user, uid = %ctx.uid, account = ?ctx.handshake.account, "Client registered");
+    info!(nick = %nick, user = %user, uid = %ctx.uid, account = ?ctx.state.account, "Client registered");
 
     // 001 RPL_WELCOME
     // Use cloaked hostname in welcome message
