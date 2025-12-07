@@ -53,7 +53,10 @@
 //!   - `handlers/oper/admin.rs` - DIE/REHASH/RESTART commands
 //!   - `handlers/bans/shun.rs` - SHUN/UNSHUN commands
 //!   - `handlers/bans/xlines/mod.rs` - K/G/D/Z/R-LINE commands
-//! - Phase 3: Remove legacy permission checks (ongoing)
+//! - Phase 3 ✅ Channel handlers migrated (3 handlers):
+//!   - `handlers/channel/kick.rs` - KICK command
+//!   - `handlers/channel/topic.rs` - TOPIC command  
+//!   - `handlers/channel/invite.rs` - INVITE command
 
 // Allow dead_code for capability types not yet used by handlers (Phase 3 pending)
 #![allow(dead_code)]
@@ -65,10 +68,10 @@ mod tokens;
 // Re-export authority (used by 9 handler files)
 pub use authority::CapabilityAuthority;
 
-// Re-export capability types - channel caps pending Phase 3 migration
+// Re-export capability types - channel caps migrated in Phase 3
 #[allow(unused_imports)]
 pub use irc::{
-    // Channel capabilities (pending migration)
+    // Channel capabilities (Phase 3 migrated)
     BanCap, InviteCap, KickCap, TopicCap, ChannelModeCap, VoiceCap,
     // Oper capabilities (in use)
     KillCap, KlineCap, DlineCap, GlineCap, RehashCap, DieCap, RestartCap,

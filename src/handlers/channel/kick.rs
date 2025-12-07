@@ -4,6 +4,7 @@ use super::super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_usernotinchannel,
     server_reply, user_mask_from_state,
 };
+use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -11,6 +12,8 @@ use tokio::sync::oneshot;
 use tracing::info;
 
 /// Handler for KICK command.
+///
+/// Uses capability-based authorization (Innovation 4).
 pub struct KickHandler;
 
 #[async_trait]
@@ -76,6 +79,16 @@ impl Handler for KickHandler {
             }
         };
 
+        // Request KICK capability from authority (Innovation 4)
+        // This pre-authorizes the operation, centralizing permission logic
+        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let has_kick_cap = authority
+            .request_kick_cap(ctx.uid, channel_name)
+            .await
+            .is_some();
+
+        // If no capability, let actor do the check (maintains backward compat)
+        // If capability granted, use force=true to skip actor check
         let (reply_tx, reply_rx) = oneshot::channel();
         let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
 
@@ -85,7 +98,7 @@ impl Handler for KickHandler {
             target_uid: target_uid.clone(),
             target_nick: target_nick.to_string(),
             reason: reason_str,
-            force: false,
+            force: has_kick_cap,
             reply_tx,
         };
 

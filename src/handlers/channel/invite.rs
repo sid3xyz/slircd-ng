@@ -1,10 +1,13 @@
 //! INVITE command handler
 //!
 //! RFC 2812 - Channel invitation
+//!
+//! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{
     Context, Handler, HandlerError, HandlerResult, err_chanoprivsneeded, err_notonchannel, server_reply, user_mask_from_state,
 };
+use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
@@ -92,12 +95,19 @@ impl Handler for InviteHandler {
                 .ok_or(HandlerError::NickOrUserMissing)?;
             let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
 
+            // Request INVITE capability from authority (Innovation 4)
+            let authority = CapabilityAuthority::new(ctx.matrix.clone());
+            let has_invite_cap = authority
+                .request_invite_cap(ctx.uid, channel_name)
+                .await
+                .is_some();
+
             let event = ChannelEvent::Invite {
                 sender_uid: ctx.uid.to_string(),
                 sender_prefix: sender_prefix.clone(),
                 target_uid: target_uid.clone(),
                 target_nick: target_nick.to_string(),
-                force: false,
+                force: has_invite_cap,
                 reply_tx,
             };
 
