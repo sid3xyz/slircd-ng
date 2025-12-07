@@ -210,6 +210,7 @@ impl ChannelActor {
                     created: self.created,
                     modes: self.modes.clone(),
                     is_member,
+                    members: self.members.keys().cloned().collect(),
                 };
                 let _ = reply_tx.send(info);
             }
