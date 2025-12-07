@@ -19,19 +19,29 @@
 //! 1. **Zero runtime overhead**: State markers are zero-sized types (ZSTs)
 //! 2. **Compile-time safety**: Post-registration handlers can ONLY be called
 //!    with a `Registered` state - enforced by the type system
-//! 3. **Gradual migration**: Existing handlers continue to work during transition
+//! 3. **Structural enforcement**: Registry uses separate handler maps per phase
 //! 4. **Clear semantics**: Trait hierarchy makes handler requirements explicit
+//!
+//! ## Implementation Status: COMPLETE ✅
+//!
+//! The Registry uses three separate handler maps:
+//! - `pre_reg_handlers`: Commands valid before registration (NICK, USER, etc.)
+//! - `post_reg_handlers`: Commands requiring registration (PRIVMSG, JOIN, etc.)
+//! - `universal_handlers`: Commands valid in any state (QUIT, PING, PONG)
+//!
+//! Dispatch looks up handlers only in accessible maps based on connection state.
+//! Post-registration handlers are structurally inaccessible to unregistered clients.
 //!
 //! ## Handler Classification
 //!
-//! ### Pre-Registration Handlers (`PreRegHandler`)
+//! ### Pre-Registration Handlers (`pre_reg_handlers` map)
 //! Valid in `Unregistered` or `Negotiating` states:
 //! - NICK, USER, PASS - Registration commands
 //! - CAP, AUTHENTICATE - Capability negotiation
-//! - QUIT, PING, PONG - Always valid
 //! - WEBIRC - Proxy identification (must be first)
+//! - REGISTER - IRCv3 draft/account-registration
 //!
-//! ### Post-Registration Handlers (`PostRegHandler`)
+//! ### Post-Registration Handlers (`post_reg_handlers` map)
 //! Require `IsRegistered` (only `Registered` state):
 //! - PRIVMSG, NOTICE, TAGMSG - Messaging
 //! - JOIN, PART, KICK, INVITE, TOPIC - Channel operations
@@ -40,17 +50,25 @@
 //! - OPER, KILL, WALLOPS, etc. - Operator commands
 //! - All ban commands (KLINE, GLINE, etc.)
 //!
-//! ### Universal Handlers
-//! Valid in any state (implement both traits or use `UniversalHandler`):
+//! ### Universal Handlers (`universal_handlers` map)
+//! Valid in any state:
 //! - QUIT - Can disconnect anytime
 //! - PING/PONG - Keep-alive
 //!
-//! ## Migration Strategy
+//! ## Architecture
 //!
-//! Phase 1 (this file): Define types and traits
-//! Phase 2: Add parallel `pre_reg_handlers` / `post_reg_handlers` maps
-//! Phase 3: Migrate handlers one-by-one, removing runtime checks
-//! Phase 4: Remove old `handlers` map, dispatch by state
+//! The typestate system is implemented across two modules:
+//!
+//! 1. **`state/machine.rs`** (this file): Defines state types and traits
+//!    - `Unregistered`, `Negotiating`, `Registered` - Zero-sized state markers
+//!    - `ProtocolState`, `PreRegistration`, `IsRegistered` - Trait hierarchy
+//!    - `ConnectionState<S>` - Type-safe state container
+//!    - `AnyConnectionState` - Runtime dispatch container
+//!
+//! 2. **`handlers/core/registry.rs`**: Implements phase-separated dispatch
+//!    - Three handler maps: `pre_reg_handlers`, `post_reg_handlers`, `universal_handlers`
+//!    - Dispatch looks up handlers only in accessible maps based on state
+//!    - Post-reg handlers are structurally inaccessible to unregistered clients
 
 // Foundation code - will be used in subsequent phases
 #![allow(dead_code)]
