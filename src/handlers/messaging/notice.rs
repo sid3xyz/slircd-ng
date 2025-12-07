@@ -42,12 +42,13 @@ impl Handler for NoticeHandler {
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Collect client-only tags (those starting with '+') to preserve them
+        // Collect client-only tags (those starting with '+') AND the label tag to preserve them
+        // The label tag is needed for labeled-response echoes back to the sender
         use slirc_proto::message::Tag;
         use std::borrow::Cow;
-        let client_tags: Vec<Tag> = msg
+        let preserved_tags: Vec<Tag> = msg
             .tags_iter()
-            .filter(|(k, _)| k.starts_with('+'))
+            .filter(|(k, _)| k.starts_with('+') || *k == "label")
             .map(|(k, v)| {
                 Tag(
                     Cow::Owned(k.to_string()),
@@ -60,12 +61,12 @@ impl Handler for NoticeHandler {
             })
             .collect();
 
-        // Build the outgoing message with preserved client tags
+        // Build the outgoing message with preserved tags (client tags + label)
         let out_msg = Message {
-            tags: if client_tags.is_empty() {
+            tags: if preserved_tags.is_empty() {
                 None
             } else {
-                Some(client_tags)
+                Some(preserved_tags)
             },
             prefix: Some(user_prefix(&nick, &user_name, &host)),
             command: Command::NOTICE(target.to_string(), text.to_string()),
@@ -97,10 +98,18 @@ impl Handler for NoticeHandler {
                 )
                 .await;
                 debug!(from = %nick, to = %target, prefix = %prefix_char, "NOTICE STATUSMSG");
+                // Suppress ACK for echo-message with labels (echo IS the response)
+                if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                    ctx.suppress_labeled_ack = true;
+                }
             } else if let ChannelRouteResult::Sent =
                 route_to_channel(ctx, &channel_lower, out_msg, &opts).await
             {
                 debug!(from = %nick, to = %target, "NOTICE to channel");
+                // Suppress ACK for echo-message with labels (echo IS the response)
+                if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                    ctx.suppress_labeled_ack = true;
+                }
             }
             // All errors silently ignored for NOTICE
         } else {

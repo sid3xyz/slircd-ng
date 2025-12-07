@@ -105,8 +105,10 @@ pub async fn route_to_channel(
     };
 
     // Extract text and tags from message
-    let (text, tags) = match &msg.command {
-        Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => (text.clone(), msg.tags.clone()),
+    // TAGMSG has no text body, just tags
+    let (text, tags, is_tagmsg) = match &msg.command {
+        Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => (text.clone(), msg.tags.clone(), false),
+        Command::TAGMSG(_) => (String::new(), msg.tags.clone(), true),
         _ => return ChannelRouteResult::Sent, // Should not happen
     };
 
@@ -119,6 +121,7 @@ pub async fn route_to_channel(
         text,
         tags,
         is_notice,
+        is_tagmsg,
         user_context: Box::new(user_context),
         is_registered,
         is_tls: ctx.handshake.is_tls,
@@ -272,7 +275,7 @@ pub async fn route_to_user(
     let msgid = uuid::Uuid::new_v4().to_string();
 
     // Check if this is a TAGMSG
-    let is_tagmsg = matches!(msg.command, Command::TAGMSG(_));
+    let _is_tagmsg = matches!(msg.command, Command::TAGMSG(_));
 
     if let Some(sender) = ctx.matrix.senders.get(target_uid.value()) {
         // Check target's capabilities and build appropriate message
@@ -326,15 +329,8 @@ pub async fn route_to_user(
         if ctx.handshake.capabilities.contains("echo-message") {
             let has_message_tags = ctx.handshake.capabilities.contains("message-tags");
             let has_server_time = ctx.handshake.capabilities.contains("server-time");
-            let has_labeled_response = ctx.label.is_some();
 
             let mut echo_msg = msg.clone();
-
-            // For labeled-response with PRIVMSG/NOTICE: strip ALL client tags
-            // For TAGMSG: preserve client-only tags (they're the whole point!)
-            if has_labeled_response && !is_tagmsg {
-                echo_msg.tags = None; // Start fresh, only add server tags below
-            }
 
             // Add msgid if sender has message-tags
             if has_message_tags {

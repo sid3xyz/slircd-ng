@@ -47,12 +47,13 @@ pub enum ChannelEvent {
         quit_msg: Message,
         reply_tx: Option<oneshot::Sender<usize>>,
     },
-    /// User sending a message (PRIVMSG or NOTICE) to the channel.
+    /// User sending a message (PRIVMSG, NOTICE, or TAGMSG) to the channel.
     Message {
         sender_uid: Uid,
         text: String,
         tags: Option<Vec<slirc_proto::message::Tag>>,
         is_notice: bool,
+        is_tagmsg: bool,
         user_context: Box<UserContext>,
         is_registered: bool,
         is_tls: bool,

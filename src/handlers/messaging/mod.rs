@@ -70,13 +70,14 @@ impl Handler for TagmsgHandler {
             .as_ref()
             .ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Collect only client-only tags (those starting with '+')
+        // Collect only client-only tags (those starting with '+') AND the label tag
         // Server should not relay arbitrary tags from clients
+        // The label tag is needed for labeled-response echoes
         // Unescape tag values since they come from wire format
         let tags: Option<Vec<Tag>> = if msg.tags.is_some() {
             let client_tags: Vec<Tag> = msg
                 .tags_iter()
-                .filter(|(k, _)| k.starts_with('+'))
+                .filter(|(k, _)| k.starts_with('+') || *k == "label")
                 .map(|(k, v)| {
                     let value = if v.is_empty() {
                         None
@@ -120,6 +121,10 @@ impl Handler for TagmsgHandler {
             match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
                 ChannelRouteResult::Sent => {
                     debug!(from = %nick, to = %target, "TAGMSG to channel");
+                    // Suppress ACK for echo-message with labels (echo IS the response)
+                    if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                        ctx.suppress_labeled_ack = true;
+                    }
                 }
                 ChannelRouteResult::NoSuchChannel => {
                     send_no_such_channel(ctx, &nick, target).await?;

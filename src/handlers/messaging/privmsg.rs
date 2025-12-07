@@ -68,13 +68,14 @@ impl Handler for PrivmsgHandler {
         // The IRC server relays them; the target's CLIENT sends NOTICE replies.
         // See: https://modern.ircdocs.horse/ctcp.html
 
-        // Collect client-only tags (those starting with '+') to preserve them
+        // Collect client-only tags (those starting with '+') AND the label tag to preserve them
+        // The label tag is needed for labeled-response echoes back to the sender
         // Unescape tag values since they come from wire format
         use slirc_proto::message::Tag;
         use std::borrow::Cow;
-        let client_tags: Vec<Tag> = msg
+        let preserved_tags: Vec<Tag> = msg
             .tags_iter()
-            .filter(|(k, _)| k.starts_with('+'))
+            .filter(|(k, _)| k.starts_with('+') || *k == "label")
             .map(|(k, v)| {
                 let value = if v.is_empty() {
                     None
@@ -85,12 +86,12 @@ impl Handler for PrivmsgHandler {
             })
             .collect();
 
-        // Build the outgoing message with preserved client tags
+        // Build the outgoing message with preserved tags (client tags + label)
         let out_msg = Message {
-            tags: if client_tags.is_empty() {
+            tags: if preserved_tags.is_empty() {
                 None
             } else {
-                Some(client_tags)
+                Some(preserved_tags)
             },
             prefix: Some(user_prefix(&nick, &user_name, &host)),
             command: Command::PRIVMSG(target.to_string(), text.to_string()),
@@ -115,11 +116,22 @@ impl Handler for PrivmsgHandler {
             if let Some(prefix_char) = status_prefix {
                 route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char).await?;
                 debug!(from = %nick, to = %target, prefix = %prefix_char, "PRIVMSG STATUSMSG");
+                // Suppress ACK for echo-message with labels (echo IS the response)
+                if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                    ctx.suppress_labeled_ack = true;
+                }
             } else {
                 // Regular channel message
                 match route_to_channel(ctx, &channel_lower, out_msg, &opts).await {
                     ChannelRouteResult::Sent => {
                         debug!(from = %nick, to = %target, "PRIVMSG to channel");
+
+                        // If user has echo-message, suppress ACK - the echo IS the response
+                        // This is for labeled-response: when echo-message echoes back,
+                        // we don't need a separate ACK
+                        if ctx.label.is_some() && ctx.handshake.capabilities.contains("echo-message") {
+                            ctx.suppress_labeled_ack = true;
+                        }
 
                         // Store message in history for CHATHISTORY support
                         let msgid = Uuid::new_v4().to_string();
@@ -183,8 +195,11 @@ impl Handler for PrivmsgHandler {
 /// Returns (prefix_char, actual_channel_name) if STATUSMSG, otherwise (None, None).
 ///
 /// STATUSMSG allows sending to channel members with specific privileges:
-/// - `@#channel` sends to ops
-/// - `+#channel` sends to voiced+ (voice or op)
+/// - `~#channel` sends to owners
+/// - `&#channel` sends to admins+ (admin or owner)
+/// - `@#channel` sends to ops+ (op, admin, or owner)
+/// - `%#channel` sends to halfops+ (halfop, op, admin, or owner)
+/// - `+#channel` sends to voiced+ (voice, halfop, op, admin, or owner)
 pub(super) fn parse_statusmsg(target: &str) -> (Option<char>, Option<&str>) {
     if target.len() < 2 {
         return (None, None);
@@ -195,8 +210,8 @@ pub(super) fn parse_statusmsg(target: &str) -> (Option<char>, Option<&str>) {
     };
     let rest = &target[first_char.len_utf8()..];
 
-    // Check if it's @#channel or +#channel
-    if (first_char == '@' || first_char == '+')
+    // Check for valid STATUSMSG prefixes followed by a channel character
+    if matches!(first_char, '~' | '&' | '@' | '%' | '+')
         && rest
             .chars()
             .next()
