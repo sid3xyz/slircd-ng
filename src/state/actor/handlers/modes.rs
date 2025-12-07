@@ -60,28 +60,28 @@ impl ChannelActor {
                 ProtoChannelMode::TlsOnly => self.set_flag_mode(ChannelMode::TlsOnly, adding),
                 ProtoChannelMode::Ban => {
                     if let Some(mask) = arg {
-                        Self::apply_list_mode(&mut self.bans, mask, adding, &sender_uid)
+                        Self::apply_list_mode(&mut self.bans, mask, adding, &sender_prefix.to_string())
                     } else {
                         false
                     }
                 }
                 ProtoChannelMode::Exception => {
                     if let Some(mask) = arg {
-                        Self::apply_list_mode(&mut self.excepts, mask, adding, &sender_uid)
+                        Self::apply_list_mode(&mut self.excepts, mask, adding, &sender_prefix.to_string())
                     } else {
                         false
                     }
                 }
                 ProtoChannelMode::InviteException => {
                     if let Some(mask) = arg {
-                        Self::apply_list_mode(&mut self.invex, mask, adding, &sender_uid)
+                        Self::apply_list_mode(&mut self.invex, mask, adding, &sender_prefix.to_string())
                     } else {
                         false
                     }
                 }
                 ProtoChannelMode::Quiet => {
                     if let Some(mask) = arg {
-                        Self::apply_list_mode(&mut self.quiets, mask, adding, &sender_uid)
+                        Self::apply_list_mode(&mut self.quiets, mask, adding, &sender_prefix.to_string())
                     } else {
                         false
                     }
