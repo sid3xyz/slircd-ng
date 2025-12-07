@@ -12,11 +12,11 @@
 use super::common::{BanType, disconnect_matching_ban};
 use crate::caps::CapabilityAuthority;
 use crate::db::{Database, DbError};
+use crate::handlers::core::traits::TypedContext;
 use crate::handlers::{
-    Context, Handler, HandlerResult, err_needmoreparams, err_noprivileges, get_nick_or_star,
-    server_notice,
+    HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, server_notice,
 };
-use crate::state::Matrix;
+use crate::state::{Matrix, Registered};
 use async_trait::async_trait;
 use ipnet::IpNet;
 use slirc_proto::MessageRef;
@@ -86,17 +86,21 @@ impl<C: BanConfig> GenericBanAddHandler<C> {
 }
 
 #[async_trait]
-impl<C: BanConfig> Handler for GenericBanAddHandler<C> {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
         let cmd_name = self.config.command_name();
 
         // Get nick and check capability
-        let nick = get_nick_or_star(ctx).await;
+        let nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         if !self.config.check_capability(&authority, ctx.uid).await {
             ctx.sender
-                .send(err_noprivileges(server_name, &nick))
+                .send(err_noprivileges(server_name, nick))
                 .await?;
             return Ok(());
         }
@@ -106,7 +110,7 @@ impl<C: BanConfig> Handler for GenericBanAddHandler<C> {
             Some(t) if !t.is_empty() => t,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, cmd_name))
+                    .send(err_needmoreparams(server_name, nick, cmd_name))
                     .await?;
                 return Ok(());
             }
@@ -114,13 +118,13 @@ impl<C: BanConfig> Handler for GenericBanAddHandler<C> {
         let reason = msg.arg(1).unwrap_or("No reason given");
 
         // Add to database
-        if let Err(e) = self.config.add_to_db(ctx.db, target, reason, &nick).await {
+        if let Err(e) = self.config.add_to_db(ctx.db, target, reason, nick).await {
             tracing::error!(error = %e, "Failed to add {cmd_name} to database");
         }
 
         // Add to in-memory cache
         self.config
-            .add_to_cache(ctx.matrix, target, reason, &nick)
+            .add_to_cache(ctx.matrix, target, reason, nick)
             .await;
 
         // Disconnect matching users
@@ -143,7 +147,7 @@ impl<C: BanConfig> Handler for GenericBanAddHandler<C> {
             format!("{cmd_name} added: {target} ({reason})")
         };
         ctx.sender
-            .send(server_notice(server_name, &nick, &text))
+            .send(server_notice(server_name, nick, &text))
             .await?;
 
         Ok(())
@@ -163,17 +167,21 @@ impl<C: BanConfig> GenericBanRemoveHandler<C> {
 }
 
 #[async_trait]
-impl<C: BanConfig> Handler for GenericBanRemoveHandler<C> {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
         let cmd_name = self.config.unset_command_name();
 
         // Get nick and check capability
-        let nick = get_nick_or_star(ctx).await;
+        let nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         if !self.config.check_capability(&authority, ctx.uid).await {
             ctx.sender
-                .send(err_noprivileges(server_name, &nick))
+                .send(err_noprivileges(server_name, nick))
                 .await?;
             return Ok(());
         }
@@ -183,7 +191,7 @@ impl<C: BanConfig> Handler for GenericBanRemoveHandler<C> {
             Some(t) if !t.is_empty() => t,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, cmd_name))
+                    .send(err_needmoreparams(server_name, nick, cmd_name))
                     .await?;
                 return Ok(());
             }
@@ -213,7 +221,7 @@ impl<C: BanConfig> Handler for GenericBanRemoveHandler<C> {
             format!("No {} found for: {}", self.config.command_name(), target)
         };
         ctx.sender
-            .send(server_notice(server_name, &nick, &text))
+            .send(server_notice(server_name, nick, &text))
             .await?;
 
         Ok(())

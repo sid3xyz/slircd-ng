@@ -1,6 +1,6 @@
 //! PING and PONG handlers.
 
-use super::super::{Context, Handler, HandlerResult, err_needmoreparams, with_label};
+use super::super::{Context, HandlerResult, UniversalHandler, err_needmoreparams, with_label};
 use async_trait::async_trait;
 use slirc_proto::{Message, MessageRef, prefix::Prefix};
 
@@ -8,7 +8,7 @@ use slirc_proto::{Message, MessageRef, prefix::Prefix};
 pub struct PingHandler;
 
 #[async_trait]
-impl Handler for PingHandler {
+impl UniversalHandler for PingHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         // PING <token>
         // Response: :<server> PONG <server> <token>
@@ -41,7 +41,7 @@ impl Handler for PingHandler {
 pub struct PongHandler;
 
 #[async_trait]
-impl Handler for PongHandler {
+impl UniversalHandler for PongHandler {
     async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
         // PONG normally produces no output, but with labeled-response we send ACK
         if let Some(label) = &ctx.label {

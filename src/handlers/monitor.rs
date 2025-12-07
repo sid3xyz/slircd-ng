@@ -3,7 +3,9 @@
 //! Implements presence notification via MONITOR.
 //! Reference: <https://ircv3.net/specs/extensions/monitor>
 
-use super::{Context, Handler, HandlerResult, server_reply, with_label};
+use super::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use dashmap::DashSet;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -22,8 +24,12 @@ const MAX_MONITOR_TARGETS: usize = 100;
 pub struct MonitorHandler;
 
 #[async_trait]
-impl Handler for MonitorHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for MonitorHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;

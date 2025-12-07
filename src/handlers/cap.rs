@@ -4,7 +4,7 @@
 //! Reference: <https://ircv3.net/specs/extensions/capability-negotiation>
 
 use super::connection::send_welcome_burst;
-use super::{Context, Handler, HandlerResult, server_reply};
+use super::{Context, HandlerResult, PreRegHandler, UniversalHandler, server_reply};
 use crate::config::AccountRegistrationConfig;
 use async_trait::async_trait;
 use slirc_proto::{CapSubCommand, Command, Message, MessageRef, Prefix, Response};
@@ -41,7 +41,7 @@ const MULTILINE_MAX_LINES: u32 = 100;
 pub struct CapHandler;
 
 #[async_trait]
-impl Handler for CapHandler {
+impl UniversalHandler for CapHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         // CAP can be used before and after registration
         // CAP <subcommand> [arg]
@@ -307,7 +307,7 @@ fn build_cap_list(version: u32, has_cert: bool, acct_cfg: &AccountRegistrationCo
 pub struct AuthenticateHandler;
 
 #[async_trait]
-impl Handler for AuthenticateHandler {
+impl PreRegHandler for AuthenticateHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         // AUTHENTICATE <data>
         let data = msg.arg(0).unwrap_or("");
@@ -607,3 +607,5 @@ async fn send_sasl_fail(ctx: &mut Context<'_>, nick: &str, reason: &str) -> Hand
 
     Ok(())
 }
+
+

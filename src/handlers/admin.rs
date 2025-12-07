@@ -7,10 +7,12 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    Context, Handler, HandlerResult, TargetUser, err_needmoreparams, err_noprivileges,
+    Context, HandlerResult, PostRegHandler, TargetUser, err_needmoreparams, err_noprivileges,
     err_nosuchchannel, err_nosuchnick, force_join_channel, force_part_channel,
-    format_modes_for_log, get_nick_or_star, resolve_nick_to_uid, server_notice,
+    format_modes_for_log, resolve_nick_to_uid, server_notice,
 };
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use crate::caps::CapabilityAuthority;
 use crate::state::MemberModes;
 use async_trait::async_trait;
@@ -31,16 +33,20 @@ async fn get_user_prefix(ctx: &Context<'_>, uid: &str) -> Option<(String, String
 pub struct SajoinHandler;
 
 #[async_trait]
-impl Handler for SajoinHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for SajoinHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
         // Get nick and check admin capability
-        let oper_nick = get_nick_or_star(ctx).await;
+        let oper_nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
             ctx.sender
-                .send(err_noprivileges(server_name, &oper_nick))
+                .send(err_noprivileges(server_name, oper_nick))
                 .await?;
             return Ok(());
         };
@@ -50,7 +56,7 @@ impl Handler for SajoinHandler {
             Some(n) if !n.is_empty() => n,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "SAJOIN"))
+                    .send(err_needmoreparams(server_name, oper_nick, "SAJOIN"))
                     .await?;
                 return Ok(());
             }
@@ -59,7 +65,7 @@ impl Handler for SajoinHandler {
             Some(c) if !c.is_empty() => c,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "SAJOIN"))
+                    .send(err_needmoreparams(server_name, oper_nick, "SAJOIN"))
                     .await?;
                 return Ok(());
             }
@@ -68,7 +74,7 @@ impl Handler for SajoinHandler {
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             ctx.sender
-                .send(err_nosuchnick(server_name, &oper_nick, target_nick))
+                .send(err_nosuchnick(server_name, oper_nick, target_nick))
                 .await?;
             return Ok(());
         };
@@ -76,7 +82,7 @@ impl Handler for SajoinHandler {
         // Validate channel name
         if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
             ctx.sender
-                .send(err_nosuchchannel(server_name, &oper_nick, channel_name))
+                .send(err_nosuchchannel(server_name, oper_nick, channel_name))
                 .await?;
             return Ok(());
         }
@@ -118,7 +124,7 @@ impl Handler for SajoinHandler {
         ctx.sender
             .send(server_notice(
                 server_name,
-                &oper_nick,
+                oper_nick,
                 format!("SAJOIN: {target_nick} has been forced to join {channel_name}"),
             ))
             .await?;
@@ -135,16 +141,20 @@ impl Handler for SajoinHandler {
 pub struct SapartHandler;
 
 #[async_trait]
-impl Handler for SapartHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for SapartHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
         // Get nick and check admin capability
-        let oper_nick = get_nick_or_star(ctx).await;
+        let oper_nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
             ctx.sender
-                .send(err_noprivileges(server_name, &oper_nick))
+                .send(err_noprivileges(server_name, oper_nick))
                 .await?;
             return Ok(());
         };
@@ -154,7 +164,7 @@ impl Handler for SapartHandler {
             Some(n) if !n.is_empty() => n,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "SAPART"))
+                    .send(err_needmoreparams(server_name, oper_nick, "SAPART"))
                     .await?;
                 return Ok(());
             }
@@ -163,7 +173,7 @@ impl Handler for SapartHandler {
             Some(c) if !c.is_empty() => c,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "SAPART"))
+                    .send(err_needmoreparams(server_name, oper_nick, "SAPART"))
                     .await?;
                 return Ok(());
             }
@@ -172,7 +182,7 @@ impl Handler for SapartHandler {
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             ctx.sender
-                .send(err_nosuchnick(server_name, &oper_nick, target_nick))
+                .send(err_nosuchnick(server_name, oper_nick, target_nick))
                 .await?;
             return Ok(());
         };
@@ -197,7 +207,7 @@ impl Handler for SapartHandler {
 
         if !was_in_channel {
             ctx.sender
-                .send(err_nosuchchannel(server_name, &oper_nick, channel_name))
+                .send(err_nosuchchannel(server_name, oper_nick, channel_name))
                 .await?;
             return Ok(());
         }
@@ -213,7 +223,7 @@ impl Handler for SapartHandler {
         ctx.sender
             .send(server_notice(
                 server_name,
-                &oper_nick,
+                oper_nick,
                 format!("SAPART: {target_nick} has been forced to leave {channel_name}"),
             ))
             .await?;
@@ -230,16 +240,20 @@ impl Handler for SapartHandler {
 pub struct SanickHandler;
 
 #[async_trait]
-impl Handler for SanickHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for SanickHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
         // Get nick and check admin capability
-        let oper_nick = get_nick_or_star(ctx).await;
+        let oper_nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
             ctx.sender
-                .send(err_noprivileges(server_name, &oper_nick))
+                .send(err_noprivileges(server_name, oper_nick))
                 .await?;
             return Ok(());
         };
@@ -249,7 +263,7 @@ impl Handler for SanickHandler {
             Some(n) if !n.is_empty() => n,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "SANICK"))
+                    .send(err_needmoreparams(server_name, oper_nick, "SANICK"))
                     .await?;
                 return Ok(());
             }
@@ -258,7 +272,7 @@ impl Handler for SanickHandler {
             Some(n) if !n.is_empty() => n,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "SANICK"))
+                    .send(err_needmoreparams(server_name, oper_nick, "SANICK"))
                     .await?;
                 return Ok(());
             }
@@ -268,7 +282,7 @@ impl Handler for SanickHandler {
         let old_lower = irc_to_lower(old_nick);
         let Some(target_uid) = resolve_nick_to_uid(ctx, old_nick) else {
             ctx.sender
-                .send(err_nosuchnick(server_name, &oper_nick, old_nick))
+                .send(err_nosuchnick(server_name, oper_nick, old_nick))
                 .await?;
             return Ok(());
         };
@@ -279,7 +293,7 @@ impl Handler for SanickHandler {
             ctx.send_reply(
                 Response::ERR_NICKNAMEINUSE,
                 vec![
-                    oper_nick.clone(),
+                    oper_nick.to_string(),
                     new_nick.to_string(),
                     "Nickname is already in use".to_string(),
                 ],
@@ -345,7 +359,7 @@ impl Handler for SanickHandler {
         ctx.sender
             .send(server_notice(
                 server_name,
-                &oper_nick,
+                oper_nick,
                 format!("SANICK: {old_nick} has been forced to change nick to {new_nick}"),
             ))
             .await?;
@@ -362,16 +376,20 @@ impl Handler for SanickHandler {
 pub struct SamodeHandler;
 
 #[async_trait]
-impl Handler for SamodeHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for SamodeHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
         // Get nick and check admin capability
-        let oper_nick = get_nick_or_star(ctx).await;
+        let oper_nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
             ctx.sender
-                .send(err_noprivileges(server_name, &oper_nick))
+                .send(err_noprivileges(server_name, oper_nick))
                 .await?;
             return Ok(());
         };
@@ -381,7 +399,7 @@ impl Handler for SamodeHandler {
             Some(c) if !c.is_empty() => c,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "SAMODE"))
+                    .send(err_needmoreparams(server_name, oper_nick, "SAMODE"))
                     .await?;
                 return Ok(());
             }
@@ -390,7 +408,7 @@ impl Handler for SamodeHandler {
             Some(m) if !m.is_empty() => m,
             _ => {
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "SAMODE"))
+                    .send(err_needmoreparams(server_name, oper_nick, "SAMODE"))
                     .await?;
                 return Ok(());
             }
@@ -403,7 +421,7 @@ impl Handler for SamodeHandler {
             Some(c) => c.clone(),
             None => {
                 ctx.sender
-                    .send(err_nosuchchannel(server_name, &oper_nick, channel_name))
+                    .send(err_nosuchchannel(server_name, oper_nick, channel_name))
                     .await?;
                 return Ok(());
             }
@@ -420,7 +438,7 @@ impl Handler for SamodeHandler {
                 ctx.sender
                     .send(server_notice(
                         server_name,
-                        &oper_nick,
+                        oper_nick,
                         format!("SAMODE error: {e}"),
                     ))
                     .await?;
@@ -467,7 +485,7 @@ impl Handler for SamodeHandler {
                 ctx.sender
                     .send(server_notice(
                         server_name,
-                        &oper_nick,
+                        oper_nick,
                         format!("SAMODE error: {e}"),
                     ))
                     .await?;
@@ -491,7 +509,7 @@ impl Handler for SamodeHandler {
             ctx.sender
                 .send(server_notice(
                     server_name,
-                    &oper_nick,
+                    oper_nick,
                     format!("SAMODE: {channel_name} {modes_str}"),
                 ))
                 .await?;
@@ -500,7 +518,7 @@ impl Handler for SamodeHandler {
             ctx.sender
                 .send(server_notice(
                     server_name,
-                    &oper_nick,
+                    oper_nick,
                     format!("SAMODE: {channel_name} (no modes applied)"),
                 ))
                 .await?;

@@ -1,7 +1,9 @@
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, err_noprivileges, get_nick_or_star,
+    HandlerError, HandlerResult, PostRegHandler, err_noprivileges, get_nick_or_star,
     server_notice, server_reply,
 };
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -11,8 +13,12 @@ use tokio::sync::mpsc;
 pub struct DieHandler;
 
 #[async_trait]
-impl Handler for DieHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for DieHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
         let nick = get_nick_or_star(ctx).await;
 
@@ -54,8 +60,12 @@ impl Handler for DieHandler {
 pub struct RehashHandler;
 
 #[async_trait]
-impl Handler for RehashHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for RehashHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
         let nick = get_nick_or_star(ctx).await;
 
@@ -129,8 +139,12 @@ impl Handler for RehashHandler {
 pub struct RestartHandler;
 
 #[async_trait]
-impl Handler for RestartHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for RestartHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        _msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
         let nick = get_nick_or_star(ctx).await;
 

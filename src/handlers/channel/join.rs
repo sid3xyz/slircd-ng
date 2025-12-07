@@ -1,9 +1,11 @@
 //! JOIN command handler and related functionality.
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, server_reply, user_mask_from_state, user_prefix,
-    with_label,
+    Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
+    user_prefix, with_label,
 };
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use crate::db::ChannelRepository;
 use crate::security::UserContext;
 use crate::state::MemberModes;
@@ -16,8 +18,12 @@ use tracing::info;
 pub struct JoinHandler;
 
 #[async_trait]
-impl Handler for JoinHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for JoinHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // JOIN <channels> [keys]

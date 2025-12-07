@@ -1,6 +1,6 @@
 //! PASS command handler for connection registration.
 
-use super::super::{Context, Handler, HandlerResult, server_reply};
+use super::super::{Context, HandlerResult, PreRegHandler, server_reply};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use tracing::debug;
@@ -13,7 +13,7 @@ use tracing::debug;
 pub struct PassHandler;
 
 #[async_trait]
-impl Handler for PassHandler {
+impl PreRegHandler for PassHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         // PASS must be sent before NICK/USER (RFC 2812 Section 3.1.1)
         if ctx.handshake.registered {

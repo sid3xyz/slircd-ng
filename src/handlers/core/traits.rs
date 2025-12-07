@@ -35,10 +35,35 @@
 #![allow(dead_code)]
 
 use super::context::{Context, HandlerResult};
-use crate::state::{IsRegistered, PreRegistration, ProtocolState, Registered};
+use crate::state::{PreRegistration, ProtocolState, Registered};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 use std::marker::PhantomData;
+
+// ============================================================================
+// Handler Traits (Innovation 1 Phase 2)
+// ============================================================================
+
+/// Handler for commands valid BEFORE registration (NICK, USER, CAP, PASS).
+/// Receives raw `Context` (checked by Registry to be in pre-reg state).
+#[async_trait]
+pub trait PreRegHandler: Send + Sync {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult;
+}
+
+/// Handler for commands requiring FULL registration (PRIVMSG, JOIN, etc.).
+/// Receives `TypedContext<Registered>`.
+#[async_trait]
+pub trait PostRegHandler: Send + Sync {
+    async fn handle(&self, ctx: &mut TypedContext<'_, Registered>, msg: &MessageRef<'_>) -> HandlerResult;
+}
+
+/// Handler for commands valid in ANY state (QUIT, PING, PONG).
+/// Receives raw `Context`.
+#[async_trait]
+pub trait UniversalHandler: Send + Sync {
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult;
+}
 
 // ============================================================================
 // TypedContext: Compile-Time Protocol State Guarantees
@@ -87,7 +112,7 @@ impl<'a, S: ProtocolState> TypedContext<'a, S> {
     /// # Safety
     /// This is only safe when the protocol state matches what `S` claims.
     #[inline]
-    pub fn new_unchecked(ctx: &'a mut Context<'a>) -> Self {
+    pub fn new_unchecked(ctx: &mut Context<'a>) -> Self {
         Self {
             inner: ctx as *mut Context<'a>,
             _state: PhantomData,
@@ -189,160 +214,16 @@ pub fn wrap_registered<'a>(ctx: &'a mut Context<'a>) -> TypedContext<'a, Registe
 }
 
 // ============================================================================
-// Pre-Registration Handler Trait
-// ============================================================================
-
-/// Handler for commands valid before registration completes.
-///
-/// These handlers can be invoked in `Unregistered` or `Negotiating` states.
-/// They are used for:
-/// - Connection registration: NICK, USER, PASS
-/// - Capability negotiation: CAP, AUTHENTICATE
-/// - Universal commands: QUIT, PING, PONG
-/// - Proxy identification: WEBIRC
-///
-/// # Example
-///
-/// ```ignore
-/// pub struct NickHandler;
-///
-/// #[async_trait]
-/// impl PreRegHandler for NickHandler {
-///     async fn handle_pre_reg(
-///         &self,
-///         ctx: &mut Context<'_>,
-///         msg: &MessageRef<'_>,
-///     ) -> HandlerResult {
-///         // No need to check registration - type system guarantees this!
-///         let nick = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-///         // ... handle NICK
-///         Ok(())
-///     }
-/// }
-/// ```
-#[async_trait]
-pub trait PreRegHandler: Send + Sync {
-    /// Handle a command in pre-registration state.
-    ///
-    /// The `S` type parameter ensures this can only be called with a state
-    /// that implements `PreRegistration` (i.e., `Unregistered` or `Negotiating`).
-    async fn handle_pre_reg<S: PreRegistration>(
-        &self,
-        ctx: &mut Context<'_>,
-        msg: &MessageRef<'_>,
-    ) -> HandlerResult;
-}
-
-// ============================================================================
-// Post-Registration Handler Trait
-// ============================================================================
-
-/// Handler for commands that require a registered connection.
-///
-/// These handlers can ONLY be invoked in the `Registered` state.
-/// The type system guarantees that `handle_post_reg` is never called
-/// on an unregistered connection.
-///
-/// This eliminates the need for runtime checks like:
-/// ```ignore
-/// if !ctx.handshake.registered {
-///     return Err(HandlerError::NotRegistered);
-/// }
-/// ```
-///
-/// # Example
-///
-/// ```ignore
-/// pub struct PrivmsgHandler;
-///
-/// #[async_trait]
-/// impl PostRegHandler for PrivmsgHandler {
-///     async fn handle_post_reg(
-///         &self,
-///         ctx: &mut Context<'_>,
-///         msg: &MessageRef<'_>,
-///     ) -> HandlerResult {
-///         // Type system guarantees we're registered!
-///         // ctx.handshake.nick is guaranteed to be Some
-///         // ctx.handshake.user is guaranteed to be Some
-///         let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-///         let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
-///         // ... handle PRIVMSG
-///         Ok(())
-///     }
-/// }
-/// ```
-#[async_trait]
-pub trait PostRegHandler: Send + Sync {
-    /// Handle a command in registered state.
-    ///
-    /// The `S` type parameter ensures this can only be called with a state
-    /// that implements `IsRegistered` (i.e., only `Registered`).
-    async fn handle_post_reg<S: IsRegistered>(
-        &self,
-        ctx: &mut Context<'_>,
-        msg: &MessageRef<'_>,
-    ) -> HandlerResult;
-}
-
-// ============================================================================
-// Universal Handler Trait
-// ============================================================================
-
-/// Handler for commands valid in any protocol state.
-///
-/// These are commands like QUIT, PING, and PONG that can be used
-/// regardless of registration state.
-///
-/// # Example
-///
-/// ```ignore
-/// pub struct QuitHandler;
-///
-/// #[async_trait]
-/// impl UniversalHandler for QuitHandler {
-///     async fn handle_any<S: ProtocolState>(
-///         &self,
-///         ctx: &mut Context<'_>,
-///         msg: &MessageRef<'_>,
-///     ) -> HandlerResult {
-///         let quit_msg = msg.arg(0).map(|s| s.to_string());
-///         Err(HandlerError::Quit(quit_msg))
-///     }
-/// }
-/// ```
-#[async_trait]
-pub trait UniversalHandler: Send + Sync {
-    /// Handle a command in any protocol state.
-    async fn handle_any<S: ProtocolState>(
-        &self,
-        ctx: &mut Context<'_>,
-        msg: &MessageRef<'_>,
-    ) -> HandlerResult;
-}
-
-// ============================================================================
 // Blanket Implementations
 // ============================================================================
 
 /// A universal handler can act as a pre-reg handler.
-///
-/// This allows QUIT, PING, PONG to be registered as pre-reg handlers
-/// without duplicating implementation.
 #[async_trait]
 impl<T: UniversalHandler> PreRegHandler for T {
-    async fn handle_pre_reg<S: PreRegistration>(
-        &self,
-        ctx: &mut Context<'_>,
-        msg: &MessageRef<'_>,
-    ) -> HandlerResult {
-        self.handle_any::<S>(ctx, msg).await
+    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+        <T as UniversalHandler>::handle(self, ctx, msg).await
     }
 }
-
-// Note: We intentionally do NOT provide a blanket impl of PostRegHandler for UniversalHandler.
-// Post-reg handlers require IsRegistered, which is stricter than ProtocolState.
-// Universal handlers that should also work post-registration need explicit dispatch.
 
 // ============================================================================
 // Handler Command Metadata
@@ -393,111 +274,6 @@ pub fn command_phase(command: &str) -> HandlerPhase {
 }
 
 // ============================================================================
-// Phase 2: Stateful Handler Traits with TypedContext
-// ============================================================================
-
-/// Handler for post-registration commands with compile-time guarantees.
-///
-/// Unlike `PostRegHandler`, this trait receives `TypedContext<Registered>`,
-/// providing **compile-time** guarantees that:
-/// - The connection is registered
-/// - `ctx.nick()` and `ctx.user()` always return valid values
-///
-/// # Migration
-///
-/// To migrate a handler from `Handler` to `StatefulPostRegHandler`:
-///
-/// ```ignore
-/// // Before (runtime check)
-/// impl Handler for PrivmsgHandler {
-///     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-///         let (nick, user) = require_registered(ctx)?;  // Runtime check!
-///         // ...
-///     }
-/// }
-///
-/// // After (compile-time guarantee)
-/// impl StatefulPostRegHandler for PrivmsgHandler {
-///     async fn handle_registered(
-///         &self,
-///         ctx: &mut TypedContext<'_, Registered>,
-///         msg: &MessageRef<'_>,
-///     ) -> HandlerResult {
-///         let nick = ctx.nick();  // Always valid - guaranteed by type!
-///         // ...
-///     }
-/// }
-/// ```
-#[async_trait]
-pub trait StatefulPostRegHandler: Send + Sync {
-    /// Handle a command with compile-time registration guarantee.
-    ///
-    /// The `TypedContext<Registered>` parameter makes it **impossible** to call
-    /// this method with an unregistered connection - the compiler rejects it.
-    async fn handle_registered(
-        &self,
-        ctx: &mut TypedContext<'_, Registered>,
-        msg: &MessageRef<'_>,
-    ) -> HandlerResult;
-}
-
-/// Handler for pre-registration commands with compile-time guarantees.
-///
-/// Receives `TypedContext<S>` where `S: PreRegistration`, ensuring
-/// this handler is only called on unregistered/negotiating connections.
-#[async_trait]
-pub trait StatefulPreRegHandler: Send + Sync {
-    /// Handle a command in pre-registration state.
-    async fn handle_pre_registration<S: PreRegistration>(
-        &self,
-        ctx: &mut TypedContext<'_, S>,
-        msg: &MessageRef<'_>,
-    ) -> HandlerResult;
-}
-
-/// Handler for commands valid in any state.
-///
-/// Receives `TypedContext<S>` where `S: ProtocolState`.
-#[async_trait]
-pub trait StatefulUniversalHandler: Send + Sync {
-    /// Handle a command in any protocol state.
-    async fn handle_any_state<S: ProtocolState>(
-        &self,
-        ctx: &mut TypedContext<'_, S>,
-        msg: &MessageRef<'_>,
-    ) -> HandlerResult;
-}
-
-// ============================================================================
-// Adapter: StatefulPostRegHandler -> Handler
-// ============================================================================
-
-/// Adapter that wraps a `StatefulPostRegHandler` as a legacy `Handler`.
-///
-/// This allows gradual migration: new handlers can implement the type-safe
-/// `StatefulPostRegHandler` trait while still being usable in the existing
-/// registry infrastructure.
-///
-/// **Note:** Due to lifetime constraints in async trait methods, direct
-/// integration requires modifying the Registry to use a typed dispatch path.
-/// See `examples.rs` for migration patterns.
-pub struct RegisteredHandlerAdapter<H: StatefulPostRegHandler>(pub H);
-
-impl<H: StatefulPostRegHandler> RegisteredHandlerAdapter<H> {
-    /// Create a new adapter wrapping a StatefulPostRegHandler.
-    pub fn new(handler: H) -> Self {
-        Self(handler)
-    }
-}
-
-// Note: Direct Handler impl for RegisteredHandlerAdapter is not possible with
-// current lifetime constraints. The adapter is provided for future use when
-// the Handler trait signature is updated to use explicit lifetimes.
-//
-// For now, use StatefulPostRegHandler directly in new code, and gradually
-// migrate the Registry to support typed dispatch.
-
-// ============================================================================
 // Tests
 // ============================================================================
 
@@ -537,5 +313,23 @@ mod tests {
 
         assert!(HandlerPhase::Universal.valid_unregistered());
         assert!(HandlerPhase::Universal.valid_registered());
+    }
+}
+
+use std::ops::{Deref, DerefMut};
+
+impl<'a, S: ProtocolState> Deref for TypedContext<'a, S> {
+    type Target = Context<'a>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.inner()
+    }
+}
+
+impl<'a, S: ProtocolState> DerefMut for TypedContext<'a, S> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner_mut()
     }
 }

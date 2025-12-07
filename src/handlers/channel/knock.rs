@@ -2,7 +2,9 @@
 //!
 //! RFC-style extension - Request invite to an invite-only channel
 
-use super::super::{Context, Handler, HandlerResult, server_reply};
+use super::super::{HandlerResult, PostRegHandler, server_reply};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -16,8 +18,12 @@ use tokio::sync::oneshot;
 pub struct KnockHandler;
 
 #[async_trait]
-impl Handler for KnockHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for KnockHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // KNOCK <channel> [message]

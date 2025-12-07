@@ -6,7 +6,9 @@
 //! - IRCv3 chathistory: <https://ircv3.net/specs/extensions/chathistory>
 
 use crate::db::StoredMessage;
-use crate::handlers::{Context, Handler, HandlerResult, err_needmoreparams, get_nick_or_star};
+use crate::handlers::{Context, HandlerResult, PostRegHandler, err_needmoreparams};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{
     BatchSubCommand, ChatHistorySubCommand, Command, Message, MessageRef, MessageReference, Prefix,
@@ -22,11 +24,15 @@ const MAX_HISTORY_LIMIT: u32 = 100;
 pub struct ChatHistoryHandler;
 
 #[async_trait]
-impl Handler for ChatHistoryHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for ChatHistoryHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let nick = get_nick_or_star(ctx).await;
+        let nick = ctx.nick().to_string();
         let server_name = &ctx.matrix.server_info.name;
 
         // CHATHISTORY <subcommand> <target> [params...]

@@ -1,6 +1,8 @@
 //! WHOIS handler for detailed user information queries.
 
-use crate::handlers::{Context, Handler, HandlerError, HandlerResult, server_reply, with_label};
+use crate::handlers::{Context, HandlerError, HandlerResult, PostRegHandler, server_reply, with_label};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tracing::debug;
@@ -13,8 +15,12 @@ use tracing::debug;
 pub struct WhoisHandler;
 
 #[async_trait]
-impl Handler for WhoisHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for WhoisHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // WHOIS [server] <nick>

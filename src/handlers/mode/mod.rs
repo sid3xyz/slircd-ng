@@ -11,7 +11,9 @@ mod user;
 
 pub use channel::format_modes_for_log;
 
-use super::{Context, Handler, HandlerError, HandlerResult};
+use super::{HandlerError, HandlerResult, PostRegHandler};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -19,8 +21,12 @@ use slirc_proto::MessageRef;
 pub struct ModeHandler;
 
 #[async_trait]
-impl Handler for ModeHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for ModeHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // MODE <target> [modes [params]]

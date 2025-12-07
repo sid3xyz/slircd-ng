@@ -1,0 +1,33 @@
+feat(slircd): Complete Typestate Phase 2 migration
+
+This commit finalizes the "Innovation 1 Phase 2" architecture, enforcing
+IRC protocol state at compile-time. Post-registration handlers now
+receive `TypedContext<Registered>`, making it impossible to invoke them
+on unregistered connections.
+
+Key Changes:
+- **Architecture**:
+  - Split `Handler` into `PreRegHandler`, `PostRegHandler`, and `UniversalHandler`.
+  - Introduced `TypedContext<'a, S>` to encode state in the type system.
+  - `ctx.nick()` and `ctx.user()` are now safe accessors (returning `&str`)
+    on `TypedContext<Registered>`, removing `Option` unwrapping.
+
+- **Refactoring**:
+  - Migrated all 68+ command handlers to the new trait system.
+  - Removed runtime `if !registered` checks from handlers.
+  - Updated `Registry` dispatch logic to respect handler phases.
+  - Fixed type mismatches in `mode/channel.rs` and `mode/user.rs`.
+  - Cleaned up legacy `ctx.handshake` access patterns where applicable.
+
+- **Verification**:
+  - `cargo build -p slircd-ng`: PASS
+  - `cargo clippy -p slircd-ng`: PASS
+  - `cargo test -p slircd-ng`: PASS (87 tests)
+
+- **Documentation**:
+  - Added `docs/TYPESTATE_PHASE2_COMPLETION.md`.
+  - Updated `docs/TYPESTATE_PHASE2_RESUMPTION.md`.
+
+This change eliminates a significant class of potential logic errors regarding
+connection state and aligns the codebase with the "No Users, No Mercy"
+development philosophy.

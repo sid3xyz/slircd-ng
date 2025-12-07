@@ -6,7 +6,9 @@
 //! Reference: <https://ircv3.net/specs/extensions/batch>
 //! Reference: <https://ircv3.net/specs/extensions/multiline>
 
-use super::{Context, Handler, HandlerResult, ResponseMiddleware};
+use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{
     BatchSubCommand, Command, Message, MessageRef, Prefix, Tag, format_server_time,
@@ -52,8 +54,12 @@ pub struct BatchLine {
 pub struct BatchHandler;
 
 #[async_trait]
-impl Handler for BatchHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for BatchHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // BATCH +ref type [params...] or BATCH -ref
         let ref_tag = msg.arg(0).unwrap_or("");
 
@@ -61,11 +67,7 @@ impl Handler for BatchHandler {
             return Ok(());
         }
 
-        let nick = ctx
-            .handshake
-            .nick
-            .clone()
-            .unwrap_or_else(|| "*".to_string());
+        let nick = ctx.nick().to_string();
         let server_name = ctx.matrix.server_info.name.clone();
 
         if let Some(stripped) = ref_tag.strip_prefix('+') {

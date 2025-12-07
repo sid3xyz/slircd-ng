@@ -1,6 +1,8 @@
 //! STATS handler for server statistics.
 
-use super::super::{Context, Handler, HandlerError, HandlerResult};
+use super::super::{HandlerResult, PostRegHandler};
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,15 +25,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct StatsHandler;
 
 #[async_trait]
-impl Handler for StatsHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for StatsHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let nick = ctx
-            .handshake
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = ctx.nick();
 
         // STATS [query]
         let query = msg.arg(0).and_then(|s| s.chars().next());
@@ -56,7 +58,7 @@ impl Handler for StatsHandler {
                 ctx.send_reply(
                     Response::RPL_STATSUPTIME,
                     vec![
-                        nick.clone(),
+                        nick.to_string(),
                         format!(
                             "Server Up {} days {}:{:02}:{:02}",
                             days, hours, minutes, seconds
@@ -74,7 +76,7 @@ impl Handler for StatsHandler {
                         ctx.send_reply(
                             Response::RPL_STATSOLINE,
                             vec![
-                                nick.clone(),
+                                nick.to_string(),
                                 "O".to_string(),
                                 "*".to_string(),
                                 user_guard.nick.clone(),
@@ -96,7 +98,7 @@ impl Handler for StatsHandler {
                         ctx.send_reply(
                             Response::RPL_STATSKLINE,
                             vec![
-                                nick.clone(),
+                                nick.to_string(),
                                 "K".to_string(),
                                 kline.mask,
                                 kline.set_at.to_string(),
@@ -120,7 +122,7 @@ impl Handler for StatsHandler {
                         ctx.send_reply(
                             Response::RPL_STATSDLINE,
                             vec![
-                                nick.clone(),
+                                nick.to_string(),
                                 "G".to_string(),
                                 gline.mask,
                                 gline.set_at.to_string(),
@@ -143,7 +145,7 @@ impl Handler for StatsHandler {
                         ctx.send_reply(
                             Response::RPL_STATSDLINE,
                             vec![
-                                nick.clone(),
+                                nick.to_string(),
                                 "Z".to_string(),
                                 zline.mask,
                                 zline.set_at.to_string(),
@@ -165,7 +167,7 @@ impl Handler for StatsHandler {
                 ctx.send_reply(
                     Response::RPL_LUSERCLIENT,
                     vec![
-                        nick.clone(),
+                        nick.to_string(),
                         format!(
                             "Current local users: {} | Channels: {}",
                             current_users, current_channels
@@ -181,7 +183,7 @@ impl Handler for StatsHandler {
                 if stats.is_empty() {
                     ctx.send_reply(
                         Response::RPL_STATSCOMMANDS,
-                        vec![nick.clone(), "No commands have been used yet".to_string()],
+                        vec![nick.to_string(), "No commands have been used yet".to_string()],
                     )
                     .await?;
                 } else {
@@ -191,7 +193,7 @@ impl Handler for StatsHandler {
                         ctx.send_reply(
                             Response::RPL_STATSCOMMANDS,
                             vec![
-                                nick.clone(),
+                                nick.to_string(),
                                 cmd.to_string(),
                                 count.to_string(),
                                 "0".to_string(),
@@ -218,7 +220,7 @@ impl Handler for StatsHandler {
                 for line in &help_lines {
                     ctx.send_reply(
                         Response::RPL_STATSDLINE, // Using generic stats reply
-                        vec![nick.clone(), (*line).to_string()],
+                        vec![nick.to_string(), (*line).to_string()],
                     )
                     .await?;
                 }
@@ -232,7 +234,7 @@ impl Handler for StatsHandler {
         ctx.send_reply(
             Response::RPL_ENDOFSTATS,
             vec![
-                nick.clone(),
+                nick.to_string(),
                 query_char.to_string(),
                 "End of STATS report".to_string(),
             ],

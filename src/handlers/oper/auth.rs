@@ -1,7 +1,9 @@
 use super::super::{
-    Context, Handler, HandlerResult, err_needmoreparams, get_nick_or_star, matches_hostmask,
+    HandlerResult, PostRegHandler, err_needmoreparams, matches_hostmask,
     server_reply,
 };
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use crate::state::actor::validation::format_user_mask;
 use async_trait::async_trait;
 use slirc_proto::mode::{Mode, UserMode};
@@ -15,17 +17,20 @@ use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 pub struct OperHandler;
 
 #[async_trait]
-impl Handler for OperHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for OperHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
 
         // OPER <name> <password>
         let name = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                let nick = get_nick_or_star(ctx).await;
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "OPER"))
+                    .send(err_needmoreparams(server_name, ctx.nick(), "OPER"))
                     .await?;
                 return Ok(());
             }
@@ -33,15 +38,14 @@ impl Handler for OperHandler {
         let password = match msg.arg(1) {
             Some(p) if !p.is_empty() => p,
             _ => {
-                let nick = get_nick_or_star(ctx).await;
                 ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "OPER"))
+                    .send(err_needmoreparams(server_name, ctx.nick(), "OPER"))
                     .await?;
                 return Ok(());
             }
         };
 
-        let nick = get_nick_or_star(ctx).await;
+        let nick = ctx.nick().to_string();
 
         const MAX_OPER_ATTEMPTS: u8 = 3;
         const OPER_DELAY_MS: u64 = 3000;

@@ -15,8 +15,10 @@
 //! See: <https://modern.ircdocs.horse/ctcp.html>
 
 use super::super::{
-    Context, Handler, HandlerError, HandlerResult, user_mask_from_state, user_prefix,
+    Context, HandlerError, HandlerResult, PostRegHandler, user_mask_from_state, user_prefix,
 };
+use crate::handlers::core::traits::TypedContext;
+use crate::state::Registered;
 use super::common::{
     ChannelRouteResult, RouteOptions, route_to_channel, route_to_user, send_cannot_send,
     send_no_such_channel, send_no_such_nick,
@@ -37,8 +39,12 @@ use uuid::Uuid;
 pub struct PrivmsgHandler;
 
 #[async_trait]
-impl Handler for PrivmsgHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl PostRegHandler for PrivmsgHandler {
+    async fn handle(
+        &self,
+        ctx: &mut TypedContext<'_, Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // PRIVMSG <target> <text>

@@ -15,7 +15,7 @@ mod validation;
 pub use notice::NoticeHandler;
 pub use privmsg::PrivmsgHandler;
 
-use super::{Context, Handler, HandlerError, HandlerResult, user_mask_from_state, user_prefix};
+use super::{HandlerError, HandlerResult, user_mask_from_state, user_prefix};
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Tag, irc_to_lower};
 use std::borrow::Cow;
@@ -37,8 +37,12 @@ use common::{
 pub struct TagmsgHandler;
 
 #[async_trait]
-impl Handler for TagmsgHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
+    async fn handle(
+        &self,
+        ctx: &mut crate::handlers::core::traits::TypedContext<'_, crate::state::Registered>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // Check shun first - silently ignore if shunned

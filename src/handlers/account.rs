@@ -1,6 +1,6 @@
 //! REGISTER command handler (draft/account-registration).
 
-use super::{Context, Handler, HandlerResult};
+use super::{Context, HandlerResult, PreRegHandler};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
 
@@ -27,7 +27,7 @@ fn fail_response(server_name: &str, code: &str, context: &str, description: &str
 }
 
 #[async_trait]
-impl Handler for RegisterHandler {
+impl PreRegHandler for RegisterHandler {
     async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
         let acct_cfg = &ctx.matrix.config.account_registration;

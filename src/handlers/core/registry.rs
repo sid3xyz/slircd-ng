@@ -14,7 +14,8 @@
 //! Post-registration handlers are *not in the map* for unregistered connections,
 //! making invalid dispatch a structural impossibility.
 
-use super::context::{Context, Handler, HandlerResult};
+use super::context::{Context, HandlerResult};
+use super::traits::{PostRegHandler, PreRegHandler, UniversalHandler};
 use crate::handlers::{
     account::RegisterHandler,
     admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler},
@@ -65,11 +66,11 @@ use tracing::{Instrument, Level, debug, span};
 /// - `universal_handlers`: Commands valid in any state
 pub struct Registry {
     /// Handlers for pre-registration commands (NICK, USER, PASS, CAP, etc.)
-    pre_reg_handlers: HashMap<&'static str, Box<dyn Handler>>,
+    pre_reg_handlers: HashMap<&'static str, Box<dyn PreRegHandler>>,
     /// Handlers for post-registration commands (PRIVMSG, JOIN, etc.)
-    post_reg_handlers: HashMap<&'static str, Box<dyn Handler>>,
+    post_reg_handlers: HashMap<&'static str, Box<dyn PostRegHandler>>,
     /// Handlers valid in any state (QUIT, PING, PONG)
-    universal_handlers: HashMap<&'static str, Box<dyn Handler>>,
+    universal_handlers: HashMap<&'static str, Box<dyn UniversalHandler>>,
     /// Command usage counters for STATS m
     command_counts: HashMap<&'static str, Arc<AtomicU64>>,
 }
@@ -80,9 +81,10 @@ impl Registry {
     /// Handlers are placed into the appropriate phase map based on IRC protocol rules.
     /// `webirc_blocks` is passed from config for WEBIRC authorization.
     pub fn new(webirc_blocks: Vec<crate::config::WebircBlock>) -> Self {
-        let mut pre_reg_handlers: HashMap<&'static str, Box<dyn Handler>> = HashMap::new();
-        let mut post_reg_handlers: HashMap<&'static str, Box<dyn Handler>> = HashMap::new();
-        let mut universal_handlers: HashMap<&'static str, Box<dyn Handler>> = HashMap::new();
+        let mut pre_reg_handlers: HashMap<&'static str, Box<dyn PreRegHandler>> = HashMap::new();
+        let mut post_reg_handlers: HashMap<&'static str, Box<dyn PostRegHandler>> = HashMap::new();
+        let mut universal_handlers: HashMap<&'static str, Box<dyn UniversalHandler>> =
+            HashMap::new();
 
         // ====================================================================
         // Universal handlers (valid in any state)
@@ -90,16 +92,16 @@ impl Registry {
         universal_handlers.insert("QUIT", Box::new(QuitHandler));
         universal_handlers.insert("PING", Box::new(PingHandler));
         universal_handlers.insert("PONG", Box::new(PongHandler));
+        universal_handlers.insert("NICK", Box::new(NickHandler));
+        universal_handlers.insert("CAP", Box::new(CapHandler));
 
         // ====================================================================
         // Pre-registration handlers (valid before registration completes)
         // ====================================================================
         // WEBIRC must be first to process before NICK/USER
         pre_reg_handlers.insert("WEBIRC", Box::new(WebircHandler::new(webirc_blocks)));
-        pre_reg_handlers.insert("NICK", Box::new(NickHandler));
         pre_reg_handlers.insert("USER", Box::new(UserHandler));
         pre_reg_handlers.insert("PASS", Box::new(PassHandler));
-        pre_reg_handlers.insert("CAP", Box::new(CapHandler));
         pre_reg_handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
         pre_reg_handlers.insert("REGISTER", Box::new(RegisterHandler));
 
@@ -248,56 +250,89 @@ impl Registry {
     /// connections - they are simply not in the lookup path.
     pub async fn dispatch(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
         let cmd_name = msg.command_name().to_ascii_uppercase();
+        let cmd_str = cmd_name.as_str();
 
-        // Typestate dispatch: Look up handler in phase-appropriate map
-        // Universal handlers are always available, then check phase-specific map
-        let handler: Option<&Box<dyn Handler>> =
-            self.universal_handlers.get(cmd_name.as_str()).or_else(|| {
-                if ctx.handshake.registered {
-                    // Registered: check post-reg handlers, then pre-reg (for NICK changes etc.)
-                    self.post_reg_handlers
-                        .get(cmd_name.as_str())
-                        .or_else(|| self.pre_reg_handlers.get(cmd_name.as_str()))
-                } else {
-                    // Unregistered: only pre-reg handlers available
-                    // Post-reg handlers are structurally inaccessible!
-                    self.pre_reg_handlers.get(cmd_name.as_str())
-                }
-            });
+        // Increment command counter
+        if let Some(counter) = self.command_counts.get(cmd_str) {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
 
-        if let Some(handler) = handler {
-            // Increment command counter
-            if let Some(counter) = self.command_counts.get(cmd_name.as_str()) {
-                counter.fetch_add(1, Ordering::Relaxed);
+        // Extract IRC context for tracing
+        let source_nick = ctx.handshake.nick.as_deref();
+        let channel = msg
+            .arg(0)
+            .filter(|a| a.starts_with('#') || a.starts_with('&'));
+        let msgid = crate::telemetry::extract_msgid(msg);
+
+        // Create instrumented span
+        let irc_span = span!(
+            Level::DEBUG,
+            "irc.command",
+            command = %cmd_name,
+            uid = %ctx.uid,
+            source_nick = source_nick,
+            channel = channel,
+            msgid = msgid.as_deref(),
+            remote_addr = %ctx.remote_addr,
+        );
+
+        // Start timing for metrics
+        let _timer = CommandTimer::new(&cmd_name);
+
+        // Execute handler within the span
+        let result = if let Some(handler) = self.universal_handlers.get(cmd_str) {
+            handler.handle(ctx, msg).instrument(irc_span).await
+        } else if ctx.handshake.registered {
+            if let Some(handler) = self.post_reg_handlers.get(cmd_str) {
+                // Create TypedContext<Registered>
+                // SAFETY: We checked ctx.handshake.registered
+                let mut typed_ctx = crate::handlers::core::traits::TypedContext::<
+                    crate::state::Registered,
+                >::new_unchecked(ctx);
+                handler.handle(&mut typed_ctx, msg).instrument(irc_span).await
+            } else {
+                // Fallback to pre-reg handlers?
+                // Some commands like NICK might be in pre-reg but valid post-reg?
+                // We decided NICK/CAP should be Universal.
+                // If a command is ONLY in pre-reg (like USER), it shouldn't be called here.
+                Err(super::context::HandlerError::Internal(
+                    "Command not found".into(),
+                ))
             }
-
-            // Extract IRC context for tracing
-            let source_nick = ctx.handshake.nick.as_deref();
-            let channel = msg
-                .arg(0)
-                .filter(|a| a.starts_with('#') || a.starts_with('&'));
-            let msgid = crate::telemetry::extract_msgid(msg);
-
-            // Create instrumented span
-            let irc_span = span!(
-                Level::DEBUG,
-                "irc.command",
+        } else if let Some(handler) = self.pre_reg_handlers.get(cmd_str) {
+            handler.handle(ctx, msg).instrument(irc_span).await
+        } else if self.post_reg_handlers.contains_key(cmd_str) {
+            // Unregistered client trying to access post-reg command
+            debug!(
                 command = %cmd_name,
                 uid = %ctx.uid,
-                source_nick = source_nick,
-                channel = channel,
-                msgid = msgid.as_deref(),
-                remote_addr = %ctx.remote_addr,
+                "Command rejected: not registered (typestate)"
             );
+            crate::metrics::record_command_error(&cmd_name, "not_registered");
+            Err(super::context::HandlerError::NotRegistered)
+        } else {
+            Err(super::context::HandlerError::Internal(
+                "Command not found".into(),
+            ))
+        };
 
-            // Start timing for metrics
-            let _timer = CommandTimer::new(&cmd_name);
+        // Record errors for metrics
+        match result {
+            Ok(_) => Ok(()),
+            Err(super::context::HandlerError::Internal(msg)) if msg == "Command not found" => {
+                // Unknown command
+                use super::context::get_nick_or_star;
+                let nick = get_nick_or_star(ctx).await;
+                let reply = err_unknowncommand(&ctx.matrix.server_info.name, &nick, &cmd_name);
+                // Attach label for labeled-response capability
+                let reply = with_label(reply, ctx.label.as_deref());
+                ctx.sender.send(reply).await?;
 
-            // Execute handler within the span
-            let result = handler.handle(ctx, msg).instrument(irc_span).await;
-
-            // Record errors for metrics
-            if let Err(ref e) = result {
+                // Record unknown command metric
+                crate::metrics::record_command_error(&cmd_name, "unknown_command");
+                Ok(())
+            }
+            Err(e) => {
                 let error_kind = match e {
                     super::context::HandlerError::NeedMoreParams => "need_more_params",
                     super::context::HandlerError::NoTextToSend => "no_text_to_send",
@@ -313,34 +348,8 @@ impl Registry {
                 };
                 crate::metrics::record_command_error(&cmd_name, error_kind);
                 debug!(command = %cmd_name, error = %e, "Command error");
+                Err(e)
             }
-
-            result
-        } else {
-            // Handler not found in accessible maps
-            // For unregistered clients trying post-reg commands, return ERR_NOTREGISTERED
-            if !ctx.handshake.registered && self.post_reg_handlers.contains_key(cmd_name.as_str()) {
-                debug!(
-                    command = %cmd_name,
-                    uid = %ctx.uid,
-                    "Command rejected: not registered (typestate)"
-                );
-                crate::metrics::record_command_error(&cmd_name, "not_registered");
-                return Err(super::context::HandlerError::NotRegistered);
-            }
-
-            // Otherwise, unknown command
-            use super::context::get_nick_or_star;
-            let nick = get_nick_or_star(ctx).await;
-            let reply = err_unknowncommand(&ctx.matrix.server_info.name, &nick, &cmd_name);
-            // Attach label for labeled-response capability
-            let reply = with_label(reply, ctx.label.as_deref());
-            ctx.sender.send(reply).await?;
-
-            // Record unknown command metric
-            crate::metrics::record_command_error(&cmd_name, "unknown_command");
-
-            Ok(())
         }
     }
 }
