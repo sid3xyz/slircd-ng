@@ -6,11 +6,11 @@
 //! Reference: <https://ircv3.net/specs/extensions/batch>
 //! Reference: <https://ircv3.net/specs/extensions/multiline>
 
-use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware};
+use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware, err_nosuchnick, err_nosuchchannel};
 use crate::state::{RegisteredState, SessionState};
 use async_trait::async_trait;
 use slirc_proto::{
-    BatchSubCommand, Command, Message, MessageRef, Prefix, Tag, format_server_time,
+    BatchSubCommand, ChannelExt, Command, Message, MessageRef, Prefix, Tag, format_server_time,
     generate_batch_ref, generate_msgid,
 };
 use tracing::debug;
@@ -342,17 +342,17 @@ async fn process_multiline_batch(
     // Get sender info for prefix
     let prefix = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
         let user = user_ref.read().await;
-        Prefix::Nickname(
+        Prefix::new(
             user.nick.clone(),
             user.user.clone(),
             user.visible_host.clone(),
         )
     } else {
-        Prefix::Nickname(nick.to_string(), "user".to_string(), "host".to_string())
+        Prefix::new(nick.to_string(), "user".to_string(), "host".to_string())
     };
 
     // Determine if target is a channel or user
-    let is_channel = target.starts_with('#') || target.starts_with('&');
+    let is_channel = target.is_channel_name();
 
     if is_channel {
         // Channel message - deliver to all members
@@ -377,16 +377,9 @@ async fn deliver_multiline_to_channel(
 
     let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) else {
         // Channel doesn't exist - send error
-        let reply = super::server_reply(
-            &ctx.matrix.server_info.name,
-            slirc_proto::Response::ERR_NOSUCHCHANNEL,
-            vec![
-                ctx.state.nick.clone(),
-                batch.target.clone(),
-                "No such channel".to_string(),
-            ],
-        );
-        ctx.sender.send(reply).await?;
+        ctx.sender
+            .send(err_nosuchchannel(&ctx.matrix.server_info.name, &ctx.state.nick, &batch.target))
+            .await?;
         return Ok(());
     };
 
@@ -528,16 +521,9 @@ async fn deliver_multiline_to_user(
 
     let Some(target_uid) = target_uid else {
         // User not found
-        let reply = super::server_reply(
-            &ctx.matrix.server_info.name,
-            slirc_proto::Response::ERR_NOSUCHNICK,
-            vec![
-                ctx.state.nick.clone(),
-                target_nick.to_string(),
-                "No such nick".to_string(),
-            ],
-        );
-        ctx.sender.send(reply).await?;
+        ctx.sender
+            .send(err_nosuchnick(&ctx.matrix.server_info.name, &ctx.state.nick, target_nick))
+            .await?;
         return Ok(());
     };
 

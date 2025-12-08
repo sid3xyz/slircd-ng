@@ -2,7 +2,7 @@
 
 use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded,
-    err_usernotinchannel, server_reply, user_mask_from_state,
+    err_nosuchnick, err_nosuchchannel, err_usernotinchannel, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
@@ -47,16 +47,9 @@ impl PostRegHandler for KickHandler {
         let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_NOSUCHCHANNEL,
-                    vec![
-                        nick.clone(),
-                        channel_name.to_string(),
-                        "No such channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender
+                    .send(err_nosuchchannel(&ctx.matrix.server_info.name, &nick, channel_name))
+                    .await?;
                 return Ok(());
             }
         };
@@ -66,16 +59,9 @@ impl PostRegHandler for KickHandler {
         let target_uid = match ctx.matrix.nicks.get(&target_lower) {
             Some(uid) => uid.value().clone(),
             None => {
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_NOSUCHNICK,
-                    vec![
-                        nick.clone(),
-                        target_nick.to_string(),
-                        "No such nick".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender
+                    .send(err_nosuchnick(&ctx.matrix.server_info.name, &nick, target_nick))
+                    .await?;
                 return Ok(());
             }
         };
@@ -91,7 +77,7 @@ impl PostRegHandler for KickHandler {
         // If no capability, let actor do the check (maintains backward compat)
         // If capability granted, use force=true to skip actor check
         let (reply_tx, reply_rx) = oneshot::channel();
-        let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
+        let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
 
         let event = ChannelEvent::Kick {
             sender_uid: ctx.uid.to_string(),

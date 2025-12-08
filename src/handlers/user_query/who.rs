@@ -3,7 +3,7 @@
 use super::super::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, irc_to_lower};
+use slirc_proto::{ChannelExt, MessageRef, Response, irc_to_lower};
 
 /// Handler for WHO command.
 ///
@@ -53,7 +53,7 @@ impl PostRegHandler for WhoHandler {
 
         // Determine query type
         if let Some(mask_str) = mask {
-            if is_channel_name(mask_str) {
+            if mask_str.is_channel_name() {
                 // Channel WHO - list channel members
                 let channel_lower = irc_to_lower(mask_str);
                 if let Some(channel_sender) = ctx.matrix.channels.get(&channel_lower) {
@@ -232,10 +232,6 @@ impl PostRegHandler for WhoHandler {
     }
 }
 
-/// Check if a string is a valid channel name.
-fn is_channel_name(name: &str) -> bool {
-    matches!(name.chars().next(), Some('#' | '&' | '+' | '!'))
-}
 
 /// Simple wildcard matching for WHO masks.
 /// Supports * (match any) and ? (match single char).
@@ -309,11 +305,12 @@ mod tests {
 
     #[test]
     fn test_is_channel_name() {
-        assert!(is_channel_name("#test"));
-        assert!(is_channel_name("&test"));
-        assert!(is_channel_name("+test"));
-        assert!(is_channel_name("!12345test"));
-        assert!(!is_channel_name("test"));
-        assert!(!is_channel_name(""));
+        use slirc_proto::ChannelExt;
+        assert!("#test".is_channel_name());
+        assert!("&test".is_channel_name());
+        assert!("+test".is_channel_name());
+        assert!("!12345test".is_channel_name());
+        assert!(!"test".is_channel_name());
+        assert!(!"".is_channel_name());
     }
 }

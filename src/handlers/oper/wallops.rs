@@ -55,7 +55,7 @@ impl PostRegHandler for WallopsHandler {
 
         let wallops_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(
+            prefix: Some(Prefix::new(
                 sender_nick.clone(),
                 sender_user.clone(),
                 sender_host.clone(),

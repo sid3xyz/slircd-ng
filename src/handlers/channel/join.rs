@@ -149,7 +149,7 @@ async fn join_channel(
             .unwrap_or("You are banned from this channel");
         let notice = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(
+            prefix: Some(Prefix::new(
                 "ChanServ".to_string(),
                 "ChanServ".to_string(),
                 "services.".to_string(),

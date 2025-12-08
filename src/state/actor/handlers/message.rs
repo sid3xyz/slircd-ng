@@ -114,7 +114,7 @@ impl ChannelActor {
 
         let base_msg = Message {
             tags: tags.clone(),
-            prefix: Some(slirc_proto::Prefix::Nickname(
+            prefix: Some(slirc_proto::Prefix::new(
                 user_context.nickname.clone(),
                 user_context.username.clone(),
                 user_context.hostname.clone(),
@@ -255,6 +255,17 @@ impl ChannelActor {
                 // Add msgid
                 recipient_tags.push(Tag(Cow::Borrowed("msgid"), Some(msgid.clone())));
             }
+
+            // Add account-tag if sender is logged in and recipient has capability
+            if let Some(ref account) = user_context.account {
+                let has_account_tag = user_caps
+                    .map(|caps| caps.contains("account-tag"))
+                    .unwrap_or(false);
+                if has_account_tag {
+                    recipient_tags.push(Tag(Cow::Borrowed("account"), Some(account.clone())));
+                }
+            }
+
             // Note: label tag is NOT included for non-sender recipients
 
             recipient_msg.tags = if recipient_tags.is_empty() {

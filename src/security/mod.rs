@@ -38,22 +38,8 @@ pub use ip_deny_list::{BanMetadata, IpDenyList};
 pub use rate_limit::RateLimitManager;
 pub use xlines::{ExtendedBan, UserContext, matches_extended_ban};
 
-/// Check if a user mask matches a pattern (wildcard support).
-///
-/// Wraps slirc-proto's glob matching for consistent behavior.
-pub fn matches_hostmask(pattern: &str, user_mask: &str) -> bool {
-    let pattern_regex = regex::escape(pattern)
-        .replace(r"\*", ".*")
-        .replace(r"\?", ".");
-    if let Ok(re) = regex::RegexBuilder::new(&format!("^{}$", pattern_regex))
-        .case_insensitive(true)
-        .build()
-    {
-        re.is_match(user_mask)
-    } else {
-        false
-    }
-}
+// Re-export hostmask matching from proto for consistent IRC pattern matching
+pub use slirc_proto::matches_hostmask;
 
 /// Check if a ban/exception entry matches a user, supporting both hostmask and extended bans.
 ///

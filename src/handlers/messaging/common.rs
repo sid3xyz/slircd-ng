@@ -3,7 +3,7 @@
 //! Shared helpers for PRIVMSG, NOTICE, and TAGMSG handlers including shun checking,
 //! routing logic, channel validation, and error responses.
 
-use super::super::{Context, HandlerResult, server_reply};
+use super::super::{Context, HandlerResult, err_nosuchnick, err_nosuchchannel, server_reply};
 use crate::security::UserContext;
 use crate::security::spam::SpamVerdict;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
@@ -289,6 +289,14 @@ pub async fn route_to_user(
     // Check if this is a TAGMSG
     let _is_tagmsg = matches!(msg.command, Command::TAGMSG(_));
 
+    // Get sender's account name for account-tag
+    let sender_account: Option<String> = if let Some(sender_ref) = ctx.matrix.users.get(ctx.uid) {
+        let sender_user = sender_ref.read().await;
+        sender_user.account.clone()
+    } else {
+        None
+    };
+
     if let Some(sender) = ctx.matrix.senders.get(&target_uid) {
         // Check target's capabilities and build appropriate message
         let msg_for_target = if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
@@ -328,6 +336,13 @@ pub async fn route_to_user(
             // Add server-time if capability is enabled
             if has_server_time {
                 result = result.with_tag("time", Some(timestamp.clone()));
+            }
+
+            // Add account-tag if sender is logged in and recipient has capability
+            if let Some(ref account) = sender_account
+                && user.caps.contains("account-tag")
+            {
+                result = result.with_tag("account", Some(account.clone()));
             }
 
             result
@@ -390,30 +405,16 @@ pub async fn send_cannot_send<S>(
 
 /// Send ERR_NOSUCHCHANNEL.
 pub async fn send_no_such_channel<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
-    let reply = server_reply(
-        &ctx.matrix.server_info.name,
-        Response::ERR_NOSUCHCHANNEL,
-        vec![
-            nick.to_string(),
-            target.to_string(),
-            "No such channel".to_string(),
-        ],
-    );
-    ctx.sender.send(reply).await?;
+    ctx.sender
+        .send(err_nosuchchannel(&ctx.matrix.server_info.name, nick, target))
+        .await?;
     Ok(())
 }
 
 /// Send ERR_NOSUCHNICK.
 pub async fn send_no_such_nick<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
-    let reply = server_reply(
-        &ctx.matrix.server_info.name,
-        Response::ERR_NOSUCHNICK,
-        vec![
-            nick.to_string(),
-            target.to_string(),
-            "No such nick/channel".to_string(),
-        ],
-    );
-    ctx.sender.send(reply).await?;
+    ctx.sender
+        .send(err_nosuchnick(&ctx.matrix.server_info.name, nick, target))
+        .await?;
     Ok(())
 }

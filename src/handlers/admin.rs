@@ -314,7 +314,7 @@ impl PostRegHandler for SanickHandler {
         // Build NICK message
         let nick_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(
+            prefix: Some(Prefix::new(
                 old_nick.to_string(),
                 target_user,
                 target_host,

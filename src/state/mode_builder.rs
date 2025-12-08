@@ -273,6 +273,19 @@ impl ChannelModeBuilder {
     }
 }
 
+/// Lookup table for simple flag modes (Type D - no parameters).
+const SIMPLE_FLAG_MODES: &[(char, ChannelMode)] = &[
+    ('n', ChannelMode::NoExternalMessages),
+    ('t', ChannelMode::ProtectedTopic),
+    ('s', ChannelMode::Secret),
+    ('i', ChannelMode::InviteOnly),
+    ('m', ChannelMode::Moderated),
+    ('r', ChannelMode::RegisteredOnly),
+    ('c', ChannelMode::NoColors),
+    ('C', ChannelMode::NoCTCP),
+    ('N', ChannelMode::NoNickChange),
+];
+
 /// Parse an MLOCK string like "+nt-s" or "+ntk-il secretkey" into a Mode vector.
 ///
 /// MLOCK format:
@@ -311,78 +324,6 @@ pub fn parse_mlock(mlock: &str) -> Vec<Mode<ChannelMode>> {
         match ch {
             '+' => adding = true,
             '-' => adding = false,
-            'n' => {
-                let mode = if adding {
-                    Mode::plus(ChannelMode::NoExternalMessages, None)
-                } else {
-                    Mode::minus(ChannelMode::NoExternalMessages, None)
-                };
-                result.push(mode);
-            }
-            't' => {
-                let mode = if adding {
-                    Mode::plus(ChannelMode::ProtectedTopic, None)
-                } else {
-                    Mode::minus(ChannelMode::ProtectedTopic, None)
-                };
-                result.push(mode);
-            }
-            's' => {
-                let mode = if adding {
-                    Mode::plus(ChannelMode::Secret, None)
-                } else {
-                    Mode::minus(ChannelMode::Secret, None)
-                };
-                result.push(mode);
-            }
-            'i' => {
-                let mode = if adding {
-                    Mode::plus(ChannelMode::InviteOnly, None)
-                } else {
-                    Mode::minus(ChannelMode::InviteOnly, None)
-                };
-                result.push(mode);
-            }
-            'm' => {
-                let mode = if adding {
-                    Mode::plus(ChannelMode::Moderated, None)
-                } else {
-                    Mode::minus(ChannelMode::Moderated, None)
-                };
-                result.push(mode);
-            }
-            'r' => {
-                let mode = if adding {
-                    Mode::plus(ChannelMode::RegisteredOnly, None)
-                } else {
-                    Mode::minus(ChannelMode::RegisteredOnly, None)
-                };
-                result.push(mode);
-            }
-            'c' => {
-                let mode = if adding {
-                    Mode::plus(ChannelMode::NoColors, None)
-                } else {
-                    Mode::minus(ChannelMode::NoColors, None)
-                };
-                result.push(mode);
-            }
-            'C' => {
-                let mode = if adding {
-                    Mode::plus(ChannelMode::NoCTCP, None)
-                } else {
-                    Mode::minus(ChannelMode::NoCTCP, None)
-                };
-                result.push(mode);
-            }
-            'N' => {
-                let mode = if adding {
-                    Mode::plus(ChannelMode::NoNickChange, None)
-                } else {
-                    Mode::minus(ChannelMode::NoNickChange, None)
-                };
-                result.push(mode);
-            }
             'k' => {
                 // Key mode requires a parameter when adding
                 if adding {
@@ -413,7 +354,16 @@ pub fn parse_mlock(mlock: &str) -> Vec<Mode<ChannelMode>> {
                 }
             }
             _ => {
-                // Unknown mode char, skip gracefully
+                // Check simple flag modes via lookup table
+                if let Some((_, mode)) = SIMPLE_FLAG_MODES.iter().find(|(c, _)| *c == ch) {
+                    let m = if adding {
+                        Mode::plus(mode.clone(), None)
+                    } else {
+                        Mode::minus(mode.clone(), None)
+                    };
+                    result.push(m);
+                }
+                // Unknown mode char: skip gracefully
             }
         }
     }

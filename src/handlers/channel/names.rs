@@ -1,4 +1,7 @@
 //! NAMES command handler.
+//!
+//! This implements RFC 2812 (Modern) format for NAMES replies.
+//! RFC 1459 format (without channel symbol) is deprecated and not supported.
 
 use super::super::{Context, HandlerResult, PostRegHandler, server_reply};
 use crate::state::RegisteredState;
@@ -45,7 +48,17 @@ impl PostRegHandler for NamesHandler {
             // - Public channels the user is in
             // - Public channels (if user is not in them but they're visible)
             // Secret channels (+s) are not shown unless user is in them
-            for channel_arc in ctx.matrix.channels.iter() {
+
+            // Collect and sort channels alphabetically for deterministic output
+            let mut channel_names: Vec<_> = ctx.matrix.channels.iter()
+                .map(|entry| entry.key().clone())
+                .collect();
+            channel_names.sort();
+
+            for channel_lower in channel_names {
+                let Some(channel_arc) = ctx.matrix.channels.get(&channel_lower) else {
+                    continue;
+                };
                 let sender = channel_arc.value();
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 let _ = sender
@@ -79,13 +92,16 @@ impl PostRegHandler for NamesHandler {
                 };
 
                 let mut names_list = Vec::new();
-                for (uid, member_modes) in members {
-                    if let Some(user) = ctx.matrix.users.get(&uid) {
+                for (uid, member_modes) in &members {
+                    if let Some(user) = ctx.matrix.users.get(uid) {
                         let user = user.read().await;
-                        let prefix = get_member_prefix(&member_modes, multi_prefix);
-                        names_list.push(format!("{}{}", prefix, user.nick));
+                        let prefix = get_member_prefix(member_modes, multi_prefix);
+                        names_list.push((user.nick.clone(), format!("{}{}", prefix, user.nick)));
                     }
                 }
+                // Sort alphabetically by nick (case-insensitive) for deterministic output
+                names_list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+                let names_list: Vec<String> = names_list.into_iter().map(|(_, display)| display).collect();
 
                 let channel_symbol = if channel_info
                     .modes
@@ -168,13 +184,16 @@ impl PostRegHandler for NamesHandler {
 
             let mut names_list = Vec::new();
 
-            for (uid, member_modes) in members {
-                if let Some(user) = ctx.matrix.users.get(&uid) {
+            for (uid, member_modes) in &members {
+                if let Some(user) = ctx.matrix.users.get(uid) {
                     let user = user.read().await;
-                    let prefix = get_member_prefix(&member_modes, multi_prefix);
-                    names_list.push(format!("{}{}", prefix, user.nick));
+                    let prefix = get_member_prefix(member_modes, multi_prefix);
+                    names_list.push((user.nick.clone(), format!("{}{}", prefix, user.nick)));
                 }
             }
+            // Sort alphabetically by nick (case-insensitive) for deterministic output
+            names_list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+            let names_list: Vec<String> = names_list.into_iter().map(|(_, display)| display).collect();
 
             // Channel symbol per RFC 2812:
             // @ = secret (+s)

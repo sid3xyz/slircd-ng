@@ -392,7 +392,7 @@ impl Matrix {
         // Build QUIT message
         let quit_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(nick.clone(), user, host)),
+            prefix: Some(Prefix::new(nick.clone(), user, host)),
             command: Command::QUIT(Some(quit_reason.to_string())),
         };
 

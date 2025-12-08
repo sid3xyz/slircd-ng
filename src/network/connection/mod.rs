@@ -652,7 +652,7 @@ impl Connection {
             let quit_text = quit_message.unwrap_or_else(|| "Client Quit".to_string());
             let quit_msg = Message {
                 tags: None,
-                prefix: Some(Prefix::Nickname(nick.clone(), user_ident, host)),
+                prefix: Some(Prefix::new(nick.clone(), user_ident, host)),
                 command: Command::QUIT(Some(quit_text)),
             };
 

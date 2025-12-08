@@ -5,7 +5,7 @@
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded, err_notonchannel,
+    HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded, err_nosuchnick, err_notonchannel,
     server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
@@ -60,16 +60,9 @@ impl PostRegHandler for InviteHandler {
         let target_uid = match ctx.matrix.nicks.get(&target_lower) {
             Some(uid) => uid.value().clone(),
             None => {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NOSUCHNICK,
-                    vec![
-                        nick.clone(),
-                        target_nick.to_string(),
-                        "No such nick/channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender
+                    .send(err_nosuchnick(server_name, nick, target_nick))
+                    .await?;
                 return Ok(());
             }
         };
@@ -95,7 +88,7 @@ impl PostRegHandler for InviteHandler {
             let (nick, user, host) = user_mask_from_state(ctx, ctx.uid)
                 .await
                 .ok_or(HandlerError::NickOrUserMissing)?;
-            let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
+            let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
 
             // Request INVITE capability from authority (Innovation 4)
             let authority = CapabilityAuthority::new(ctx.matrix.clone());
@@ -122,8 +115,32 @@ impl PostRegHandler for InviteHandler {
                     // Success, invite recorded in channel.
                     // Now send INVITE message to target user.
 
+                    // Get sender's account for account-tag
+                    let sender_account: Option<String> = if let Some(sender_ref) = ctx.matrix.users.get(ctx.uid) {
+                        let sender_user = sender_ref.read().await;
+                        sender_user.account.clone()
+                    } else {
+                        None
+                    };
+
+                    // Build invite message with appropriate tags
+                    let mut invite_tags: Option<Vec<slirc_proto::message::Tag>> = None;
+
+                    // Check if target has account-tag capability
+                    if let Some(ref account) = sender_account
+                        && let Some(target_ref) = ctx.matrix.users.get(&target_uid)
+                    {
+                        let target_user = target_ref.read().await;
+                        if target_user.caps.contains("account-tag") {
+                            invite_tags = Some(vec![slirc_proto::message::Tag(
+                                std::borrow::Cow::Borrowed("account"),
+                                Some(account.clone()),
+                            )]);
+                        }
+                    }
+
                     let invite_msg = Message {
-                        tags: None,
+                        tags: invite_tags,
                         prefix: Some(sender_prefix),
                         command: if channel_first {
                             Command::INVITE(channel_name.to_string(), target_nick.to_string())
@@ -181,11 +198,33 @@ impl PostRegHandler for InviteHandler {
             let (nick, user, host) = user_mask_from_state(ctx, ctx.uid)
                 .await
                 .ok_or(HandlerError::NickOrUserMissing)?;
-            let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
+            let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
+
+            // Get sender's account for account-tag
+            let sender_account: Option<String> = if let Some(sender_ref) = ctx.matrix.users.get(ctx.uid) {
+                let sender_user = sender_ref.read().await;
+                sender_user.account.clone()
+            } else {
+                None
+            };
+
+            // Build invite tags with account if target has capability
+            let mut invite_tags: Option<Vec<slirc_proto::message::Tag>> = None;
+            if let Some(ref account) = sender_account
+                && let Some(target_ref) = ctx.matrix.users.get(&target_uid)
+            {
+                let target_user = target_ref.read().await;
+                if target_user.caps.contains("account-tag") {
+                    invite_tags = Some(vec![slirc_proto::message::Tag(
+                        std::borrow::Cow::Borrowed("account"),
+                        Some(account.clone()),
+                    )]);
+                }
+            }
 
             // Send INVITE notification to target
             let invite_msg = Message {
-                tags: None,
+                tags: invite_tags,
                 prefix: Some(sender_prefix.clone()),
                 command: if channel_first {
                     Command::INVITE(channel_name.to_string(), target_nick.to_string())
