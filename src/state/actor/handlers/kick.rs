@@ -1,4 +1,4 @@
-use super::{ChannelActor, Uid};
+use super::{ChannelActor, ChannelError, Uid};
 use slirc_proto::{Command, Message, Prefix};
 use tokio::sync::oneshot;
 
@@ -12,18 +12,18 @@ impl ChannelActor {
         target_nick: String,
         reason: String,
         force: bool,
-        reply_tx: oneshot::Sender<Result<(), String>>,
+        reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     ) {
         if !force {
             let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
             if !sender_modes.op && !sender_modes.halfop {
-                let _ = reply_tx.send(Err("ERR_CHANOPRIVSNEEDED".to_string()));
+                let _ = reply_tx.send(Err(ChannelError::ChanOpPrivsNeeded));
                 return;
             }
         }
 
         if !self.members.contains_key(&target_uid) {
-            let _ = reply_tx.send(Err("ERR_USERNOTINCHANNEL".to_string()));
+            let _ = reply_tx.send(Err(ChannelError::UserNotInChannel(target_nick)));
             return;
         }
 

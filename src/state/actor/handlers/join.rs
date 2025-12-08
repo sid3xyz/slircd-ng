@@ -1,5 +1,5 @@
 use super::super::validation::{create_user_mask, is_banned};
-use super::{ActorState, ChannelActor, ChannelMode, JoinSuccessData, MemberModes, Uid};
+use super::{ActorState, ChannelActor, ChannelError, ChannelMode, JoinSuccessData, MemberModes, Uid};
 use crate::security::UserContext;
 use slirc_proto::Message;
 use std::collections::HashSet;
@@ -20,10 +20,10 @@ impl ChannelActor {
         join_msg_extended: Message,
         join_msg_standard: Message,
         session_id: Uuid,
-        reply_tx: oneshot::Sender<Result<JoinSuccessData, String>>,
+        reply_tx: oneshot::Sender<Result<JoinSuccessData, ChannelError>>,
     ) {
         if self.state == ActorState::Draining {
-            let _ = reply_tx.send(Err("ERR_CHANNEL_TOMBSTONE".to_string()));
+            let _ = reply_tx.send(Err(ChannelError::ChannelTombstone));
             return;
         }
 
@@ -40,7 +40,7 @@ impl ChannelActor {
         };
 
         if !session_valid {
-            let _ = reply_tx.send(Err("ERR_SESSION_INVALID".to_string()));
+            let _ = reply_tx.send(Err(ChannelError::SessionInvalid));
             return;
         }
 
@@ -59,7 +59,7 @@ impl ChannelActor {
         if !is_invited && !is_invex
             && is_banned(&user_mask, &user_context, &self.bans, &self.excepts)
         {
-            let _ = reply_tx.send(Err("ERR_BANNEDFROMCHAN".to_string()));
+            let _ = reply_tx.send(Err(ChannelError::BannedFromChan));
             return;
         }
 
@@ -67,7 +67,7 @@ impl ChannelActor {
         if self.modes.contains(&ChannelMode::InviteOnly)
             && !is_invited && !is_invex
         {
-            let _ = reply_tx.send(Err("ERR_INVITEONLYCHAN".to_string()));
+            let _ = reply_tx.send(Err(ChannelError::InviteOnlyChan));
             return;
         }
 
@@ -76,7 +76,7 @@ impl ChannelActor {
             if let ChannelMode::Limit(limit) = mode
                 && self.members.len() >= *limit
             {
-                let _ = reply_tx.send(Err("ERR_CHANNELISFULL".to_string()));
+                let _ = reply_tx.send(Err(ChannelError::ChannelIsFull));
                 return;
             }
         }
@@ -86,7 +86,7 @@ impl ChannelActor {
             if let ChannelMode::Key(key) = mode
                 && key_arg.as_deref() != Some(key)
             {
-                let _ = reply_tx.send(Err("ERR_BADCHANNELKEY".to_string()));
+                let _ = reply_tx.send(Err(ChannelError::BadChannelKey));
                 return;
             }
         }

@@ -9,6 +9,65 @@ use uuid::Uuid;
 /// Unique identifier for a user (UID string).
 pub type Uid = String;
 
+/// Channel operation errors.
+///
+/// These errors represent channel-specific failures that can be mapped
+/// to RFC-compliant error responses by handler code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChannelError {
+    NotOnChannel,
+    ChanOpPrivsNeeded,
+    UserNotInChannel(String),
+    UserOnChannel(String),
+    CannotKnock,
+    ChanOpen,
+    ChannelTombstone,
+    SessionInvalid,
+    BannedFromChan,
+    InviteOnlyChan,
+    ChannelIsFull,
+    BadChannelKey,
+    #[allow(dead_code)] // Reserved for future mode validation
+    KeySet,
+    #[allow(dead_code)] // Reserved for future mode validation
+    UnknownMode(char, String),
+    #[allow(dead_code)] // Reserved for future mode validation
+    NoChanModes,
+    #[allow(dead_code)] // Reserved for future ban list limits
+    BanListFull(char),
+    #[allow(dead_code)] // Reserved for future founder-only operations
+    UniqOpPrivsNeeded,
+    #[allow(dead_code)] // Fallback for unknown errors
+    UnknownError(String),
+}
+
+impl std::fmt::Display for ChannelError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChannelError::NotOnChannel => write!(f, "Not on channel"),
+            ChannelError::ChanOpPrivsNeeded => write!(f, "You're not channel operator"),
+            ChannelError::UserNotInChannel(nick) => write!(f, "User {} is not on that channel", nick),
+            ChannelError::UserOnChannel(nick) => write!(f, "User {} is already on that channel", nick),
+            ChannelError::CannotKnock => write!(f, "Cannot knock on this channel"),
+            ChannelError::ChanOpen => write!(f, "Channel is open"),
+            ChannelError::ChannelTombstone => write!(f, "Channel is restarting"),
+            ChannelError::SessionInvalid => write!(f, "Session invalid"),
+            ChannelError::BannedFromChan => write!(f, "Cannot join channel (+b)"),
+            ChannelError::InviteOnlyChan => write!(f, "Cannot join channel (+i)"),
+            ChannelError::ChannelIsFull => write!(f, "Cannot join channel (+l)"),
+            ChannelError::BadChannelKey => write!(f, "Cannot join channel (+k)"),
+            ChannelError::KeySet => write!(f, "Channel key already set"),
+            ChannelError::UnknownMode(c, chan) => write!(f, "{} is unknown mode char to me for {}", c, chan),
+            ChannelError::NoChanModes => write!(f, "Channel doesn't support modes"),
+            ChannelError::BanListFull(c) => write!(f, "Channel list {} is full", c),
+            ChannelError::UniqOpPrivsNeeded => write!(f, "You're not the original channel operator"),
+            ChannelError::UnknownError(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+impl std::error::Error for ChannelError {}
+
 #[derive(Debug)]
 pub struct JoinSuccessData {
     pub topic: Option<Topic>,
@@ -32,14 +91,14 @@ pub enum ChannelEvent {
         join_msg_standard: Box<Message>,
         session_id: Uuid,
         /// Reply channel for the result (success/error).
-        reply_tx: oneshot::Sender<Result<JoinSuccessData, String>>,
+        reply_tx: oneshot::Sender<Result<JoinSuccessData, ChannelError>>,
     },
     /// User leaving the channel.
     Part {
         uid: Uid,
         reason: Option<String>,
         prefix: Prefix,
-        reply_tx: oneshot::Sender<Result<usize, String>>,
+        reply_tx: oneshot::Sender<Result<usize, ChannelError>>,
     },
     /// User quitting the server.
     Quit {
@@ -90,7 +149,7 @@ pub enum ChannelEvent {
         target_uids: HashMap<String, Uid>,
         force: bool,
         reply_tx: oneshot::Sender<
-            Result<Vec<slirc_proto::mode::Mode<slirc_proto::mode::ChannelMode>>, String>,
+            Result<Vec<slirc_proto::mode::Mode<slirc_proto::mode::ChannelMode>>, ChannelError>,
         >,
     },
     /// Kick a user from the channel.
@@ -101,7 +160,7 @@ pub enum ChannelEvent {
         target_nick: String,
         reason: String,
         force: bool,
-        reply_tx: oneshot::Sender<Result<(), String>>,
+        reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Set the channel topic.
     SetTopic {
@@ -109,7 +168,7 @@ pub enum ChannelEvent {
         sender_prefix: Prefix,
         topic: String,
         force: bool,
-        reply_tx: oneshot::Sender<Result<(), String>>,
+        reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Invite a user to the channel.
     Invite {
@@ -118,13 +177,13 @@ pub enum ChannelEvent {
         target_uid: Uid,
         target_nick: String,
         force: bool,
-        reply_tx: oneshot::Sender<Result<(), String>>,
+        reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Knock on the channel.
     Knock {
         sender_uid: Uid,
         sender_prefix: Prefix,
-        reply_tx: oneshot::Sender<Result<(), String>>,
+        reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Broadcast a raw message to all members.
     Broadcast {

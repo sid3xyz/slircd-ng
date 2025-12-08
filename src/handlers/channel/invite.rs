@@ -10,7 +10,7 @@ use super::super::{Context,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
-use crate::state::actor::ChannelEvent;
+use crate::state::actor::{ChannelEvent, ChannelError};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
 use tokio::sync::oneshot;
@@ -165,12 +165,12 @@ impl PostRegHandler for InviteHandler {
                     );
                     ctx.sender.send(reply).await?;
                 }
-                Ok(Err(err_code)) => {
-                    let reply = match err_code.as_str() {
-                        "ERR_CHANOPRIVSNEEDED" => {
+                Ok(Err(e)) => {
+                    let reply = match e {
+                        ChannelError::ChanOpPrivsNeeded => {
                             err_chanoprivsneeded(server_name, &nick, channel_name)
                         }
-                        "ERR_USERONCHANNEL" => server_reply(
+                        ChannelError::UserOnChannel(_) => server_reply(
                             server_name,
                             Response::ERR_USERONCHANNEL,
                             vec![
@@ -183,7 +183,7 @@ impl PostRegHandler for InviteHandler {
                         _ => server_reply(
                             server_name,
                             Response::ERR_UNKNOWNERROR,
-                            vec![nick.clone(), "Unknown error during INVITE".to_string()],
+                            vec![nick.clone(), e.to_string()],
                         ),
                     };
                     ctx.sender.send(reply).await?;

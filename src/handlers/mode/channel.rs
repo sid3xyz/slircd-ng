@@ -18,6 +18,7 @@ use super::super::{
     Context, HandlerError, HandlerResult, err_chanoprivsneeded, err_nosuchnick, err_nosuchchannel, server_reply, with_label,
 };
 use crate::state::RegisteredState;
+use crate::state::actor::ChannelError;
 use slirc_proto::{ChannelMode, Mode, Response, irc_to_lower};
 
 /// Handle channel mode query/change.
@@ -232,7 +233,7 @@ pub async fn handle_channel_mode(
                     "unknown".to_string(),
                 )
             };
-            let prefix = slirc_proto::Prefix::new(nick, user, host);
+            let prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
 
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
             if (channel
@@ -254,9 +255,40 @@ pub async fn handle_channel_mode(
                 Ok(Ok(_)) => {
                     // Success
                 }
-                Ok(Err(_e)) => {
-                    // Generic error
-                    // TODO: Handle specific errors
+                Ok(Err(e)) => {
+                    let reply = match e {
+                        ChannelError::ChanOpPrivsNeeded => {
+                            Response::err_chanoprivsneeded(&ctx.matrix.server_info.name, &canonical_name)
+                        }
+                        ChannelError::KeySet => {
+                            Response::err_keyset(&ctx.matrix.server_info.name, &canonical_name)
+                        }
+                        ChannelError::UnknownMode(c, _) => {
+                            Response::err_unknownmode(&ctx.matrix.server_info.name, c, &canonical_name)
+                        }
+                        ChannelError::NoChanModes => {
+                            Response::err_nochanmodes(&ctx.matrix.server_info.name, &canonical_name)
+                        }
+                        ChannelError::BanListFull(c) => {
+                            Response::err_banlistfull(&ctx.matrix.server_info.name, &canonical_name, c)
+                        }
+                        ChannelError::UniqOpPrivsNeeded => {
+                            Response::err_uniqopprivsneeded(&ctx.matrix.server_info.name)
+                        }
+                        ChannelError::UserNotInChannel(target) => {
+                            Response::err_usernotinchannel(&ctx.matrix.server_info.name, &nick, &target)
+                        }
+                        _ => server_reply(
+                            &ctx.matrix.server_info.name,
+                            Response::ERR_UNKNOWNERROR,
+                            vec![
+                                nick.to_string(),
+                                canonical_name.to_string(),
+                                e.to_string(),
+                            ],
+                        ),
+                    };
+                    ctx.sender.send(reply).await?;
                 }
                 Err(_) => return Err(HandlerError::Internal("Channel actor died".to_string())),
             }

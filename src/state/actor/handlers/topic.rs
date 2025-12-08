@@ -1,4 +1,4 @@
-use super::{ChannelActor, ChannelMode, Uid};
+use super::{ChannelActor, ChannelError, ChannelMode, Uid};
 use crate::state::Topic;
 use slirc_proto::{Command, Message, Prefix};
 use tokio::sync::oneshot;
@@ -10,12 +10,12 @@ impl ChannelActor {
         sender_prefix: Prefix,
         topic: String,
         force: bool,
-        reply_tx: oneshot::Sender<Result<(), String>>,
+        reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     ) {
         if !force && self.modes.contains(&ChannelMode::TopicLock) {
             let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
             if !sender_modes.op && !sender_modes.halfop {
-                let _ = reply_tx.send(Err("ERR_CHANOPRIVSNEEDED".to_string()));
+                let _ = reply_tx.send(Err(ChannelError::ChanOpPrivsNeeded));
                 return;
             }
         }
