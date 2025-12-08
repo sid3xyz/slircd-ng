@@ -17,3 +17,4 @@ pub use ping::{PingHandler, PongHandler};
 pub use quit::QuitHandler;
 pub use user::UserHandler;
 pub use webirc::WebircHandler;
+pub use welcome::send_welcome_burst;
