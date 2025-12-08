@@ -4,6 +4,15 @@
 
 > **⚠️ AI RESEARCH EXPERIMENT: This software is a proof-of-concept developed using AI agents. It is NEVER production ready. Do not deploy, do not use for any real network.**
 
+## Why IRC?
+
+We chose IRC as the test domain because:
+
+- **40+ years of open development** provides rich training data and clear specifications (RFCs 1459, 2812, IRCv3)
+- **Goldilocks complexity**: Complex enough to be interesting (async networking, state machines, protocol parsing) but not so complex it requires domain expertise AI lacks
+- **Testable compliance**: The `irctest` suite provides objective metrics for code quality
+- **No users, no consequences**: We can experiment freely without breaking production systems
+
 `slircd-ng` is a next-generation IRC server written in Rust. It serves as a testbed for radical architectural experiments in the IRC protocol, prioritizing correctness, type safety, and distributed consistency over backward compatibility or legacy support.
 
 ## AI-Driven Development
