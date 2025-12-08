@@ -3,9 +3,9 @@
 //! Implements CAP LS, LIST, REQ, ACK, NAK, END subcommands.
 //! Reference: <https://ircv3.net/specs/extensions/capability-negotiation>
 
-use super::connection::send_welcome_burst;
 use super::{Context, HandlerResult, PreRegHandler, UniversalHandler, server_reply};
 use crate::config::AccountRegistrationConfig;
+use crate::state::{SessionState, UnregisteredState};
 use async_trait::async_trait;
 use slirc_proto::{CapSubCommand, Command, Message, MessageRef, Prefix, Response};
 use tracing::{debug, info, warn};
@@ -43,19 +43,15 @@ const MULTILINE_MAX_LINES: u32 = 100;
 pub struct CapHandler;
 
 #[async_trait]
-impl UniversalHandler for CapHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl<S: SessionState> UniversalHandler<S> for CapHandler {
+    async fn handle(&self, ctx: &mut Context<'_, S>, msg: &MessageRef<'_>) -> HandlerResult {
         // CAP can be used before and after registration
         // CAP <subcommand> [arg]
         let subcommand_str = msg.arg(0).unwrap_or("");
         let arg = msg.arg(1);
 
-        // Clone nick upfront to avoid borrowing issues
-        let nick = ctx
-            .state
-            .nick
-            .clone()
-            .unwrap_or_else(|| "*".to_string());
+        // Get nick using SessionState trait
+        let nick = ctx.state.nick_or_star().to_string();
 
         // Parse subcommand using slirc-proto's FromStr implementation
         let subcommand: CapSubCommand = match subcommand_str.parse() {
@@ -94,24 +90,24 @@ impl UniversalHandler for CapHandler {
 }
 
 /// Handle `CAP LS [version]` - list available capabilities.
-async fn handle_ls(ctx: &mut Context<'_>, nick: &str, version_arg: Option<&str>) -> HandlerResult {
+async fn handle_ls<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, version_arg: Option<&str>) -> HandlerResult {
     // Parse version (301 default, 302 if specified)
     let version: u32 = version_arg.and_then(|v| v.parse().ok()).unwrap_or(301);
 
     // Set CAP negotiation flag
-    ctx.state.cap_negotiating = true;
-    ctx.state.cap_version = version;
+    ctx.state.set_cap_negotiating(true);
+    ctx.state.set_cap_version(version);
 
     // CAP LS 302+ implicitly enables cap-notify per IRCv3 spec
     // https://ircv3.net/specs/extensions/capability-negotiation#cap-notify
     if version >= 302 {
-        ctx.state.capabilities.insert("cap-notify".to_string());
+        ctx.state.capabilities_mut().insert("cap-notify".to_string());
     }
 
     // Build capability list (include EXTERNAL if TLS with cert)
     let cap_list = build_cap_list(
         version,
-        ctx.state.is_tls && ctx.state.certfp.is_some(),
+        ctx.state.is_tls() && ctx.state.certfp().is_some(),
         &ctx.matrix.config.account_registration,
     );
 
@@ -135,10 +131,10 @@ async fn handle_ls(ctx: &mut Context<'_>, nick: &str, version_arg: Option<&str>)
 }
 
 /// Handle CAP LIST - list currently enabled capabilities.
-async fn handle_list(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
+async fn handle_list<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str) -> HandlerResult {
     let enabled: String = ctx
         .state
-        .capabilities
+        .capabilities()
         .iter()
         .cloned()
         .collect::<Vec<_>>()
@@ -161,7 +157,7 @@ async fn handle_list(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
 }
 
 /// Handle `CAP REQ :<capabilities>` - request capabilities.
-async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -> HandlerResult {
+async fn handle_req<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, caps_arg: Option<&str>) -> HandlerResult {
     let requested = caps_arg.unwrap_or("");
 
     let mut accepted = Vec::new();
@@ -180,10 +176,10 @@ async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -
 
         if SUPPORTED_CAPS.contains(&cap_base) {
             if is_removal {
-                ctx.state.capabilities.remove(cap_base);
+                ctx.state.capabilities_mut().remove(cap_base);
                 accepted.push(format!("-{}", cap_base));
             } else {
-                ctx.state.capabilities.insert(cap_base.to_string());
+                ctx.state.capabilities_mut().insert(cap_base.to_string());
                 accepted.push(cap_base.to_string());
             }
         } else {
@@ -222,11 +218,11 @@ async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -
 
         // If user is registered, sync capabilities to their User in Matrix
         // This enables mid-session CAP REQ (e.g., requesting message-tags after registration)
-        if ctx.state.registered
+        if ctx.state.is_registered()
             && let Some(user_ref) = ctx.matrix.users.get(ctx.uid)
         {
             let mut user = user_ref.write().await;
-            user.caps = ctx.state.capabilities.clone();
+            user.caps = ctx.state.capabilities().clone();
             debug!(uid = %ctx.uid, caps = ?user.caps, "Synced caps to Matrix user");
         }
     }
@@ -235,19 +231,17 @@ async fn handle_req(ctx: &mut Context<'_>, nick: &str, caps_arg: Option<&str>) -
 }
 
 /// Handle CAP END - end capability negotiation.
-async fn handle_end(ctx: &mut Context<'_>, nick: &str) -> HandlerResult {
-    ctx.state.cap_negotiating = false;
+async fn handle_end<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str) -> HandlerResult {
+    ctx.state.set_cap_negotiating(false);
 
     info!(
         nick = %nick,
-        capabilities = ?ctx.state.capabilities,
+        capabilities = ?ctx.state.capabilities(),
         "CAP negotiation complete"
     );
 
-    // If registration is pending (both NICK and USER received), complete it now
-    if ctx.state.can_register() {
-        send_welcome_burst(ctx).await?;
-    }
+    // Note: Registration check is handled by the connection loop, not here.
+    // The connection loop checks can_register() after each command dispatch.
 
     Ok(())
 }
@@ -310,16 +304,12 @@ pub struct AuthenticateHandler;
 
 #[async_trait]
 impl PreRegHandler for AuthenticateHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(&self, ctx: &mut Context<'_, UnregisteredState>, msg: &MessageRef<'_>) -> HandlerResult {
         // AUTHENTICATE <data>
         let data = msg.arg(0).unwrap_or("");
 
-        // Clone nick upfront to avoid borrowing issues
-        let nick = ctx
-            .state
-            .nick
-            .clone()
-            .unwrap_or_else(|| "*".to_string());
+        // Get nick using SessionState trait
+        let nick = ctx.state.nick_or_star().to_string();
 
         // Check if SASL is enabled
         if !ctx.state.capabilities.contains("sasl") {
@@ -557,7 +547,7 @@ fn validate_sasl_plain(data: &str) -> Result<(String, String, String), &'static 
 
 /// Send SASL success numerics.
 async fn send_sasl_success(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, UnregisteredState>,
     nick: &str,
     user: &str,
     account: &str,
@@ -598,7 +588,7 @@ async fn send_sasl_success(
 }
 
 /// Send SASL failure numerics.
-async fn send_sasl_fail(ctx: &mut Context<'_>, nick: &str, reason: &str) -> HandlerResult {
+async fn send_sasl_fail(ctx: &mut Context<'_, UnregisteredState>, nick: &str, reason: &str) -> HandlerResult {
     // ERR_SASLFAIL (904)
     let reply = server_reply(
         &ctx.matrix.server_info.name,

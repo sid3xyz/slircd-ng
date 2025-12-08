@@ -2,6 +2,7 @@
 
 use super::super::{Context, HandlerResult, PreRegHandler};
 use crate::config::WebircBlock;
+use crate::state::UnregisteredState;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, wildcard_match};
 use tracing::{debug, info, warn};
@@ -45,10 +46,9 @@ impl WebircHandler {
 
 #[async_trait]
 impl PreRegHandler for WebircHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        // WEBIRC must be sent before registration
-        if ctx.state.registered || ctx.state.nick.is_some() || ctx.state.user.is_some()
-        {
+    async fn handle(&self, ctx: &mut Context<'_, UnregisteredState>, msg: &MessageRef<'_>) -> HandlerResult {
+        // WEBIRC must be sent before NICK/USER
+        if ctx.state.nick.is_some() || ctx.state.user.is_some() {
             // Silently ignore WEBIRC after registration has started
             debug!("WEBIRC rejected: registration already started");
             return Ok(());

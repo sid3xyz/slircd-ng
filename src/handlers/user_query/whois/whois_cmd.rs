@@ -1,8 +1,7 @@
 //! WHOIS handler for detailed user information queries.
 
-use crate::handlers::{Context, HandlerError, HandlerResult, PostRegHandler, server_reply, with_label};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::handlers::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tracing::debug;
@@ -18,7 +17,7 @@ pub struct WhoisHandler;
 impl PostRegHandler for WhoisHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -37,10 +36,7 @@ impl PostRegHandler for WhoisHandler {
                 &ctx.matrix.server_info.name,
                 Response::ERR_NONICKNAMEGIVEN,
                 vec![
-                    ctx.state
-                        .nick
-                        .clone()
-                        .unwrap_or_else(|| "*".to_string()),
+                    ctx.state.nick.clone(),
                     "No nickname given".to_string(),
                 ],
             );
@@ -49,11 +45,7 @@ impl PostRegHandler for WhoisHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick; // Guaranteed present in RegisteredState
         let target_lower = irc_to_lower(target);
 
         // Look up target user
@@ -272,13 +264,9 @@ impl PostRegHandler for WhoisHandler {
 }
 
 /// Send ERR_NOSUCHNICK for a target.
-async fn send_no_such_nick(ctx: &mut Context<'_>, target: &str) -> HandlerResult {
+async fn send_no_such_nick(ctx: &mut Context<'_, crate::state::RegisteredState>, target: &str) -> HandlerResult {
     let server_name = &ctx.matrix.server_info.name;
-    let nick = ctx
-        .state
-        .nick
-        .as_ref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = &ctx.state.nick;
 
     let reply = server_reply(
         server_name,

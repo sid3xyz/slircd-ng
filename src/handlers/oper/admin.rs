@@ -1,9 +1,8 @@
-use super::super::{
+use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler, err_noprivileges, get_nick_or_star,
     server_notice, server_reply,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -16,7 +15,7 @@ pub struct DieHandler;
 impl PostRegHandler for DieHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
@@ -63,7 +62,7 @@ pub struct RehashHandler;
 impl PostRegHandler for RehashHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
@@ -142,7 +141,7 @@ pub struct RestartHandler;
 impl PostRegHandler for RestartHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;

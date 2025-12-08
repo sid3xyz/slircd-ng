@@ -1,14 +1,24 @@
 //! Welcome burst and registration completion.
 
 use super::super::{Context, HandlerError, HandlerResult, notify_monitors_online, server_reply};
-use crate::state::User;
+use crate::state::{UnregisteredState, User};
 use slirc_proto::{Command, Message, Response};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
 
 /// Send the welcome burst (001-005 + MOTD) after successful registration.
-pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
+///
+/// This is called when `can_register()` returns true. The caller is responsible
+/// for transitioning from `UnregisteredState` to `RegisteredState` after this
+/// function succeeds.
+///
+/// # State Transition
+///
+/// This function does NOT modify the state type — it creates the User in the Matrix
+/// and sends welcome numerics. The connection loop handles the actual state transition
+/// by calling `try_register()` on the state.
+pub async fn send_welcome_burst(ctx: &mut Context<'_, UnregisteredState>) -> HandlerResult {
     let nick = ctx
         .state
         .nick
@@ -138,7 +148,9 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_>) -> HandlerResult {
         return Err(HandlerError::NotRegistered);
     }
 
-    ctx.state.registered = true;
+    // NOTE: We do NOT set ctx.state.registered = true here.
+    // The caller (connection loop) handles the state transition from
+    // UnregisteredState to RegisteredState via try_register().
 
     // Create user in Matrix with cloaking from security config
     let security_config = &ctx.matrix.config.security;

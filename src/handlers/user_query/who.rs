@@ -1,8 +1,7 @@
 //! WHO handler for listing users matching a mask.
 
-use super::super::{HandlerError, HandlerResult, PostRegHandler, server_reply, with_label};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use super::super::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 
@@ -29,7 +28,7 @@ fn get_member_prefixes(member_modes: &crate::state::MemberModes, multi_prefix: b
 impl PostRegHandler for WhoHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -42,11 +41,7 @@ impl PostRegHandler for WhoHandler {
             .unwrap_or(false);
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick;
 
         // Check if the user has multi-prefix CAP enabled
         let multi_prefix = if let Some(user) = ctx.matrix.users.get(ctx.uid) {

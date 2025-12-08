@@ -44,8 +44,8 @@ pub struct TargetUser<'a> {
 /// - Validating channel name
 /// - Checking permissions (invite-only, bans, etc.) if applicable
 #[allow(clippy::too_many_arguments)]
-pub async fn force_join_channel(
-    ctx: &Context<'_>,
+pub async fn force_join_channel<S>(
+    ctx: &Context<'_, S>,
     target: &TargetUser<'_>,
     channel_name: &str,
     modes: MemberModes,
@@ -240,8 +240,8 @@ pub async fn force_join_channel(
 ///
 /// Returns `Ok(true)` if user was in channel and removed,
 /// `Ok(false)` if user was not in channel (caller may want to send error).
-pub async fn force_part_channel(
-    ctx: &Context<'_>,
+pub async fn force_part_channel<S>(
+    ctx: &Context<'_, S>,
     target: &TargetUser<'_>,
     channel_lower: &str,
     reason: Option<&str>,

@@ -2,11 +2,10 @@
 //!
 //! Per RFC 2812, NOTICE errors are silently ignored (no error replies).
 
-use super::super::{
+use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler, user_mask_from_state, user_prefix,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use super::common::{ChannelRouteResult, RouteOptions, route_to_channel, route_to_user};
 use super::validation::{ErrorStrategy, validate_message_send};
 use async_trait::async_trait;
@@ -26,7 +25,7 @@ pub struct NoticeHandler;
 impl PostRegHandler for NoticeHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)

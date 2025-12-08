@@ -1,9 +1,8 @@
-use super::super::{
+use super::super::{Context,
     HandlerResult, PostRegHandler, err_needmoreparams, matches_hostmask,
     server_reply,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::state::actor::validation::format_user_mask;
 use async_trait::async_trait;
 use slirc_proto::mode::{Mode, UserMode};
@@ -20,7 +19,7 @@ pub struct OperHandler;
 impl PostRegHandler for OperHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
@@ -135,12 +134,8 @@ impl PostRegHandler for OperHandler {
                     let user = user_ref.read().await;
                     (user.nick.clone(), user.user.clone(), user.host.clone())
                 } else {
-                    let hs_nick = ctx.state.nick.clone().unwrap_or_else(|| nick.clone());
-                    let hs_user = ctx
-                        .state
-                        .user
-                        .clone()
-                        .unwrap_or_else(|| "unknown".to_string());
+                    let hs_nick = ctx.state.nick.clone();
+                    let hs_user = ctx.state.user.clone();
                     (hs_nick, hs_user, ctx.remote_addr.ip().to_string())
                 };
             let user_mask = format_user_mask(&user_nick, &user_user, &user_host);

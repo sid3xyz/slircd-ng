@@ -2,9 +2,8 @@
 //!
 //! Provides shortcut commands for interacting with IRC services.
 
-use super::{HandlerResult, PostRegHandler};
-use super::core::traits::TypedContext;
-use crate::state::Registered;
+use super::{Context, HandlerResult, PostRegHandler};
+use crate::state::RegisteredState;
 use crate::services::route_service_message;
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
@@ -20,7 +19,7 @@ pub struct NsHandler;
 impl PostRegHandler for NsHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -49,7 +48,7 @@ pub struct CsHandler;
 impl PostRegHandler for CsHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)

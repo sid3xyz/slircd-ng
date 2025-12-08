@@ -15,7 +15,7 @@ The Phase 3 goal is to replace `TypedContext<'_, Registered>` wrapper with
 
 1. **Connection Loop Refactor**: The connection loop must transition from
    `HandshakeState` to `RegisteredState` after registration completes
-   
+
 2. **Registry Split**: The Registry needs `dispatch_post_reg()` that takes
    `Context<RegisteredState>` instead of wrapping with TypedContext
 
@@ -29,7 +29,7 @@ The Phase 3 goal is to replace `TypedContext<'_, Registered>` wrapper with
 
 The `Context<'a, S>` struct holds `state: &'a mut S`. This means:
 
-- `Context<'_, HandshakeState>` and `Context<'_, RegisteredState>` are 
+- `Context<'_, HandshakeState>` and `Context<'_, RegisteredState>` are
   **different types** with different memory layouts
 - You cannot transmute or cast between them
 - The connection loop must actually hold different state types at different
@@ -38,7 +38,7 @@ The `Context<'a, S>` struct holds `state: &'a mut S`. This means:
 ### 3. Components Already Prepared (in `src/state/session.rs`)
 
 - ✅ `UnregisteredState` - Pre-registration state struct
-- ✅ `RegisteredState` - Post-registration state struct  
+- ✅ `RegisteredState` - Post-registration state struct
 - ✅ `ConnectionState` enum with `Unregistered`/`Registered` variants
 - ✅ `UnregisteredState::try_register()` - Consumes self, returns `RegisteredState`
 
@@ -111,8 +111,8 @@ impl Registry {
 ```rust
 pub trait PostRegHandler: Send + Sync {
     async fn handle(
-        &self, 
-        ctx: &mut Context<'_, RegisteredState>, 
+        &self,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>
     ) -> HandlerResult;
 }
@@ -158,7 +158,7 @@ pub async fn is_shunned(ctx: &Context<'_, RegisteredState>) -> bool { ... }
 
 ### Helper Function Updates
 - `src/handlers/messaging/common.rs`
-- `src/handlers/channel/ops.rs`  
+- `src/handlers/channel/ops.rs`
 - `src/handlers/core/context.rs` (resolve_nick_to_uid, etc.)
 
 ## Testing Strategy

@@ -1,25 +1,18 @@
 //! Command handler context and core types (Innovation 1 Phase 3).
 //!
 //! Defines the `Context<'a, S>` struct passed to all handlers. The type parameter
-//! `S` is the session state type.
+//! `S` is the session state type:
+//! - `UnregisteredState` — for pre-registration handlers
+//! - `RegisteredState` — for post-registration handlers
 //!
-//! ## Migration Status
-//!
-//! Currently `S` defaults to `HandshakeState` for backward compatibility.
-//! As handlers are migrated, they will use:
-//! - `Context<'a, UnregisteredState>` — for pre-registration handlers
-//! - `Context<'a, RegisteredState>` — for post-registration handlers
-//!
-//! Once all handlers are migrated, `HandshakeState` will be deleted.
+//! Universal handlers are generic over `S: SessionState`, allowing them to work
+//! in both phases.
 
 use super::middleware::ResponseMiddleware;
 use super::registry::Registry;
 use crate::db::Database;
-use crate::handlers::batch::BatchState;
-use crate::handlers::cap::SaslState;
-use crate::state::Matrix;
+use crate::state::{Matrix, RegisteredState};
 use slirc_proto::Message;
-use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
@@ -27,9 +20,11 @@ use tokio::sync::mpsc;
 
 /// Handler context passed to each command handler.
 ///
-/// Generic over session state type `S`. During migration, defaults to
-/// `HandshakeState` for backward compatibility.
-pub struct Context<'a, S = HandshakeState> {
+/// Generic over session state type `S`:
+/// - `UnregisteredState` for pre-registration commands
+/// - `RegisteredState` for post-registration commands
+/// - `S: SessionState` for universal handlers that work in both phases
+pub struct Context<'a, S> {
     /// The user's unique ID.
     pub uid: &'a str,
     /// Shared server state.
@@ -91,57 +86,46 @@ impl<'a, S> Context<'a, S> {
     }
 }
 
-/// State tracked during client registration handshake.
-#[derive(Debug, Default)]
-pub struct HandshakeState {
-    /// Nick provided by NICK command.
-    pub nick: Option<String>,
-    /// Username provided by USER command.
-    pub user: Option<String>,
-    /// Realname provided by USER command.
-    pub realname: Option<String>,
-    /// Whether registration is complete.
-    pub registered: bool,
-    /// Whether CAP negotiation is in progress.
-    pub cap_negotiating: bool,
-    /// CAP protocol version (301 or 302).
-    pub cap_version: u32,
-    /// Capabilities enabled by this client.
-    pub capabilities: HashSet<String>,
-    /// SASL authentication state.
-    pub sasl_state: SaslState,
-    /// Buffer for accumulating chunked SASL data (for large payloads).
-    pub sasl_buffer: String,
-    /// Account name if SASL authenticated.
-    pub account: Option<String>,
-    /// Whether this is a TLS connection.
-    pub is_tls: bool,
-    /// TLS client certificate fingerprint (SHA-256, hex-encoded).
-    /// Set by the network layer when a client presents a certificate.
-    pub certfp: Option<String>,
-    /// Failed OPER attempts counter (brute-force protection).
-    pub failed_oper_attempts: u8,
-    /// Timestamp of last OPER attempt (for rate limiting).
-    pub last_oper_attempt: Option<std::time::Instant>,
-    /// Whether WEBIRC was used to set client info.
-    pub webirc_used: bool,
-    /// Real IP address from WEBIRC (overrides connection IP).
-    pub webirc_ip: Option<String>,
-    /// Real hostname from WEBIRC (overrides reverse DNS).
-    pub webirc_host: Option<String>,
-    /// Password received via PASS command.
-    pub pass_received: Option<String>,
-    /// Active batch state for client-to-server batches (e.g., draft/multiline).
-    pub active_batch: Option<BatchState>,
-    /// Reference tag for the active batch.
-    pub active_batch_ref: Option<String>,
-}
+// ============================================================================
+// RegisteredState convenience methods (Phase 3)
+// ============================================================================
 
-impl HandshakeState {
-    /// Check if we have both NICK and USER and can complete registration.
-    /// Also requires CAP negotiation to be finished if it was started.
-    pub fn can_register(&self) -> bool {
-        self.nick.is_some() && self.user.is_some() && !self.registered && !self.cap_negotiating
+/// Convenience methods available only for registered connections.
+///
+/// These provide the same API as the old `TypedContext<Registered>` but without
+/// the wrapper - the type system guarantees nick/user are present.
+impl<'a> Context<'a, RegisteredState> {
+    /// Get the user's nickname (guaranteed present for registered connections).
+    #[inline]
+    pub fn nick(&self) -> &str {
+        &self.state.nick
+    }
+
+    /// Get the username (guaranteed present for registered connections).
+    #[inline]
+    pub fn user(&self) -> &str {
+        &self.state.user
+    }
+
+    /// Get both nick and user.
+    #[inline]
+    #[allow(dead_code)]
+    pub fn nick_user(&self) -> (&str, &str) {
+        (&self.state.nick, &self.state.user)
+    }
+
+    /// Check if a capability is enabled.
+    #[inline]
+    #[allow(dead_code)]
+    pub fn has_cap(&self, cap: &str) -> bool {
+        self.state.capabilities.contains(cap)
+    }
+
+    /// Get account name for message tags.
+    #[inline]
+    #[allow(dead_code)]
+    pub fn account_tag(&self) -> Option<&str> {
+        self.state.account.as_deref()
     }
 }
 
@@ -187,13 +171,13 @@ pub type HandlerResult = Result<(), HandlerError>;
 /// Resolve a nickname to UID. Returns None if not found.
 ///
 /// Uses IRC case-folding for comparison.
-pub fn resolve_nick_to_uid(ctx: &Context<'_>, nick: &str) -> Option<String> {
+pub fn resolve_nick_to_uid<S>(ctx: &Context<'_, S>, nick: &str) -> Option<String> {
     let lower = slirc_proto::irc_to_lower(nick);
     ctx.matrix.nicks.get(&lower).map(|r| r.value().clone())
 }
 
 /// Get the current user's nick, falling back to "*" if not found.
-pub async fn get_nick_or_star(ctx: &Context<'_>) -> String {
+pub async fn get_nick_or_star<S>(ctx: &Context<'_, S>) -> String {
     if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
         user_ref.read().await.nick.clone()
     } else {
@@ -202,8 +186,8 @@ pub async fn get_nick_or_star(ctx: &Context<'_>) -> String {
 }
 
 /// Fetch the current nick, user, and visible host for a given UID from Matrix.
-pub async fn user_mask_from_state(
-    ctx: &Context<'_>,
+pub async fn user_mask_from_state<S>(
+    ctx: &Context<'_, S>,
     uid: &str,
 ) -> Option<(String, String, String)> {
     let user_ref = ctx.matrix.users.get(uid)?;
@@ -216,7 +200,7 @@ pub async fn user_mask_from_state(
 }
 
 /// Get the current user's nick and oper status. Returns None if user not found.
-pub async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
+pub async fn get_oper_info<S>(ctx: &Context<'_, S>) -> Option<(String, bool)> {
     let user_ref = ctx.matrix.users.get(ctx.uid)?;
     let user = user_ref.read().await;
     Some((user.nick.clone(), user.modes.oper))
@@ -225,7 +209,7 @@ pub async fn get_oper_info(ctx: &Context<'_>) -> Option<(String, bool)> {
 /// Check if a user is in a specific channel.
 ///
 /// Returns true if the user (identified by uid) is a member of the channel.
-pub async fn is_user_in_channel(ctx: &Context<'_>, uid: &str, channel_lower: &str) -> bool {
+pub async fn is_user_in_channel<S>(ctx: &Context<'_, S>, uid: &str, channel_lower: &str) -> bool {
     if let Some(user_ref) = ctx.matrix.users.get(uid) {
         let user = user_ref.read().await;
         user.channels.contains(channel_lower)

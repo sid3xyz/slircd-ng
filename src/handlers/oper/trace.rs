@@ -1,9 +1,8 @@
-use super::super::{
+use super::super::{Context,
     HandlerResult, PostRegHandler, err_noprivileges, err_nosuchnick, get_nick_or_star,
     resolve_nick_to_uid, server_reply,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -20,7 +19,7 @@ pub struct TraceHandler;
 impl PostRegHandler for TraceHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;

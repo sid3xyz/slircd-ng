@@ -7,8 +7,7 @@
 
 use crate::db::{DbError, StoredMessage};
 use crate::handlers::{Context, HandlerResult, PostRegHandler, err_needmoreparams};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{
     BatchSubCommand, ChatHistorySubCommand, Command, Message, MessageRef, MessageReference, Prefix,
@@ -27,7 +26,7 @@ impl ChatHistoryHandler {
     #[allow(clippy::too_many_arguments)] // Complex query dispatch needs all context
     async fn execute_query(
         &self,
-        ctx: &TypedContext<'_, Registered>,
+        ctx: &Context<'_, RegisteredState>,
         subcommand: ChatHistorySubCommand,
         target: &str,
         nick: &str,
@@ -299,7 +298,7 @@ impl ChatHistoryHandler {
 impl PostRegHandler for ChatHistoryHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -415,7 +414,7 @@ impl PostRegHandler for ChatHistoryHandler {
 
 /// Send history messages wrapped in a BATCH.
 async fn send_history_batch(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, crate::state::RegisteredState>,
     _nick: &str,
     target: &str,
     messages: Vec<StoredMessage>,

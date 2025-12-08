@@ -12,11 +12,10 @@
 use super::common::{BanType, disconnect_matching_ban};
 use crate::caps::CapabilityAuthority;
 use crate::db::{Database, DbError};
-use crate::handlers::core::traits::TypedContext;
-use crate::handlers::{
+use crate::handlers::{Context,
     HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, server_notice,
 };
-use crate::state::{Matrix, Registered};
+use crate::state::{Matrix, RegisteredState};
 use async_trait::async_trait;
 use ipnet::IpNet;
 use slirc_proto::MessageRef;
@@ -89,7 +88,7 @@ impl<C: BanConfig> GenericBanAddHandler<C> {
 impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
@@ -170,7 +169,7 @@ impl<C: BanConfig> GenericBanRemoveHandler<C> {
 impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;

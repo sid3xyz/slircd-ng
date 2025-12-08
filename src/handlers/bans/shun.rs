@@ -6,11 +6,10 @@
 
 use crate::caps::CapabilityAuthority;
 use crate::db::Shun;
-use crate::handlers::core::traits::TypedContext;
-use crate::handlers::{
+use crate::handlers::{Context,
     HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, server_notice,
 };
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -25,7 +24,7 @@ pub struct ShunHandler;
 impl PostRegHandler for ShunHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
@@ -106,7 +105,7 @@ pub struct UnshunHandler;
 impl PostRegHandler for UnshunHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;

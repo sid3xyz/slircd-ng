@@ -4,7 +4,7 @@ use super::super::{
     Context, HandlerError, HandlerResult, UniversalHandler, notify_monitors_offline,
     notify_monitors_online, server_reply,
 };
-use super::welcome::send_welcome_burst;
+use crate::state::SessionState;
 use async_trait::async_trait;
 use dashmap::mapref::entry::Entry;
 use slirc_proto::{Command, Message, MessageRef, NickExt, Prefix, Response, irc_to_lower};
@@ -15,8 +15,8 @@ use tracing::{debug, info};
 pub struct NickHandler;
 
 #[async_trait]
-impl UniversalHandler for NickHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl<S: SessionState> UniversalHandler<S> for NickHandler {
+    async fn handle(&self, ctx: &mut Context<'_, S>, msg: &MessageRef<'_>) -> HandlerResult {
         // NICK <nickname>
         let nick = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
 
@@ -29,10 +29,7 @@ impl UniversalHandler for NickHandler {
                 &ctx.matrix.server_info.name,
                 Response::ERR_ERRONEOUSNICKNAME,
                 vec![
-                    ctx.state
-                        .nick
-                        .clone()
-                        .unwrap_or_else(|| "*".to_string()),
+                    ctx.state.nick_or_star().to_string(),
                     nick.to_string(),
                     "Erroneous nickname".to_string(),
                 ],
@@ -44,7 +41,7 @@ impl UniversalHandler for NickHandler {
         let nick_lower = irc_to_lower(nick);
 
         // Check if nick is exactly the same (no-op) - return silently
-        if ctx.state.nick.as_ref().is_some_and(|old| old == nick) {
+        if ctx.state.nick().is_some_and(|old| old == nick) {
             return Ok(());
         }
 
@@ -57,10 +54,7 @@ impl UniversalHandler for NickHandler {
                         &ctx.matrix.server_info.name,
                         Response::ERR_NICKNAMEINUSE,
                         vec![
-                            ctx.state
-                                .nick
-                                .clone()
-                                .unwrap_or_else(|| "*".to_string()),
+                            ctx.state.nick_or_star().to_string(),
                             nick.to_string(),
                             "Nickname is already in use".to_string(),
                         ],
@@ -77,7 +71,7 @@ impl UniversalHandler for NickHandler {
 
         // Check +N (no nick change) on any channel the user is in
         // Only applies to registered (connected) users changing their nick
-        if ctx.state.registered
+        if ctx.state.is_registered()
             && let Some(user_ref) = ctx.matrix.users.get(ctx.uid)
         {
             let user = user_ref.read().await;
@@ -100,10 +94,7 @@ impl UniversalHandler for NickHandler {
                             &ctx.matrix.server_info.name,
                             Response::ERR_NONICKCHANGE,
                             vec![
-                                ctx.state
-                                    .nick
-                                    .clone()
-                                    .unwrap_or_else(|| "*".to_string()),
+                                ctx.state.nick_or_star().to_string(),
                                 info.name.clone(),
                                 "Cannot change nickname while in this channel (+N)".to_string(),
                             ],
@@ -116,8 +107,8 @@ impl UniversalHandler for NickHandler {
         }
 
         // Save old nick for NICK change notification (before removing from index)
-        let old_nick_for_change = if ctx.state.registered {
-            ctx.state.nick.clone()
+        let old_nick_for_change = if ctx.state.is_registered() {
+            ctx.state.nick().map(|s| s.to_string())
         } else {
             None
         };
@@ -125,18 +116,17 @@ impl UniversalHandler for NickHandler {
         // Check if this is a case-only change (qux -> QUX)
         let is_case_only_change = ctx
             .state
-            .nick
-            .as_ref()
+            .nick()
             .map(|old| irc_to_lower(old) == nick_lower)
             .unwrap_or(false);
 
         // Remove old nick from index if changing
-        if let Some(old_nick) = &ctx.state.nick {
+        if let Some(old_nick) = ctx.state.nick() {
             let old_nick_lower = irc_to_lower(old_nick);
 
             // Only notify MONITOR watchers if the lowercase nick is changing
             // (not for case-only changes like qux -> QUX)
-            if ctx.state.registered && !is_case_only_change {
+            if ctx.state.is_registered() && !is_case_only_change {
                 notify_monitors_offline(ctx.matrix, old_nick).await;
             }
 
@@ -152,7 +142,7 @@ impl UniversalHandler for NickHandler {
         ctx.matrix
             .nicks
             .insert(nick_lower.clone(), ctx.uid.to_string());
-        ctx.state.nick = Some(nick.to_string());
+        ctx.state.set_nick(nick.to_string());
 
         // Send NICK change message for registered users
         if let Some(old_nick) = old_nick_for_change {
@@ -215,7 +205,7 @@ impl UniversalHandler for NickHandler {
 
         // Notify MONITOR watchers that new nick is online (only for already-registered users)
         // Skip notification for case-only changes (already computed above)
-        if ctx.state.registered && !is_case_only_change {
+        if ctx.state.is_registered() && !is_case_only_change {
             // Get user info for the hostmask
             if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
                 let user = user_ref.read().await;
@@ -263,10 +253,9 @@ impl UniversalHandler for NickHandler {
             }
         }
 
-        // Check if we can complete registration
-        if ctx.state.can_register() {
-            send_welcome_burst(ctx).await?;
-        }
+        // Note: can_register() is only relevant for UnregisteredState.
+        // For RegisteredState, we're already registered so this is a no-op.
+        // The connection loop handles the registration transition.
 
         Ok(())
     }

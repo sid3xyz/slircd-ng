@@ -4,8 +4,7 @@ use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
     user_prefix, with_label,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::db::ChannelRepository;
 use crate::security::UserContext;
 use crate::state::MemberModes;
@@ -21,7 +20,7 @@ pub struct JoinHandler;
 impl PostRegHandler for JoinHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -37,11 +36,7 @@ impl PostRegHandler for JoinHandler {
         // Check join rate limit before processing any channels
         let uid_string = ctx.uid.to_string();
         if !ctx.matrix.rate_limiter.check_join_rate(&uid_string) {
-            let nick = ctx
-                .state
-                .nick
-                .clone()
-                .unwrap_or_else(|| "*".to_string());
+            let nick = ctx.state.nick.clone();
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_TOOMANYCHANNELS,
@@ -86,10 +81,7 @@ impl PostRegHandler for JoinHandler {
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHCHANNEL,
                     vec![
-                        ctx.state
-                            .nick
-                            .clone()
-                            .unwrap_or_else(|| "*".to_string()),
+                        ctx.state.nick.clone(),
                         channel_name.to_string(),
                         "Invalid channel name".to_string(),
                     ],
@@ -108,7 +100,7 @@ impl PostRegHandler for JoinHandler {
 
 /// Join a single channel.
 async fn join_channel(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     channel_name: &str,
     provided_key: Option<&str>,
 ) -> HandlerResult {
@@ -134,12 +126,8 @@ async fn join_channel(
         )
     };
 
-    let ip_addr = ctx
-        .state
-        .webirc_ip
-        .as_ref()
-        .and_then(|ip| ip.parse().ok())
-        .unwrap_or_else(|| ctx.remote_addr.ip());
+    // For registered connections, use remote_addr directly (WEBIRC already applied at registration)
+    let ip_addr = ctx.remote_addr.ip();
 
     let user_context = UserContext::for_registration(
         ip_addr,
@@ -296,7 +284,7 @@ async fn join_channel(
 
 /// Check if user should receive auto-op or auto-voice on a registered channel.
 /// Returns Some(MemberModes) if the user has access, None otherwise.
-async fn check_auto_modes(ctx: &Context<'_>, channel_lower: &str) -> Option<MemberModes> {
+async fn check_auto_modes(ctx: &Context<'_, RegisteredState>, channel_lower: &str) -> Option<MemberModes> {
     let account_name = {
         let user = ctx.matrix.users.get(ctx.uid)?;
         let user = user.read().await;
@@ -349,7 +337,7 @@ async fn check_auto_modes(ctx: &Context<'_>, channel_lower: &str) -> Option<Memb
 /// Check if user is on the AKICK list for a channel.
 /// Returns the matching AKICK entry if found.
 async fn check_akick(
-    ctx: &Context<'_>,
+    ctx: &Context<'_, RegisteredState>,
     channel_lower: &str,
     nick: &str,
     user: &str,
@@ -359,14 +347,8 @@ async fn check_akick(
     let host = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
         let user_state = user_ref.read().await;
         user_state.host.clone()
-    } else if let Some(h) = ctx
-        .state
-        .webirc_host
-        .clone()
-        .or(ctx.state.webirc_ip.clone())
-    {
-        h
     } else {
+        // Post-registration, user should always exist in matrix.users
         ctx.remote_addr.ip().to_string()
     };
 
@@ -380,7 +362,7 @@ async fn check_akick(
 /// Handle successful JOIN - send topic, names, and update user state.
 #[allow(clippy::too_many_arguments)]
 async fn handle_join_success(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     channel_sender: &tokio::sync::mpsc::Sender<crate::state::actor::ChannelEvent>,
     channel_lower: &str,
     nick: &str,
@@ -434,7 +416,7 @@ async fn handle_join_success(
 
 /// Send channel topic to user (RPL_TOPIC and RPL_TOPICWHOTIME).
 async fn send_channel_topic(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     nick: &str,
     data: &crate::state::actor::JoinSuccessData,
 ) -> HandlerResult {
@@ -467,7 +449,7 @@ async fn send_channel_topic(
 
 /// Send channel names list to user (RPL_NAMREPLY and RPL_ENDOFNAMES).
 async fn send_names_list(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     channel_sender: &tokio::sync::mpsc::Sender<crate::state::actor::ChannelEvent>,
     nick: &str,
     data: &crate::state::actor::JoinSuccessData,
@@ -527,7 +509,7 @@ async fn send_names_list(
 
 /// Send appropriate error response for JOIN failure.
 async fn send_join_error(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     nick: &str,
     channel_name: &str,
     reason: &str,
@@ -559,7 +541,7 @@ async fn send_join_error(
 }
 
 /// Leave all channels (JOIN 0).
-async fn leave_all_channels(ctx: &mut Context<'_>) -> HandlerResult {
+async fn leave_all_channels(ctx: &mut Context<'_, RegisteredState>) -> HandlerResult {
     let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
         .await
         .ok_or(HandlerError::NickOrUserMissing)?;

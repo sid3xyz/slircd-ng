@@ -1,6 +1,7 @@
 //! REGISTER command handler (draft/account-registration).
 
 use super::{Context, HandlerResult, UniversalHandler};
+use crate::state::SessionState;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
 
@@ -27,20 +28,16 @@ fn fail_response(server_name: &str, code: &str, context: &str, description: &str
 }
 
 #[async_trait]
-impl UniversalHandler for RegisterHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl<S: SessionState> UniversalHandler<S> for RegisterHandler {
+    async fn handle(&self, ctx: &mut Context<'_, S>, msg: &MessageRef<'_>) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
         let acct_cfg = &ctx.matrix.config.account_registration;
 
         // Get current nick or "*"
-        let nick = ctx
-            .state
-            .nick
-            .clone()
-            .unwrap_or_else(|| "*".to_string());
+        let nick = ctx.state.nick_or_star().to_string();
 
         // Check if user is fully registered (has received 001)
-        let is_registered = ctx.state.registered;
+        let is_registered = ctx.state.is_registered();
 
         // If before_connect is disabled, user must be fully registered
         if !acct_cfg.before_connect && !is_registered {

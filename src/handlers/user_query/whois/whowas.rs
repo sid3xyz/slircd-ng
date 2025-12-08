@@ -1,8 +1,7 @@
 //! WHOWAS handler for historical user information.
 
-use crate::handlers::{HandlerError, HandlerResult, PostRegHandler, server_reply};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::handlers::{Context, HandlerResult, PostRegHandler, server_reply};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 
@@ -18,7 +17,7 @@ pub struct WhowasHandler;
 impl PostRegHandler for WhowasHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -46,10 +45,7 @@ impl PostRegHandler for WhowasHandler {
                 &ctx.matrix.server_info.name,
                 Response::ERR_NONICKNAMEGIVEN,
                 vec![
-                    ctx.state
-                        .nick
-                        .clone()
-                        .unwrap_or_else(|| "*".to_string()),
+                    ctx.state.nick.clone(),
                     "No nickname given".to_string(),
                 ],
             );
@@ -58,11 +54,7 @@ impl PostRegHandler for WhowasHandler {
         }
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick; // Guaranteed present in RegisteredState
 
         // Look up WHOWAS history
         let target_lower = irc_to_lower(target);

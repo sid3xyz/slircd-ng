@@ -4,8 +4,7 @@
 //! Reference: <https://ircv3.net/specs/extensions/monitor>
 
 use super::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use dashmap::DashSet;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -27,17 +26,13 @@ pub struct MonitorHandler;
 impl PostRegHandler for MonitorHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .clone()
-            .unwrap_or_else(|| "*".to_string());
+        let nick = ctx.state.nick.clone();
 
         // MONITOR <+/-/C/L/S> [targets]
         let subcommand = match msg.arg(0) {
@@ -64,7 +59,7 @@ impl PostRegHandler for MonitorHandler {
 
 /// Handle MONITOR + targets - add nicknames to monitor list.
 async fn handle_add(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     msg: &MessageRef<'_>,
     nick: &str,
     server_name: &str,
@@ -154,7 +149,7 @@ async fn handle_add(
 }
 
 /// Handle MONITOR - targets - remove nicknames from monitor list.
-async fn handle_remove(ctx: &mut Context<'_>, msg: &MessageRef<'_>, _nick: &str) -> HandlerResult {
+async fn handle_remove(ctx: &mut Context<'_, RegisteredState>, msg: &MessageRef<'_>, _nick: &str) -> HandlerResult {
     let targets = match msg.arg(1) {
         Some(t) if !t.is_empty() => t,
         _ => return Ok(()),
@@ -184,7 +179,7 @@ async fn handle_remove(ctx: &mut Context<'_>, msg: &MessageRef<'_>, _nick: &str)
 
 /// Handle MONITOR C - clear all monitored nicknames.
 #[allow(clippy::result_large_err)]
-fn handle_clear(ctx: &mut Context<'_>) -> HandlerResult {
+fn handle_clear(ctx: &mut Context<'_, RegisteredState>) -> HandlerResult {
     if let Some((_, user_monitors)) = ctx.matrix.monitors.remove(ctx.uid) {
         // Remove from all reverse mappings
         for target_lower in user_monitors.iter() {
@@ -198,7 +193,7 @@ fn handle_clear(ctx: &mut Context<'_>) -> HandlerResult {
 }
 
 /// Handle MONITOR L - list all monitored nicknames.
-async fn handle_list(ctx: &mut Context<'_>, nick: &str, server_name: &str) -> HandlerResult {
+async fn handle_list(ctx: &mut Context<'_, RegisteredState>, nick: &str, server_name: &str) -> HandlerResult {
     if let Some(user_monitors) = ctx.matrix.monitors.get(ctx.uid) {
         // Collect all monitored nicks
         let targets: Vec<String> = user_monitors.iter().map(|r| r.clone()).collect();
@@ -229,7 +224,7 @@ async fn handle_list(ctx: &mut Context<'_>, nick: &str, server_name: &str) -> Ha
 }
 
 /// Handle MONITOR S - show status of all monitored nicknames.
-async fn handle_status(ctx: &mut Context<'_>, nick: &str, server_name: &str) -> HandlerResult {
+async fn handle_status(ctx: &mut Context<'_, RegisteredState>, nick: &str, server_name: &str) -> HandlerResult {
     let mut online = Vec::new();
     let mut offline = Vec::new();
 

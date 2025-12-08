@@ -17,8 +17,7 @@
 use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, user_mask_from_state, user_prefix,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use super::common::{
     ChannelRouteResult, RouteOptions, route_to_channel, route_to_user, send_cannot_send,
     send_no_such_channel, send_no_such_nick,
@@ -44,7 +43,7 @@ pub struct PrivmsgHandler;
 impl PostRegHandler for PrivmsgHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -286,7 +285,7 @@ pub(super) fn parse_statusmsg(target: &str) -> (Option<char>, Option<&str>) {
 /// - `@`: Send to ops only
 /// - `+`: Send to voiced+ (voice or op)
 pub(super) async fn route_statusmsg(
-    ctx: &Context<'_>,
+    ctx: &Context<'_, crate::state::RegisteredState>,
     channel_lower: &str,
     original_target: &str, // Keep @#chan or +#chan in the message
     msg: Message,
@@ -302,7 +301,7 @@ pub(super) async fn route_statusmsg(
     };
 
     if route_to_channel(ctx, channel_lower, msg, &opts, timestamp, msgid).await == ChannelRouteResult::NoSuchChannel {
-        let nick = ctx.state.nick.as_deref().unwrap_or("*");
+        let nick = &ctx.state.nick;
         send_no_such_channel(ctx, nick, original_target).await?;
     }
 

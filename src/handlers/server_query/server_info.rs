@@ -1,8 +1,8 @@
 //! MOTD and related handlers.
 
-use super::super::core::traits::{PostRegHandler, TypedContext};
-use super::super::HandlerResult;
-use crate::state::Registered;
+use super::super::core::traits::PostRegHandler;
+use super::super::{Context, HandlerResult};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -20,7 +20,7 @@ pub struct MotdHandler;
 impl PostRegHandler for MotdHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -69,7 +69,7 @@ pub struct VersionHandler;
 impl PostRegHandler for VersionHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -109,7 +109,7 @@ pub struct TimeHandler;
 impl PostRegHandler for TimeHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Compile-time guarantee: nick is always present for Registered connections
@@ -141,7 +141,7 @@ pub struct AdminHandler;
 impl PostRegHandler for AdminHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Compile-time guarantee: nick is always present for Registered connections
@@ -202,7 +202,7 @@ pub struct InfoHandler;
 impl PostRegHandler for InfoHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Compile-time guarantee: nick is always present for Registered connections
@@ -248,7 +248,7 @@ pub struct LusersHandler;
 impl PostRegHandler for LusersHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)

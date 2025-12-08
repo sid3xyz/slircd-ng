@@ -3,9 +3,8 @@
 //! Returns help text for IRC commands.
 //! RFC 2812 doesn't define HELP, but it's a common modern extension.
 
-use super::super::{HandlerError, HandlerResult, PostRegHandler};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use super::super::{Context, HandlerResult, PostRegHandler};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -239,16 +238,12 @@ pub struct HelpHandler;
 impl PostRegHandler for HelpHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick;
 
         let subject = msg.arg(0);
 

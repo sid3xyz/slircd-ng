@@ -40,8 +40,8 @@ impl BanType {
 /// - K-line/G-line: Match against `user@host`
 /// - D-line/Z-line: Match against IP with CIDR support
 /// - R-line: Match against realname
-pub async fn disconnect_matching_ban(
-    ctx: &Context<'_>,
+pub async fn disconnect_matching_ban<S>(
+    ctx: &Context<'_, S>,
     ban_type: BanType,
     pattern: &str,
     reason: &str,

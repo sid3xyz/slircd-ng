@@ -4,12 +4,11 @@
 //!
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
-use super::super::{
+use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded, err_notonchannel,
     server_reply, user_mask_from_state,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -27,17 +26,13 @@ pub struct InviteHandler;
 impl PostRegHandler for InviteHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick;
 
         // INVITE <nickname> <channel> or INVITE <channel> <nickname>
         // Detect which argument is which based on whether it starts with a channel prefix

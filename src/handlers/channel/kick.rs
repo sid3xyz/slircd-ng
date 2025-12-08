@@ -1,11 +1,10 @@
 //! KICK command handler.
 
-use super::super::{
+use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded,
     err_usernotinchannel, server_reply, user_mask_from_state,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -22,16 +21,12 @@ pub struct KickHandler;
 impl PostRegHandler for KickHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let kicker_nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let kicker_nick = &ctx.state.nick;
 
         // KICK <channel> <nick> [reason]
         let channel_name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;

@@ -11,15 +11,14 @@ use super::{
     err_nosuchchannel, err_nosuchnick, force_join_channel, force_part_channel,
     format_modes_for_log, resolve_nick_to_uid, server_notice,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use crate::state::MemberModes;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower};
 
 /// Get user prefix info (user, host, nick) for message construction.
-async fn get_user_prefix(ctx: &Context<'_>, uid: &str) -> Option<(String, String, String)> {
+async fn get_user_prefix<S>(ctx: &Context<'_, S>, uid: &str) -> Option<(String, String, String)> {
     let user_ref = ctx.matrix.users.get(uid)?;
     let user = user_ref.read().await;
     Some((user.user.clone(), user.host.clone(), user.nick.clone()))
@@ -36,7 +35,7 @@ pub struct SajoinHandler;
 impl PostRegHandler for SajoinHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
@@ -144,7 +143,7 @@ pub struct SapartHandler;
 impl PostRegHandler for SapartHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
@@ -243,7 +242,7 @@ pub struct SanickHandler;
 impl PostRegHandler for SanickHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;
@@ -379,7 +378,7 @@ pub struct SamodeHandler;
 impl PostRegHandler for SamodeHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;

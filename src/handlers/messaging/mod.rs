@@ -40,7 +40,7 @@ pub struct TagmsgHandler;
 impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
     async fn handle(
         &self,
-        ctx: &mut crate::handlers::core::traits::TypedContext<'_, crate::state::Registered>,
+        ctx: &mut crate::handlers::core::context::Context<'_, crate::state::RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -63,16 +63,8 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        let _nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
-        let _user_name = ctx
-            .state
-            .user
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let _nick = &ctx.state.nick;
+        let _user_name = &ctx.state.user;
 
         // Collect only client-only tags (those starting with '+') AND the label tag
         // Server should not relay arbitrary tags from clients
