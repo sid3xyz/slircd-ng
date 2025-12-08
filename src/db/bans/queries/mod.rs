@@ -71,11 +71,6 @@ impl<'a> BanRepository<'a> {
         dline::remove_dline(self.pool, mask).await
     }
 
-    /// Check if an IP matches any active D-line.
-    pub async fn matches_dline(&self, ip: &str) -> Result<Option<super::models::Dline>, DbError> {
-        dline::matches_dline(self.pool, ip).await
-    }
-
     /// Get all active D-lines (not expired).
     pub async fn get_active_dlines(&self) -> Result<Vec<super::models::Dline>, DbError> {
         dline::get_active_dlines(self.pool).await
@@ -128,11 +123,6 @@ impl<'a> BanRepository<'a> {
     /// Remove a Z-line.
     pub async fn remove_zline(&self, mask: &str) -> Result<bool, DbError> {
         zline::remove_zline(self.pool, mask).await
-    }
-
-    /// Check if an IP matches any active Z-line.
-    pub async fn matches_zline(&self, ip: &str) -> Result<Option<super::models::Zline>, DbError> {
-        zline::matches_zline(self.pool, ip).await
     }
 
     /// Get all active Z-lines (not expired).
@@ -192,60 +182,12 @@ impl<'a> BanRepository<'a> {
         shun::matches_shun(self.pool, user_host).await
     }
 
-    /// Check if an IP matches any active shun.
-    #[allow(dead_code)] // Will be used for connection-time shun checks
-    pub async fn matches_shun_ip(&self, ip: &str) -> Result<Option<super::models::Shun>, DbError> {
-        shun::matches_shun_ip(self.pool, ip).await
-    }
-
     /// Get all active shuns (not expired).
     pub async fn get_active_shuns(&self) -> Result<Vec<super::models::Shun>, DbError> {
         shun::get_active_shuns(self.pool).await
     }
 
     // ========== Combined check operations ==========
-
-    /// Check if a connection should be banned (extended to include G-lines and Z-lines).
-    ///
-    /// Checks in order: Z-line (IP), D-line (IP), G-line (user@host), K-line (user@host).
-    /// Returns the ban reason if banned, None if allowed.
-    ///
-    /// NOTE: Consider using `check_user_host_bans()` if IP bans were already checked
-    /// by IpDenyList at connection time.
-    #[allow(dead_code)] // Kept for completeness; prefer check_user_host_bans()
-    pub async fn check_all_bans(
-        &self,
-        ip: &str,
-        user: &str,
-        host: &str,
-    ) -> Result<Option<String>, DbError> {
-        // Check Z-lines first (IP ban, skips DNS)
-        if let Some(zline) = self.matches_zline(ip).await? {
-            let reason = zline.reason.unwrap_or_else(|| "Banned".to_string());
-            return Ok(Some(format!("Z-lined: {}", reason)));
-        }
-
-        // Check D-lines (IP ban)
-        if let Some(dline) = self.matches_dline(ip).await? {
-            let reason = dline.reason.unwrap_or_else(|| "Banned".to_string());
-            return Ok(Some(format!("D-lined: {}", reason)));
-        }
-
-        // Check G-lines (global user@host)
-        let user_host = format!("{}@{}", user, host);
-        if let Some(gline) = self.matches_gline(&user_host).await? {
-            let reason = gline.reason.unwrap_or_else(|| "Banned".to_string());
-            return Ok(Some(format!("G-lined: {}", reason)));
-        }
-
-        // Check K-lines (local user@host)
-        if let Some(kline) = self.matches_kline(&user_host).await? {
-            let reason = kline.reason.unwrap_or_else(|| "Banned".to_string());
-            return Ok(Some(format!("K-lined: {}", reason)));
-        }
-
-        Ok(None)
-    }
 
     /// Check for user@host bans (G-lines and K-lines only).
     ///

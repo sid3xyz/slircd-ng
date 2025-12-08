@@ -30,9 +30,3 @@ pub async fn get_active_shuns(pool: &SqlitePool) -> Result<Vec<Shun>, DbError> {
 pub async fn matches_shun(pool: &SqlitePool, user_host: &str) -> Result<Option<Shun>, DbError> {
     matches_ban::<Shun>(pool, user_host).await
 }
-
-/// Check if an IP matches any active shun.
-#[allow(dead_code)] // Will be used for connection-time shun checks
-pub async fn matches_shun_ip(pool: &SqlitePool, ip: &str) -> Result<Option<Shun>, DbError> {
-    matches_ban::<Shun>(pool, ip).await
-}
