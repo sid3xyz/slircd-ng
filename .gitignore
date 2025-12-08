@@ -1,5 +1,4 @@
 /target/
-Cargo.lock
 
 # Database files
 *.db
@@ -9,3 +8,25 @@ Cargo.lock
 
 # Test artifacts
 slircd.log
+
+# Secrets and Keys
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+
+# Environment
+.env
+.env.*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
