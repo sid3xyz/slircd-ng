@@ -9,7 +9,6 @@
 //! not just markers. See [`session`] for details.
 
 mod channel;
-mod machine;
 mod matrix;
 mod mode_builder;
 pub mod session;
@@ -24,32 +23,5 @@ pub use user::{User, UserModes};
 // Session state types (Innovation 1 Phase 3: True Typestate)
 pub use session::{RegisteredState, SessionState, UnregisteredState};
 
-// Legacy protocol state machine types (to be removed after Phase 3 migration)
-#[allow(unused_imports)]
-pub use machine::{
-    AnyConnectionState as LegacyAnyConnectionState,
-    CanNegotiate,
-    ConnectionState as LegacyConnectionState,
-    IsRegistered,
-    Negotiating,
-    POST_REG_COMMANDS,
-    PRE_REG_COMMANDS,
-    PreRegistration,
-    ProtocolState,
-    Registered,
-    Unregistered,
-    // Classification helpers
-    requires_registration,
-    valid_pre_registration,
-};
-
-// Exports used by matrix.rs internally
-
-#[allow(unused_imports)]
-pub(crate) use user::WhowasEntry;
-// Uid is used in security/rate_limit.rs - allow for now
-#[allow(unused_imports)]
-pub use matrix::Uid;
-#[allow(unused_imports)] // Will be used when we implement multi-mode commands
-pub use mode_builder::{ChannelModeBuilder, ModeChangeResult, parse_mlock};
-pub use uid::UidGenerator;
+// Internal re-exports
+pub(crate) use uid::UidGenerator;

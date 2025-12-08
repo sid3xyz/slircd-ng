@@ -25,7 +25,6 @@
 //! - `SessionState` trait: Common interface for universal handlers
 
 pub mod context;
-pub mod examples;
 pub mod middleware;
 pub mod registry;
 pub mod traits;
