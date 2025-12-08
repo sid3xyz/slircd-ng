@@ -91,7 +91,7 @@ pub async fn force_join_channel<S>(
     };
 
     // Prepare messages
-    let prefix = Some(Prefix::Nickname(
+    let prefix = Some(Prefix::new(
         target.nick.to_string(),
         target.user.to_string(),
         target.host.to_string(),
@@ -252,7 +252,7 @@ pub async fn force_part_channel<S>(
         None => return Ok(false),
     };
 
-    let prefix = slirc_proto::Prefix::Nickname(
+    let prefix = slirc_proto::Prefix::new(
         target.nick.to_string(),
         target.user.to_string(),
         target.host.to_string(),

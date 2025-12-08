@@ -1,8 +1,0 @@
-docs: Identify project as AI-driven proof of concept
-
-Updated the root README and `slircd-ng` README to explicitly state that
-this ecosystem is an "AI Research Experiment" and a "proof of concept
-execution of a test using AI to develop software."
-
-This clarifies the project's purpose as a testbed for AI coding
-capabilities rather than a production-intent software product.

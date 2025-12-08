@@ -190,7 +190,7 @@ impl PostRegHandler for OperHandler {
 
         let mode_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(user_nick, user_user, user_host)),
+            prefix: Some(Prefix::new(user_nick, user_user, user_host)),
             command: Command::UserMODE(nick, vec![Mode::Plus(UserMode::Oper, None)]),
         };
         ctx.sender.send(mode_msg).await?;

@@ -346,7 +346,7 @@ pub async fn apply_effect(
             let mut target_uids = std::collections::HashMap::new();
             target_uids.insert(target_nick.clone(), target_uid.clone());
 
-            let sender_prefix = Prefix::Nickname(
+            let sender_prefix = Prefix::new(
                 "ChanServ".to_string(),
                 "ChanServ".to_string(),
                 "services.".to_string(),
@@ -388,7 +388,7 @@ pub async fn apply_effect(
                 }
             }
 
-            let sender_prefix = Prefix::Nickname(
+            let sender_prefix = Prefix::new(
                 "ChanServ".to_string(),
                 "ChanServ".to_string(),
                 "services.".to_string(),
@@ -429,7 +429,7 @@ pub async fn apply_effect(
             };
 
             let sender_prefix =
-                Prefix::Nickname(kicker.clone(), kicker.clone(), "services.".to_string());
+                Prefix::new(kicker.clone(), kicker.clone(), "services.".to_string());
 
             let (tx, rx) = tokio::sync::oneshot::channel();
             let event = crate::state::actor::ChannelEvent::Kick {
@@ -490,7 +490,7 @@ pub async fn apply_effect(
             // Build NICK message
             let nick_msg = Message {
                 tags: None,
-                prefix: Some(Prefix::Nickname(old_nick.clone(), username, hostname)),
+                prefix: Some(Prefix::new(old_nick.clone(), username, hostname)),
                 command: Command::NICK(new_nick.clone()),
             };
 

@@ -3,7 +3,7 @@
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded, err_notonchannel,
+    HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded, err_nosuchchannel, err_notonchannel,
     is_user_in_channel, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
@@ -36,16 +36,9 @@ impl PostRegHandler for TopicHandler {
         let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
-                let reply = server_reply(
-                    &ctx.matrix.server_info.name,
-                    Response::ERR_NOSUCHCHANNEL,
-                    vec![
-                        nick.to_string(),
-                        channel_name.to_string(),
-                        "No such channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender
+                    .send(err_nosuchchannel(&ctx.matrix.server_info.name, nick, channel_name))
+                    .await?;
                 return Ok(());
             }
         };
@@ -114,7 +107,7 @@ impl PostRegHandler for TopicHandler {
                 let (nick, user, host) = user_mask_from_state(ctx, ctx.uid)
                     .await
                     .ok_or(HandlerError::NickOrUserMissing)?;
-                let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
+                let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
 
                 // Request TOPIC capability from authority (Innovation 4)
                 let authority = CapabilityAuthority::new(ctx.matrix.clone());

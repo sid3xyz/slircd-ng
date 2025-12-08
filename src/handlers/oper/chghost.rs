@@ -94,7 +94,7 @@ impl PostRegHandler for ChghostHandler {
 
         let chghost_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(
+            prefix: Some(Prefix::new(
                 old_nick.clone(),
                 old_user.clone(),
                 old_host.clone(),

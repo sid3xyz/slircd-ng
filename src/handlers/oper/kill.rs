@@ -81,7 +81,7 @@ impl PostRegHandler for KillHandler {
 
         let kill_msg = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(
+            prefix: Some(Prefix::new(
                 killer_nick.clone(),
                 killer_user,
                 killer_host,

@@ -86,6 +86,32 @@ impl StoredMessage {
             "1970-01-01T00:00:00.000Z".to_string()
         }
     }
+
+    /// Parse a database row into a StoredMessage.
+    fn from_row(row: HistoryRow) -> Option<Self> {
+        let (msgid, target, sender, data, nanotime, account) = row;
+        let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
+        Some(StoredMessage {
+            msgid,
+            target,
+            sender,
+            envelope,
+            nanotime,
+            account,
+        })
+    }
+}
+
+/// Convert database rows to StoredMessages, optionally reversing for chronological order.
+fn rows_to_messages(rows: Vec<HistoryRow>, reverse: bool) -> Vec<StoredMessage> {
+    let mut messages: Vec<StoredMessage> = rows
+        .into_iter()
+        .filter_map(StoredMessage::from_row)
+        .collect();
+    if reverse {
+        messages.reverse();
+    }
+    messages
 }
 
 /// History repository for message storage and retrieval.
@@ -123,8 +149,6 @@ impl<'a> HistoryRepository<'a> {
 
         let message_data = serde_json::to_vec(&envelope)
             .map_err(|e| DbError::Sqlx(sqlx::Error::Protocol(e.to_string())))?;
-
-        println!("DEBUG: store_message: msgid={} target={} sender={}", params.msgid, normalized_target, params.sender_nick);
 
         sqlx::query(
             r#"
@@ -171,24 +195,7 @@ impl<'a> HistoryRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        let mut messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        // Reverse to chronological order (oldest first)
-        messages.reverse();
-        Ok(messages)
+        Ok(rows_to_messages(rows, true))
     }
 
     /// Query most recent N messages after a timestamp (CHATHISTORY LATEST with lower bound).
@@ -215,24 +222,7 @@ impl<'a> HistoryRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        let mut messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        // Reverse to chronological order (oldest first)
-        messages.reverse();
-        Ok(messages)
+        Ok(rows_to_messages(rows, true))
     }
 
     /// Query messages before a timestamp (CHATHISTORY BEFORE).
@@ -259,23 +249,7 @@ impl<'a> HistoryRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        let mut messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        messages.reverse();
-        Ok(messages)
+        Ok(rows_to_messages(rows, true))
     }
 
     /// Query messages after a timestamp (CHATHISTORY AFTER).
@@ -302,22 +276,7 @@ impl<'a> HistoryRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        let messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        Ok(messages)
+        Ok(rows_to_messages(rows, false))
     }
 
     /// Query messages between two timestamps (CHATHISTORY BETWEEN).
@@ -346,22 +305,7 @@ impl<'a> HistoryRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        let messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        Ok(messages)
+        Ok(rows_to_messages(rows, false))
     }
 
     /// Query messages between two timestamps (CHATHISTORY BETWEEN) in reverse order.
@@ -390,23 +334,7 @@ impl<'a> HistoryRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        let mut messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        messages.reverse();
-        Ok(messages)
+        Ok(rows_to_messages(rows, true))
     }
 
     /// Query messages around a timestamp (CHATHISTORY AROUND).
@@ -475,23 +403,7 @@ impl<'a> HistoryRepository<'a> {
             .await?
         };
 
-        let mut messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        messages.reverse();
-        Ok(messages)
+        Ok(rows_to_messages(rows, true))
     }
 
     /// Query DM history between two users (LATEST with lower bound).
@@ -548,23 +460,7 @@ impl<'a> HistoryRepository<'a> {
             .await?
         };
 
-        let mut messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        messages.reverse();
-        Ok(messages)
+        Ok(rows_to_messages(rows, true))
     }
 
     /// Query DM history between two users (BEFORE).
@@ -579,7 +475,7 @@ impl<'a> HistoryRepository<'a> {
         let u1_lower = irc_to_lower(user1);
         let u2_lower = irc_to_lower(user2);
 
-        println!("DEBUG: query_dm_before u1={} u2={} before={} limit={}", u1_lower, u2_lower, before_nanos, limit);
+        tracing::debug!("query_dm_before u1={} u2={} before={} limit={}", u1_lower, u2_lower, before_nanos, limit);
 
         let rows: Vec<HistoryRow> = if let Some(acct) = user1_account {
             sqlx::query_as(
@@ -623,23 +519,7 @@ impl<'a> HistoryRepository<'a> {
             .await?
         };
 
-        let mut messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        messages.reverse();
-        Ok(messages)
+        Ok(rows_to_messages(rows, true))
     }
 
     /// Query DM history between two users (AFTER).
@@ -696,22 +576,7 @@ impl<'a> HistoryRepository<'a> {
             .await?
         };
 
-        let messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        Ok(messages)
+        Ok(rows_to_messages(rows, false))
     }
 
     /// Query DM history between two users (BETWEEN).
@@ -771,22 +636,7 @@ impl<'a> HistoryRepository<'a> {
             .await?
         };
 
-        let messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        Ok(messages)
+        Ok(rows_to_messages(rows, false))
     }
 
     /// Query DM history between two users (BETWEEN) in reverse order.
@@ -846,23 +696,7 @@ impl<'a> HistoryRepository<'a> {
             .await?
         };
 
-        let mut messages: Vec<StoredMessage> = rows
-            .into_iter()
-            .filter_map(|(msgid, target, sender, data, nanotime, account)| {
-                let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-                Some(StoredMessage {
-                    msgid,
-                    target,
-                    sender,
-                    envelope,
-                    nanotime,
-                    account,
-                })
-            })
-            .collect();
-
-        messages.reverse();
-        Ok(messages)
+        Ok(rows_to_messages(rows, true))
     }
 
     /// Lookup msgid and return its nanotime.
@@ -897,17 +731,6 @@ impl<'a> HistoryRepository<'a> {
         .bind(msgid)
         .fetch_optional(self.pool)
         .await?;
-
-        if result.is_none() {
-            println!("DEBUG: lookup_dm_msgid_nanotime: msgid {} not found", msgid);
-            // Debug: list all msgids
-            let all_ids: Vec<(String,)> = sqlx::query_as("SELECT msgid FROM message_history LIMIT 5")
-                .fetch_all(self.pool)
-                .await?;
-            println!("DEBUG: First 5 msgids in DB: {:?}", all_ids);
-        } else {
-            println!("DEBUG: lookup_dm_msgid_nanotime: msgid {} found, time={}", msgid, result.unwrap().0);
-        }
 
         Ok(result.map(|(n,)| n))
     }

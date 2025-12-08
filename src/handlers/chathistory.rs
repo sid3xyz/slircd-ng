@@ -10,8 +10,8 @@ use crate::handlers::{Context, HandlerResult, PostRegHandler, err_needmoreparams
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{
-    BatchSubCommand, ChatHistorySubCommand, Command, Message, MessageRef, MessageReference, Prefix,
-    Tag,
+    BatchSubCommand, ChatHistorySubCommand, Command, Message, MessageRef, MessageReference,
+    Prefix, Tag, parse_server_time,
 };
 use tracing::{debug, warn};
 use uuid::Uuid;
@@ -67,7 +67,7 @@ impl ChatHistoryHandler {
                             }
                         }
                         Ok(MessageReference::Timestamp(ts)) => {
-                            let nanos = parse_timestamp_to_nanos(&ts);
+                            let nanos = parse_server_time(&ts);
                             if is_dm {
                                 ctx.db.history().query_dm_latest_after(nick, account, target, nanos, limit).await
                             } else {
@@ -94,7 +94,7 @@ impl ChatHistoryHandler {
                         };
                         n.unwrap_or(i64::MAX)
                     }
-                    Ok(MessageReference::Timestamp(ts)) => parse_timestamp_to_nanos(&ts),
+                    Ok(MessageReference::Timestamp(ts)) => parse_server_time(&ts),
                     _ => i64::MAX,
                 };
                 if is_dm {
@@ -115,7 +115,7 @@ impl ChatHistoryHandler {
                         };
                         n.unwrap_or(0)
                     }
-                    Ok(MessageReference::Timestamp(ts)) => parse_timestamp_to_nanos(&ts),
+                    Ok(MessageReference::Timestamp(ts)) => parse_server_time(&ts),
                     _ => 0,
                 };
                 if is_dm {
@@ -146,7 +146,7 @@ impl ChatHistoryHandler {
                         (n.unwrap_or(0), msg)
                     }
                     Ok(MessageReference::Timestamp(ts)) => {
-                        let n = parse_timestamp_to_nanos(&ts);
+                        let n = parse_server_time(&ts);
                         let center = if is_dm {
                             ctx.db.history().query_dm_between(nick, account, target, n - 1, n + 1, 1).await?
                         } else {
@@ -203,7 +203,7 @@ impl ChatHistoryHandler {
                         };
                         n.unwrap_or(0)
                     }
-                    Ok(MessageReference::Timestamp(ts)) => parse_timestamp_to_nanos(&ts),
+                    Ok(MessageReference::Timestamp(ts)) => parse_server_time(&ts),
                     _ => 0,
                 };
                 let end_nanos = match ref2 {
@@ -215,7 +215,7 @@ impl ChatHistoryHandler {
                         };
                         n.unwrap_or(i64::MAX)
                     }
-                    Ok(MessageReference::Timestamp(ts)) => parse_timestamp_to_nanos(&ts),
+                    Ok(MessageReference::Timestamp(ts)) => parse_server_time(&ts),
                     _ => i64::MAX,
                 };
 
@@ -237,14 +237,14 @@ impl ChatHistoryHandler {
 
                 let start = if start_str == "*" { 0 } else {
                     MessageReference::parse(start_str).ok().and_then(|r| match r {
-                        MessageReference::Timestamp(ts) => Some(parse_timestamp_to_nanos(&ts)),
+                        MessageReference::Timestamp(ts) => Some(parse_server_time(&ts)),
                         _ => None
                     }).unwrap_or(0)
                 };
 
                 let end = if end_str == "*" { i64::MAX } else {
                     MessageReference::parse(end_str).ok().and_then(|r| match r {
-                        MessageReference::Timestamp(ts) => Some(parse_timestamp_to_nanos(&ts)),
+                        MessageReference::Timestamp(ts) => Some(parse_server_time(&ts)),
                         _ => None
                     }).unwrap_or(i64::MAX)
                 };
@@ -483,15 +483,4 @@ async fn send_history_batch(
     ctx.sender.send(batch_end).await?;
 
     Ok(())
-}
-
-/// Parse ISO8601 timestamp to nanoseconds since epoch.
-fn parse_timestamp_to_nanos(ts: &str) -> i64 {
-    use chrono::DateTime;
-
-    if let Ok(dt) = DateTime::parse_from_rfc3339(ts) {
-        dt.timestamp_nanos_opt().unwrap_or(0)
-    } else {
-        0
-    }
 }

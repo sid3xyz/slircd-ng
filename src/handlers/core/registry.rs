@@ -53,7 +53,7 @@ use crate::handlers::{
     user_status::{AwayHandler, SetnameHandler, SilenceHandler},
 };
 use crate::telemetry::CommandTimer;
-use slirc_proto::MessageRef;
+use slirc_proto::{ChannelExt, MessageRef};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -262,9 +262,7 @@ impl Registry {
 
         // Extract IRC context for tracing
         let source_nick = ctx.state.nick.as_deref();
-        let channel = msg
-            .arg(0)
-            .filter(|a| a.starts_with('#') || a.starts_with('&'));
+        let channel = msg.arg(0).filter(|a| a.is_channel_name());
         let msgid = crate::telemetry::extract_msgid(msg);
 
         // Create instrumented span
@@ -335,9 +333,7 @@ impl Registry {
 
         // Extract IRC context for tracing
         let source_nick = Some(ctx.state.nick.as_str());
-        let channel = msg
-            .arg(0)
-            .filter(|a| a.starts_with('#') || a.starts_with('&'));
+        let channel = msg.arg(0).filter(|a| a.is_channel_name());
         let msgid = crate::telemetry::extract_msgid(msg);
 
         // Create instrumented span

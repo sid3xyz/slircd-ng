@@ -151,7 +151,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 let user = user_ref.read().await;
                 let msg = Message {
                     tags: None,
-                    prefix: Some(Prefix::Nickname(
+                    prefix: Some(Prefix::new(
                         old_nick.clone(),
                         user.user.clone(),
                         user.visible_host.clone(),
@@ -164,7 +164,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 // Fallback without full user info
                 let msg = Message {
                     tags: None,
-                    prefix: Some(Prefix::Nickname(
+                    prefix: Some(Prefix::new(
                         old_nick.clone(),
                         "user".to_string(),
                         "host".to_string(),
@@ -238,7 +238,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 // Notify user
                 let notice = Message {
                     tags: None,
-                    prefix: Some(Prefix::Nickname(
+                    prefix: Some(Prefix::new(
                         "NickServ".to_string(),
                         "NickServ".to_string(),
                         "services.".to_string(),

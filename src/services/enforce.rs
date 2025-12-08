@@ -88,7 +88,7 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
         // Send notice to user explaining what happened
         let notice = Message {
             tags: None,
-            prefix: Some(Prefix::Nickname(
+            prefix: Some(Prefix::new(
                 "NickServ".to_string(),
                 "NickServ".to_string(),
                 "services.".to_string(),

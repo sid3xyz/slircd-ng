@@ -15,7 +15,7 @@
 //! (`send_list_mode`, `get_list_mode_query`) to a separate `channel_lists.rs`.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, with_label,
+    Context, HandlerError, HandlerResult, err_chanoprivsneeded, err_nosuchnick, err_nosuchchannel, server_reply, with_label,
 };
 use crate::state::RegisteredState;
 use slirc_proto::{ChannelMode, Mode, Response, irc_to_lower};
@@ -34,16 +34,9 @@ pub async fn handle_channel_mode(
     let channel = match ctx.matrix.channels.get(&channel_lower) {
         Some(c) => c.clone(),
         None => {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOSUCHCHANNEL,
-                vec![
-                    nick.to_string(),
-                    channel_name.to_string(),
-                    "No such channel".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender
+                .send(err_nosuchchannel(&ctx.matrix.server_info.name, nick, channel_name))
+                .await?;
             return Ok(());
         }
     };
@@ -170,16 +163,9 @@ pub async fn handle_channel_mode(
                             }
                             None => {
                                 // ERR_NOSUCHNICK (401)
-                                let reply = server_reply(
-                                    &ctx.matrix.server_info.name,
-                                    Response::ERR_NOSUCHNICK,
-                                    vec![
-                                        nick.to_string(),
-                                        target_nick.to_string(),
-                                        "No such nick/channel".to_string(),
-                                    ],
-                                );
-                                ctx.sender.send(reply).await?;
+                                ctx.sender
+                                    .send(err_nosuchnick(&ctx.matrix.server_info.name, nick, target_nick))
+                                    .await?;
                             }
                         }
                     } else {
@@ -246,7 +232,7 @@ pub async fn handle_channel_mode(
                     "unknown".to_string(),
                 )
             };
-            let prefix = slirc_proto::Prefix::Nickname(nick, user, host);
+            let prefix = slirc_proto::Prefix::new(nick, user, host);
 
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
             if (channel

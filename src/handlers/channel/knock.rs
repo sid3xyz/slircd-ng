@@ -2,7 +2,7 @@
 //!
 //! RFC-style extension - Request invite to an invite-only channel
 
-use super::super::{Context, HandlerResult, PostRegHandler, server_reply};
+use super::super::{Context, HandlerResult, PostRegHandler, err_nosuchchannel, server_reply};
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -71,22 +71,15 @@ impl PostRegHandler for KnockHandler {
         let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NOSUCHCHANNEL,
-                    vec![
-                        nick,
-                        channel_name.to_string(),
-                        "No such channel".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+                ctx.sender
+                    .send(err_nosuchchannel(server_name, &nick, channel_name))
+                    .await?;
                 return Ok(());
             }
         };
 
         let (reply_tx, reply_rx) = oneshot::channel();
-        let sender_prefix = slirc_proto::Prefix::Nickname(nick.clone(), user, host);
+        let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
 
         let event = ChannelEvent::Knock {
             sender_uid: ctx.uid.to_string(),

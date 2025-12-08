@@ -203,10 +203,40 @@ impl PostRegHandler for InfoHandler {
     async fn handle(
         &self,
         ctx: &mut Context<'_, RegisteredState>,
-        _msg: &MessageRef<'_>,
+        msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Compile-time guarantee: nick is always present for Registered connections
         let nick = ctx.nick(); // Returns &str, not Option!
+        let server_name = &ctx.matrix.server_info.name;
+
+        // If a target is specified, check if it matches this server
+        if let Some(target) = msg.arg(0) {
+            // Accept if target matches our server name exactly, or as nick
+            let target_lower = target.to_lowercase();
+            let server_lower = server_name.to_lowercase();
+            let nick_lower = nick.to_lowercase();
+
+            // Check if target matches server name or nick
+            // Also accept wildcards that would match our server (simple * check)
+            let is_match = target_lower == server_lower
+                || target_lower == nick_lower
+                || target == "*"
+                || (target.ends_with('*') && server_lower.starts_with(&target_lower[..target_lower.len()-1]));
+
+            if !is_match {
+                // ERR_NOSUCHSERVER (402)
+                ctx.send_reply(
+                    Response::ERR_NOSUCHSERVER,
+                    vec![
+                        nick.to_string(),
+                        target.to_string(),
+                        "No such server".to_string(),
+                    ],
+                )
+                .await?;
+                return Ok(());
+            }
+        }
 
         let info_lines = [
             format!("slircd-ng v{} - High-performance IRC daemon", VERSION),

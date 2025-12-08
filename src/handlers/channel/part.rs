@@ -1,7 +1,7 @@
 //! PART command handler.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
+    Context, HandlerError, HandlerResult, PostRegHandler, err_nosuchchannel, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
@@ -57,21 +57,14 @@ pub(super) async fn leave_channel_internal<S>(
     let channel_sender = match ctx.matrix.channels.get(channel_lower) {
         Some(c) => c.clone(),
         None => {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOSUCHCHANNEL,
-                vec![
-                    nick.to_string(),
-                    channel_lower.to_string(),
-                    "No such channel".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
+            ctx.sender
+                .send(err_nosuchchannel(&ctx.matrix.server_info.name, nick, channel_lower))
+                .await?;
             return Ok(());
         }
     };
 
-    let prefix = Prefix::Nickname(nick.to_string(), user_name.to_string(), host.to_string());
+    let prefix = Prefix::new(nick.to_string(), user_name.to_string(), host.to_string());
 
     let (reply_tx, reply_rx) = oneshot::channel();
     let event = ChannelEvent::Part {

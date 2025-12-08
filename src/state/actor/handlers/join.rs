@@ -47,23 +47,28 @@ impl ChannelActor {
         // Checks
         let user_mask = create_user_mask(&user_context);
 
-        // 1. Bans (+b)
-        if is_banned(&user_mask, &user_context, &self.bans, &self.excepts) {
+        // Check if user has an active invite (exempts from bans and invite-only)
+        let is_invited = self.is_invited(&uid);
+
+        // Check for invite exceptions (+I mode)
+        let is_invex = self.invex.iter().any(|i| {
+            crate::security::matches_ban_or_except(&i.mask, &user_mask, &user_context)
+        });
+
+        // 1. Bans (+b) - invites and invex exempt from ban
+        if !is_invited && !is_invex
+            && is_banned(&user_mask, &user_context, &self.bans, &self.excepts)
+        {
             let _ = reply_tx.send(Err("ERR_BANNEDFROMCHAN".to_string()));
             return;
         }
 
         // 2. Invite Only (+i)
-        if self.modes.contains(&ChannelMode::InviteOnly) {
-            let is_invited = self.is_invited(&uid);
-            let is_invex = self.invex.iter().any(|i| {
-                crate::security::matches_ban_or_except(&i.mask, &user_mask, &user_context)
-            });
-
-            if !is_invited && !is_invex {
-                let _ = reply_tx.send(Err("ERR_INVITEONLYCHAN".to_string()));
-                return;
-            }
+        if self.modes.contains(&ChannelMode::InviteOnly)
+            && !is_invited && !is_invex
+        {
+            let _ = reply_tx.send(Err("ERR_INVITEONLYCHAN".to_string()));
+            return;
         }
 
         // 3. Limit (+l)
