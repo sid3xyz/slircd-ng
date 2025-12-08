@@ -4,7 +4,7 @@ use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, err_nosuchchannel, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
-use crate::state::actor::ChannelEvent;
+use crate::state::actor::{ChannelEvent, ChannelError};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
@@ -97,11 +97,20 @@ pub(super) async fn leave_channel_internal<S>(
             info!(nick = %nick, channel = %channel_lower, "User left channel");
         }
         Ok(Err(e)) => {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_NOTONCHANNEL,
-                vec![nick.to_string(), channel_lower.to_string(), e],
-            );
+            let reply = match e {
+                ChannelError::NotOnChannel => {
+                    Response::err_notonchannel(&ctx.matrix.server_info.name, channel_lower)
+                }
+                _ => server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::ERR_NOTONCHANNEL,
+                    vec![
+                        nick.to_string(),
+                        channel_lower.to_string(),
+                        e.to_string(),
+                    ],
+                ),
+            };
             ctx.sender.send(reply).await?;
         }
         Err(_) => {

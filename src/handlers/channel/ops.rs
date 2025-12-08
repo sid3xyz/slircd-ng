@@ -136,7 +136,7 @@ pub async fn force_join_channel<S>(
 
     let join_data = match reply_rx.await {
         Ok(Ok(data)) => data,
-        Ok(Err(e)) => return Err(HandlerError::Internal(e)),
+        Ok(Err(e)) => return Err(HandlerError::Internal(e.to_string())),
         Err(_) => return Err(HandlerError::Internal("Channel actor died".to_string())),
     };
 

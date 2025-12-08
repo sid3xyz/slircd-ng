@@ -1,4 +1,4 @@
-use super::{ChannelActor, Uid};
+use super::{ChannelActor, ChannelError, Uid};
 use slirc_proto::{Command, Message, Prefix};
 use tokio::sync::oneshot;
 
@@ -8,10 +8,10 @@ impl ChannelActor {
         uid: Uid,
         reason: Option<String>,
         prefix: Prefix,
-        reply_tx: oneshot::Sender<Result<usize, String>>,
+        reply_tx: oneshot::Sender<Result<usize, ChannelError>>,
     ) {
         if !self.members.contains_key(&uid) {
-            let _ = reply_tx.send(Err("Not on channel".to_string()));
+            let _ = reply_tx.send(Err(ChannelError::NotOnChannel));
             return;
         }
 

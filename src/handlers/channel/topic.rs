@@ -8,7 +8,7 @@ use super::super::{Context,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
-use crate::state::actor::ChannelEvent;
+use crate::state::actor::{ChannelEvent, ChannelError};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tokio::sync::oneshot;
@@ -132,8 +132,8 @@ impl PostRegHandler for TopicHandler {
                     Ok(Ok(())) => {
                         info!(nick = %nick, channel = %channel_name, "Topic changed");
                     }
-                    Ok(Err(err_code)) => {
-                        if err_code == "ERR_CHANOPRIVSNEEDED" {
+                    Ok(Err(e)) => {
+                        if matches!(e, ChannelError::ChanOpPrivsNeeded) {
                             let reply = err_chanoprivsneeded(
                                 &ctx.matrix.server_info.name,
                                 &nick,

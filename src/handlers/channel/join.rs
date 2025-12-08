@@ -8,6 +8,7 @@ use crate::state::RegisteredState;
 use crate::db::ChannelRepository;
 use crate::security::UserContext;
 use crate::state::MemberModes;
+use crate::state::actor::ChannelError;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Prefix, Response, irc_to_lower};
 use std::sync::Arc;
@@ -252,8 +253,8 @@ async fn join_channel(
                 .await?;
                 break;
             }
-            Ok(Err(reason)) => {
-                if reason == "ERR_CHANNEL_TOMBSTONE" && attempt == 0 {
+            Ok(Err(error)) => {
+                if matches!(error, ChannelError::ChannelTombstone) && attempt == 0 {
                     if ctx.matrix.channels.remove(&channel_lower).is_some() {
                         crate::metrics::ACTIVE_CHANNELS.dec();
                     }
@@ -261,7 +262,7 @@ async fn join_channel(
                     continue;
                 }
 
-                send_join_error(ctx, &nick, channel_name, &reason).await?;
+                send_join_error(ctx, &nick, channel_name, error).await?;
                 break;
             }
             Err(_) => {
@@ -298,6 +299,9 @@ async fn check_auto_modes(ctx: &Context<'_, RegisteredState>, channel_lower: &st
 
     let account = ctx.db.accounts().find_by_name(&account_name).await.ok()??;
     let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
+
+    // ... (rest of check_auto_modes)
+
 
     if account.id == channel_record.founder_account_id {
         return Some(MemberModes {
@@ -512,30 +516,50 @@ async fn send_join_error(
     ctx: &mut Context<'_, RegisteredState>,
     nick: &str,
     channel_name: &str,
-    reason: &str,
+    error: ChannelError,
 ) -> HandlerResult {
-    let (response, message) = match reason {
-        "ERR_BANNEDFROMCHAN" => (Response::ERR_BANNEDFROMCHAN, "Cannot join channel (+b)"),
-        "ERR_INVITEONLYCHAN" => (Response::ERR_INVITEONLYCHAN, "Cannot join channel (+i)"),
-        "ERR_CHANNELISFULL" => (Response::ERR_CHANNELISFULL, "Cannot join channel (+l)"),
-        "ERR_BADCHANNELKEY" => (Response::ERR_BADCHANNELKEY, "Cannot join channel (+k)"),
-        "ERR_SESSION_INVALID" => (Response::ERR_UNKNOWNERROR, "Session expired. Please retry."),
-        "ERR_CHANNEL_TOMBSTONE" => (
+    let reply = match error {
+        ChannelError::BannedFromChan => {
+            Response::err_bannedfromchan(&ctx.matrix.server_info.name, channel_name)
+        }
+        ChannelError::InviteOnlyChan => {
+            Response::err_inviteonlychan(&ctx.matrix.server_info.name, channel_name)
+        }
+        ChannelError::ChannelIsFull => {
+            Response::err_channelisfull(&ctx.matrix.server_info.name, channel_name)
+        }
+        ChannelError::BadChannelKey => {
+            Response::err_badchannelkey(&ctx.matrix.server_info.name, channel_name)
+        }
+        ChannelError::SessionInvalid => server_reply(
+            &ctx.matrix.server_info.name,
             Response::ERR_UNKNOWNERROR,
-            "Channel is restarting. Please retry.",
+            vec![
+                nick.to_string(),
+                channel_name.to_string(),
+                "Session expired. Please retry.".to_string(),
+            ],
         ),
-        _ => (Response::ERR_UNKNOWNERROR, reason),
+        ChannelError::ChannelTombstone => server_reply(
+            &ctx.matrix.server_info.name,
+            Response::ERR_UNKNOWNERROR,
+            vec![
+                nick.to_string(),
+                channel_name.to_string(),
+                "Channel is restarting. Please retry.".to_string(),
+            ],
+        ),
+        _ => server_reply(
+            &ctx.matrix.server_info.name,
+            Response::ERR_UNKNOWNERROR,
+            vec![
+                nick.to_string(),
+                channel_name.to_string(),
+                error.to_string(),
+            ],
+        ),
     };
 
-    let reply = server_reply(
-        &ctx.matrix.server_info.name,
-        response,
-        vec![
-            nick.to_string(),
-            channel_name.to_string(),
-            message.to_string(),
-        ],
-    );
     ctx.sender.send(reply).await?;
     Ok(())
 }

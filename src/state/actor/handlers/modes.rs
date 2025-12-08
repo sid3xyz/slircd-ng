@@ -1,4 +1,4 @@
-use super::{ChannelActor, ChannelMode, Uid};
+use super::{ChannelActor, ChannelError, ChannelMode, Uid};
 use slirc_proto::mode::{ChannelMode as ProtoChannelMode, Mode};
 use slirc_proto::{Command, Message, Prefix};
 use std::collections::HashMap;
@@ -13,7 +13,7 @@ impl ChannelActor {
         modes: Vec<Mode<ProtoChannelMode>>,
         target_uids: HashMap<String, Uid>,
         force: bool,
-        reply_tx: oneshot::Sender<Result<Vec<Mode<ProtoChannelMode>>, String>>,
+        reply_tx: oneshot::Sender<Result<Vec<Mode<ProtoChannelMode>>, ChannelError>>,
     ) {
         let mut applied_modes = Vec::new();
 
@@ -21,11 +21,12 @@ impl ChannelActor {
         let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
         let has_priv = sender_modes.has_op_or_higher() || force;
 
-        for mode in modes {
-            if !has_priv && !force {
-                continue;
-            }
+        if !has_priv {
+            let _ = reply_tx.send(Err(ChannelError::ChanOpPrivsNeeded));
+            return;
+        }
 
+        for mode in modes {
             let adding = mode.is_plus();
             let mode_type = mode.mode();
             let arg = mode.arg();
@@ -100,6 +101,7 @@ impl ChannelActor {
                         self.replace_param_mode(|mode| matches!(mode, ChannelMode::Key(_)), None)
                     }
                 }
+
                 ProtoChannelMode::Limit => {
                     if adding {
                         if let Some(limit) = arg.and_then(|a| a.parse::<usize>().ok()) {

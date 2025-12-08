@@ -6,7 +6,7 @@ use super::super::{Context,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
-use crate::state::actor::ChannelEvent;
+use crate::state::actor::{ChannelEvent, ChannelError};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tokio::sync::oneshot;
@@ -109,12 +109,12 @@ impl PostRegHandler for KickHandler {
                     "User kicked from channel"
                 );
             }
-            Ok(Err(err_code)) => {
-                let reply = match err_code.as_str() {
-                    "ERR_CHANOPRIVSNEEDED" => {
+            Ok(Err(e)) => {
+                let reply = match e {
+                    ChannelError::ChanOpPrivsNeeded => {
                         err_chanoprivsneeded(&ctx.matrix.server_info.name, &nick, channel_name)
                     }
-                    "ERR_USERNOTINCHANNEL" => err_usernotinchannel(
+                    ChannelError::UserNotInChannel(_) => err_usernotinchannel(
                         &ctx.matrix.server_info.name,
                         &nick,
                         target_nick,
@@ -123,7 +123,7 @@ impl PostRegHandler for KickHandler {
                     _ => server_reply(
                         &ctx.matrix.server_info.name,
                         Response::ERR_UNKNOWNERROR,
-                        vec![nick.clone(), "Unknown error during KICK".to_string()],
+                        vec![nick.clone(), e.to_string()],
                     ),
                 };
                 ctx.sender.send(reply).await?;

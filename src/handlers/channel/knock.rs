@@ -4,7 +4,7 @@
 
 use super::super::{Context, HandlerResult, PostRegHandler, err_nosuchchannel, server_reply};
 use crate::state::RegisteredState;
-use crate::state::actor::ChannelEvent;
+use crate::state::actor::{ChannelEvent, ChannelError};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tokio::sync::oneshot;
@@ -104,19 +104,18 @@ impl PostRegHandler for KnockHandler {
                 );
                 ctx.sender.send(reply).await?;
             }
-            Ok(Err(err_code)) => {
-                let reply = match err_code.as_str() {
-                    "ERR_CANNOTKNOCK" => server_reply(
+            Ok(Err(e)) => {
+                let reply = match e {
+                    ChannelError::CannotKnock => server_reply(
                         server_name,
-                        Response::ERR_CHANOPRIVSNEEDED, // Fallback if ERR_CANNOTKNOCK not available, or use it if available.
-                        // Existing code used ERR_CHANOPRIVSNEEDED for +K.
+                        Response::ERR_CHANOPRIVSNEEDED,
                         vec![
                             nick.clone(),
                             channel_name.to_string(),
                             "Knocking is disabled on this channel (+K)".to_string(),
                         ],
                     ),
-                    "ERR_CHANOPEN" => server_reply(
+                    ChannelError::ChanOpen => server_reply(
                         server_name,
                         Response::ERR_CHANOPEN,
                         vec![
@@ -125,7 +124,7 @@ impl PostRegHandler for KnockHandler {
                             "Channel is open, just join it".to_string(),
                         ],
                     ),
-                    "ERR_USERONCHANNEL" => server_reply(
+                    ChannelError::UserOnChannel(_) => server_reply(
                         server_name,
                         Response::ERR_KNOCKONCHAN,
                         vec![
@@ -137,7 +136,7 @@ impl PostRegHandler for KnockHandler {
                     _ => server_reply(
                         server_name,
                         Response::ERR_UNKNOWNERROR,
-                        vec![nick.clone(), "Unknown error during KNOCK".to_string()],
+                        vec![nick.clone(), e.to_string()],
                     ),
                 };
                 ctx.sender.send(reply).await?;
