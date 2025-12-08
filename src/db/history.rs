@@ -337,23 +337,6 @@ impl<'a> HistoryRepository<'a> {
         Ok(rows_to_messages(rows, true))
     }
 
-    /// Query messages around a timestamp (CHATHISTORY AROUND).
-    #[allow(dead_code)] // Part of CHATHISTORY API - will be used when AROUND is implemented
-    pub async fn query_around(
-        &self,
-        target: &str,
-        around_nanos: i64,
-        limit: u32,
-    ) -> Result<Vec<StoredMessage>, DbError> {
-        let half = limit / 2;
-
-        let mut before = self.query_before(target, around_nanos, half).await?;
-        let after = self.query_after(target, around_nanos, half).await?;
-
-        before.extend(after);
-        Ok(before)
-    }
-
     /// Query DM history between two users (LATEST).
     pub async fn query_dm_latest(
         &self,
