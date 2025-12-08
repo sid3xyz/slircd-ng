@@ -108,90 +108,6 @@ impl<'a> ChannelRepository<'a> {
         ))
     }
 
-    /// Find channel by ID.
-    #[allow(dead_code)] // TODO: Use for channel ownership transfer
-    pub async fn find_by_id(&self, id: i64) -> Result<Option<ChannelRecord>, DbError> {
-        let row = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool)>(
-            r#"
-            SELECT id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic
-            FROM channels
-            WHERE id = ?
-            "#,
-        )
-        .bind(id)
-        .fetch_optional(self.pool)
-        .await?;
-
-        Ok(row.map(
-            |(
-                id,
-                name,
-                founder_account_id,
-                registered_at,
-                last_used_at,
-                description,
-                mlock,
-                keeptopic,
-            )| {
-                ChannelRecord {
-                    id,
-                    name,
-                    founder_account_id,
-                    registered_at,
-                    last_used_at,
-                    description,
-                    mlock,
-                    keeptopic,
-                }
-            },
-        ))
-    }
-
-    /// Get all channels registered by an account.
-    #[allow(dead_code)] // TODO: Use for NickServ INFO (show registered channels)
-    pub async fn find_by_founder(
-        &self,
-        founder_account_id: i64,
-    ) -> Result<Vec<ChannelRecord>, DbError> {
-        let rows = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool)>(
-            r#"
-            SELECT id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic
-            FROM channels
-            WHERE founder_account_id = ?
-            "#,
-        )
-        .bind(founder_account_id)
-        .fetch_all(self.pool)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(
-                |(
-                    id,
-                    name,
-                    founder_account_id,
-                    registered_at,
-                    last_used_at,
-                    description,
-                    mlock,
-                    keeptopic,
-                )| {
-                    ChannelRecord {
-                        id,
-                        name,
-                        founder_account_id,
-                        registered_at,
-                        last_used_at,
-                        description,
-                        mlock,
-                        keeptopic,
-                    }
-                },
-            )
-            .collect())
-    }
-
     /// Load all registered channels from the database.
     pub async fn load_all_channels(&self) -> Result<Vec<ChannelRecord>, DbError> {
         let rows = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool)>(
@@ -366,31 +282,6 @@ impl<'a> ChannelRepository<'a> {
                 return Err(DbError::UnknownOption(option.to_string()));
             }
         }
-        Ok(())
-    }
-
-    /// Update last used timestamp by channel ID.
-    #[allow(dead_code)] // Alternative to touch_by_name when ID is already known
-    pub async fn touch(&self, channel_id: i64) -> Result<(), DbError> {
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("UPDATE channels SET last_used_at = ? WHERE id = ?")
-            .bind(now)
-            .bind(channel_id)
-            .execute(self.pool)
-            .await?;
-        Ok(())
-    }
-
-    /// Update last used timestamp by channel name.
-    /// Used to track channel activity for expiration policies.
-    #[allow(dead_code)]
-    pub async fn touch_by_name(&self, name: &str) -> Result<(), DbError> {
-        let now = chrono::Utc::now().timestamp();
-        sqlx::query("UPDATE channels SET last_used_at = ? WHERE name = ? COLLATE NOCASE")
-            .bind(now)
-            .bind(name)
-            .execute(self.pool)
-            .await?;
         Ok(())
     }
 
