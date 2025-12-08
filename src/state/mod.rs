@@ -22,9 +22,7 @@ pub mod actor;
 pub use user::{User, UserModes};
 
 // Session state types (Innovation 1 Phase 3: True Typestate)
-// Allow unused while migrating - these will replace HandshakeState
-#[allow(unused_imports)]
-pub use session::{ConnectionState, RegisteredState, UnregisteredState};
+pub use session::{RegisteredState, SessionState, UnregisteredState};
 
 // Legacy protocol state machine types (to be removed after Phase 3 migration)
 #[allow(unused_imports)]

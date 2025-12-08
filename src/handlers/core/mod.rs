@@ -4,30 +4,25 @@
 //! command handler system, including the handler registry, context types,
 //! and middleware for response routing.
 //!
-//! ## Typestate Handler System (Innovation 1)
+//! ## Typestate Handler System (Innovation 1 Phase 3)
 //!
-//! ### Phase 1: Registry Enforcement ✅ COMPLETE
+//! The handler system enforces protocol state at compile time using the type system.
 //!
-//! The Registry implements phase-separated dispatch using three handler maps:
-//! - `pre_reg_handlers`: Commands valid before registration (NICK, USER, etc.)
-//! - `post_reg_handlers`: Commands requiring registration (PRIVMSG, JOIN, etc.)
-//! - `universal_handlers`: Commands valid in any state (QUIT, PING, PONG)
+//! ### Handler Traits
 //!
-//! Post-registration handlers are structurally inaccessible to unregistered
-//! clients - the dispatch path simply doesn't include them.
+//! - [`PreRegHandler`]: Commands valid before registration (NICK, USER, etc.)
+//!   - Receives `Context<'_, UnregisteredState>`
+//! - [`PostRegHandler`]: Commands requiring registration (PRIVMSG, JOIN, etc.)
+//!   - Receives `Context<'_, RegisteredState>` with guaranteed nick/user
+//! - [`UniversalHandler<S>`]: Commands valid in any state (QUIT, PING, PONG)
+//!   - Generic over `S: SessionState`, works with both states
+//! - [`DynUniversalHandler`]: Object-safe version for dynamic dispatch
 //!
-//! ### Phase 2: Type-Level Enforcement ✅ COMPLETE
+//! ### State Types
 //!
-//! The `traits` submodule provides **compile-time** protocol state guarantees:
-//!
-//! - [`TypedContext<S>`]: Context wrapper with state encoded in the type system
-//! - [`StatefulPostRegHandler`]: Handlers that receive `TypedContext<Registered>`
-//! - [`RegisteredHandlerAdapter`]: Bridge from new traits to legacy `Handler`
-//!
-//! With `TypedContext<Registered>`, the compiler guarantees:
-//! - `ctx.nick()` returns `&str` (not `Option`) - nick is always present
-//! - `ctx.user()` returns `&str` (not `Option`) - user is always present
-//! - Handler cannot be called with unregistered connection
+//! - `UnregisteredState`: Pre-registration, nick/user are `Option<String>`
+//! - `RegisteredState`: Post-registration, nick/user are `String` (guaranteed)
+//! - `SessionState` trait: Common interface for universal handlers
 
 pub mod context;
 pub mod examples;
@@ -37,11 +32,15 @@ pub mod traits;
 
 // Re-export commonly used types
 pub use context::{
-    Context, HandlerError, HandlerResult, HandshakeState, get_nick_or_star, get_oper_info,
+    Context, HandlerError, HandlerResult, get_nick_or_star, get_oper_info,
     is_user_in_channel, resolve_nick_to_uid, user_mask_from_state,
 };
 pub use middleware::ResponseMiddleware;
 pub use registry::Registry;
 
-// Re-export typestate handler traits (Innovation 1)
+// Re-export typestate handler traits (Innovation 1 Phase 3)
 pub use traits::{PostRegHandler, PreRegHandler, UniversalHandler};
+
+// DynUniversalHandler is used internally by Registry
+#[allow(unused_imports)]
+pub(crate) use traits::DynUniversalHandler;

@@ -1,6 +1,7 @@
 //! PING and PONG handlers.
 
 use super::super::{Context, HandlerResult, UniversalHandler, err_needmoreparams, with_label};
+use crate::state::SessionState;
 use async_trait::async_trait;
 use slirc_proto::{Message, MessageRef, prefix::Prefix};
 
@@ -8,8 +9,8 @@ use slirc_proto::{Message, MessageRef, prefix::Prefix};
 pub struct PingHandler;
 
 #[async_trait]
-impl UniversalHandler for PingHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+impl<S: SessionState> UniversalHandler<S> for PingHandler {
+    async fn handle(&self, ctx: &mut Context<'_, S>, msg: &MessageRef<'_>) -> HandlerResult {
         // PING <token>
         // Response: :<server> PONG <server> <token>
         // Per RFC 1459: PING requires at least one parameter
@@ -17,7 +18,7 @@ impl UniversalHandler for PingHandler {
             Some(t) if !t.is_empty() => t,
             _ => {
                 // No token provided - return ERR_NEEDMOREPARAMS (461)
-                let nick = ctx.state.nick.as_deref().unwrap_or("*");
+                let nick = ctx.state.nick_or_star();
                 let reply = err_needmoreparams(&ctx.matrix.server_info.name, nick, "PING");
                 let reply = with_label(reply, ctx.label.as_deref());
                 ctx.sender.send(reply).await?;
@@ -41,8 +42,8 @@ impl UniversalHandler for PingHandler {
 pub struct PongHandler;
 
 #[async_trait]
-impl UniversalHandler for PongHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, _msg: &MessageRef<'_>) -> HandlerResult {
+impl<S: SessionState> UniversalHandler<S> for PongHandler {
+    async fn handle(&self, ctx: &mut Context<'_, S>, _msg: &MessageRef<'_>) -> HandlerResult {
         // PONG normally produces no output, but with labeled-response we send ACK
         if let Some(label) = &ctx.label {
             let ack = super::super::labeled_ack(&ctx.matrix.server_info.name, label);

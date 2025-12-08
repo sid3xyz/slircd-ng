@@ -17,7 +17,7 @@ use tracing::debug;
 /// Check if a user is shunned (silently blocked from messaging).
 ///
 /// Returns true if the user is shunned and their command should be silently ignored.
-pub async fn is_shunned(ctx: &Context<'_>) -> bool {
+pub async fn is_shunned<S>(ctx: &Context<'_, S>) -> bool {
     // Get user's hostmask
     let user_host = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
         let user = user_ref.read().await;
@@ -68,7 +68,7 @@ pub struct RouteOptions {
 ///
 /// Returns the result of the routing attempt for the caller to handle errors.
 pub async fn route_to_channel(
-    ctx: &Context<'_>,
+    ctx: &Context<'_, crate::state::RegisteredState>,
     channel_lower: &str,
     msg: Message,
     opts: &RouteOptions,
@@ -149,7 +149,7 @@ pub async fn route_to_channel(
 ///
 /// Returns true if the user was found and message sent, false otherwise.
 pub async fn route_to_user(
-    ctx: &Context<'_>,
+    ctx: &Context<'_, crate::state::RegisteredState>,
     target_lower: &str,
     msg: Message,
     opts: &RouteOptions,
@@ -373,8 +373,8 @@ pub async fn route_to_user(
 // ============================================================================
 
 /// Send ERR_CANNOTSENDTOCHAN with the given reason.
-pub async fn send_cannot_send(
-    ctx: &Context<'_>,
+pub async fn send_cannot_send<S>(
+    ctx: &Context<'_, S>,
     nick: &str,
     target: &str,
     reason: &str,
@@ -389,7 +389,7 @@ pub async fn send_cannot_send(
 }
 
 /// Send ERR_NOSUCHCHANNEL.
-pub async fn send_no_such_channel(ctx: &Context<'_>, nick: &str, target: &str) -> HandlerResult {
+pub async fn send_no_such_channel<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
     let reply = server_reply(
         &ctx.matrix.server_info.name,
         Response::ERR_NOSUCHCHANNEL,
@@ -404,7 +404,7 @@ pub async fn send_no_such_channel(ctx: &Context<'_>, nick: &str, target: &str) -
 }
 
 /// Send ERR_NOSUCHNICK.
-pub async fn send_no_such_nick(ctx: &Context<'_>, nick: &str, target: &str) -> HandlerResult {
+pub async fn send_no_such_nick<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
     let reply = server_reply(
         &ctx.matrix.server_info.name,
         Response::ERR_NOSUCHNICK,

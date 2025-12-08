@@ -3,9 +3,8 @@
 //! Handles user status management and IRCv3 profile updates.
 
 use super::user_mask_from_state;
-use super::{HandlerError, HandlerResult, PostRegHandler, server_reply};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use super::{Context, HandlerError, HandlerResult, PostRegHandler, server_reply};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{Command, MessageRef, Response};
 use tracing::debug;
@@ -22,7 +21,7 @@ pub struct AwayHandler;
 impl PostRegHandler for AwayHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -147,7 +146,7 @@ pub struct SetnameHandler;
 impl PostRegHandler for SetnameHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -192,8 +191,8 @@ impl PostRegHandler for SetnameHandler {
             return Ok(());
         };
 
-        // Also update handshake state
-        ctx.state.realname = Some(new_realname.to_string());
+        // Also update session state
+        ctx.state.realname = new_realname.to_string();
 
         // Broadcast SETNAME to all channels the user is in (for clients with setname cap)
         let setname_msg = slirc_proto::Message {
@@ -250,17 +249,13 @@ pub struct SilenceHandler;
 impl PostRegHandler for SilenceHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick;
 
         // SILENCE [+/-mask]
         let mask_arg = msg.arg(0);

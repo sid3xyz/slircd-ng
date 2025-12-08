@@ -1,9 +1,8 @@
-use super::super::{
+use super::super::{Context,
     HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, err_nosuchnick,
     get_nick_or_star, resolve_nick_to_uid, user_mask_from_state,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
@@ -20,7 +19,7 @@ pub struct KillHandler;
 impl PostRegHandler for KillHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = &ctx.matrix.server_info.name;

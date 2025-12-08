@@ -2,9 +2,8 @@
 //!
 //! Implements the CYCLE command (Part + Join in one command).
 
-use super::super::{HandlerError, HandlerResult, PostRegHandler, user_mask_from_state};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_mask_from_state};
+use crate::state::RegisteredState;
 use super::part::leave_channel_internal;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, irc_to_lower};
@@ -21,7 +20,7 @@ pub struct CycleHandler;
 impl PostRegHandler for CycleHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)

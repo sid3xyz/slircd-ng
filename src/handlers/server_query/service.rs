@@ -6,9 +6,8 @@
 //! SERVLIST lists registered services - we return an empty list.
 //! SQUERY routes messages to services like NickServ/ChanServ.
 
-use super::super::{HandlerResult, PostRegHandler};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use super::super::{Context, HandlerResult, PostRegHandler};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -24,7 +23,7 @@ pub struct ServiceHandler;
 impl PostRegHandler for ServiceHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // If already registered as a user, send ERR_ALREADYREGISTERED
@@ -50,7 +49,7 @@ pub struct ServlistHandler;
 impl PostRegHandler for ServlistHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -85,7 +84,7 @@ pub struct SqueryHandler;
 impl PostRegHandler for SqueryHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)

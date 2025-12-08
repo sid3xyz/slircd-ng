@@ -15,15 +15,14 @@
 //! (`send_list_mode`, `get_list_mode_query`) to a separate `channel_lists.rs`.
 
 use super::super::{
-    HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, with_label,
+    Context, HandlerError, HandlerResult, err_chanoprivsneeded, server_reply, with_label,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use slirc_proto::{ChannelMode, Mode, Response, irc_to_lower};
 
 /// Handle channel mode query/change.
 pub async fn handle_channel_mode(
-    ctx: &mut TypedContext<'_, Registered>,
+    ctx: &mut Context<'_, RegisteredState>,
     channel_name: &str,
     modes: &[Mode<ChannelMode>],
 ) -> HandlerResult {
@@ -242,8 +241,8 @@ pub async fn handle_channel_mode(
                 (u.nick.clone(), u.user.clone(), u.host.clone())
             } else {
                 (
-                    ctx.state.nick.clone().unwrap_or_default(),
-                    ctx.state.user.clone().unwrap_or_default(),
+                    ctx.state.nick.clone(),
+                    ctx.state.user.clone(),
                     "unknown".to_string(),
                 )
             };
@@ -302,7 +301,7 @@ fn get_list_mode_query(modes: &[Mode<ChannelMode>]) -> Option<ChannelMode> {
 
 /// Send a list mode's entries for a channel.
 async fn send_list_mode(
-    ctx: &mut TypedContext<'_, Registered>,
+    ctx: &mut Context<'_, RegisteredState>,
     channel_lower: &str,
     canonical_name: &str,
     list_mode: ChannelMode,

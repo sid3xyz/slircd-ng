@@ -31,10 +31,10 @@ use error_handling::{ReadErrorAction, classify_read_error, handler_error_to_repl
 
 use crate::db::Database;
 use crate::handlers::{
-    Context, HandshakeState, Registry, ResponseMiddleware, cleanup_monitors, labeled_ack,
+    Context, Registry, ResponseMiddleware, cleanup_monitors, labeled_ack,
     notify_monitors_offline, process_batch_message, with_label,
 };
-use crate::state::Matrix;
+use crate::state::{Matrix, UnregisteredState};
 use slirc_proto::transport::ZeroCopyTransportEnum;
 use slirc_proto::{BatchSubCommand, Command, Message, Prefix, Response, irc_to_lower};
 use std::net::SocketAddr;
@@ -148,12 +148,12 @@ impl Connection {
         // Channel for outgoing messages during handshake (drained synchronously)
         let (handshake_tx, mut handshake_rx) = mpsc::channel::<Message>(64);
 
-        // Handshake state for this connection
-        let mut handshake = HandshakeState::default();
+        // Unregistered state for this connection (Phase 3 typestate)
+        let mut unreg_state = UnregisteredState::default();
 
         // Set +Z mode if TLS connection
         if is_tls {
-            handshake.is_tls = true;
+            unreg_state.is_tls = true;
         }
 
         // Phase 1: Handshake using zero-copy reading
@@ -164,7 +164,7 @@ impl Connection {
                     debug!(raw = %msg_ref.raw.trim(), "Received message");
 
                     // Extract label tag for labeled-response (IRCv3)
-                    let label = if handshake.capabilities.contains("labeled-response") {
+                    let label = if unreg_state.capabilities.contains("labeled-response") {
                         msg_ref
                             .tags_iter()
                             .find(|(k, _)| *k == "label")
@@ -177,7 +177,7 @@ impl Connection {
                         uid: &self.uid,
                         matrix: &self.matrix,
                         sender: ResponseMiddleware::Direct(&handshake_tx),
-                        state: &mut handshake,
+                        state: &mut unreg_state,
                         db: &self.db,
                         remote_addr: self.addr,
                         label,
@@ -185,7 +185,7 @@ impl Connection {
                         registry: &self.registry,
                     };
 
-                    if let Err(e) = self.registry.dispatch(&mut ctx, &msg_ref).await {
+                    if let Err(e) = self.registry.dispatch_pre_reg(&mut ctx, &msg_ref).await {
                         debug!(error = ?e, "Handler error during handshake");
 
                         // Handle QUIT specially - disconnect pre-registration client
@@ -204,7 +204,7 @@ impl Connection {
                             let _ = self.transport.write_message(&error_reply).await;
 
                             // Release nick if it was reserved during handshake
-                            if let Some(nick) = &handshake.nick {
+                            if let Some(nick) = &unreg_state.nick {
                                 let nick_lower = irc_to_lower(nick);
                                 self.matrix.nicks.remove(&nick_lower);
                                 info!(nick = %nick, "Pre-registration nick released");
@@ -220,7 +220,7 @@ impl Connection {
                             }
 
                             // Release nick if it was reserved during handshake
-                            if let Some(nick) = &handshake.nick {
+                            if let Some(nick) = &unreg_state.nick {
                                 let nick_lower = irc_to_lower(nick);
                                 self.matrix.nicks.remove(&nick_lower);
                             }
@@ -228,7 +228,7 @@ impl Connection {
                         }
 
                         // Send appropriate error reply based on error type
-                        let nick = handshake.nick.as_deref().unwrap_or("*");
+                        let nick = unreg_state.nick.as_deref().unwrap_or("*");
                         if let Some(reply) = handler_error_to_reply(
                             &self.matrix.server_info.name,
                             nick,
@@ -246,7 +246,7 @@ impl Connection {
                         if let Err(e) = self.transport.write_message(&response).await {
                             warn!(error = ?e, "Write error during handshake");
                             // Release nick if reserved during handshake
-                            if let Some(nick) = &handshake.nick {
+                            if let Some(nick) = &unreg_state.nick {
                                 let nick_lower = irc_to_lower(nick);
                                 self.matrix.nicks.remove(&nick_lower);
                             }
@@ -254,8 +254,10 @@ impl Connection {
                         }
                     }
 
-                    // Check if handshake is complete
-                    if handshake.registered {
+                    // Check if handshake is complete - can we transition to RegisteredState?
+                    // The welcome burst has been sent if can_register() returned true in USER handler,
+                    // so we check if the User now exists in Matrix.
+                    if self.matrix.users.contains_key(&self.uid) {
                         break;
                     }
                 }
@@ -264,7 +266,7 @@ impl Connection {
                         ReadErrorAction::InputTooLong => {
                             // Recoverable: send ERR_INPUTTOOLONG (417) and continue
                             warn!("Input line too long during handshake");
-                            let nick = handshake.nick.as_deref().unwrap_or("*");
+                            let nick = unreg_state.nick.as_deref().unwrap_or("*");
                             let reply = Message {
                                 tags: None,
                                 prefix: Some(Prefix::ServerName(
@@ -294,7 +296,7 @@ impl Connection {
                         }
                     }
                     // Release nick if reserved during handshake
-                    if let Some(nick) = &handshake.nick {
+                    if let Some(nick) = &unreg_state.nick {
                         let nick_lower = irc_to_lower(nick);
                         self.matrix.nicks.remove(&nick_lower);
                     }
@@ -303,7 +305,7 @@ impl Connection {
                 None => {
                     info!("Client disconnected during handshake");
                     // Release nick if reserved during handshake
-                    if let Some(nick) = &handshake.nick {
+                    if let Some(nick) = &unreg_state.nick {
                         let nick_lower = irc_to_lower(nick);
                         self.matrix.nicks.remove(&nick_lower);
                     }
@@ -311,6 +313,11 @@ impl Connection {
                 }
             }
         }
+
+        // Transition: UnregisteredState -> RegisteredState
+        // At this point, the user is registered and exists in Matrix.
+        // Convert the state for Phase 2.
+        let mut reg_state = unreg_state.try_register().expect("User registration verified above");
 
         // Phase 2: Unified Zero-Copy Loop
         // Transport handles both reading and writing with unified API
@@ -374,7 +381,7 @@ impl Connection {
 
                             // Check if message should be absorbed into an active batch
                             // (draft/multiline: PRIVMSG/NOTICE with batch=ref tag)
-                            match process_batch_message(&mut handshake, &msg_ref, &self.matrix.server_info.name) {
+                            match process_batch_message(&mut reg_state, &msg_ref, &self.matrix.server_info.name) {
                                 Ok(Some(_batch_ref)) => {
                                     // Message was consumed by the batch, don't dispatch
                                     debug!("Message absorbed into active batch");
@@ -386,8 +393,8 @@ impl Connection {
                                 Err(fail_msg) => {
                                     // Batch error - send FAIL and abort the batch
                                     warn!(error = %fail_msg, "Batch processing error");
-                                    handshake.active_batch = None;
-                                    handshake.active_batch_ref = None;
+                                    reg_state.active_batch = None;
+                                    reg_state.active_batch_ref = None;
                                     // Parse and send the FAIL message
                                     if let Ok(fail) = fail_msg.parse::<Message>() {
                                         let _ = outgoing_tx.send(fail).await;
@@ -397,7 +404,7 @@ impl Connection {
                             }
 
                             // Extract label tag for labeled-response (IRCv3)
-                            let label = if handshake.capabilities.contains("labeled-response") {
+                            let label = if reg_state.capabilities.contains("labeled-response") {
                                 msg_ref.tags_iter()
                                     .find(|(k, _)| *k == "label")
                                     .map(|(_, v)| v.to_string())
@@ -414,13 +421,13 @@ impl Connection {
                             };
                             let dispatch_sender = sender_middleware.clone();
 
-                            // Dispatch to handler (scope-limited to release &mut handshake)
+                            // Dispatch to handler using RegisteredState context
                             let (dispatch_result, suppress_ack) = {
                                 let mut ctx = Context {
                                     uid: &self.uid,
                                     matrix: &self.matrix,
                                     sender: dispatch_sender,
-                                    state: &mut handshake,
+                                    state: &mut reg_state,
                                     db: &self.db,
                                     remote_addr: self.addr,
                                     label: label.clone(),
@@ -428,7 +435,7 @@ impl Connection {
                                     registry: &self.registry,
                                 };
 
-                                let result = self.registry.dispatch(&mut ctx, &msg_ref).await;
+                                let result = self.registry.dispatch_post_reg(&mut ctx, &msg_ref).await;
                                 (result, ctx.suppress_labeled_ack)
                             };
 
@@ -459,13 +466,14 @@ impl Connection {
                                 }
 
                                 // Send appropriate error reply based on error type
-                                let nick = handshake.nick.as_deref().unwrap_or("*");
+                                // RegisteredState guarantees nick is present
+                                let nick = &reg_state.nick;
                                 if let Some(reply) = handler_error_to_reply(&self.matrix.server_info.name, nick, &e, &msg_ref) {
                                     let _ = sender_middleware.send(reply).await;
                                 }
-                                // NotRegistered post-handshake indicates a bug - should not happen
+                                // NotRegistered post-registration indicates a bug - should not happen
                                 if matches!(e, crate::handlers::HandlerError::NotRegistered) {
-                                    warn!("NotRegistered error after handshake completed - this is a bug");
+                                    warn!("NotRegistered error after registration completed - this is a bug");
                                 }
                             }
 
@@ -534,7 +542,7 @@ impl Connection {
                                 ReadErrorAction::InputTooLong => {
                                     // Recoverable: send ERR_INPUTTOOLONG (417) and continue
                                     warn!("Input line too long from client");
-                                    let nick = handshake.nick.as_deref().unwrap_or("*");
+                                    let nick = &reg_state.nick;
                                     let reply = Message {
                                         tags: None,
                                         prefix: Some(Prefix::ServerName(self.matrix.server_info.name.clone())),
@@ -641,14 +649,14 @@ impl Connection {
         crate::metrics::CONNECTED_USERS.dec();
 
         // Cleanup: remove nick from index and notify MONITOR watchers
-        if let Some(nick) = &handshake.nick {
-            // Notify MONITOR watchers that this nick is going offline
-            notify_monitors_offline(&self.matrix, nick).await;
+        // RegisteredState guarantees nick is present
+        let nick = &reg_state.nick;
+        // Notify MONITOR watchers that this nick is going offline
+        notify_monitors_offline(&self.matrix, nick).await;
 
-            let nick_lower = irc_to_lower(nick);
-            self.matrix.nicks.remove(&nick_lower);
-            info!(nick = %nick, "Nick released");
-        }
+        let nick_lower = irc_to_lower(nick);
+        self.matrix.nicks.remove(&nick_lower);
+        info!(nick = %nick, "Nick released");
 
         // Clean up this user's MONITOR entries
         cleanup_monitors(&self.matrix, &self.uid);

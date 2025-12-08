@@ -2,6 +2,7 @@
 
 use super::super::{Context, HandlerError, HandlerResult, PreRegHandler, server_reply};
 use super::welcome::send_welcome_burst;
+use crate::state::UnregisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use tracing::debug;
@@ -11,18 +12,14 @@ pub struct UserHandler;
 
 #[async_trait]
 impl PreRegHandler for UserHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        if ctx.state.registered {
+    async fn handle(&self, ctx: &mut Context<'_, UnregisteredState>, msg: &MessageRef<'_>) -> HandlerResult {
+        // USER cannot be resent after already set
+        if ctx.state.user.is_some() {
+            let nick = ctx.state.nick.as_deref().unwrap_or("*");
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_ALREADYREGISTERED,
-                vec![
-                    ctx.state
-                        .nick
-                        .clone()
-                        .unwrap_or_else(|| "*".to_string()),
-                    "You may not reregister".to_string(),
-                ],
+                vec![nick.to_string(), "You may not reregister".to_string()],
             );
             ctx.sender.send(reply).await?;
             return Ok(());

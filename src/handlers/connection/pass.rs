@@ -1,6 +1,7 @@
 //! PASS command handler for connection registration.
 
 use super::super::{Context, HandlerResult, PreRegHandler, server_reply};
+use crate::state::UnregisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use tracing::debug;
@@ -14,18 +15,7 @@ pub struct PassHandler;
 
 #[async_trait]
 impl PreRegHandler for PassHandler {
-    async fn handle(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
-        // PASS must be sent before NICK/USER (RFC 2812 Section 3.1.1)
-        if ctx.state.registered {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_ALREADYREGISTERED,
-                vec!["*".to_string(), "You may not reregister".to_string()],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
-        }
-
+    async fn handle(&self, ctx: &mut Context<'_, UnregisteredState>, msg: &MessageRef<'_>) -> HandlerResult {
         // PASS must come before NICK/USER
         if ctx.state.nick.is_some() || ctx.state.user.is_some() {
             let reply = server_reply(

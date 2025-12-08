@@ -3,15 +3,14 @@
 //! Handles MODE commands for users: `MODE <nick> [+/-modes]`
 //! Users can only query/change their own modes.
 
-use super::super::{HandlerResult, server_reply, user_prefix};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::{Registered, UserModes};
+use super::super::{Context, HandlerResult, server_reply, user_prefix};
+use crate::state::{RegisteredState, UserModes};
 use slirc_proto::{Command, Message, Mode, Response, UserMode, irc_eq};
 use tracing::debug;
 
 /// Handle user mode query/change.
 pub async fn handle_user_mode(
-    ctx: &mut TypedContext<'_, Registered>,
+    ctx: &mut Context<'_, RegisteredState>,
     target: &str,
     modes: &[Mode<UserMode>],
 ) -> HandlerResult {

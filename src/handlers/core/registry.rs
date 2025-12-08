@@ -6,16 +6,17 @@
 //! ## Typestate Dispatch (Innovation 1)
 //!
 //! Handlers are stored in phase-specific maps based on registration requirements:
-//! - **`pre_reg_handlers`**: NICK, USER, PASS, CAP, etc. (valid before registration)
+//! - **`pre_reg_handlers`**: USER, PASS, WEBIRC, AUTHENTICATE (valid only before registration)
 //! - **`post_reg_handlers`**: PRIVMSG, JOIN, etc. (require registration)
-//! - **`universal_handlers`**: QUIT, PING, PONG (valid in any state)
+//! - **`universal_handlers`**: QUIT, PING, PONG, NICK, CAP (valid in any state)
 //!
 //! The registry dispatches based on connection state using the type system.
 //! Post-registration handlers are *not in the map* for unregistered connections,
 //! making invalid dispatch a structural impossibility.
 
 use super::context::{Context, HandlerResult};
-use super::traits::{PostRegHandler, PreRegHandler, UniversalHandler};
+use super::traits::{DynUniversalHandler, PostRegHandler, PreRegHandler};
+use crate::state::{RegisteredState, UnregisteredState};
 use crate::handlers::{
     account::RegisterHandler,
     admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler},
@@ -61,16 +62,16 @@ use tracing::{Instrument, Level, debug, span};
 /// Registry of command handlers.
 ///
 /// Handlers are organized into three maps by registration phase (Innovation 1):
-/// - `pre_reg_handlers`: Commands valid before registration
+/// - `pre_reg_handlers`: Commands valid only before registration
 /// - `post_reg_handlers`: Commands requiring registration
-/// - `universal_handlers`: Commands valid in any state
+/// - `universal_handlers`: Commands valid in any state (generic over state type)
 pub struct Registry {
-    /// Handlers for pre-registration commands (NICK, USER, PASS, CAP, etc.)
+    /// Handlers for pre-registration commands (USER, PASS, WEBIRC, AUTHENTICATE)
     pre_reg_handlers: HashMap<&'static str, Box<dyn PreRegHandler>>,
     /// Handlers for post-registration commands (PRIVMSG, JOIN, etc.)
     post_reg_handlers: HashMap<&'static str, Box<dyn PostRegHandler>>,
-    /// Handlers valid in any state (QUIT, PING, PONG)
-    universal_handlers: HashMap<&'static str, Box<dyn UniversalHandler>>,
+    /// Handlers valid in any state (QUIT, PING, PONG, NICK, CAP, REGISTER)
+    universal_handlers: HashMap<&'static str, Box<dyn DynUniversalHandler>>,
     /// Command usage counters for STATS m
     command_counts: HashMap<&'static str, Arc<AtomicU64>>,
 }
@@ -83,11 +84,12 @@ impl Registry {
     pub fn new(webirc_blocks: Vec<crate::config::WebircBlock>) -> Self {
         let mut pre_reg_handlers: HashMap<&'static str, Box<dyn PreRegHandler>> = HashMap::new();
         let mut post_reg_handlers: HashMap<&'static str, Box<dyn PostRegHandler>> = HashMap::new();
-        let mut universal_handlers: HashMap<&'static str, Box<dyn UniversalHandler>> =
+        let mut universal_handlers: HashMap<&'static str, Box<dyn DynUniversalHandler>> =
             HashMap::new();
 
         // ====================================================================
         // Universal handlers (valid in any state)
+        // These implement DynUniversalHandler for dual-dispatch capability.
         // ====================================================================
         universal_handlers.insert("QUIT", Box::new(QuitHandler));
         universal_handlers.insert("PING", Box::new(PingHandler));
@@ -97,14 +99,13 @@ impl Registry {
         universal_handlers.insert("REGISTER", Box::new(RegisterHandler));
 
         // ====================================================================
-        // Pre-registration handlers (valid before registration completes)
+        // Pre-registration handlers (valid only before registration completes)
+        // These require UnregisteredState and cannot be used after registration.
         // ====================================================================
-        // WEBIRC must be first to process before NICK/USER
         pre_reg_handlers.insert("WEBIRC", Box::new(WebircHandler::new(webirc_blocks)));
         pre_reg_handlers.insert("USER", Box::new(UserHandler));
         pre_reg_handlers.insert("PASS", Box::new(PassHandler));
         pre_reg_handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
-        // REGISTER moved to universal_handlers to support post-connection registration
 
         // ====================================================================
         // Post-registration handlers (require completed registration)
@@ -234,7 +235,7 @@ impl Registry {
         stats
     }
 
-    /// Dispatch a message to the appropriate handler.
+    /// Dispatch a message to the appropriate handler for unregistered connections.
     ///
     /// Uses `msg.command_name()` to get the command name directly from the
     /// zero-copy `MessageRef`. Includes IRC-aware instrumentation for tracing
@@ -242,14 +243,15 @@ impl Registry {
     ///
     /// ## Typestate Dispatch (Innovation 1)
     ///
-    /// Handler lookup is based on connection state:
-    /// - **Universal handlers**: Always checked first (QUIT, PING, PONG)
+    /// Handler lookup for unregistered connections:
+    /// - **Universal handlers**: Always checked first (QUIT, PING, PONG, NICK, CAP)
     /// - **Pre-reg handlers**: Checked for unregistered connections
-    /// - **Post-reg handlers**: Only accessible to registered connections
-    ///
-    /// Post-registration handlers are structurally unavailable to unregistered
-    /// connections - they are simply not in the lookup path.
-    pub async fn dispatch(&self, ctx: &mut Context<'_>, msg: &MessageRef<'_>) -> HandlerResult {
+    /// - **Post-reg handlers**: Inaccessible - returns NotRegistered error
+    pub async fn dispatch_pre_reg(
+        &self,
+        ctx: &mut Context<'_, UnregisteredState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         let cmd_name = msg.command_name().to_ascii_uppercase();
         let cmd_str = cmd_name.as_str();
 
@@ -282,24 +284,7 @@ impl Registry {
 
         // Execute handler within the span
         let result = if let Some(handler) = self.universal_handlers.get(cmd_str) {
-            handler.handle(ctx, msg).instrument(irc_span).await
-        } else if ctx.state.registered {
-            if let Some(handler) = self.post_reg_handlers.get(cmd_str) {
-                // Create TypedContext<Registered>
-                // SAFETY: We checked ctx.state.registered
-                let mut typed_ctx = crate::handlers::core::traits::TypedContext::<
-                    crate::state::Registered,
-                >::new_unchecked(ctx);
-                handler.handle(&mut typed_ctx, msg).instrument(irc_span).await
-            } else {
-                // Fallback to pre-reg handlers?
-                // Some commands like NICK might be in pre-reg but valid post-reg?
-                // We decided NICK/CAP should be Universal.
-                // If a command is ONLY in pre-reg (like USER), it shouldn't be called here.
-                Err(super::context::HandlerError::Internal(
-                    "Command not found".into(),
-                ))
-            }
+            handler.handle_unreg(ctx, msg).instrument(irc_span).await
         } else if let Some(handler) = self.pre_reg_handlers.get(cmd_str) {
             handler.handle(ctx, msg).instrument(irc_span).await
         } else if self.post_reg_handlers.contains_key(cmd_str) {
@@ -317,20 +302,111 @@ impl Registry {
             ))
         };
 
+        // Copy values needed for error handling before passing ctx as mutable
+        let uid = ctx.uid.to_string();
+        let server_name = ctx.matrix.server_info.name.clone();
+        let nick = ctx.state.nick.clone();
+
         // Record errors for metrics
+        self.handle_dispatch_result(&uid, &server_name, nick.as_deref(), &cmd_name, result, ctx).await
+    }
+
+    /// Dispatch a message to a post-registration handler.
+    ///
+    /// This is the Phase 3 dispatch method that receives `Context<RegisteredState>`.
+    /// The connection loop calls this directly for registered connections.
+    ///
+    /// ## Typestate Guarantee
+    ///
+    /// The caller has already transitioned the connection to `RegisteredState`,
+    /// so we know nick/user are guaranteed present. No runtime checks needed.
+    pub async fn dispatch_post_reg(
+        &self,
+        ctx: &mut Context<'_, RegisteredState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        let cmd_name = msg.command_name().to_ascii_uppercase();
+        let cmd_str = cmd_name.as_str();
+
+        // Increment command counter
+        if let Some(counter) = self.command_counts.get(cmd_str) {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
+
+        // Extract IRC context for tracing
+        let source_nick = Some(ctx.state.nick.as_str());
+        let channel = msg
+            .arg(0)
+            .filter(|a| a.starts_with('#') || a.starts_with('&'));
+        let msgid = crate::telemetry::extract_msgid(msg);
+
+        // Create instrumented span
+        let irc_span = span!(
+            Level::DEBUG,
+            "irc.command",
+            command = %cmd_name,
+            uid = %ctx.uid,
+            source_nick = source_nick,
+            channel = channel,
+            msgid = msgid.as_deref(),
+            remote_addr = %ctx.remote_addr,
+        );
+
+        // Start timing for metrics
+        let _timer = CommandTimer::new(&cmd_name);
+
+        // Execute handler within the span
+        // For registered connections, check universal handlers first, then post-reg
+        let result = if let Some(handler) = self.universal_handlers.get(cmd_str) {
+            handler.handle_reg(ctx, msg).instrument(irc_span).await
+        } else if let Some(handler) = self.post_reg_handlers.get(cmd_str) {
+            handler.handle(ctx, msg).instrument(irc_span).await
+        } else if self.pre_reg_handlers.contains_key(cmd_str) {
+            // Registered client trying to use pre-reg-only command
+            debug!(
+                command = %cmd_name,
+                uid = %ctx.uid,
+                "Command rejected: already registered"
+            );
+            crate::metrics::record_command_error(&cmd_name, "already_registered");
+            Err(super::context::HandlerError::AlreadyRegistered)
+        } else {
+            Err(super::context::HandlerError::Internal(
+                "Command not found".into(),
+            ))
+        };
+
+        // Copy values needed for error handling before passing ctx as mutable
+        let uid = ctx.uid.to_string();
+        let server_name = ctx.matrix.server_info.name.clone();
+        let nick = ctx.state.nick.clone();
+
+        // Record errors for metrics
+        self.handle_dispatch_result(&uid, &server_name, Some(&nick), &cmd_name, result, ctx).await
+    }
+
+    /// Common result handling for both dispatch methods.
+    async fn handle_dispatch_result<S>(
+        &self,
+        uid: &str,
+        server_name: &str,
+        nick: Option<&str>,
+        cmd_name: &str,
+        result: HandlerResult,
+        ctx: &mut Context<'_, S>,
+    ) -> HandlerResult
+    where
+        S: Send,
+    {
         match result {
             Ok(_) => Ok(()),
             Err(super::context::HandlerError::Internal(msg)) if msg == "Command not found" => {
                 // Unknown command
-                use super::context::get_nick_or_star;
-                let nick = get_nick_or_star(ctx).await;
-                let reply = err_unknowncommand(&ctx.matrix.server_info.name, &nick, &cmd_name);
-                // Attach label for labeled-response capability
+                let nick_str = nick.unwrap_or("*");
+                let reply = err_unknowncommand(server_name, nick_str, cmd_name);
                 let reply = with_label(reply, ctx.label.as_deref());
                 ctx.sender.send(reply).await?;
-
-                // Record unknown command metric
-                crate::metrics::record_command_error(&cmd_name, "unknown_command");
+                crate::metrics::record_command_error(cmd_name, "unknown_command");
                 Ok(())
             }
             Err(e) => {
@@ -347,8 +423,8 @@ impl Registry {
                     super::context::HandlerError::Quit(_) => "quit",
                     super::context::HandlerError::Internal(_) => "internal_error",
                 };
-                crate::metrics::record_command_error(&cmd_name, error_kind);
-                debug!(command = %cmd_name, error = %e, "Command error");
+                crate::metrics::record_command_error(cmd_name, error_kind);
+                debug!(command = %cmd_name, uid = %uid, error = %e, "Command error");
                 Err(e)
             }
         }

@@ -1,8 +1,7 @@
 //! STATS handler for server statistics.
 
-use super::super::{HandlerResult, PostRegHandler};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use super::super::{Context, HandlerResult, PostRegHandler};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -28,7 +27,7 @@ pub struct StatsHandler;
 impl PostRegHandler for StatsHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)

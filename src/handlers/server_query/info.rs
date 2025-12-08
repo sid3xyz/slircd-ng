@@ -3,11 +3,10 @@
 //! Additional server query commands for network information.
 
 use super::super::{
-    HandlerError, HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges,
+    Context, HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges,
     get_oper_info,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -23,17 +22,13 @@ pub struct MapHandler;
 impl PostRegHandler for MapHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick;
 
         let user_count = ctx.matrix.users.len();
 
@@ -69,17 +64,13 @@ pub struct RulesHandler;
 impl PostRegHandler for RulesHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick;
 
         // RPL_RULESTART (232): :- <server> Server Rules -
         ctx.send_reply(
@@ -129,17 +120,13 @@ pub struct UseripHandler;
 impl PostRegHandler for UseripHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick;
 
         // Check for oper privileges
         let Some((_, is_oper)) = get_oper_info(ctx).await else {
@@ -206,17 +193,13 @@ pub struct LinksHandler;
 impl PostRegHandler for LinksHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let server_name = &ctx.matrix.server_info.name;
-        let nick = ctx
-            .state
-            .nick
-            .as_ref()
-            .ok_or(HandlerError::NickOrUserMissing)?;
+        let nick = &ctx.state.nick;
 
         // RPL_LINKS (364): <mask> <server> :<hopcount> <server info>
         ctx.send_reply(

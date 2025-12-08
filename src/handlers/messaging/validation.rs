@@ -6,6 +6,7 @@
 //! - NOTICE silently drops (per RFC 2812)
 
 use crate::handlers::{Context, HandlerError, server_reply};
+use crate::state::RegisteredState;
 use slirc_proto::Response;
 use tracing::debug;
 
@@ -34,7 +35,7 @@ pub enum ValidationResult {
 /// - `Ok(ValidationResult::Blocked)` if blocked but handler should return Ok
 /// - `Err(HandlerError)` for actual errors (nick/user missing)
 pub async fn validate_message_send(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     target: &str,
     text: &str,
     strategy: ErrorStrategy,
@@ -45,11 +46,7 @@ pub async fn validate_message_send(
     }
 
     let uid_string = ctx.uid.to_string();
-    let nick = ctx
-        .state
-        .nick
-        .as_ref()
-        .ok_or(HandlerError::NickOrUserMissing)?;
+    let nick = &ctx.state.nick; // Guaranteed present in RegisteredState
 
     // Check message rate limit
     if !ctx.matrix.rate_limiter.check_message_rate(&uid_string) {

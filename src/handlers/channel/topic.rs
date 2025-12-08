@@ -2,12 +2,11 @@
 //!
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
-use super::super::{
+use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded, err_notonchannel,
     is_user_in_channel, server_reply, user_mask_from_state,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -22,7 +21,7 @@ pub struct TopicHandler;
 impl PostRegHandler for TopicHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let (nick, _user_name) = ctx.nick_user();

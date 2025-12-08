@@ -1,6 +1,7 @@
 //! Common mode parsing and validation logic.
 
 use super::super::{Context, HandlerError, server_reply};
+use crate::state::RegisteredState;
 use slirc_proto::{ChannelMode, Mode, Response, UserMode};
 use tracing::debug;
 
@@ -11,7 +12,7 @@ pub fn is_channel_target(target: &str) -> bool {
 
 /// Parse channel modes from arguments, sending errors to client on failure.
 pub async fn parse_channel_modes(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     mode_args: &[&str],
 ) -> Result<Vec<Mode<ChannelMode>>, HandlerError> {
     if mode_args.is_empty() {
@@ -22,11 +23,7 @@ pub async fn parse_channel_modes(
         Ok(m) => Ok(m),
         Err(e) => {
             debug!(error = ?e, "Failed to parse channel modes");
-            let nick = ctx
-                .state
-                .nick
-                .as_ref()
-                .ok_or(HandlerError::NickOrUserMissing)?;
+            let nick = &ctx.state.nick;
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_UNKNOWNMODE,
@@ -44,7 +41,7 @@ pub async fn parse_channel_modes(
 
 /// Parse user modes from arguments, sending errors to client on failure.
 pub async fn parse_user_modes(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     mode_args: &[&str],
 ) -> Result<Vec<Mode<UserMode>>, HandlerError> {
     if mode_args.is_empty() {
@@ -55,11 +52,7 @@ pub async fn parse_user_modes(
         Ok(m) => Ok(m),
         Err(e) => {
             debug!(error = ?e, "Failed to parse user modes");
-            let nick = ctx
-                .state
-                .nick
-                .as_ref()
-                .ok_or(HandlerError::NickOrUserMissing)?;
+            let nick = &ctx.state.nick;
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_UMODEUNKNOWNFLAG,

@@ -3,8 +3,7 @@
 use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
 };
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
@@ -18,7 +17,7 @@ pub struct PartHandler;
 impl PostRegHandler for PartHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
@@ -46,8 +45,8 @@ impl PostRegHandler for PartHandler {
 }
 
 /// Internal function to leave a channel.
-pub(super) async fn leave_channel_internal(
-    ctx: &mut Context<'_>,
+pub(super) async fn leave_channel_internal<S>(
+    ctx: &mut Context<'_, S>,
     channel_lower: &str,
     nick: &str,
     user_name: &str,

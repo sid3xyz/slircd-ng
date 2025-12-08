@@ -26,6 +26,79 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 // ============================================================================
+// SessionState trait — Unified interface for universal handlers
+// ============================================================================
+
+/// Common interface for both UnregisteredState and RegisteredState.
+///
+/// This trait allows universal handlers (QUIT, PING, PONG, NICK, CAP) to work
+/// with both state types without code duplication. Each method provides access
+/// to fields that exist in both states, with appropriate semantics.
+#[allow(dead_code)] // Methods will be used as handlers are migrated
+pub trait SessionState: Send {
+    /// Get the nick, if set. Always `Some` for RegisteredState.
+    fn nick(&self) -> Option<&str>;
+
+    /// Get the nick or "*" for error messages.
+    fn nick_or_star(&self) -> &str {
+        self.nick().unwrap_or("*")
+    }
+
+    /// Set the nick (during registration or NICK change).
+    fn set_nick(&mut self, nick: String);
+
+    /// Whether the connection is registered (type-level truth).
+    fn is_registered(&self) -> bool;
+
+    /// Get enabled capabilities.
+    fn capabilities(&self) -> &HashSet<String>;
+
+    /// Get mutable capabilities (for CAP REQ).
+    fn capabilities_mut(&mut self) -> &mut HashSet<String>;
+
+    /// Check if a capability is enabled.
+    fn has_cap(&self, cap: &str) -> bool {
+        self.capabilities().contains(cap)
+    }
+
+    /// Whether CAP negotiation is in progress.
+    fn cap_negotiating(&self) -> bool;
+
+    /// Set CAP negotiation state.
+    fn set_cap_negotiating(&mut self, negotiating: bool);
+
+    /// Get CAP protocol version.
+    fn cap_version(&self) -> u32;
+
+    /// Set CAP protocol version.
+    fn set_cap_version(&mut self, version: u32);
+
+    /// Whether this is a TLS connection.
+    fn is_tls(&self) -> bool;
+
+    /// Get TLS certificate fingerprint.
+    fn certfp(&self) -> Option<&str>;
+
+    /// Get account name if authenticated.
+    fn account(&self) -> Option<&str>;
+
+    /// Set account name.
+    fn set_account(&mut self, account: Option<String>);
+
+    /// Get active batch state.
+    fn active_batch(&self) -> Option<&BatchState>;
+
+    /// Get mutable active batch state.
+    fn active_batch_mut(&mut self) -> &mut Option<BatchState>;
+
+    /// Get active batch reference tag.
+    fn active_batch_ref(&self) -> Option<&str>;
+
+    /// Set active batch reference.
+    fn set_active_batch_ref(&mut self, batch_ref: Option<String>);
+}
+
+// ============================================================================
 // UnregisteredState — Pre-registration connection state
 // ============================================================================
 
@@ -35,7 +108,6 @@ use std::time::Instant;
 /// operate on this state. Nick and user are `Option` because they haven't
 /// been provided yet.
 #[derive(Debug, Default)]
-#[allow(dead_code)] // Phase 3: New typestate types not yet wired into connection loop
 pub struct UnregisteredState {
     /// Nick provided by NICK command.
     pub nick: Option<String>,
@@ -67,6 +139,80 @@ pub struct UnregisteredState {
     pub webirc_host: Option<String>,
     /// Password received via PASS command.
     pub pass_received: Option<String>,
+    /// Active batch state for client-to-server batches (e.g., draft/multiline).
+    pub active_batch: Option<BatchState>,
+    /// Reference tag for the active batch.
+    pub active_batch_ref: Option<String>,
+}
+
+impl SessionState for UnregisteredState {
+    fn nick(&self) -> Option<&str> {
+        self.nick.as_deref()
+    }
+
+    fn set_nick(&mut self, nick: String) {
+        self.nick = Some(nick);
+    }
+
+    fn is_registered(&self) -> bool {
+        false
+    }
+
+    fn capabilities(&self) -> &HashSet<String> {
+        &self.capabilities
+    }
+
+    fn capabilities_mut(&mut self) -> &mut HashSet<String> {
+        &mut self.capabilities
+    }
+
+    fn cap_negotiating(&self) -> bool {
+        self.cap_negotiating
+    }
+
+    fn set_cap_negotiating(&mut self, negotiating: bool) {
+        self.cap_negotiating = negotiating;
+    }
+
+    fn cap_version(&self) -> u32 {
+        self.cap_version
+    }
+
+    fn set_cap_version(&mut self, version: u32) {
+        self.cap_version = version;
+    }
+
+    fn is_tls(&self) -> bool {
+        self.is_tls
+    }
+
+    fn certfp(&self) -> Option<&str> {
+        self.certfp.as_deref()
+    }
+
+    fn account(&self) -> Option<&str> {
+        self.account.as_deref()
+    }
+
+    fn set_account(&mut self, account: Option<String>) {
+        self.account = account;
+    }
+
+    fn active_batch(&self) -> Option<&BatchState> {
+        self.active_batch.as_ref()
+    }
+
+    fn active_batch_mut(&mut self) -> &mut Option<BatchState> {
+        &mut self.active_batch
+    }
+
+    fn active_batch_ref(&self) -> Option<&str> {
+        self.active_batch_ref.as_deref()
+    }
+
+    fn set_active_batch_ref(&mut self, batch_ref: Option<String>) {
+        self.active_batch_ref = batch_ref;
+    }
 }
 
 #[allow(dead_code)] // Phase 3: Methods will be used when connection loop switches to ConnectionState
@@ -109,6 +255,7 @@ impl UnregisteredState {
                     account: self.account,
                     is_tls: self.is_tls,
                     certfp: self.certfp,
+                    cap_version: self.cap_version,
                     // Post-registration state starts fresh
                     failed_oper_attempts: 0,
                     last_oper_attempt: None,
@@ -137,7 +284,6 @@ impl UnregisteredState {
 /// - `ctx.state.user` is always valid (no unwrap needed)
 /// - The connection has completed the full registration handshake
 #[derive(Debug)]
-#[allow(dead_code)] // Phase 3: New typestate types not yet wired into connection loop
 pub struct RegisteredState {
     /// Nick — guaranteed present after registration.
     pub nick: String,
@@ -161,9 +307,11 @@ pub struct RegisteredState {
     pub active_batch: Option<BatchState>,
     /// Reference tag for the active batch.
     pub active_batch_ref: Option<String>,
+    /// CAP protocol version (preserved from registration).
+    pub cap_version: u32,
 }
 
-#[allow(dead_code)] // Phase 3: Methods will be used when handlers use RegisteredState
+#[allow(dead_code)] // Methods will be used as handlers are migrated
 impl RegisteredState {
     /// Check if a capability is enabled.
     #[inline]
@@ -178,6 +326,76 @@ impl RegisteredState {
     }
 }
 
+impl SessionState for RegisteredState {
+    fn nick(&self) -> Option<&str> {
+        Some(&self.nick)
+    }
+
+    fn set_nick(&mut self, nick: String) {
+        self.nick = nick;
+    }
+
+    fn is_registered(&self) -> bool {
+        true
+    }
+
+    fn capabilities(&self) -> &HashSet<String> {
+        &self.capabilities
+    }
+
+    fn capabilities_mut(&mut self) -> &mut HashSet<String> {
+        &mut self.capabilities
+    }
+
+    fn cap_negotiating(&self) -> bool {
+        false // Never negotiating after registration
+    }
+
+    fn set_cap_negotiating(&mut self, _negotiating: bool) {
+        // No-op for registered state - CAP END was already called
+    }
+
+    fn cap_version(&self) -> u32 {
+        self.cap_version
+    }
+
+    fn set_cap_version(&mut self, version: u32) {
+        self.cap_version = version;
+    }
+
+    fn is_tls(&self) -> bool {
+        self.is_tls
+    }
+
+    fn certfp(&self) -> Option<&str> {
+        self.certfp.as_deref()
+    }
+
+    fn account(&self) -> Option<&str> {
+        self.account.as_deref()
+    }
+
+    fn set_account(&mut self, account: Option<String>) {
+        self.account = account;
+    }
+
+    fn active_batch(&self) -> Option<&BatchState> {
+        self.active_batch.as_ref()
+    }
+
+    fn active_batch_mut(&mut self) -> &mut Option<BatchState> {
+        &mut self.active_batch
+    }
+
+    fn active_batch_ref(&self) -> Option<&str> {
+        self.active_batch_ref.as_deref()
+    }
+
+    fn set_active_batch_ref(&mut self, batch_ref: Option<String>) {
+        self.active_batch_ref = batch_ref;
+    }
+}
+
 // ============================================================================
 // ConnectionState enum — For the connection loop state machine
 // ============================================================================
@@ -186,7 +404,7 @@ impl RegisteredState {
 ///
 /// Used by the connection loop to track which phase the connection is in.
 /// This replaces the `registered: bool` flag with an explicit enum.
-#[allow(dead_code)] // Phase 3: New typestate types not yet wired into connection loop
+#[allow(dead_code)] // Will be used when connection loop is fully migrated
 pub enum ConnectionState {
     /// Connection is in pre-registration phase.
     Unregistered(UnregisteredState),
@@ -194,7 +412,7 @@ pub enum ConnectionState {
     Registered(RegisteredState),
 }
 
-#[allow(dead_code)] // Phase 3: Methods will be used when connection loop switches to ConnectionState
+#[allow(dead_code)] // Will be used when connection loop is fully migrated
 impl ConnectionState {
     /// Create a new connection in unregistered state.
     pub fn new(is_tls: bool, certfp: Option<String>) -> Self {
@@ -278,6 +496,7 @@ mod tests {
             last_oper_attempt: None,
             active_batch: None,
             active_batch_ref: None,
+            cap_version: 302,
         };
 
         assert!(state.has_cap("echo-message"));

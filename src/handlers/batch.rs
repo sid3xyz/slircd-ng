@@ -7,8 +7,7 @@
 //! Reference: <https://ircv3.net/specs/extensions/multiline>
 
 use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware};
-use crate::handlers::core::traits::TypedContext;
-use crate::state::Registered;
+use crate::state::{RegisteredState, SessionState};
 use async_trait::async_trait;
 use slirc_proto::{
     BatchSubCommand, Command, Message, MessageRef, Prefix, Tag, format_server_time,
@@ -57,7 +56,7 @@ pub struct BatchHandler;
 impl PostRegHandler for BatchHandler {
     async fn handle(
         &self,
-        ctx: &mut TypedContext<'_, Registered>,
+        ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // BATCH +ref type [params...] or BATCH -ref
@@ -175,9 +174,9 @@ impl PostRegHandler for BatchHandler {
 ///
 /// The BATCH handler processes batch start/end commands, but messages within
 /// a batch (PRIVMSG/NOTICE with batch=ref tag) are intercepted here before
-/// normal dispatch and accumulated in `HandshakeState.active_batch`.
-pub fn process_batch_message(
-    handshake: &mut super::HandshakeState,
+/// normal dispatch and accumulated in the session state's active_batch.
+pub fn process_batch_message<S: SessionState>(
+    state: &mut S,
     msg: &MessageRef<'_>,
     _server_name: &str,
 ) -> Result<Option<String>, String> {
@@ -191,8 +190,8 @@ pub fn process_batch_message(
     let batch_ref = batch_ref.unwrap();
 
     // Check if it matches our active batch
-    let active_ref = match &handshake.active_batch_ref {
-        Some(r) => r.clone(),
+    let active_ref = match state.active_batch_ref() {
+        Some(r) => r.to_string(),
         None => return Ok(None), // No active batch, process normally
     };
 
@@ -204,7 +203,7 @@ pub fn process_batch_message(
     }
 
     // Add to the active batch
-    let batch = match &mut handshake.active_batch {
+    let batch = match state.active_batch_mut() {
         Some(b) => b,
         None => return Ok(None),
     };
@@ -285,7 +284,7 @@ pub fn process_batch_message(
 
 /// Process a completed multiline batch by delivering to recipients.
 async fn process_multiline_batch(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     batch: &BatchState,
     nick: &str,
     server_name: &str,
@@ -368,7 +367,7 @@ async fn process_multiline_batch(
 
 /// Deliver a multiline batch to a channel.
 async fn deliver_multiline_to_channel(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     batch: &BatchState,
     _combined: &str,
     prefix: &Prefix,
@@ -382,7 +381,7 @@ async fn deliver_multiline_to_channel(
             &ctx.matrix.server_info.name,
             slirc_proto::Response::ERR_NOSUCHCHANNEL,
             vec![
-                ctx.state.nick.clone().unwrap_or_default(),
+                ctx.state.nick.clone(),
                 batch.target.clone(),
                 "No such channel".to_string(),
             ],
@@ -513,7 +512,7 @@ async fn deliver_multiline_to_channel(
 
 /// Deliver a multiline batch to a single user.
 async fn deliver_multiline_to_user(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context<'_, RegisteredState>,
     batch: &BatchState,
     _combined: &str,
     prefix: &Prefix,
@@ -533,7 +532,7 @@ async fn deliver_multiline_to_user(
             &ctx.matrix.server_info.name,
             slirc_proto::Response::ERR_NOSUCHNICK,
             vec![
-                ctx.state.nick.clone().unwrap_or_default(),
+                ctx.state.nick.clone(),
                 target_nick.to_string(),
                 "No such nick".to_string(),
             ],
@@ -768,8 +767,8 @@ async fn send_multiline_fallback(
 }
 
 /// Send a FAIL message for batch errors.
-async fn send_fail(
-    ctx: &mut Context<'_>,
+async fn send_fail<S>(
+    ctx: &mut Context<'_, S>,
     server_name: &str,
     code: &str,
     message: &str,
