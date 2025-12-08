@@ -62,12 +62,12 @@ pub struct StoreMessageParams<'a> {
 pub struct StoredMessage {
     pub msgid: String,
     /// Target channel (lowercased for lookup).
-    /// Used for debugging/logging; envelope.target contains display name.
-    #[allow(dead_code)] // Retained for debugging and future TARGETS subcommand
+    /// Selected from DB for struct completeness; envelope.target has display name.
+    #[allow(dead_code)] // DB field - accessed via envelope.target instead
     pub target: String,
-    /// Sender nickname (for filtering).
-    /// Used for debugging/logging and future sender-based filtering.
-    #[allow(dead_code)] // Retained for debugging and future sender filtering
+    /// Sender nickname.
+    /// Selected from DB for struct completeness; envelope.prefix has full sender.
+    #[allow(dead_code)] // DB field - accessed via envelope.prefix instead
     pub sender: String,
     pub envelope: MessageEnvelope,
     pub nanotime: i64,
