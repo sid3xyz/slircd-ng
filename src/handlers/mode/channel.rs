@@ -15,7 +15,7 @@
 //! (`send_list_mode`, `get_list_mode_query`) to a separate `channel_lists.rs`.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, err_chanoprivsneeded, err_nosuchnick, err_nosuchchannel, server_reply, with_label,
+    Context, HandlerError, HandlerResult, err_nosuchnick, err_nosuchchannel, server_reply, with_label,
 };
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelError;
@@ -120,7 +120,7 @@ pub async fn handle_channel_mode(
         // Must be op to change modes
         if !is_op {
             ctx.sender
-                .send(err_chanoprivsneeded(
+                .send(ChannelError::ChanOpPrivsNeeded.to_irc_reply(
                     &ctx.matrix.server_info.name,
                     nick,
                     &canonical_name,

@@ -4,11 +4,11 @@ use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
     user_prefix, with_label,
 };
+use crate::error::ChannelError;
 use crate::state::RegisteredState;
 use crate::db::ChannelRepository;
 use crate::security::UserContext;
 use crate::state::MemberModes;
-use crate::state::actor::ChannelError;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Prefix, Response, irc_to_lower};
 use std::sync::Arc;
@@ -518,48 +518,7 @@ async fn send_join_error(
     channel_name: &str,
     error: ChannelError,
 ) -> HandlerResult {
-    let reply = match error {
-        ChannelError::BannedFromChan => {
-            Response::err_bannedfromchan(&ctx.matrix.server_info.name, channel_name)
-        }
-        ChannelError::InviteOnlyChan => {
-            Response::err_inviteonlychan(&ctx.matrix.server_info.name, channel_name)
-        }
-        ChannelError::ChannelIsFull => {
-            Response::err_channelisfull(&ctx.matrix.server_info.name, channel_name)
-        }
-        ChannelError::BadChannelKey => {
-            Response::err_badchannelkey(&ctx.matrix.server_info.name, channel_name)
-        }
-        ChannelError::SessionInvalid => server_reply(
-            &ctx.matrix.server_info.name,
-            Response::ERR_UNKNOWNERROR,
-            vec![
-                nick.to_string(),
-                channel_name.to_string(),
-                "Session expired. Please retry.".to_string(),
-            ],
-        ),
-        ChannelError::ChannelTombstone => server_reply(
-            &ctx.matrix.server_info.name,
-            Response::ERR_UNKNOWNERROR,
-            vec![
-                nick.to_string(),
-                channel_name.to_string(),
-                "Channel is restarting. Please retry.".to_string(),
-            ],
-        ),
-        _ => server_reply(
-            &ctx.matrix.server_info.name,
-            Response::ERR_UNKNOWNERROR,
-            vec![
-                nick.to_string(),
-                channel_name.to_string(),
-                error.to_string(),
-            ],
-        ),
-    };
-
+    let reply = error.to_irc_reply(&ctx.matrix.server_info.name, nick, channel_name);
     ctx.sender.send(reply).await?;
     Ok(())
 }

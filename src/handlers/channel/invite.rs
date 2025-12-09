@@ -5,12 +5,12 @@
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded, err_nosuchnick, err_notonchannel,
+    HandlerError, HandlerResult, PostRegHandler, err_nosuchnick, err_notonchannel,
     server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
-use crate::state::actor::{ChannelEvent, ChannelError};
+use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
 use tokio::sync::oneshot;
@@ -166,26 +166,7 @@ impl PostRegHandler for InviteHandler {
                     ctx.sender.send(reply).await?;
                 }
                 Ok(Err(e)) => {
-                    let reply = match e {
-                        ChannelError::ChanOpPrivsNeeded => {
-                            err_chanoprivsneeded(server_name, &nick, channel_name)
-                        }
-                        ChannelError::UserOnChannel(_) => server_reply(
-                            server_name,
-                            Response::ERR_USERONCHANNEL,
-                            vec![
-                                nick.clone(),
-                                target_nick.to_string(),
-                                channel_name.to_string(),
-                                "is already on channel".to_string(),
-                            ],
-                        ),
-                        _ => server_reply(
-                            server_name,
-                            Response::ERR_UNKNOWNERROR,
-                            vec![nick.clone(), e.to_string()],
-                        ),
-                    };
+                    let reply = e.to_irc_reply(server_name, &nick, channel_name);
                     ctx.sender.send(reply).await?;
                 }
                 Err(_) => {}

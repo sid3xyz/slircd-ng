@@ -1,14 +1,14 @@
 //! KICK command handler.
 
 use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded,
-    err_nosuchnick, err_nosuchchannel, err_usernotinchannel, server_reply, user_mask_from_state,
+    HandlerError, HandlerResult, PostRegHandler,
+    err_nosuchnick, err_nosuchchannel, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
-use crate::state::actor::{ChannelEvent, ChannelError};
+use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, irc_to_lower};
+use slirc_proto::{MessageRef, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::info;
 
@@ -110,22 +110,7 @@ impl PostRegHandler for KickHandler {
                 );
             }
             Ok(Err(e)) => {
-                let reply = match e {
-                    ChannelError::ChanOpPrivsNeeded => {
-                        err_chanoprivsneeded(&ctx.matrix.server_info.name, &nick, channel_name)
-                    }
-                    ChannelError::UserNotInChannel(_) => err_usernotinchannel(
-                        &ctx.matrix.server_info.name,
-                        &nick,
-                        target_nick,
-                        channel_name,
-                    ),
-                    _ => server_reply(
-                        &ctx.matrix.server_info.name,
-                        Response::ERR_UNKNOWNERROR,
-                        vec![nick.clone(), e.to_string()],
-                    ),
-                };
+                let reply = e.to_irc_reply(&ctx.matrix.server_info.name, &nick, channel_name);
                 ctx.sender.send(reply).await?;
             }
             Err(_) => {}
