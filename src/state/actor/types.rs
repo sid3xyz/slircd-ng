@@ -6,67 +6,11 @@ use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
+// Re-export ChannelError from central error module
+pub use crate::error::ChannelError;
+
 /// Unique identifier for a user (UID string).
 pub type Uid = String;
-
-/// Channel operation errors.
-///
-/// These errors represent channel-specific failures that can be mapped
-/// to RFC-compliant error responses by handler code.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChannelError {
-    NotOnChannel,
-    ChanOpPrivsNeeded,
-    UserNotInChannel(String),
-    UserOnChannel(String),
-    CannotKnock,
-    ChanOpen,
-    ChannelTombstone,
-    SessionInvalid,
-    BannedFromChan,
-    InviteOnlyChan,
-    ChannelIsFull,
-    BadChannelKey,
-    #[allow(dead_code)] // Reserved for future mode validation
-    KeySet,
-    #[allow(dead_code)] // Reserved for future mode validation
-    UnknownMode(char, String),
-    #[allow(dead_code)] // Reserved for future mode validation
-    NoChanModes,
-    #[allow(dead_code)] // Reserved for future ban list limits
-    BanListFull(char),
-    #[allow(dead_code)] // Reserved for future founder-only operations
-    UniqOpPrivsNeeded,
-    #[allow(dead_code)] // Fallback for unknown errors
-    UnknownError(String),
-}
-
-impl std::fmt::Display for ChannelError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ChannelError::NotOnChannel => write!(f, "Not on channel"),
-            ChannelError::ChanOpPrivsNeeded => write!(f, "You're not channel operator"),
-            ChannelError::UserNotInChannel(nick) => write!(f, "User {} is not on that channel", nick),
-            ChannelError::UserOnChannel(nick) => write!(f, "User {} is already on that channel", nick),
-            ChannelError::CannotKnock => write!(f, "Cannot knock on this channel"),
-            ChannelError::ChanOpen => write!(f, "Channel is open"),
-            ChannelError::ChannelTombstone => write!(f, "Channel is restarting"),
-            ChannelError::SessionInvalid => write!(f, "Session invalid"),
-            ChannelError::BannedFromChan => write!(f, "Cannot join channel (+b)"),
-            ChannelError::InviteOnlyChan => write!(f, "Cannot join channel (+i)"),
-            ChannelError::ChannelIsFull => write!(f, "Cannot join channel (+l)"),
-            ChannelError::BadChannelKey => write!(f, "Cannot join channel (+k)"),
-            ChannelError::KeySet => write!(f, "Channel key already set"),
-            ChannelError::UnknownMode(c, chan) => write!(f, "{} is unknown mode char to me for {}", c, chan),
-            ChannelError::NoChanModes => write!(f, "Channel doesn't support modes"),
-            ChannelError::BanListFull(c) => write!(f, "Channel list {} is full", c),
-            ChannelError::UniqOpPrivsNeeded => write!(f, "You're not the original channel operator"),
-            ChannelError::UnknownError(msg) => write!(f, "{}", msg),
-        }
-    }
-}
-
-impl std::error::Error for ChannelError {}
 
 #[derive(Debug)]
 pub struct JoinSuccessData {

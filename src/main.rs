@@ -5,6 +5,7 @@
 mod caps;
 mod config;
 mod db;
+mod error;
 mod handlers;
 mod http;
 mod metrics;
