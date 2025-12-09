@@ -71,8 +71,13 @@ pub async fn force_join_channel<S>(
     let (caps, user_context, sender, session_id) =
         if let Some(user_ref) = ctx.matrix.users.get(target.uid) {
             let user = user_ref.read().await;
+            // NOTE: IP address is not stored in User struct, so we use a placeholder.
+            // This means IP-based extended bans ($i:) won't match for forced joins.
+            // This is acceptable because SAJOIN is an operator command that bypasses
+            // normal ban checks anyway. If IP-based ban matching becomes needed,
+            // the User struct should be extended to store the connection IP.
             let context = crate::security::UserContext::for_registration(
-                "0.0.0.0".parse().unwrap(),
+                std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
                 user.host.clone(),
                 user.nick.clone(),
                 user.user.clone(),

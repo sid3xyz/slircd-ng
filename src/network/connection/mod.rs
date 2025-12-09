@@ -43,7 +43,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc};
 use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::WebSocketStream;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 /// A client connection handler.
 pub struct Connection {
@@ -352,7 +352,18 @@ impl Connection {
         // Transition: UnregisteredState -> RegisteredState
         // At this point, the user is registered and exists in Matrix.
         // Convert the state for Phase 2.
-        let mut reg_state = unreg_state.try_register().expect("User registration verified above");
+        let mut reg_state = match unreg_state.try_register() {
+            Ok(state) => state,
+            Err(_unreg) => {
+                // This should not happen if handshake loop exited correctly,
+                // but handle gracefully rather than panicking the connection task.
+                error!(uid = %self.uid, "Registration state mismatch - closing connection");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Registration state mismatch",
+                ).into());
+            }
+        };
 
         // Phase 2: Unified Zero-Copy Loop
         // Transport handles both reading and writing with unified API

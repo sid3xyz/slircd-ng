@@ -282,18 +282,27 @@ pub async fn notify_monitors_online(matrix: &Arc<Matrix>, nick: &str, user: &str
     let nick_lower = irc_to_lower(nick);
     let server_name = &matrix.server_info.name;
 
-    if let Some(watchers) = matrix.monitoring.get(&nick_lower) {
-        let hostmask = format!("{}!{}@{}", nick, user, host);
-        let reply = server_reply(
-            server_name,
-            Response::RPL_MONONLINE,
-            vec!["*".to_string(), hostmask],
-        );
+    // Collect watcher UIDs first to avoid holding DashSet lock across await points
+    let watcher_uids: Vec<String> = matrix
+        .monitoring
+        .get(&nick_lower)
+        .map(|watchers| watchers.iter().map(|uid| uid.clone()).collect())
+        .unwrap_or_default();
 
-        for watcher_uid in watchers.iter() {
-            if let Some(sender) = matrix.senders.get(watcher_uid.as_str()) {
-                let _ = sender.send(reply.clone()).await;
-            }
+    if watcher_uids.is_empty() {
+        return;
+    }
+
+    let hostmask = format!("{}!{}@{}", nick, user, host);
+    let reply = server_reply(
+        server_name,
+        Response::RPL_MONONLINE,
+        vec!["*".to_string(), hostmask],
+    );
+
+    for watcher_uid in watcher_uids {
+        if let Some(sender) = matrix.senders.get(&watcher_uid) {
+            let _ = sender.send(reply.clone()).await;
         }
     }
 }
@@ -305,17 +314,26 @@ pub async fn notify_monitors_offline(matrix: &Arc<Matrix>, nick: &str) {
     let nick_lower = irc_to_lower(nick);
     let server_name = &matrix.server_info.name;
 
-    if let Some(watchers) = matrix.monitoring.get(&nick_lower) {
-        let reply = server_reply(
-            server_name,
-            Response::RPL_MONOFFLINE,
-            vec!["*".to_string(), nick.to_string()],
-        );
+    // Collect watcher UIDs first to avoid holding DashSet lock across await points
+    let watcher_uids: Vec<String> = matrix
+        .monitoring
+        .get(&nick_lower)
+        .map(|watchers| watchers.iter().map(|uid| uid.clone()).collect())
+        .unwrap_or_default();
 
-        for watcher_uid in watchers.iter() {
-            if let Some(sender) = matrix.senders.get(watcher_uid.as_str()) {
-                let _ = sender.send(reply.clone()).await;
-            }
+    if watcher_uids.is_empty() {
+        return;
+    }
+
+    let reply = server_reply(
+        server_name,
+        Response::RPL_MONOFFLINE,
+        vec!["*".to_string(), nick.to_string()],
+    );
+
+    for watcher_uid in watcher_uids {
+        if let Some(sender) = matrix.senders.get(&watcher_uid) {
+            let _ = sender.send(reply.clone()).await;
         }
     }
 }

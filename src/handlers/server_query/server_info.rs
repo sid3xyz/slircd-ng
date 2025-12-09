@@ -286,11 +286,13 @@ impl PostRegHandler for LusersHandler {
         let nick = ctx.nick();
 
         // Count users and channels
-        let total_users = ctx.matrix.users.len();
+        // Collect user refs first to avoid holding DashMap shard lock across await points
+        let user_refs: Vec<_> = ctx.matrix.users.iter().map(|r| r.value().clone()).collect();
+        let total_users = user_refs.len();
         let mut invisible_count = 0;
         let mut oper_count = 0;
 
-        for user_ref in ctx.matrix.users.iter() {
+        for user_ref in user_refs {
             let user = user_ref.read().await;
             if user.modes.invisible {
                 invisible_count += 1;
