@@ -301,8 +301,8 @@ impl ChannelError {
                 vec![nick.to_string(), "You're not the original channel operator".to_string()],
             ),
             // These don't have standard IRC numerics - use generic error
-            Self::CannotKnock | Self::ChanOpen | Self::ChannelTombstone 
-            | Self::SessionInvalid | Self::KeySet | Self::NoChanModes 
+            Self::CannotKnock | Self::ChanOpen | Self::ChannelTombstone
+            | Self::SessionInvalid | Self::KeySet | Self::NoChanModes
             | Self::UnknownError(_) => (
                 Response::ERR_UNKNOWNERROR,
                 vec![nick.to_string(), channel.to_string(), self.to_string()],
@@ -389,7 +389,7 @@ mod tests {
     fn test_handler_error_to_irc_reply() {
         let reply = HandlerError::NeedMoreParams.to_irc_reply("server", "nick", "JOIN");
         assert!(reply.is_some());
-        
+
         // Internal errors don't generate replies
         let reply = HandlerError::Internal("oops".into()).to_irc_reply("server", "nick", "JOIN");
         assert!(reply.is_none());
