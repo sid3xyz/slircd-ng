@@ -197,25 +197,6 @@ error_reply! {
 }
 
 error_reply! {
-    /// Create ERR_CHANOPRIVSNEEDED reply (482) - you're not channel operator.
-    err_chanoprivsneeded(ERR_CHANOPRIVSNEEDED, "You're not channel operator") => {
-        server_name: &str,
-        nick: &str,
-        channel: &str
-    }
-}
-
-error_reply! {
-    /// Create ERR_USERNOTINCHANNEL reply (441) - they aren't on that channel.
-    err_usernotinchannel(ERR_USERNOTINCHANNEL, "They aren't on that channel") => {
-        server_name: &str,
-        nick: &str,
-        target: &str,
-        channel: &str
-    }
-}
-
-error_reply! {
     /// Create ERR_UNKNOWNCOMMAND reply (421) - unknown command.
     err_unknowncommand(ERR_UNKNOWNCOMMAND, "Unknown command") => {
         server_name: &str,

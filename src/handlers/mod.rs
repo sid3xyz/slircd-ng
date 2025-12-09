@@ -52,8 +52,8 @@ pub use core::{PostRegHandler, PreRegHandler, UniversalHandler};
 
 // Re-export helper functions for use by handlers
 pub use helpers::{
-    err_chanoprivsneeded, err_needmoreparams, err_noprivileges, err_nosuchchannel, err_nosuchnick,
-    err_notonchannel, err_usernotinchannel, labeled_ack, matches_hostmask, server_notice,
+    err_needmoreparams, err_noprivileges, err_nosuchchannel, err_nosuchnick,
+    err_notonchannel, labeled_ack, matches_hostmask, server_notice,
     server_reply, user_prefix, with_label,
 };
 

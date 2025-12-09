@@ -3,12 +3,12 @@
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, err_chanoprivsneeded, err_nosuchchannel, err_notonchannel,
+    HandlerError, HandlerResult, PostRegHandler, err_nosuchchannel, err_notonchannel,
     is_user_in_channel, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
-use crate::state::actor::{ChannelEvent, ChannelError};
+use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tokio::sync::oneshot;
@@ -133,14 +133,12 @@ impl PostRegHandler for TopicHandler {
                         info!(nick = %nick, channel = %channel_name, "Topic changed");
                     }
                     Ok(Err(e)) => {
-                        if matches!(e, ChannelError::ChanOpPrivsNeeded) {
-                            let reply = err_chanoprivsneeded(
-                                &ctx.matrix.server_info.name,
-                                &nick,
-                                channel_name,
-                            );
-                            ctx.sender.send(reply).await?;
-                        }
+                        let reply = e.to_irc_reply(
+                            &ctx.matrix.server_info.name,
+                            &nick,
+                            channel_name,
+                        );
+                        ctx.sender.send(reply).await?;
                     }
                     Err(_) => {}
                 }
