@@ -7,11 +7,11 @@
 use crate::caps::CapabilityAuthority;
 use crate::db::Shun;
 use crate::handlers::{Context,
-    HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, server_notice,
+    HandlerResult, PostRegHandler, server_notice,
 };
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::MessageRef;
+use slirc_proto::{MessageRef, Prefix, Response};
 
 /// Handler for SHUN command.
 ///
@@ -33,9 +33,10 @@ impl PostRegHandler for ShunHandler {
         let nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
-            ctx.sender
-                .send(err_noprivileges(server_name, nick))
-                .await?;
+            let reply = Response::err_noprivileges(nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SHUN", "ERR_NOPRIVILEGES");
             return Ok(());
         };
 
@@ -43,9 +44,10 @@ impl PostRegHandler for ShunHandler {
         let mask = match msg.arg(0) {
             Some(m) if !m.is_empty() => m,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, nick, "SHUN"))
-                    .await?;
+                let reply = Response::err_needmoreparams(nick, "SHUN")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SHUN", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -114,9 +116,10 @@ impl PostRegHandler for UnshunHandler {
         let nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
-            ctx.sender
-                .send(err_noprivileges(server_name, nick))
-                .await?;
+            let reply = Response::err_noprivileges(nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("UNSHUN", "ERR_NOPRIVILEGES");
             return Ok(());
         };
 
@@ -124,9 +127,10 @@ impl PostRegHandler for UnshunHandler {
         let mask = match msg.arg(0) {
             Some(m) if !m.is_empty() => m,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, nick, "UNSHUN"))
-                    .await?;
+                let reply = Response::err_needmoreparams(nick, "UNSHUN")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("UNSHUN", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };

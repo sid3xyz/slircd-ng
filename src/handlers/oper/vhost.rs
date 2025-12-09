@@ -1,12 +1,12 @@
 use super::super::{Context,
-    HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, err_nosuchnick,
+    HandlerResult, PostRegHandler,
     get_nick_or_star, resolve_nick_to_uid, server_notice,
 };
 use crate::state::RegisteredState;
 use super::is_valid_hostname;
 use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix};
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
 /// Handler for VHOST command. Uses capability-based authorization (Innovation 4).
 ///
@@ -29,18 +29,20 @@ impl PostRegHandler for VhostHandler {
         // Request oper capability from authority (Innovation 4)
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         if authority.request_kill_cap(ctx.uid).await.is_none() {
-            ctx.sender
-                .send(err_noprivileges(server_name, &oper_nick))
-                .await?;
+            let reply = Response::err_noprivileges(&oper_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("VHOST", "ERR_NOPRIVILEGES");
             return Ok(());
         }
 
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "VHOST"))
-                    .await?;
+                let reply = Response::err_needmoreparams(&oper_nick, "VHOST")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("VHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -48,9 +50,10 @@ impl PostRegHandler for VhostHandler {
         let new_vhost = match msg.arg(1) {
             Some(h) if !h.is_empty() => h,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "VHOST"))
-                    .await?;
+                let reply = Response::err_needmoreparams(&oper_nick, "VHOST")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("VHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -74,9 +77,10 @@ impl PostRegHandler for VhostHandler {
         let target_uid = match resolve_nick_to_uid(ctx, target_nick) {
             Some(uid) => uid,
             None => {
-                ctx.sender
-                    .send(err_nosuchnick(server_name, &oper_nick, target_nick))
-                    .await?;
+                let reply = Response::err_nosuchnick(&oper_nick, target_nick)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("VHOST", "ERR_NOSUCHNICK");
                 return Ok(());
             }
         };

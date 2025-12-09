@@ -3,11 +3,11 @@
 //! Shared helpers for PRIVMSG, NOTICE, and TAGMSG handlers including shun checking,
 //! routing logic, channel validation, and error responses.
 
-use super::super::{Context, HandlerResult, err_nosuchnick, err_nosuchchannel, server_reply};
+use super::super::{Context, HandlerResult, server_reply};
 use crate::security::UserContext;
 use crate::security::spam::SpamVerdict;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
-use slirc_proto::{Command, Message, Response};
+use slirc_proto::{Command, Message, Prefix, Response};
 use tracing::debug;
 
 // ============================================================================
@@ -405,16 +405,18 @@ pub async fn send_cannot_send<S>(
 
 /// Send ERR_NOSUCHCHANNEL.
 pub async fn send_no_such_channel<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
-    ctx.sender
-        .send(err_nosuchchannel(&ctx.matrix.server_info.name, nick, target))
-        .await?;
+    let reply = Response::err_nosuchchannel(nick, target)
+        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+    ctx.sender.send(reply).await?;
+    crate::metrics::record_command_error("PRIVMSG", "ERR_NOSUCHCHANNEL");
     Ok(())
 }
 
 /// Send ERR_NOSUCHNICK.
 pub async fn send_no_such_nick<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
-    ctx.sender
-        .send(err_nosuchnick(&ctx.matrix.server_info.name, nick, target))
-        .await?;
+    let reply = Response::err_nosuchnick(nick, target)
+        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+    ctx.sender.send(reply).await?;
+    crate::metrics::record_command_error("PRIVMSG", "ERR_NOSUCHNICK");
     Ok(())
 }

@@ -1,5 +1,5 @@
 use super::super::{Context,
-    HandlerResult, PostRegHandler, err_needmoreparams, matches_hostmask,
+    HandlerResult, PostRegHandler, matches_hostmask,
     server_reply,
 };
 use crate::state::RegisteredState;
@@ -28,18 +28,20 @@ impl PostRegHandler for OperHandler {
         let name = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, ctx.nick(), "OPER"))
-                    .await?;
+                let reply = Response::err_needmoreparams(ctx.nick(), "OPER")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("OPER", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
         let password = match msg.arg(1) {
             Some(p) if !p.is_empty() => p,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, ctx.nick(), "OPER"))
-                    .await?;
+                let reply = Response::err_needmoreparams(ctx.nick(), "OPER")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("OPER", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };

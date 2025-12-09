@@ -1,9 +1,9 @@
 //! PING and PONG handlers.
 
-use super::super::{Context, HandlerResult, UniversalHandler, err_needmoreparams, with_label};
+use super::super::{Context, HandlerResult, UniversalHandler, with_label};
 use crate::state::SessionState;
 use async_trait::async_trait;
-use slirc_proto::{Message, MessageRef, prefix::Prefix};
+use slirc_proto::{Message, MessageRef, Response, prefix::Prefix};
 
 /// Handler for PING command.
 pub struct PingHandler;
@@ -19,9 +19,11 @@ impl<S: SessionState> UniversalHandler<S> for PingHandler {
             _ => {
                 // No token provided - return ERR_NEEDMOREPARAMS (461)
                 let nick = ctx.state.nick_or_star();
-                let reply = err_needmoreparams(&ctx.matrix.server_info.name, nick, "PING");
+                let reply = Response::err_needmoreparams(nick, "PING")
+                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
                 let reply = with_label(reply, ctx.label.as_deref());
                 ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("PING", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };

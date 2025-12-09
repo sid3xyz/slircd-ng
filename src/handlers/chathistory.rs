@@ -6,12 +6,12 @@
 //! - IRCv3 chathistory: <https://ircv3.net/specs/extensions/chathistory>
 
 use crate::db::{DbError, StoredMessage};
-use crate::handlers::{Context, HandlerResult, PostRegHandler, err_needmoreparams};
+use crate::handlers::{Context, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{
     BatchSubCommand, ChatHistorySubCommand, Command, Message, MessageRef, MessageReference,
-    Prefix, Tag, parse_server_time,
+    Prefix, Response, Tag, parse_server_time,
 };
 use tracing::{debug, warn};
 use uuid::Uuid;
@@ -310,9 +310,10 @@ impl PostRegHandler for ChatHistoryHandler {
         let subcommand_str = match msg.arg(0) {
             Some(s) => s,
             None => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "CHATHISTORY"))
-                    .await?;
+                let reply = Response::err_needmoreparams(&nick, "CHATHISTORY")
+                    .with_prefix(Prefix::ServerName(server_name.clone()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("CHATHISTORY", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -341,9 +342,10 @@ impl PostRegHandler for ChatHistoryHandler {
             match msg.arg(1) {
                 Some(t) => t.to_string(),
                 None => {
-                    ctx.sender
-                        .send(err_needmoreparams(server_name, &nick, "CHATHISTORY"))
-                        .await?;
+                    let reply = Response::err_needmoreparams(&nick, "CHATHISTORY")
+                        .with_prefix(Prefix::ServerName(server_name.clone()));
+                    ctx.sender.send(reply).await?;
+                    crate::metrics::record_command_error("CHATHISTORY", "ERR_NEEDMOREPARAMS");
                     return Ok(());
                 }
             }

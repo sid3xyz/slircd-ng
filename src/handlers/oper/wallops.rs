@@ -1,11 +1,11 @@
 use super::super::{Context,
-    HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, get_nick_or_star,
+    HandlerResult, PostRegHandler, get_nick_or_star,
     user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix};
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
 /// Handler for WALLOPS command. Uses capability-based authorization (Innovation 4).
 ///
@@ -27,9 +27,10 @@ impl PostRegHandler for WallopsHandler {
             Some(t) if !t.is_empty() => t,
             _ => {
                 let nick = get_nick_or_star(ctx).await;
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "WALLOPS"))
-                    .await?;
+                let reply = Response::err_needmoreparams(&nick, "WALLOPS")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("WALLOPS", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -46,9 +47,10 @@ impl PostRegHandler for WallopsHandler {
         let _wallops_cap = match authority.request_global_notice_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
-                ctx.sender
-                    .send(err_noprivileges(server_name, &sender_nick))
-                    .await?;
+                let reply = Response::err_noprivileges(&sender_nick)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("WALLOPS", "ERR_NOPRIVILEGES");
                 return Ok(());
             }
         };

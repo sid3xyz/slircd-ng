@@ -3,14 +3,14 @@
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, err_nosuchchannel, err_notonchannel,
+    HandlerError, HandlerResult, PostRegHandler,
     is_user_in_channel, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, irc_to_lower};
+use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::info;
 
@@ -36,22 +36,20 @@ impl PostRegHandler for TopicHandler {
         let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
-                ctx.sender
-                    .send(err_nosuchchannel(&ctx.matrix.server_info.name, nick, channel_name))
-                    .await?;
+                let reply = Response::err_nosuchchannel(nick, channel_name)
+                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("TOPIC", "ERR_NOSUCHCHANNEL");
                 return Ok(());
             }
         };
 
         // Check if user is in channel
         if !is_user_in_channel(ctx, ctx.uid, &channel_lower).await {
-            ctx.sender
-                .send(err_notonchannel(
-                    &ctx.matrix.server_info.name,
-                    nick,
-                    channel_name,
-                ))
-                .await?;
+            let reply = Response::err_notonchannel(nick, channel_name)
+                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("TOPIC", "ERR_NOTONCHANNEL");
             return Ok(());
         }
 

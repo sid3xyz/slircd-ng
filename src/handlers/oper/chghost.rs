@@ -1,11 +1,11 @@
 use super::super::{Context,
-    HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, err_nosuchnick,
+    HandlerResult, PostRegHandler,
     get_nick_or_star, resolve_nick_to_uid, server_notice,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix};
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
 /// Handler for CHGHOST command. Uses capability-based authorization (Innovation 4).
 ///
@@ -29,18 +29,20 @@ impl PostRegHandler for ChghostHandler {
         // Request oper capability from authority (Innovation 4)
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         if authority.request_kill_cap(ctx.uid).await.is_none() {
-            ctx.sender
-                .send(err_noprivileges(server_name, &oper_nick))
-                .await?;
+            let reply = Response::err_noprivileges(&oper_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("CHGHOST", "ERR_NOPRIVILEGES");
             return Ok(());
         }
 
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "CHGHOST"))
-                    .await?;
+                let reply = Response::err_needmoreparams(&oper_nick, "CHGHOST")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -48,9 +50,10 @@ impl PostRegHandler for ChghostHandler {
         let new_user = match msg.arg(1) {
             Some(u) if !u.is_empty() => u,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "CHGHOST"))
-                    .await?;
+                let reply = Response::err_needmoreparams(&oper_nick, "CHGHOST")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -58,25 +61,28 @@ impl PostRegHandler for ChghostHandler {
         let new_host = match msg.arg(2) {
             Some(h) if !h.is_empty() => h,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &oper_nick, "CHGHOST"))
-                    .await?;
+                let reply = Response::err_needmoreparams(&oper_nick, "CHGHOST")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            ctx.sender
-                .send(err_nosuchnick(server_name, &oper_nick, target_nick))
-                .await?;
+            let reply = Response::err_nosuchnick(&oper_nick, target_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("CHGHOST", "ERR_NOSUCHNICK");
             return Ok(());
         };
 
         let (old_nick, old_user, old_host, channels) = {
             let Some(user_ref) = ctx.matrix.users.get(&target_uid) else {
-                ctx.sender
-                    .send(err_nosuchnick(server_name, &oper_nick, target_nick))
-                    .await?;
+                let reply = Response::err_nosuchnick(&oper_nick, target_nick)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("CHGHOST", "ERR_NOSUCHNICK");
                 return Ok(());
             };
 

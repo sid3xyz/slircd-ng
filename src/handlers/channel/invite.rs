@@ -5,14 +5,14 @@
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, err_nosuchnick, err_notonchannel,
+    HandlerError, HandlerResult, PostRegHandler,
     server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
 
 /// Handler for INVITE command.
@@ -60,9 +60,10 @@ impl PostRegHandler for InviteHandler {
         let target_uid = match ctx.matrix.nicks.get(&target_lower) {
             Some(uid) => uid.value().clone(),
             None => {
-                ctx.sender
-                    .send(err_nosuchnick(server_name, nick, target_nick))
-                    .await?;
+                let reply = Response::err_nosuchnick(nick, target_nick)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("INVITE", "ERR_NOSUCHNICK");
                 return Ok(());
             }
         };
@@ -78,9 +79,10 @@ impl PostRegHandler for InviteHandler {
             };
 
             if !user_in_channel {
-                ctx.sender
-                    .send(err_notonchannel(server_name, nick, channel_name))
-                    .await?;
+                let reply = Response::err_notonchannel(nick, channel_name)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("INVITE", "ERR_NOTONCHANNEL");
                 return Ok(());
             }
 

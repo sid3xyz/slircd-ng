@@ -6,11 +6,11 @@
 //! Reference: <https://ircv3.net/specs/extensions/batch>
 //! Reference: <https://ircv3.net/specs/extensions/multiline>
 
-use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware, err_nosuchnick, err_nosuchchannel};
+use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware};
 use crate::state::{RegisteredState, SessionState};
 use async_trait::async_trait;
 use slirc_proto::{
-    BatchSubCommand, ChannelExt, Command, Message, MessageRef, Prefix, Tag, format_server_time,
+    BatchSubCommand, ChannelExt, Command, Message, MessageRef, Prefix, Response, Tag, format_server_time,
     generate_batch_ref, generate_msgid,
 };
 use tracing::debug;
@@ -377,9 +377,10 @@ async fn deliver_multiline_to_channel(
 
     let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) else {
         // Channel doesn't exist - send error
-        ctx.sender
-            .send(err_nosuchchannel(&ctx.matrix.server_info.name, &ctx.state.nick, &batch.target))
-            .await?;
+        let reply = Response::err_nosuchchannel(&ctx.state.nick, &batch.target)
+            .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+        ctx.sender.send(reply).await?;
+        crate::metrics::record_command_error("BATCH", "ERR_NOSUCHCHANNEL");
         return Ok(());
     };
 
@@ -521,9 +522,10 @@ async fn deliver_multiline_to_user(
 
     let Some(target_uid) = target_uid else {
         // User not found
-        ctx.sender
-            .send(err_nosuchnick(&ctx.matrix.server_info.name, &ctx.state.nick, target_nick))
-            .await?;
+        let reply = Response::err_nosuchnick(&ctx.state.nick, target_nick)
+            .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+        ctx.sender.send(reply).await?;
+        crate::metrics::record_command_error("BATCH", "ERR_NOSUCHNICK");
         return Ok(());
     };
 

@@ -7,10 +7,6 @@ use slirc_proto::{Command, Message, Prefix, Response};
 use thiserror::Error;
 use tokio::sync::mpsc;
 
-// Re-export protocol-level errors for convenience
-pub use slirc_proto::error::ProtocolError;
-pub use slirc_proto::transport::TransportReadError;
-
 // ============================================================================
 // Handler Errors (command processing)
 // ============================================================================
@@ -323,50 +319,6 @@ impl ChannelError {
 
 // DbError stays in db/mod.rs because it has #[from] sqlx::Error which requires
 // sqlx to be in scope. We just document that it exists there.
-
-// ============================================================================
-// Unified Server Error (optional top-level wrapper)
-// ============================================================================
-
-/// Top-level server error that can wrap any error type.
-///
-/// Use this for functions that can fail with multiple error types.
-#[derive(Debug, Error)]
-#[allow(dead_code)] // Available for future unified error handling
-pub enum ServerError {
-    #[error(transparent)]
-    Protocol(#[from] ProtocolError),
-
-    #[error(transparent)]
-    Transport(#[from] TransportReadError),
-
-    #[error(transparent)]
-    Handler(#[from] HandlerError),
-
-    #[error(transparent)]
-    Channel(#[from] ChannelError),
-
-    #[error("database error: {0}")]
-    Database(#[from] crate::db::DbError),
-
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
-}
-
-impl ServerError {
-    /// Get a static error code string for metrics labeling.
-    #[allow(dead_code)] // Available for future metrics integration
-    pub fn error_code(&self) -> &'static str {
-        match self {
-            Self::Protocol(_) => "protocol_error",
-            Self::Transport(_) => "transport_error",
-            Self::Handler(e) => e.error_code(),
-            Self::Channel(e) => e.error_code(),
-            Self::Database(_) => "database_error",
-            Self::Io(_) => "io_error",
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

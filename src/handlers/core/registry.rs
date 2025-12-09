@@ -17,6 +17,7 @@
 use super::context::{Context, HandlerResult};
 use super::traits::{DynUniversalHandler, PostRegHandler, PreRegHandler};
 use crate::state::{RegisteredState, UnregisteredState};
+use slirc_proto::{Prefix, Response};
 use crate::handlers::{
     account::RegisterHandler,
     admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler},
@@ -35,7 +36,7 @@ use crate::handlers::{
     connection::{
         NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,
     },
-    helpers::{err_unknowncommand, with_label},
+    helpers::with_label,
     messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler},
     mode::ModeHandler,
     monitor::MonitorHandler,
@@ -401,7 +402,8 @@ impl Registry {
             Err(super::context::HandlerError::Internal(msg)) if msg == "Command not found" => {
                 // Unknown command
                 let nick_str = nick.unwrap_or("*");
-                let reply = err_unknowncommand(server_name, nick_str, cmd_name);
+                let reply = Response::err_unknowncommand(nick_str, cmd_name)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
                 let reply = with_label(reply, ctx.label.as_deref());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error(cmd_name, "unknown_command");
