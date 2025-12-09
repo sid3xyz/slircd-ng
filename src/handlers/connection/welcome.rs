@@ -2,7 +2,7 @@
 
 use super::super::{Context, HandlerError, HandlerResult, notify_monitors_online, server_reply};
 use crate::state::{UnregisteredState, User};
-use slirc_proto::{Command, Message, Response};
+use slirc_proto::{Command, Message, Prefix, Response};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
@@ -48,11 +48,8 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_, UnregisteredState>) -> Han
         match &ctx.state.pass_received {
             None => {
                 // No password provided but one is required
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_PASSWDMISMATCH,
-                    vec![nick.clone(), "Password required".to_string()],
-                );
+                let reply = Response::err_passwdmismatch(nick)
+                    .with_prefix(Prefix::ServerName(server_name.clone()));
                 ctx.sender.send(reply).await?;
                 let error = Message::from(Command::ERROR(
                     "Closing Link: Access denied (password required)".to_string(),
@@ -62,11 +59,8 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_, UnregisteredState>) -> Han
             }
             Some(provided) if provided != required_password => {
                 // Wrong password
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_PASSWDMISMATCH,
-                    vec![nick.clone(), "Password incorrect".to_string()],
-                );
+                let reply = Response::err_passwdmismatch(nick)
+                    .with_prefix(Prefix::ServerName(server_name.clone()));
                 ctx.sender.send(reply).await?;
                 let error = Message::from(Command::ERROR(
                     "Closing Link: Access denied (bad password)".to_string(),
@@ -84,14 +78,8 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_, UnregisteredState>) -> Han
     if let Some(ban_result) = ctx.matrix.ban_cache.check_user_host(user, &host) {
         let ban_reason = format!("{}: {}", ban_result.ban_type, ban_result.reason);
 
-        let reply = server_reply(
-            server_name,
-            Response::ERR_YOUREBANNEDCREEP,
-            vec![
-                nick.clone(),
-                format!("You are banned from this server: {}", ban_reason),
-            ],
-        );
+        let reply = Response::err_yourebannedcreep(nick)
+            .with_prefix(Prefix::ServerName(server_name.clone()));
         ctx.sender.send(reply).await?;
 
         let error = Message::from(Command::ERROR(format!(

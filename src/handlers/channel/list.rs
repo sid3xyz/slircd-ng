@@ -29,9 +29,12 @@ impl PostRegHandler for ListHandler {
 
         // RPL_LISTSTART (321): Channel :Users Name (optional, some clients don't expect it)
 
+        // Collect channel senders first to avoid holding DashMap lock across await points
+        // This prevents deadlocks if the actor tries to access the channel map
+        let channels: Vec<_> = ctx.matrix.channels.iter().map(|r| r.value().clone()).collect();
+
         // Iterate channels
-        for channel_ref in ctx.matrix.channels.iter() {
-            let sender = channel_ref.value();
+        for sender in channels {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let _ = sender
                 .send(crate::state::actor::ChannelEvent::GetInfo {

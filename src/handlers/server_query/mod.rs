@@ -8,6 +8,7 @@ mod info;
 mod server_info;
 mod service;
 mod stats;
+mod disabled;
 
 pub use help::HelpHandler;
 pub use info::{LinksHandler, MapHandler, RulesHandler, UseripHandler};
@@ -16,3 +17,4 @@ pub use server_info::{
 };
 pub use service::{ServiceHandler, ServlistHandler, SqueryHandler};
 pub use stats::StatsHandler;
+pub use disabled::{SummonHandler, UsersHandler};

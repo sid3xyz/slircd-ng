@@ -2,7 +2,7 @@
 
 use super::super::{
     Context, HandlerError, HandlerResult, UniversalHandler, notify_monitors_offline,
-    notify_monitors_online, server_reply,
+    notify_monitors_online,
 };
 use crate::state::SessionState;
 use async_trait::async_trait;
@@ -25,15 +25,8 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         }
 
         if !nick.is_valid_nick() {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_ERRONEOUSNICKNAME,
-                vec![
-                    ctx.state.nick_or_star().to_string(),
-                    nick.to_string(),
-                    "Erroneous nickname".to_string(),
-                ],
-            );
+            let reply = Response::err_erroneusnickname(ctx.state.nick_or_star(), nick)
+                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
             ctx.sender.send(reply).await?;
             return Ok(());
         }
@@ -50,15 +43,8 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             Entry::Occupied(entry) => {
                 let owner_uid = entry.get();
                 if owner_uid != ctx.uid {
-                    let reply = server_reply(
-                        &ctx.matrix.server_info.name,
-                        Response::ERR_NICKNAMEINUSE,
-                        vec![
-                            ctx.state.nick_or_star().to_string(),
-                            nick.to_string(),
-                            "Nickname is already in use".to_string(),
-                        ],
-                    );
+                    let reply = Response::err_nicknameinuse(ctx.state.nick_or_star(), nick)
+                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
                     ctx.sender.send(reply).await?;
                     return Ok(());
                 }
@@ -90,15 +76,12 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                             .modes
                             .contains(&crate::state::actor::ChannelMode::NoNickChange)
                     {
-                        let reply = server_reply(
-                            &ctx.matrix.server_info.name,
-                            Response::ERR_NONICKCHANGE,
-                            vec![
-                                ctx.state.nick_or_star().to_string(),
-                                info.name.clone(),
-                                "Cannot change nickname while in this channel (+N)".to_string(),
-                            ],
-                        );
+                        let reply = Response::err_nonickchange(
+                            ctx.state.nick_or_star(),
+                            nick,
+                            &info.name,
+                        )
+                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
                         ctx.sender.send(reply).await?;
                         return Ok(());
                     }
