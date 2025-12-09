@@ -12,11 +12,11 @@ use super::middleware::ResponseMiddleware;
 use super::registry::Registry;
 use crate::db::Database;
 use crate::state::{Matrix, RegisteredState};
-use slirc_proto::Message;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use thiserror::Error;
-use tokio::sync::mpsc;
+
+// Re-export error types from central module
+pub use crate::error::{HandlerError, HandlerResult};
 
 /// Handler context passed to each command handler.
 ///
@@ -128,41 +128,6 @@ impl<'a> Context<'a, RegisteredState> {
         self.state.account.as_deref()
     }
 }
-
-/// Errors that can occur during command handling.
-#[derive(Debug, Error)]
-#[allow(clippy::large_enum_variant)] // Send variant is large but rarely constructed
-pub enum HandlerError {
-    #[error("not enough parameters")]
-    NeedMoreParams,
-    #[error("no text to send")]
-    NoTextToSend,
-    #[allow(dead_code)] // TODO: Return from NickHandler instead of sending reply directly
-    #[error("nickname in use: {0}")]
-    NicknameInUse(String),
-    #[allow(dead_code)] // TODO: Return from NickHandler for invalid nicks
-    #[error("erroneous nickname: {0}")]
-    ErroneousNickname(String),
-    #[error("not registered")]
-    NotRegistered,
-    /// Disconnect the client silently (error message already sent)
-    #[error("access denied")]
-    AccessDenied,
-    #[allow(dead_code)] // TODO: Return from USER handler for re-registration attempts
-    #[error("already registered")]
-    AlreadyRegistered,
-    #[error("internal error: nick or user missing after registration")]
-    NickOrUserMissing,
-    #[error("send error: {0}")]
-    Send(#[from] mpsc::error::SendError<Message>),
-    #[error("client quit: {0:?}")]
-    Quit(Option<String>),
-    #[error("internal error: {0}")]
-    Internal(String),
-}
-
-/// Result type for command handlers.
-pub type HandlerResult = Result<(), HandlerError>;
 
 // ============================================================================
 // User lookup helpers (Phase 1.1: DRY refactoring)

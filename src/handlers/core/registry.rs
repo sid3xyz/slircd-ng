@@ -408,20 +408,7 @@ impl Registry {
                 Ok(())
             }
             Err(e) => {
-                let error_kind = match e {
-                    super::context::HandlerError::NeedMoreParams => "need_more_params",
-                    super::context::HandlerError::NoTextToSend => "no_text_to_send",
-                    super::context::HandlerError::NicknameInUse(_) => "nickname_in_use",
-                    super::context::HandlerError::ErroneousNickname(_) => "erroneous_nickname",
-                    super::context::HandlerError::NotRegistered => "not_registered",
-                    super::context::HandlerError::AccessDenied => "access_denied",
-                    super::context::HandlerError::AlreadyRegistered => "already_registered",
-                    super::context::HandlerError::NickOrUserMissing => "nick_or_user_missing",
-                    super::context::HandlerError::Send(_) => "send_error",
-                    super::context::HandlerError::Quit(_) => "quit",
-                    super::context::HandlerError::Internal(_) => "internal_error",
-                };
-                crate::metrics::record_command_error(cmd_name, error_kind);
+                crate::metrics::record_command_error(cmd_name, e.error_code());
                 debug!(command = %cmd_name, uid = %uid, error = %e, "Command error");
                 Err(e)
             }
