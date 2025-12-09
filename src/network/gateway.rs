@@ -261,10 +261,13 @@ impl Gateway {
                                             }
 
                                             // Reject with 403 Forbidden
-                                            Err(http::Response::builder()
+                                            let response = http::Response::builder()
                                                 .status(http::StatusCode::FORBIDDEN)
                                                 .body(Some("CORS origin not allowed".to_string()))
-                                                .unwrap())
+                                                .unwrap_or_else(|_| {
+                                                    http::Response::new(Some("Internal Server Error".to_string()))
+                                                });
+                                            Err(response)
                                         };
 
                                         // Perform WebSocket handshake with CORS validation

@@ -3,35 +3,35 @@
 //! Implements CAP LS, LIST, REQ, ACK, NAK, END subcommands.
 //! Reference: <https://ircv3.net/specs/extensions/capability-negotiation>
 
-use super::{Context, HandlerResult, PreRegHandler, UniversalHandler, server_reply};
+use super::{Context, HandlerResult, PreRegHandler, UniversalHandler};
 use crate::config::AccountRegistrationConfig;
 use crate::state::{SessionState, UnregisteredState};
 use async_trait::async_trait;
-use slirc_proto::{CapSubCommand, Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{CapSubCommand, Command, Message, MessageRef, Prefix, Response, Capability};
 use tracing::{debug, info, warn};
 
 /// Capabilities we support (subset of slirc_proto::CAPABILITIES).
-const SUPPORTED_CAPS: &[&str] = &[
-    "multi-prefix",
-    "userhost-in-names",
-    "server-time",
-    "echo-message",
-    "sasl",
-    "batch",
-    "message-tags",
-    "labeled-response",
-    "setname",
-    "away-notify",
-    "account-notify",
-    "extended-join",
-    "invite-notify",
-    "chghost",
-    "monitor",
-    "cap-notify",
-    "account-tag",
-    "draft/multiline",
-    "draft/account-registration",
-    "draft/chathistory",
+const SUPPORTED_CAPS: &[Capability] = &[
+    Capability::MultiPrefix,
+    Capability::UserhostInNames,
+    Capability::ServerTime,
+    Capability::EchoMessage,
+    Capability::Sasl,
+    Capability::Batch,
+    Capability::MessageTags,
+    Capability::LabeledResponse,
+    Capability::SetName,
+    Capability::AwayNotify,
+    Capability::AccountNotify,
+    Capability::ExtendedJoin,
+    Capability::InviteNotify,
+    Capability::ChgHost,
+    Capability::Monitor,
+    Capability::CapNotify,
+    Capability::AccountTag,
+    Capability::Multiline,
+    Capability::AccountRegistration,
+    Capability::ChatHistory,
 ];
 
 /// Maximum bytes allowed in a multiline batch message.
@@ -58,18 +58,8 @@ impl<S: SessionState> UniversalHandler<S> for CapHandler {
             Ok(cmd) => cmd,
             Err(_) => {
                 // Send ERR_INVALIDCAPCMD (410) for unknown subcommand
-                let reply = Message {
-                    tags: None,
-                    prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
-                    command: Command::Raw(
-                        "410".to_string(),
-                        vec![
-                            nick.clone(),
-                            subcommand_str.to_string(),
-                            "Invalid CAP subcommand".to_string(),
-                        ],
-                    ),
-                };
+                let reply = Response::err_invalidcapcmd(&nick, subcommand_str)
+                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
                 ctx.sender.send(reply).await?;
                 return Ok(());
             }
@@ -174,7 +164,9 @@ async fn handle_req<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, caps_
         // Strip any value suffix (cap=value) - split always returns at least one element
         let cap_base = cap_name.split('=').next().unwrap_or(cap_name);
 
-        if SUPPORTED_CAPS.contains(&cap_base) {
+        let is_supported = SUPPORTED_CAPS.iter().any(|c| c.as_ref() == cap_base);
+
+        if is_supported {
             if is_removal {
                 ctx.state.capabilities_mut().remove(cap_base);
                 accepted.push(format!("-{}", cap_base));
@@ -253,24 +245,24 @@ async fn handle_end<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str) -> Ha
 fn build_cap_list(version: u32, has_cert: bool, acct_cfg: &AccountRegistrationConfig) -> String {
     let caps: Vec<String> = SUPPORTED_CAPS
         .iter()
-        .map(|&cap| {
+        .map(|cap| {
             // For CAP 302+, add values for caps that have them
             if version >= 302 {
                 match cap {
-                    "sasl" => {
+                    Capability::Sasl => {
                         if has_cert {
                             "sasl=PLAIN,EXTERNAL".to_string()
                         } else {
                             "sasl=PLAIN".to_string()
                         }
                     }
-                    "draft/multiline" => {
+                    Capability::Multiline => {
                         format!(
                             "draft/multiline=max-bytes={},max-lines={}",
                             MULTILINE_MAX_BYTES, MULTILINE_MAX_LINES
                         )
                     }
-                    "draft/account-registration" => {
+                    Capability::AccountRegistration => {
                         // Build flags based on server configuration
                         let mut flags = Vec::new();
                         if acct_cfg.custom_account_name {
@@ -288,10 +280,10 @@ fn build_cap_list(version: u32, has_cert: bool, acct_cfg: &AccountRegistrationCo
                             format!("draft/account-registration={}", flags.join(","))
                         }
                     }
-                    _ => cap.to_string(),
+                    _ => cap.as_ref().to_string(),
                 }
             } else {
-                cap.to_string()
+                cap.as_ref().to_string()
             }
         })
         .collect();
@@ -560,41 +552,26 @@ async fn send_sasl_success(
         .or(ctx.state.webirc_ip.clone())
         .unwrap_or_else(|| ctx.remote_addr.ip().to_string());
 
+    let mask = format!("{}!{}@{}", nick, user, host);
+
     // RPL_LOGGEDIN (900)
-    let reply = server_reply(
-        &ctx.matrix.server_info.name,
-        Response::RPL_LOGGEDIN,
-        vec![
-            nick.to_string(),
-            format!("{}!{}@{}", nick, user, host),
-            account.to_string(),
-            format!("You are now logged in as {}", account),
-        ],
-    );
+    let reply = Response::rpl_loggedin(nick, &mask, account)
+        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
     ctx.sender.send(reply).await?;
 
     // RPL_SASLSUCCESS (903)
-    let reply = server_reply(
-        &ctx.matrix.server_info.name,
-        Response::RPL_SASLSUCCESS,
-        vec![
-            nick.to_string(),
-            "SASL authentication successful".to_string(),
-        ],
-    );
+    let reply = Response::rpl_saslsuccess(nick)
+        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
     ctx.sender.send(reply).await?;
 
     Ok(())
 }
 
 /// Send SASL failure numerics.
-async fn send_sasl_fail(ctx: &mut Context<'_, UnregisteredState>, nick: &str, reason: &str) -> HandlerResult {
+async fn send_sasl_fail(ctx: &mut Context<'_, UnregisteredState>, nick: &str, _reason: &str) -> HandlerResult {
     // ERR_SASLFAIL (904)
-    let reply = server_reply(
-        &ctx.matrix.server_info.name,
-        Response::ERR_SASLFAIL,
-        vec![nick.to_string(), reason.to_string()],
-    );
+    let reply = Response::err_saslfail(nick)
+        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
     ctx.sender.send(reply).await?;
 
     Ok(())

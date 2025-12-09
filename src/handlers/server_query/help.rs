@@ -6,7 +6,7 @@
 use super::super::{Context, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response};
+use slirc_proto::{MessageRef, Prefix, Response};
 
 /// Static help text for commands.
 const HELP_TOPICS: &[(&str, &[&str])] = &[
@@ -252,88 +252,58 @@ impl PostRegHandler for HelpHandler {
                 let topic_upper = topic.to_ascii_uppercase();
                 if let Some((cmd, lines)) = HELP_TOPICS.iter().find(|(c, _)| *c == topic_upper) {
                     // RPL_HELPSTART (704)
-                    ctx.send_reply(
-                        Response::RPL_HELPSTART,
-                        vec![nick.clone(), cmd.to_string(), lines[0].to_string()],
-                    )
-                    .await?;
+                    let reply = Response::rpl_helpstart(nick, cmd)
+                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    ctx.sender.send(reply).await?;
 
                     // RPL_HELPTXT (705) for additional lines
                     for line in &lines[1..] {
-                        ctx.send_reply(
-                            Response::RPL_HELPTXT,
-                            vec![nick.clone(), cmd.to_string(), line.to_string()],
-                        )
-                        .await?;
+                        let reply = Response::rpl_helptxt(nick, cmd, line)
+                            .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                        ctx.sender.send(reply).await?;
                     }
 
                     // RPL_ENDOFHELP (706)
-                    ctx.send_reply(
-                        Response::RPL_ENDOFHELP,
-                        vec![nick.clone(), cmd.to_string(), "End of /HELP".to_string()],
-                    )
-                    .await?;
+                    let reply = Response::rpl_endofhelp(nick, cmd)
+                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    ctx.sender.send(reply).await?;
                 } else {
                     // ERR_HELPNOTFOUND (524)
-                    ctx.send_reply(
-                        Response::ERR_HELPNOTFOUND,
-                        vec![
-                            nick.clone(),
-                            topic.to_string(),
-                            "No help available on that topic".to_string(),
-                        ],
-                    )
-                    .await?;
+                    let reply = Response::err_helpnotfound(nick, topic)
+                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    ctx.sender.send(reply).await?;
                 }
             }
             None => {
                 // List all commands
-                ctx.send_reply(
-                    Response::RPL_HELPSTART,
-                    vec![
-                        nick.clone(),
-                        "index".to_string(),
-                        "Available commands:".to_string(),
-                    ],
-                )
-                .await?;
+                let reply = Response::rpl_helpstart(nick, "index")
+                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                ctx.sender.send(reply).await?;
 
                 // Group commands into lines of ~10 each
                 let commands: Vec<&str> = HELP_TOPICS.iter().map(|(c, _)| *c).collect();
                 for chunk in commands.chunks(10) {
                     let line = chunk.join(" ");
-                    ctx.send_reply(
-                        Response::RPL_HELPTXT,
-                        vec![nick.clone(), "index".to_string(), line],
-                    )
-                    .await?;
+                    let reply = Response::rpl_helptxt(nick, "index", &line)
+                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    ctx.sender.send(reply).await?;
                 }
 
-                ctx.send_reply(
-                    Response::RPL_HELPTXT,
-                    vec![nick.clone(), "index".to_string(), " ".to_string()],
-                )
-                .await?;
+                let reply = Response::rpl_helptxt(nick, "index", " ")
+                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                ctx.sender.send(reply).await?;
 
-                ctx.send_reply(
-                    Response::RPL_HELPTXT,
-                    vec![
-                        nick.clone(),
-                        "index".to_string(),
-                        "Use /HELP <command> for help on a specific command.".to_string(),
-                    ],
+                let reply = Response::rpl_helptxt(
+                    nick,
+                    "index",
+                    "Use /HELP <command> for help on a specific command.",
                 )
-                .await?;
+                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                ctx.sender.send(reply).await?;
 
-                ctx.send_reply(
-                    Response::RPL_ENDOFHELP,
-                    vec![
-                        nick.clone(),
-                        "index".to_string(),
-                        "End of /HELP".to_string(),
-                    ],
-                )
-                .await?;
+                let reply = Response::rpl_endofhelp(nick, "index")
+                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                ctx.sender.send(reply).await?;
             }
         }
 

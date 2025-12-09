@@ -46,7 +46,7 @@ use crate::handlers::{
     server_query::{
         AdminHandler, HelpHandler, InfoHandler, LinksHandler, LusersHandler, MapHandler,
         MotdHandler, RulesHandler, ServiceHandler, ServlistHandler, SqueryHandler, StatsHandler,
-        TimeHandler, UseripHandler, VersionHandler,
+        TimeHandler, UseripHandler, VersionHandler, SummonHandler, UsersHandler,
     },
     service_aliases::{CsHandler, NsHandler},
     user_query::{IsonHandler, UserhostHandler, WhoHandler, WhoisHandler, WhowasHandler},
@@ -145,6 +145,8 @@ impl Registry {
         post_reg_handlers.insert("USERIP", Box::new(UseripHandler));
         post_reg_handlers.insert("LINKS", Box::new(LinksHandler));
         post_reg_handlers.insert("HELP", Box::new(HelpHandler));
+        post_reg_handlers.insert("SUMMON", Box::new(SummonHandler));
+        post_reg_handlers.insert("USERS", Box::new(UsersHandler));
 
         // Service query handlers (RFC 2812 §3.5)
         post_reg_handlers.insert("SERVICE", Box::new(ServiceHandler));

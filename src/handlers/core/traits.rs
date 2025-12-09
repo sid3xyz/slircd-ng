@@ -130,3 +130,15 @@ impl<T: UniversalHandler<UnregisteredState>> PreRegHandler for T {
         <T as UniversalHandler<UnregisteredState>>::handle(self, ctx, msg).await
     }
 }
+
+/// A handler that implements UniversalHandler<RegisteredState> can act as PostRegHandler.
+#[async_trait]
+impl<T: UniversalHandler<RegisteredState>> PostRegHandler for T {
+    async fn handle(
+        &self,
+        ctx: &mut Context<'_, RegisteredState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        <T as UniversalHandler<RegisteredState>>::handle(self, ctx, msg).await
+    }
+}

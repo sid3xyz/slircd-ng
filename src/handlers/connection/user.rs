@@ -1,10 +1,10 @@
 //! USER command handler for connection registration.
 
-use super::super::{Context, HandlerError, HandlerResult, PreRegHandler, server_reply};
+use super::super::{Context, HandlerError, HandlerResult, PreRegHandler};
 use super::welcome::send_welcome_burst;
 use crate::state::UnregisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response};
+use slirc_proto::{MessageRef, Prefix, Response};
 use tracing::debug;
 
 /// Handler for USER command.
@@ -16,11 +16,8 @@ impl PreRegHandler for UserHandler {
         // USER cannot be resent after already set
         if ctx.state.user.is_some() {
             let nick = ctx.state.nick.as_deref().unwrap_or("*");
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_ALREADYREGISTERED,
-                vec![nick.to_string(), "You may not reregister".to_string()],
-            );
+            let reply = Response::err_alreadyregistred(nick)
+                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
             ctx.sender.send(reply).await?;
             return Ok(());
         }
