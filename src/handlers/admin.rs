@@ -7,8 +7,8 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    Context, HandlerResult, PostRegHandler, TargetUser, err_needmoreparams, err_noprivileges,
-    err_nosuchchannel, err_nosuchnick, force_join_channel, force_part_channel,
+    Context, HandlerResult, PostRegHandler, TargetUser,
+    force_join_channel, force_part_channel,
     format_modes_for_log, resolve_nick_to_uid, server_notice,
 };
 use crate::state::RegisteredState;
@@ -44,9 +44,10 @@ impl PostRegHandler for SajoinHandler {
         let oper_nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
-            ctx.sender
-                .send(err_noprivileges(server_name, oper_nick))
-                .await?;
+            let reply = Response::err_noprivileges(oper_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SAJOIN", "ERR_NOPRIVILEGES");
             return Ok(());
         };
 
@@ -54,35 +55,39 @@ impl PostRegHandler for SajoinHandler {
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, oper_nick, "SAJOIN"))
-                    .await?;
+                let reply = Response::err_needmoreparams(oper_nick, "SAJOIN")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SAJOIN", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
         let channel_name = match msg.arg(1) {
             Some(c) if !c.is_empty() => c,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, oper_nick, "SAJOIN"))
-                    .await?;
+                let reply = Response::err_needmoreparams(oper_nick, "SAJOIN")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SAJOIN", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
 
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            ctx.sender
-                .send(err_nosuchnick(server_name, oper_nick, target_nick))
-                .await?;
+            let reply = Response::err_nosuchnick(oper_nick, target_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SAJOIN", "ERR_NOSUCHNICK");
             return Ok(());
         };
 
         // Validate channel name
         if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
-            ctx.sender
-                .send(err_nosuchchannel(server_name, oper_nick, channel_name))
-                .await?;
+            let reply = Response::err_nosuchchannel(oper_nick, channel_name)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SAJOIN", "ERR_NOSUCHCHANNEL");
             return Ok(());
         }
 
@@ -152,9 +157,10 @@ impl PostRegHandler for SapartHandler {
         let oper_nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
-            ctx.sender
-                .send(err_noprivileges(server_name, oper_nick))
-                .await?;
+            let reply = Response::err_noprivileges(oper_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SAPART", "ERR_NOPRIVILEGES");
             return Ok(());
         };
 
@@ -162,27 +168,30 @@ impl PostRegHandler for SapartHandler {
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, oper_nick, "SAPART"))
-                    .await?;
+                let reply = Response::err_needmoreparams(oper_nick, "SAPART")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SAPART", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
         let channel_name = match msg.arg(1) {
             Some(c) if !c.is_empty() => c,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, oper_nick, "SAPART"))
-                    .await?;
+                let reply = Response::err_needmoreparams(oper_nick, "SAPART")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SAPART", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
 
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            ctx.sender
-                .send(err_nosuchnick(server_name, oper_nick, target_nick))
-                .await?;
+            let reply = Response::err_nosuchnick(oper_nick, target_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SAPART", "ERR_NOSUCHNICK");
             return Ok(());
         };
 
@@ -205,9 +214,10 @@ impl PostRegHandler for SapartHandler {
         let was_in_channel = force_part_channel(ctx, &target, &channel_lower, None).await?;
 
         if !was_in_channel {
-            ctx.sender
-                .send(err_nosuchchannel(server_name, oper_nick, channel_name))
-                .await?;
+            let reply = Response::err_nosuchchannel(oper_nick, channel_name)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SAPART", "ERR_NOSUCHCHANNEL");
             return Ok(());
         }
 
@@ -251,9 +261,10 @@ impl PostRegHandler for SanickHandler {
         let oper_nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
-            ctx.sender
-                .send(err_noprivileges(server_name, oper_nick))
-                .await?;
+            let reply = Response::err_noprivileges(oper_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SANICK", "ERR_NOPRIVILEGES");
             return Ok(());
         };
 
@@ -261,18 +272,20 @@ impl PostRegHandler for SanickHandler {
         let old_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, oper_nick, "SANICK"))
-                    .await?;
+                let reply = Response::err_needmoreparams(oper_nick, "SANICK")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SANICK", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
         let new_nick = match msg.arg(1) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, oper_nick, "SANICK"))
-                    .await?;
+                let reply = Response::err_needmoreparams(oper_nick, "SANICK")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SANICK", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -280,9 +293,10 @@ impl PostRegHandler for SanickHandler {
         // Find target user
         let old_lower = irc_to_lower(old_nick);
         let Some(target_uid) = resolve_nick_to_uid(ctx, old_nick) else {
-            ctx.sender
-                .send(err_nosuchnick(server_name, oper_nick, old_nick))
-                .await?;
+            let reply = Response::err_nosuchnick(oper_nick, old_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SANICK", "ERR_NOSUCHNICK");
             return Ok(());
         };
 
@@ -387,9 +401,10 @@ impl PostRegHandler for SamodeHandler {
         let oper_nick = ctx.nick();
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
-            ctx.sender
-                .send(err_noprivileges(server_name, oper_nick))
-                .await?;
+            let reply = Response::err_noprivileges(oper_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("SAMODE", "ERR_NOPRIVILEGES");
             return Ok(());
         };
 
@@ -397,18 +412,20 @@ impl PostRegHandler for SamodeHandler {
         let channel_name = match msg.arg(0) {
             Some(c) if !c.is_empty() => c,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, oper_nick, "SAMODE"))
-                    .await?;
+                let reply = Response::err_needmoreparams(oper_nick, "SAMODE")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SAMODE", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
         let modes_str = match msg.arg(1) {
             Some(m) if !m.is_empty() => m,
             _ => {
-                ctx.sender
-                    .send(err_needmoreparams(server_name, oper_nick, "SAMODE"))
-                    .await?;
+                let reply = Response::err_needmoreparams(oper_nick, "SAMODE")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SAMODE", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -419,9 +436,10 @@ impl PostRegHandler for SamodeHandler {
         let channel = match ctx.matrix.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
-                ctx.sender
-                    .send(err_nosuchchannel(server_name, oper_nick, channel_name))
-                    .await?;
+                let reply = Response::err_nosuchchannel(oper_nick, channel_name)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("SAMODE", "ERR_NOSUCHCHANNEL");
                 return Ok(());
             }
         };

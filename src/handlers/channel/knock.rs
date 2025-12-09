@@ -2,11 +2,11 @@
 //!
 //! RFC-style extension - Request invite to an invite-only channel
 
-use super::super::{Context, HandlerResult, PostRegHandler, err_nosuchchannel, server_reply};
+use super::super::{Context, HandlerResult, PostRegHandler, server_reply};
 use crate::state::RegisteredState;
 use crate::state::actor::{ChannelEvent, ChannelError};
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, irc_to_lower};
+use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
 
 /// Handler for KNOCK command.
@@ -71,9 +71,10 @@ impl PostRegHandler for KnockHandler {
         let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
-                ctx.sender
-                    .send(err_nosuchchannel(server_name, &nick, channel_name))
-                    .await?;
+                let reply = Response::err_nosuchchannel(&nick, channel_name)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("KNOCK", "ERR_NOSUCHCHANNEL");
                 return Ok(());
             }
         };

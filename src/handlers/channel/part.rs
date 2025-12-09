@@ -1,7 +1,7 @@
 //! PART command handler.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, err_nosuchchannel, server_reply, user_mask_from_state,
+    Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::state::actor::{ChannelEvent, ChannelError};
@@ -57,9 +57,10 @@ pub(super) async fn leave_channel_internal<S>(
     let channel_sender = match ctx.matrix.channels.get(channel_lower) {
         Some(c) => c.clone(),
         None => {
-            ctx.sender
-                .send(err_nosuchchannel(&ctx.matrix.server_info.name, nick, channel_lower))
-                .await?;
+            let reply = Response::err_nosuchchannel(nick, channel_lower)
+                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("PART", "ERR_NOSUCHCHANNEL");
             return Ok(());
         }
     };

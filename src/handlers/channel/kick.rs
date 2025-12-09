@@ -2,13 +2,13 @@
 
 use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler,
-    err_nosuchnick, err_nosuchchannel, user_mask_from_state,
+    user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, irc_to_lower};
+use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::info;
 
@@ -47,9 +47,10 @@ impl PostRegHandler for KickHandler {
         let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
-                ctx.sender
-                    .send(err_nosuchchannel(&ctx.matrix.server_info.name, &nick, channel_name))
-                    .await?;
+                let reply = Response::err_nosuchchannel(&nick, channel_name)
+                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("KICK", "ERR_NOSUCHCHANNEL");
                 return Ok(());
             }
         };
@@ -59,9 +60,10 @@ impl PostRegHandler for KickHandler {
         let target_uid = match ctx.matrix.nicks.get(&target_lower) {
             Some(uid) => uid.value().clone(),
             None => {
-                ctx.sender
-                    .send(err_nosuchnick(&ctx.matrix.server_info.name, &nick, target_nick))
-                    .await?;
+                let reply = Response::err_nosuchnick(&nick, target_nick)
+                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("KICK", "ERR_NOSUCHNICK");
                 return Ok(());
             }
         };

@@ -1,11 +1,11 @@
 use super::super::{Context,
-    HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges, err_nosuchnick,
+    HandlerResult, PostRegHandler,
     get_nick_or_star, resolve_nick_to_uid, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix};
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
 /// Handler for KILL command.
 ///
@@ -28,9 +28,10 @@ impl PostRegHandler for KillHandler {
             Some(t) if !t.is_empty() => t,
             _ => {
                 let nick = get_nick_or_star(ctx).await;
-                ctx.sender
-                    .send(err_needmoreparams(server_name, &nick, "KILL"))
-                    .await?;
+                let reply = Response::err_needmoreparams(&nick, "KILL")
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("KILL", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
@@ -50,17 +51,19 @@ impl PostRegHandler for KillHandler {
             Some(cap) => cap, // Authorization granted - cap proves it
             None => {
                 // Not an operator - no capability granted
-                ctx.sender
-                    .send(err_noprivileges(server_name, &killer_nick))
-                    .await?;
+                let reply = Response::err_noprivileges(&killer_nick)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("KILL", "ERR_NOPRIVILEGES");
                 return Ok(());
             }
         };
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            ctx.sender
-                .send(err_nosuchnick(server_name, &killer_nick, target_nick))
-                .await?;
+            let reply = Response::err_nosuchnick(&killer_nick, target_nick)
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("KILL", "ERR_NOSUCHNICK");
             return Ok(());
         };
 

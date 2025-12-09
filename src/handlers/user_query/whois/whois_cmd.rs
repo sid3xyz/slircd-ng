@@ -1,9 +1,9 @@
 //! WHOIS handler for detailed user information queries.
 
-use crate::handlers::{Context, HandlerResult, PostRegHandler, err_nosuchnick, server_reply, with_label};
+use crate::handlers::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, irc_to_lower};
+use slirc_proto::{MessageRef, Response, Prefix, irc_to_lower};
 use tracing::debug;
 
 /// Handler for WHOIS command.
@@ -268,9 +268,10 @@ async fn send_no_such_nick(ctx: &mut Context<'_, crate::state::RegisteredState>,
     let server_name = &ctx.matrix.server_info.name;
     let nick = &ctx.state.nick;
 
-    ctx.sender
-        .send(err_nosuchnick(server_name, nick, target))
-        .await?;
+    let reply = Response::err_nosuchnick(nick, target)
+        .with_prefix(Prefix::ServerName(server_name.clone()));
+    ctx.sender.send(reply).await?;
+    crate::metrics::record_command_error("WHOIS", "ERR_NOSUCHNICK");
 
     // Also send end of whois - attach label for labeled-response
     let reply = with_label(

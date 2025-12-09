@@ -1,11 +1,11 @@
 use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, err_noprivileges, get_nick_or_star,
+    HandlerError, HandlerResult, PostRegHandler, get_nick_or_star,
     server_notice, server_reply,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response};
+use slirc_proto::{MessageRef, Prefix, Response};
 use tokio::sync::mpsc;
 
 /// Handler for DIE command. Uses capability-based authorization (Innovation 4).
@@ -26,9 +26,10 @@ impl PostRegHandler for DieHandler {
         let _die_cap = match authority.request_die_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
-                ctx.sender
-                    .send(err_noprivileges(server_name, &nick))
-                    .await?;
+                let reply = Response::err_noprivileges(&nick)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("DIE", "ERR_NOPRIVILEGES");
                 return Ok(());
             }
         };
@@ -73,9 +74,10 @@ impl PostRegHandler for RehashHandler {
         let _rehash_cap = match authority.request_rehash_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
-                ctx.sender
-                    .send(err_noprivileges(server_name, &nick))
-                    .await?;
+                let reply = Response::err_noprivileges(&nick)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("REHASH", "ERR_NOPRIVILEGES");
                 return Ok(());
             }
         };
@@ -152,9 +154,10 @@ impl PostRegHandler for RestartHandler {
         let _restart_cap = match authority.request_restart_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
-                ctx.sender
-                    .send(err_noprivileges(server_name, &nick))
-                    .await?;
+                let reply = Response::err_noprivileges(&nick)
+                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                ctx.sender.send(reply).await?;
+                crate::metrics::record_command_error("RESTART", "ERR_NOPRIVILEGES");
                 return Ok(());
             }
         };

@@ -15,11 +15,11 @@
 //! (`send_list_mode`, `get_list_mode_query`) to a separate `channel_lists.rs`.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, err_nosuchnick, err_nosuchchannel, server_reply, with_label,
+    Context, HandlerError, HandlerResult, server_reply, with_label,
 };
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelError;
-use slirc_proto::{ChannelMode, Mode, Response, irc_to_lower};
+use slirc_proto::{ChannelMode, Mode, Prefix, Response, irc_to_lower};
 
 /// Handle channel mode query/change.
 pub async fn handle_channel_mode(
@@ -35,9 +35,10 @@ pub async fn handle_channel_mode(
     let channel = match ctx.matrix.channels.get(&channel_lower) {
         Some(c) => c.clone(),
         None => {
-            ctx.sender
-                .send(err_nosuchchannel(&ctx.matrix.server_info.name, nick, channel_name))
-                .await?;
+            let reply = Response::err_nosuchchannel(nick, channel_name)
+                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("MODE", "ERR_NOSUCHCHANNEL");
             return Ok(());
         }
     };
@@ -164,9 +165,10 @@ pub async fn handle_channel_mode(
                             }
                             None => {
                                 // ERR_NOSUCHNICK (401)
-                                ctx.sender
-                                    .send(err_nosuchnick(&ctx.matrix.server_info.name, nick, target_nick))
-                                    .await?;
+                                let reply = Response::err_nosuchnick(nick, target_nick)
+                                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                                ctx.sender.send(reply).await?;
+                                crate::metrics::record_command_error("MODE", "ERR_NOSUCHNICK");
                             }
                         }
                     } else {

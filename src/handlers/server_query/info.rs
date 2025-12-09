@@ -3,12 +3,12 @@
 //! Additional server query commands for network information.
 
 use super::super::{
-    Context, HandlerResult, PostRegHandler, err_needmoreparams, err_noprivileges,
+    Context, HandlerResult, PostRegHandler,
     get_oper_info,
 };
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response};
+use slirc_proto::{MessageRef, Response, Prefix};
 
 /// Handler for MAP command.
 ///
@@ -134,15 +134,19 @@ impl PostRegHandler for UseripHandler {
         };
 
         if !is_oper {
-            ctx.sender.send(err_noprivileges(server_name, nick)).await?;
+            let reply = Response::err_noprivileges(nick)
+                .with_prefix(Prefix::ServerName(server_name.clone()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("USERIP", "ERR_NOPRIVILEGES");
             return Ok(());
         }
 
         // Need at least one nickname
         if msg.arg(0).is_none() {
-            ctx.sender
-                .send(err_needmoreparams(server_name, nick, "USERIP"))
-                .await?;
+            let reply = Response::err_needmoreparams(nick, "USERIP")
+                .with_prefix(Prefix::ServerName(server_name.clone()));
+            ctx.sender.send(reply).await?;
+            crate::metrics::record_command_error("USERIP", "ERR_NEEDMOREPARAMS");
             return Ok(());
         }
 
