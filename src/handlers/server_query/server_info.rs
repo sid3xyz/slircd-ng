@@ -302,6 +302,9 @@ impl PostRegHandler for LusersHandler {
             }
         }
 
+        // CRITICAL FIX: RFC 2812 LUSERS format: "There are X users and Y invisible on Z servers"
+        // where X = visible users (non-+i) and Y = invisible users (+i).
+        // Total users = X + Y (irctest lusers.py line 56: GlobalInvisible + GlobalVisible == total)
         let visible_users = total_users.saturating_sub(invisible_count);
         let channel_count = ctx.matrix.channels.len();
 

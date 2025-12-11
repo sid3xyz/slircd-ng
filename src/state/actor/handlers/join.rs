@@ -56,7 +56,8 @@ impl ChannelActor {
         });
 
         // 1. Bans (+b) - invites and invex exempt from ban
-        if !is_invited && !is_invex
+        // CRITICAL FIX: is_invited MUST exempt from bans (RFC 2812, irctest testInviteExemptsFromBan)
+        if !is_invex && !is_invited
             && is_banned(&user_mask, &user_context, &self.bans, &self.excepts)
         {
             let _ = reply_tx.send(Err(ChannelError::BannedFromChan));
