@@ -251,57 +251,95 @@ fn parse_ip_or_cidr(ip: &str) -> Option<IpNet> {
 }
 
 // -----------------------------------------------------------------------------
+// Declarative Macro for Simple Ban Configs
+// -----------------------------------------------------------------------------
+
+/// Macro to define simple ban configurations with hostmask-based caching.
+///
+/// This eliminates ~100 lines of repetitive BanConfig implementations for
+/// ban types that use the standard BanCache pattern (K/G-lines).
+macro_rules! simple_ban_config {
+    (
+        $(#[$meta:meta])*
+        $config_name:ident {
+            command: $cmd:literal,
+            unset_command: $unset_cmd:literal,
+            arg_name: $arg_name:literal,
+            ban_type: $ban_type:expr,
+            capability_check: |$auth:ident, $uid:ident| $cap_check:expr,
+            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident| $add_expr:expr,
+            db_remove: |$db_rem:ident, $target_rem:ident| $remove_expr:expr,
+            cache_add: |$cache_add:ident, $target_cache_add:ident, $reason_cache_add:ident| $cache_add_expr:expr,
+            cache_remove: |$cache_rem:ident, $target_cache_rem:ident| $cache_remove_expr:expr,
+        }
+    ) => {
+        $(#[$meta])*
+        pub struct $config_name;
+
+        #[async_trait]
+        impl BanConfig for $config_name {
+            fn command_name(&self) -> &'static str {
+                $cmd
+            }
+
+            fn unset_command_name(&self) -> &'static str {
+                $unset_cmd
+            }
+
+            fn arg_name(&self) -> &'static str {
+                $arg_name
+            }
+
+            fn ban_type(&self) -> BanType {
+                $ban_type
+            }
+
+            async fn check_capability(&self, $auth: &CapabilityAuthority, $uid: &str) -> bool {
+                $cap_check
+            }
+
+            async fn add_to_db(
+                &self,
+                $db_add: &Database,
+                $target_add: &str,
+                $reason_add: &str,
+                $oper_add: &str,
+            ) -> Result<(), DbError> {
+                $add_expr
+            }
+
+            async fn remove_from_db(&self, $db_rem: &Database, $target_rem: &str) -> Result<bool, DbError> {
+                $remove_expr
+            }
+
+            async fn add_to_cache(&self, $cache_add: &Arc<Matrix>, $target_cache_add: &str, $reason_cache_add: &str, _oper: &str) {
+                $cache_add_expr
+            }
+
+            async fn remove_from_cache(&self, $cache_rem: &Arc<Matrix>, $target_cache_rem: &str) -> bool {
+                $cache_remove_expr;
+                true
+            }
+        }
+    };
+}
+
+// -----------------------------------------------------------------------------
 // K-line Config
 // -----------------------------------------------------------------------------
 
-/// K-line (local user@host ban) configuration.
-pub struct KlineConfig;
-
-#[async_trait]
-impl BanConfig for KlineConfig {
-    fn command_name(&self) -> &'static str {
-        "KLINE"
-    }
-
-    fn unset_command_name(&self) -> &'static str {
-        "UNKLINE"
-    }
-
-    fn arg_name(&self) -> &'static str {
-        "mask"
-    }
-
-    fn ban_type(&self) -> BanType {
-        BanType::Kline
-    }
-
-    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
-        authority.request_kline_cap(uid).await.is_some()
-    }
-
-    async fn add_to_db(
-        &self,
-        db: &Database,
-        target: &str,
-        reason: &str,
-        oper: &str,
-    ) -> Result<(), DbError> {
-        db.bans().add_kline(target, Some(reason), oper, None).await
-    }
-
-    async fn remove_from_db(&self, db: &Database, target: &str) -> Result<bool, DbError> {
-        db.bans().remove_kline(target).await
-    }
-
-    async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, _oper: &str) {
-        matrix
-            .ban_cache
-            .add_kline(target.to_string(), reason.to_string(), None);
-    }
-
-    async fn remove_from_cache(&self, matrix: &Arc<Matrix>, target: &str) -> bool {
-        matrix.ban_cache.remove_kline(target);
-        true
+simple_ban_config! {
+    /// K-line (local user@host ban) configuration.
+    KlineConfig {
+        command: "KLINE",
+        unset_command: "UNKLINE",
+        arg_name: "mask",
+        ban_type: BanType::Kline,
+        capability_check: |authority, uid| authority.request_kline_cap(uid).await.is_some(),
+        db_add: |db, target, reason, oper| db.bans().add_kline(target, Some(reason), oper, None).await,
+        db_remove: |db, target| db.bans().remove_kline(target).await,
+        cache_add: |matrix, target, reason| matrix.ban_cache.add_kline(target.to_string(), reason.to_string(), None),
+        cache_remove: |matrix, target| matrix.ban_cache.remove_kline(target),
     }
 }
 
@@ -309,119 +347,118 @@ impl BanConfig for KlineConfig {
 // G-line Config
 // -----------------------------------------------------------------------------
 
-/// G-line (global user@host ban) configuration.
-pub struct GlineConfig;
-
-#[async_trait]
-impl BanConfig for GlineConfig {
-    fn command_name(&self) -> &'static str {
-        "GLINE"
+simple_ban_config! {
+    /// G-line (global user@host ban) configuration.
+    GlineConfig {
+        command: "GLINE",
+        unset_command: "UNGLINE",
+        arg_name: "mask",
+        ban_type: BanType::Gline,
+        capability_check: |authority, uid| authority.request_gline_cap(uid).await.is_some(),
+        db_add: |db, target, reason, oper| db.bans().add_gline(target, Some(reason), oper, None).await,
+        db_remove: |db, target| db.bans().remove_gline(target).await,
+        cache_add: |matrix, target, reason| matrix.ban_cache.add_gline(target.to_string(), reason.to_string(), None),
+        cache_remove: |matrix, target| matrix.ban_cache.remove_gline(target),
     }
+}
 
-    fn unset_command_name(&self) -> &'static str {
-        "UNGLINE"
-    }
+// -----------------------------------------------------------------------------
+// Macro for IP-based Ban Configs (D-line, Z-line)
+// -----------------------------------------------------------------------------
 
-    fn arg_name(&self) -> &'static str {
-        "mask"
-    }
+/// Macro to define IP-based ban configurations using IpDenyList.
+///
+/// D-lines and Z-lines use the IpDenyList (Roaring Bitmap) instead of BanCache.
+macro_rules! ip_ban_config {
+    (
+        $(#[$meta:meta])*
+        $config_name:ident {
+            command: $cmd:literal,
+            unset_command: $unset_cmd:literal,
+            ban_type: $ban_type:expr,
+            capability_check: |$auth:ident, $uid:ident| $cap_check:expr,
+            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident| $add_expr:expr,
+            db_remove: |$db_rem:ident, $target_rem:ident| $remove_expr:expr,
+            log_prefix: $log_prefix:literal,
+        }
+    ) => {
+        $(#[$meta])*
+        pub struct $config_name;
 
-    fn ban_type(&self) -> BanType {
-        BanType::Gline
-    }
+        #[async_trait]
+        impl BanConfig for $config_name {
+            fn command_name(&self) -> &'static str {
+                $cmd
+            }
 
-    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
-        authority.request_gline_cap(uid).await.is_some()
-    }
+            fn unset_command_name(&self) -> &'static str {
+                $unset_cmd
+            }
 
-    async fn add_to_db(
-        &self,
-        db: &Database,
-        target: &str,
-        reason: &str,
-        oper: &str,
-    ) -> Result<(), DbError> {
-        db.bans().add_gline(target, Some(reason), oper, None).await
-    }
+            fn arg_name(&self) -> &'static str {
+                "ip"
+            }
 
-    async fn remove_from_db(&self, db: &Database, target: &str) -> Result<bool, DbError> {
-        db.bans().remove_gline(target).await
-    }
+            fn ban_type(&self) -> BanType {
+                $ban_type
+            }
 
-    async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, _oper: &str) {
-        matrix
-            .ban_cache
-            .add_gline(target.to_string(), reason.to_string(), None);
-    }
+            async fn check_capability(&self, $auth: &CapabilityAuthority, $uid: &str) -> bool {
+                $cap_check
+            }
 
-    async fn remove_from_cache(&self, matrix: &Arc<Matrix>, target: &str) -> bool {
-        matrix.ban_cache.remove_gline(target);
-        true
-    }
+            async fn add_to_db(
+                &self,
+                $db_add: &Database,
+                $target_add: &str,
+                $reason_add: &str,
+                $oper_add: &str,
+            ) -> Result<(), DbError> {
+                $add_expr
+            }
+
+            async fn remove_from_db(&self, $db_rem: &Database, $target_rem: &str) -> Result<bool, DbError> {
+                $remove_expr
+            }
+
+            async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str) {
+                if let Some(net) = parse_ip_or_cidr(target) {
+                    if let Ok(mut deny_list) = matrix.ip_deny_list.write()
+                        && let Err(e) = deny_list.add_ban(net, reason.to_string(), None, oper.to_string())
+                    {
+                        tracing::error!(error = %e, concat!("Failed to add ", $log_prefix, " to IP deny list"));
+                    }
+                } else {
+                    tracing::warn!(ip = %target, concat!($log_prefix, " IP could not be parsed as IP/CIDR"));
+                }
+            }
+
+            async fn remove_from_cache(&self, matrix: &Arc<Matrix>, target: &str) -> bool {
+                if let Some(net) = parse_ip_or_cidr(target)
+                    && let Ok(mut deny_list) = matrix.ip_deny_list.write()
+                {
+                    return deny_list.remove_ban(net).unwrap_or(false);
+                }
+                false
+            }
+        }
+    };
 }
 
 // -----------------------------------------------------------------------------
 // D-line Config (IP-based with IpDenyList)
 // -----------------------------------------------------------------------------
 
-/// D-line (local IP ban) configuration.
-pub struct DlineConfig;
-
-#[async_trait]
-impl BanConfig for DlineConfig {
-    fn command_name(&self) -> &'static str {
-        "DLINE"
-    }
-
-    fn unset_command_name(&self) -> &'static str {
-        "UNDLINE"
-    }
-
-    fn arg_name(&self) -> &'static str {
-        "ip"
-    }
-
-    fn ban_type(&self) -> BanType {
-        BanType::Dline
-    }
-
-    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
-        authority.request_dline_cap(uid).await.is_some()
-    }
-
-    async fn add_to_db(
-        &self,
-        db: &Database,
-        target: &str,
-        reason: &str,
-        oper: &str,
-    ) -> Result<(), DbError> {
-        db.bans().add_dline(target, Some(reason), oper, None).await
-    }
-
-    async fn remove_from_db(&self, db: &Database, target: &str) -> Result<bool, DbError> {
-        db.bans().remove_dline(target).await
-    }
-
-    async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str) {
-        if let Some(net) = parse_ip_or_cidr(target) {
-            if let Ok(mut deny_list) = matrix.ip_deny_list.write()
-                && let Err(e) = deny_list.add_ban(net, reason.to_string(), None, oper.to_string())
-            {
-                tracing::error!(error = %e, "Failed to add D-line to IP deny list");
-            }
-        } else {
-            tracing::warn!(ip = %target, "D-line IP could not be parsed as IP/CIDR");
-        }
-    }
-
-    async fn remove_from_cache(&self, matrix: &Arc<Matrix>, target: &str) -> bool {
-        if let Some(net) = parse_ip_or_cidr(target)
-            && let Ok(mut deny_list) = matrix.ip_deny_list.write()
-        {
-            return deny_list.remove_ban(net).unwrap_or(false);
-        }
-        false
+ip_ban_config! {
+    /// D-line (local IP ban) configuration.
+    DlineConfig {
+        command: "DLINE",
+        unset_command: "UNDLINE",
+        ban_type: BanType::Dline,
+        capability_check: |authority, uid| authority.request_dline_cap(uid).await.is_some(),
+        db_add: |db, target, reason, oper| db.bans().add_dline(target, Some(reason), oper, None).await,
+        db_remove: |db, target| db.bans().remove_dline(target).await,
+        log_prefix: "D-line",
     }
 }
 
@@ -429,64 +466,16 @@ impl BanConfig for DlineConfig {
 // Z-line Config (IP-based with IpDenyList)
 // -----------------------------------------------------------------------------
 
-/// Z-line (global IP ban, skips DNS) configuration.
-pub struct ZlineConfig;
-
-#[async_trait]
-impl BanConfig for ZlineConfig {
-    fn command_name(&self) -> &'static str {
-        "ZLINE"
-    }
-
-    fn unset_command_name(&self) -> &'static str {
-        "UNZLINE"
-    }
-
-    fn arg_name(&self) -> &'static str {
-        "ip"
-    }
-
-    fn ban_type(&self) -> BanType {
-        BanType::Zline
-    }
-
-    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
-        authority.request_zline_cap(uid).await.is_some()
-    }
-
-    async fn add_to_db(
-        &self,
-        db: &Database,
-        target: &str,
-        reason: &str,
-        oper: &str,
-    ) -> Result<(), DbError> {
-        db.bans().add_zline(target, Some(reason), oper, None).await
-    }
-
-    async fn remove_from_db(&self, db: &Database, target: &str) -> Result<bool, DbError> {
-        db.bans().remove_zline(target).await
-    }
-
-    async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str) {
-        if let Some(net) = parse_ip_or_cidr(target) {
-            if let Ok(mut deny_list) = matrix.ip_deny_list.write()
-                && let Err(e) = deny_list.add_ban(net, reason.to_string(), None, oper.to_string())
-            {
-                tracing::error!(error = %e, "Failed to add Z-line to IP deny list");
-            }
-        } else {
-            tracing::warn!(ip = %target, "Z-line IP could not be parsed as IP/CIDR");
-        }
-    }
-
-    async fn remove_from_cache(&self, matrix: &Arc<Matrix>, target: &str) -> bool {
-        if let Some(net) = parse_ip_or_cidr(target)
-            && let Ok(mut deny_list) = matrix.ip_deny_list.write()
-        {
-            return deny_list.remove_ban(net).unwrap_or(false);
-        }
-        false
+ip_ban_config! {
+    /// Z-line (global IP ban, skips DNS) configuration.
+    ZlineConfig {
+        command: "ZLINE",
+        unset_command: "UNZLINE",
+        ban_type: BanType::Zline,
+        capability_check: |authority, uid| authority.request_zline_cap(uid).await.is_some(),
+        db_add: |db, target, reason, oper| db.bans().add_zline(target, Some(reason), oper, None).await,
+        db_remove: |db, target| db.bans().remove_zline(target).await,
+        log_prefix: "Z-line",
     }
 }
 
@@ -494,52 +483,22 @@ impl BanConfig for ZlineConfig {
 // R-line Config
 // -----------------------------------------------------------------------------
 
-/// R-line (realname/GECOS ban) configuration.
-pub struct RlineConfig;
-
-#[async_trait]
-impl BanConfig for RlineConfig {
-    fn command_name(&self) -> &'static str {
-        "RLINE"
-    }
-
-    fn unset_command_name(&self) -> &'static str {
-        "UNRLINE"
-    }
-
-    fn arg_name(&self) -> &'static str {
-        "pattern"
-    }
-
-    fn ban_type(&self) -> BanType {
-        BanType::Rline
-    }
-
-    async fn check_capability(&self, authority: &CapabilityAuthority, uid: &str) -> bool {
-        authority.request_rline_cap(uid).await.is_some()
-    }
-
-    async fn add_to_db(
-        &self,
-        db: &Database,
-        target: &str,
-        reason: &str,
-        oper: &str,
-    ) -> Result<(), DbError> {
-        db.bans().add_rline(target, Some(reason), oper, None).await
-    }
-
-    async fn remove_from_db(&self, db: &Database, target: &str) -> Result<bool, DbError> {
-        db.bans().remove_rline(target).await
-    }
-
-    async fn add_to_cache(&self, _matrix: &Arc<Matrix>, _target: &str, _reason: &str, _oper: &str) {
-        // R-lines don't have an in-memory cache (checked at connection time via DB)
-    }
-
-    async fn remove_from_cache(&self, _matrix: &Arc<Matrix>, _target: &str) -> bool {
-        // R-lines don't have an in-memory cache
-        true
+simple_ban_config! {
+    /// R-line (realname/GECOS ban) configuration.
+    RlineConfig {
+        command: "RLINE",
+        unset_command: "UNRLINE",
+        arg_name: "pattern",
+        ban_type: BanType::Rline,
+        capability_check: |authority, uid| authority.request_rline_cap(uid).await.is_some(),
+        db_add: |db, target, reason, oper| db.bans().add_rline(target, Some(reason), oper, None).await,
+        db_remove: |db, target| db.bans().remove_rline(target).await,
+        cache_add: |_matrix, _target, _reason| {
+            // R-lines don't have an in-memory cache (checked at connection time via DB)
+        },
+        cache_remove: |_matrix, _target| {
+            // R-lines don't have an in-memory cache
+        },
     }
 }
 
