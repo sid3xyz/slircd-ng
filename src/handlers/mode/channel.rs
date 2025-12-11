@@ -437,11 +437,11 @@ async fn apply_mlock_filter(
 
     // Parse MLOCK string manually (same logic as mode_builder::parse_mlock but inline)
     let mlock_modes = parse_mlock_inline(&mlock_str);
-    
+
     // Build sets of locked modes
     let mut locked_on = std::collections::HashSet::new();
     let mut locked_off = std::collections::HashSet::new();
-    
+
     for mlock_mode in mlock_modes {
         let mode_char = mode_to_char(mlock_mode.mode());
         if mlock_mode.is_plus() {
@@ -456,11 +456,11 @@ async fn apply_mlock_filter(
         .into_iter()
         .filter(|mode| {
             let mode_char = mode_to_char(mode.mode());
-            
+
             // Skip status modes (they're never MLOCKed)
             if matches!(
                 mode.mode(),
-                ChannelMode::Oper | ChannelMode::Voice | ChannelMode::Halfop | 
+                ChannelMode::Oper | ChannelMode::Voice | ChannelMode::Halfop |
                 ChannelMode::Admin | ChannelMode::Founder
             ) {
                 return true;
@@ -490,7 +490,7 @@ fn parse_mlock_inline(mlock: &str) -> Vec<Mode<ChannelMode>> {
     let mut is_plus = true;
     let tokens: Vec<&str> = trimmed.split_whitespace().collect();
     let mode_str = tokens.first().copied().unwrap_or("");
-    
+
     for ch in mode_str.chars() {
         match ch {
             '+' => is_plus = true,
@@ -504,7 +504,7 @@ fn parse_mlock_inline(mlock: &str) -> Vec<Mode<ChannelMode>> {
             _ => {} // Skip unknown modes
         }
     }
-    
+
     modes
 }
 
