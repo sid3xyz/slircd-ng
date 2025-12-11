@@ -19,10 +19,13 @@ metrics_port = 0                      # Set to 9090 to enable Prometheus metrics
 
 [listen]
 address = "0.0.0.0:6667"
+
 # For TLS testing, uncomment and provide certs:
-# tls_address = "0.0.0.0:6697"
-# tls_cert = "certs/server.crt"
-# tls_key = "certs/server.key"
+#
+# [tls]
+# address = "0.0.0.0:6697"
+# cert_path = "certs/server.crt"
+# key_path = "certs/server.key"
 
 [database]
 path = ":memory:" # In-memory for tests, or use "slircd-test.db" for persistence

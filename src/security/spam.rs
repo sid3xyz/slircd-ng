@@ -21,7 +21,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Spam detection result
 #[derive(Debug, Clone, PartialEq)]
@@ -55,10 +55,20 @@ impl SpamDetectionService {
     /// Create new spam detection service with default patterns
     pub fn new() -> Self {
         let keywords = Self::default_spam_keywords();
-        let matcher = AhoCorasick::builder()
+        let matcher = match AhoCorasick::builder()
             .ascii_case_insensitive(true)
             .build(&keywords)
-            .unwrap(); // Should only fail if keywords are invalid (e.g. too large), which defaults aren't
+        {
+            Ok(matcher) => matcher,
+            Err(err) => {
+                warn!(error = ?err, "Failed to build spam keyword matcher; keyword matching disabled");
+                let empty: Vec<String> = Vec::new();
+                AhoCorasick::builder()
+                    .ascii_case_insensitive(true)
+                    .build(&empty)
+                    .expect("building empty Aho-Corasick should not fail")
+            }
+        };
 
         Self {
             keyword_matcher: matcher,
@@ -348,26 +358,46 @@ impl SpamDetectionService {
     /// Add custom spam keyword
     #[allow(dead_code)] // Used in tests, available for runtime config
     pub fn add_keyword(&mut self, keyword: String) {
-        self.raw_keywords.insert(keyword.to_lowercase());
+        let keyword = keyword.to_lowercase();
+        self.raw_keywords.insert(keyword.clone());
+
         // Rebuild matcher
-        self.keyword_matcher = AhoCorasick::builder()
+        match AhoCorasick::builder()
             .ascii_case_insensitive(true)
             .build(&self.raw_keywords)
-            .unwrap();
+        {
+            Ok(matcher) => self.keyword_matcher = matcher,
+            Err(err) => {
+                warn!(error = ?err, keyword = %keyword, "Failed to rebuild spam keyword matcher; reverting keyword addition");
+                self.raw_keywords.remove(&keyword);
+            }
+        }
     }
 
     /// Remove spam keyword
     #[allow(dead_code)] // Available for runtime config
     pub fn remove_keyword(&mut self, keyword: &str) -> bool {
-        let removed = self.raw_keywords.remove(&keyword.to_lowercase());
-        if removed {
-            // Rebuild matcher
-            self.keyword_matcher = AhoCorasick::builder()
-                .ascii_case_insensitive(true)
-                .build(&self.raw_keywords)
-                .unwrap();
+        let keyword = keyword.to_lowercase();
+        let removed = self.raw_keywords.remove(&keyword);
+        if !removed {
+            return false;
         }
-        removed
+
+        // Rebuild matcher
+        match AhoCorasick::builder()
+            .ascii_case_insensitive(true)
+            .build(&self.raw_keywords)
+        {
+            Ok(matcher) => {
+                self.keyword_matcher = matcher;
+                true
+            }
+            Err(err) => {
+                warn!(error = ?err, keyword = %keyword, "Failed to rebuild spam keyword matcher; reverting keyword removal");
+                self.raw_keywords.insert(keyword);
+                false
+            }
+        }
     }
 
     /// Add URL shortener domain

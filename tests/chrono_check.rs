@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc, TimeZone};
+use chrono::{TimeZone, Utc};
 
 #[test]
 fn test_chrono_rounding() {

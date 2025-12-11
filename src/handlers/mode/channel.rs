@@ -467,13 +467,8 @@ async fn apply_mlock_filter(
             }
 
             // Check if mode conflicts with MLOCK
-            if mode.is_plus() && locked_off.contains(&mode_char) {
-                false // Trying to set a mode that's locked off
-            } else if !mode.is_plus() && locked_on.contains(&mode_char) {
-                false // Trying to remove a mode that's locked on
-            } else {
-                true
-            }
+            !((mode.is_plus() && locked_off.contains(&mode_char))
+                || (!mode.is_plus() && locked_on.contains(&mode_char)))
         })
         .collect()
 }

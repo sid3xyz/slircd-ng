@@ -127,38 +127,50 @@ lazy_static! {
 /// Must be called once at server startup before any metrics are recorded.
 pub fn init() {
     // Legacy counters
-    REGISTRY.register(Box::new(MESSAGES_SENT.clone())).unwrap();
-    REGISTRY.register(Box::new(SPAM_BLOCKED.clone())).unwrap();
-    REGISTRY.register(Box::new(BANS_TRIGGERED.clone())).unwrap();
-    REGISTRY
-        .register(Box::new(XLINES_ENFORCED.clone()))
-        .unwrap();
-    REGISTRY.register(Box::new(RATE_LIMITED.clone())).unwrap();
-    REGISTRY
-        .register(Box::new(REGISTERED_ONLY_BLOCKED.clone()))
-        .unwrap();
-    REGISTRY
-        .register(Box::new(CONNECTED_USERS.clone()))
-        .unwrap();
-    REGISTRY
-        .register(Box::new(ACTIVE_CHANNELS.clone()))
-        .unwrap();
+    if let Err(e) = REGISTRY.register(Box::new(MESSAGES_SENT.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_messages_sent_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(SPAM_BLOCKED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_spam_blocked_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(BANS_TRIGGERED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_bans_triggered_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(XLINES_ENFORCED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_xlines_enforced_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(RATE_LIMITED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_rate_limited_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(REGISTERED_ONLY_BLOCKED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_registered_only_blocked_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(CONNECTED_USERS.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_connected_users");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(ACTIVE_CHANNELS.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_active_channels");
+    }
 
     // IRC-specific metrics (Innovation 3)
-    REGISTRY
-        .register(Box::new(COMMAND_COUNTER.clone()))
-        .unwrap();
-    REGISTRY
-        .register(Box::new(COMMAND_LATENCY.clone()))
-        .unwrap();
-    REGISTRY
-        .register(Box::new(CHANNEL_MEMBERS.clone()))
-        .unwrap();
-    REGISTRY.register(Box::new(MESSAGE_FANOUT.clone())).unwrap();
-    REGISTRY.register(Box::new(COMMAND_ERRORS.clone())).unwrap();
-    REGISTRY
-        .register(Box::new(CHANNEL_MODE_CHANGES.clone()))
-        .unwrap();
+    if let Err(e) = REGISTRY.register(Box::new(COMMAND_COUNTER.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_command_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(COMMAND_LATENCY.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_command_duration_seconds");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(CHANNEL_MEMBERS.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_channel_members");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(MESSAGE_FANOUT.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_message_fanout");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(COMMAND_ERRORS.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_command_errors_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(CHANNEL_MODE_CHANGES.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_channel_mode_changes_total");
+    }
 }
 
 /// Gather all metrics and encode them in Prometheus text format.
@@ -168,8 +180,17 @@ pub fn gather_metrics() -> String {
     let encoder = TextEncoder::new();
     let metric_families = REGISTRY.gather();
     let mut buffer = vec![];
-    encoder.encode(&metric_families, &mut buffer).unwrap();
-    String::from_utf8(buffer).unwrap()
+    if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
+        tracing::error!(error = %e, "Failed to encode Prometheus metrics");
+        return String::new();
+    }
+    match String::from_utf8(buffer) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = %e, "Prometheus metrics were not valid UTF-8");
+            String::new()
+        }
+    }
 }
 
 // ============================================================================
