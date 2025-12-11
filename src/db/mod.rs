@@ -105,49 +105,94 @@ impl Database {
     /// Run embedded migrations.
     /// Checks for each table and runs the full migration if any are missing.
     async fn run_migrations(pool: &SqlitePool) -> Result<(), DbError> {
-        // Check if the required tables exist
-        let accounts_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts')",
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(false);
+        async fn table_exists(pool: &SqlitePool, table: &str) -> bool {
+            sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)",
+            )
+            .bind(table)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(false)
+        }
 
-        let channels_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='channels')",
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(false);
+        async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> bool {
+            // pragma_table_info() returns one row per column.
+            // We check for the presence of the column name.
+            let sql = format!(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('{}') WHERE name=?)",
+                table.replace('"', "")
+            );
+            sqlx::query_scalar::<_, bool>(&sql)
+                .bind(column)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(false)
+        }
 
-        let akick_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='channel_akick')"
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(false);
+        // 001_init.sql: core schema (accounts/channels/basics).
+        let core_tables = [
+            "accounts",
+            "nicknames",
+            "klines",
+            "dlines",
+            "channels",
+            "channel_access",
+            "channel_akick",
+        ];
+        let mut core_ok = true;
+        for t in core_tables {
+            if !table_exists(pool, t).await {
+                core_ok = false;
+                break;
+            }
+        }
 
-        let history_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='message_history')"
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(false);
-
-        // Run migrations if any tables are missing
-        if !accounts_exists || !channels_exists || !akick_exists {
-            // Run the full migration
+        if !core_ok {
             Self::run_migration_file(pool, include_str!("../../migrations/001_init.sql")).await;
             info!("Database migrations applied (001_init)");
         }
 
-        // Always check for history table (newer migration)
-        if !history_exists {
+        // 002_shuns.sql: shuns table.
+        if !table_exists(pool, "shuns").await {
+            Self::run_migration_file(pool, include_str!("../../migrations/002_shuns.sql")).await;
+            info!("Database migrations applied (002_shuns)");
+        }
+
+        // 002_xlines.sql: extended bans (G/Z/R-lines) + expiry indexes.
+        let xline_tables = ["glines", "zlines", "rlines"];
+        let mut xlines_ok = true;
+        for t in xline_tables {
+            if !table_exists(pool, t).await {
+                xlines_ok = false;
+                break;
+            }
+        }
+        if !xlines_ok {
+            Self::run_migration_file(pool, include_str!("../../migrations/002_xlines.sql")).await;
+            info!("Database migrations applied (002_xlines)");
+        }
+
+        // 003_history.sql: message history (IF NOT EXISTS, but we still gate for log cleanliness).
+        if !table_exists(pool, "message_history").await {
             Self::run_migration_file(pool, include_str!("../../migrations/003_history.sql")).await;
             info!("Database migrations applied (003_history)");
         }
 
-        if accounts_exists && channels_exists && akick_exists && history_exists {
+        // 004_certfp.sql: adds accounts.certfp column (must not run twice).
+        if table_exists(pool, "accounts").await && !column_exists(pool, "accounts", "certfp").await {
+            Self::run_migration_file(pool, include_str!("../../migrations/004_certfp.sql")).await;
+            info!("Database migrations applied (004_certfp)");
+        }
+
+        // Best-effort informational log.
+        if core_ok
+            && table_exists(pool, "shuns").await
+            && table_exists(pool, "glines").await
+            && table_exists(pool, "zlines").await
+            && table_exists(pool, "rlines").await
+            && table_exists(pool, "message_history").await
+            && column_exists(pool, "accounts", "certfp").await
+        {
             info!("Database already initialized");
         }
 

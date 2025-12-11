@@ -87,6 +87,9 @@ fn default_true() -> bool {
 pub struct MotdConfig {
     /// Path to MOTD file (one line per MOTD line).
     pub file: Option<String>,
+    /// Inline MOTD lines (used when `file` is not set).
+    #[serde(default)]
+    pub lines: Vec<String>,
 }
 
 impl MotdConfig {
@@ -102,6 +105,11 @@ impl MotdConfig {
                 }
             }
         }
+
+        if !self.lines.is_empty() {
+            return self.lines.clone();
+        }
+
         // Default MOTD
         vec![
             "Welcome to slircd-ng!".to_string(),
