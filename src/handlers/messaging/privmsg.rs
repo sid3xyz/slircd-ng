@@ -15,12 +15,12 @@
 //! See: <https://modern.ircdocs.horse/ctcp.html>
 
 use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, user_mask_from_state, user_prefix,
+    Context, HandlerError, HandlerResult, PostRegHandler, user_prefix,
 };
 use crate::state::RegisteredState;
 use super::common::{
-    ChannelRouteResult, RouteOptions, route_to_channel, route_to_user, send_cannot_send,
-    send_no_such_channel, send_no_such_nick,
+    ChannelRouteResult, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot,
+    route_to_user_with_snapshot, send_cannot_send, send_no_such_channel, send_no_such_nick,
 };
 use super::validation::{ErrorStrategy, validate_message_send};
 use crate::db::StoreMessageParams;
@@ -62,12 +62,13 @@ impl PostRegHandler for PrivmsgHandler {
         // Use shared validation (shun, rate limiting, spam detection)
         validate_message_send(ctx, target, text, ErrorStrategy::SendError).await?;
 
-        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+        // Build sender snapshot once (eliminates 3-4 redundant user reads per message)
+        let snapshot = SenderSnapshot::build(ctx)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Check if this is a service message (NickServ, ChanServ, etc.)
-        if route_service_message(ctx.matrix, ctx.uid, &nick, target, text, &ctx.sender).await {
+        if route_service_message(ctx.matrix, ctx.uid, &snapshot.nick, target, text, &ctx.sender).await {
             return Ok(());
         }
 
@@ -113,7 +114,7 @@ impl PostRegHandler for PrivmsgHandler {
             } else {
                 Some(preserved_tags)
             },
-            prefix: Some(user_prefix(&nick, &user_name, &host)),
+            prefix: Some(user_prefix(&snapshot.nick, &snapshot.user, &snapshot.visible_host)),
             command: Command::PRIVMSG(target.to_string(), text.to_string()),
         };
 
@@ -134,17 +135,17 @@ impl PostRegHandler for PrivmsgHandler {
 
             // If STATUSMSG, route to specific member subset
             if let Some(prefix_char) = status_prefix {
-                route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char, Some(timestamp_iso.clone()), Some(msgid.clone())).await?;
-                debug!(from = %nick, to = %target, prefix = %prefix_char, "PRIVMSG STATUSMSG");
+                route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await?;
+                debug!(from = %snapshot.nick, to = %target, prefix = %prefix_char, "PRIVMSG STATUSMSG");
                 // Suppress ACK for echo-message with labels (echo IS the response)
                 if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                     ctx.suppress_labeled_ack = true;
                 }
             } else {
-                // Regular channel message
-                match route_to_channel(ctx, &channel_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone())).await {
+                // Regular channel message - use snapshot-based routing
+                match route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await {
                     ChannelRouteResult::Sent => {
-                        debug!(from = %nick, to = %target, "PRIVMSG to channel");
+                        debug!(from = %snapshot.nick, to = %target, "PRIVMSG to channel");
 
                         // If user has echo-message, suppress ACK - the echo IS the response
                         // This is for labeled-response: when echo-message echoes back,
@@ -156,13 +157,13 @@ impl PostRegHandler for PrivmsgHandler {
                         }
 
                         // Store message in history for CHATHISTORY support
-                        let prefix = format!("{}!{}@{}", nick, user_name, host);
+                        let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
                         let account = ctx.state.account.as_deref();
 
                         let params = StoreMessageParams {
                             msgid: &msgid,
                             channel: target,
-                            sender_nick: &nick,
+                            sender_nick: &snapshot.nick,
                             prefix: &prefix,
                             text,
                             account,
@@ -175,36 +176,36 @@ impl PostRegHandler for PrivmsgHandler {
                         }
                     }
                     ChannelRouteResult::NoSuchChannel => {
-                        send_no_such_channel(ctx, &nick, target).await?;
+                        send_no_such_channel(ctx, &snapshot.nick, target).await?;
                     }
                     ChannelRouteResult::BlockedExternal => {
-                        send_cannot_send(ctx, &nick, target, "Cannot send to channel (+n)").await?;
+                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+n)").await?;
                     }
                     ChannelRouteResult::BlockedModerated => {
-                        send_cannot_send(ctx, &nick, target, "Cannot send to channel (+m)").await?;
+                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+m)").await?;
                     }
                     ChannelRouteResult::BlockedRegisteredOnly => {
-                        send_cannot_send(ctx, &nick, target, "Cannot send to channel (+r)").await?;
+                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+r)").await?;
                     }
                     ChannelRouteResult::BlockedCTCP => {
-                        send_cannot_send(ctx, &nick, target, "Cannot send CTCP to channel (+C)")
+                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send CTCP to channel (+C)")
                             .await?;
                     }
                     ChannelRouteResult::BlockedNotice => {
                         // Should not happen for PRIVMSG, but handle anyway
-                        send_cannot_send(ctx, &nick, target, "Cannot send NOTICE to channel (+T)")
+                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send NOTICE to channel (+T)")
                             .await?;
                     }
                     ChannelRouteResult::BlockedBanned => {
-                        send_cannot_send(ctx, &nick, target, "Cannot send to channel (+b)").await?;
+                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+b)").await?;
                     }
                 }
             }
-        } else if route_to_user(ctx, &irc_to_lower(routing_target), out_msg, &opts, &nick, Some(timestamp_iso.clone()), Some(msgid.clone())).await {
-            debug!(from = %nick, to = %target, "PRIVMSG to user");
+        } else if route_to_user_with_snapshot(ctx, &irc_to_lower(routing_target), out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await {
+            debug!(from = %snapshot.nick, to = %target, "PRIVMSG to user");
 
             // Store message in history for CHATHISTORY support (DMs)
-            let prefix = format!("{}!{}@{}", nick, user_name, host);
+            let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
             let account = ctx.state.account.as_deref();
 
             // Lookup target account
@@ -224,7 +225,7 @@ impl PostRegHandler for PrivmsgHandler {
             let params = StoreMessageParams {
                 msgid: &msgid,
                 channel: target, // For DMs, channel is the recipient nick
-                sender_nick: &nick,
+                sender_nick: &snapshot.nick,
                 prefix: &prefix,
                 text,
                 account,
@@ -236,7 +237,7 @@ impl PostRegHandler for PrivmsgHandler {
                 debug!(error = %e, "Failed to store DM in history");
             }
         } else {
-            send_no_such_nick(ctx, &nick, target).await?;
+            send_no_such_nick(ctx, &snapshot.nick, target).await?;
         }
 
         Ok(())
@@ -284,6 +285,7 @@ pub(super) fn parse_statusmsg(target: &str) -> (Option<char>, Option<&str>) {
 ///
 /// - `@`: Send to ops only
 /// - `+`: Send to voiced+ (voice or op)
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn route_statusmsg(
     ctx: &Context<'_, crate::state::RegisteredState>,
     channel_lower: &str,
@@ -292,6 +294,7 @@ pub(super) async fn route_statusmsg(
     prefix_char: char,
     timestamp: Option<String>,
     msgid: Option<String>,
+    snapshot: &SenderSnapshot,
 ) -> HandlerResult {
     let opts = RouteOptions {
         send_away_reply: false,
@@ -300,9 +303,8 @@ pub(super) async fn route_statusmsg(
         status_prefix: Some(prefix_char),
     };
 
-    if route_to_channel(ctx, channel_lower, msg, &opts, timestamp, msgid).await == ChannelRouteResult::NoSuchChannel {
-        let nick = &ctx.state.nick;
-        send_no_such_channel(ctx, nick, original_target).await?;
+    if route_to_channel_with_snapshot(ctx, channel_lower, msg, &opts, timestamp, msgid, snapshot).await == ChannelRouteResult::NoSuchChannel {
+        send_no_such_channel(ctx, &snapshot.nick, original_target).await?;
     }
 
     Ok(())
