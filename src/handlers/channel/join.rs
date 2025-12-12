@@ -1,7 +1,7 @@
 //! JOIN command handler and related functionality.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
+    Context, HandlerError, HandlerResult, PostRegHandler, server_reply,
     user_prefix, with_label,
 };
 use crate::error::ChannelError;
@@ -106,11 +106,9 @@ async fn join_channel(
     provided_key: Option<&str>,
 ) -> HandlerResult {
     let channel_lower = irc_to_lower(channel_name);
-    let (nick, user_name, visible_host) = user_mask_from_state(ctx, ctx.uid)
-        .await
-        .ok_or(HandlerError::NickOrUserMissing)?;
 
-    let (real_host, realname, session_id, account, away_message, caps) = {
+    // Single user read to capture all needed fields (eliminates redundant lookup)
+    let (nick, user_name, visible_host, real_host, realname, session_id, account, away_message, caps, is_registered) = {
         let user_ref = ctx
             .matrix
             .users
@@ -118,12 +116,16 @@ async fn join_channel(
             .ok_or(HandlerError::NickOrUserMissing)?;
         let user = user_ref.read().await;
         (
+            user.nick.clone(),
+            user.user.clone(),
+            user.visible_host.clone(),
             user.host.clone(),
             user.realname.clone(),
             user.session_id,
             user.account.clone(),
             user.away.clone(),
             user.caps.clone(),
+            user.modes.registered,
         )
     };
 
@@ -140,9 +142,9 @@ async fn join_channel(
         account.clone(),
     );
 
-    // Check AKICK before joining
+    // Check AKICK before joining (pass pre-fetched host)
     if ctx.matrix.registered_channels.contains(&channel_lower)
-        && let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name).await
+        && let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name, &real_host).await
     {
         let reason = akick
             .reason
@@ -168,9 +170,9 @@ async fn join_channel(
         return Ok(());
     }
 
-    // Check auto modes if registered
+    // Check auto modes if registered (pass pre-fetched user data)
     let initial_modes = if ctx.matrix.registered_channels.contains(&channel_lower) {
-        check_auto_modes(ctx, &channel_lower).await
+        check_auto_modes(ctx, &channel_lower, is_registered, &account).await
     } else {
         None
     };
@@ -285,25 +287,25 @@ async fn join_channel(
 
 /// Check if user should receive auto-op or auto-voice on a registered channel.
 /// Returns Some(MemberModes) if the user has access, None otherwise.
-async fn check_auto_modes(ctx: &Context<'_, RegisteredState>, channel_lower: &str) -> Option<MemberModes> {
-    let account_name = {
-        let user = ctx.matrix.users.get(ctx.uid)?;
-        let user = user.read().await;
+/// Takes pre-fetched account info to avoid redundant user lookup.
+async fn check_auto_modes(
+    ctx: &Context<'_, RegisteredState>,
+    channel_lower: &str,
+    is_registered: bool,
+    account: &Option<String>,
+) -> Option<MemberModes> {
+    // Early return if user is not registered
+    if !is_registered {
+        return None;
+    }
 
-        if !user.modes.registered {
-            return None;
-        }
+    let account_name = account.as_ref()?;
 
-        user.account.clone()?
-    };
-
-    let account = ctx.db.accounts().find_by_name(&account_name).await.ok()??;
+    let account_record = ctx.db.accounts().find_by_name(account_name).await.ok()??;
     let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
 
-    // ... (rest of check_auto_modes)
-
-
-    if account.id == channel_record.founder_account_id {
+    // Check if user is founder
+    if account_record.id == channel_record.founder_account_id {
         return Some(MemberModes {
             owner: false,
             admin: false,
@@ -317,7 +319,7 @@ async fn check_auto_modes(ctx: &Context<'_, RegisteredState>, channel_lower: &st
     let access = ctx
         .db
         .channels()
-        .get_access(channel_record.id, account.id)
+        .get_access(channel_record.id, account_record.id)
         .await
         .ok()??;
 
@@ -340,25 +342,21 @@ async fn check_auto_modes(ctx: &Context<'_, RegisteredState>, channel_lower: &st
 
 /// Check if user is on the AKICK list for a channel.
 /// Returns the matching AKICK entry if found.
+/// Check if user is on the AKICK list for a channel.
+/// Returns the matching AKICK entry if found.
+/// Takes pre-fetched host to avoid redundant user lookup.
 async fn check_akick(
     ctx: &Context<'_, RegisteredState>,
     channel_lower: &str,
     nick: &str,
     user: &str,
+    host: &str,
 ) -> Option<crate::db::ChannelAkick> {
     let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
 
-    let host = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        let user_state = user_ref.read().await;
-        user_state.host.clone()
-    } else {
-        // Post-registration, user should always exist in matrix.users
-        ctx.remote_addr.ip().to_string()
-    };
-
     ctx.db
         .channels()
-        .check_akick(channel_record.id, nick, user, &host)
+        .check_akick(channel_record.id, nick, user, host)
         .await
         .ok()?
 }
@@ -525,15 +523,17 @@ async fn send_join_error(
 
 /// Leave all channels (JOIN 0).
 async fn leave_all_channels(ctx: &mut Context<'_, RegisteredState>) -> HandlerResult {
-    let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
-        .await
-        .ok_or(HandlerError::NickOrUserMissing)?;
-
-    let channels: Vec<String> = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
-        let user = user.read().await;
-        user.channels.iter().cloned().collect()
-    } else {
-        return Ok(());
+    // Single user read for both mask and channel list
+    let (nick, user_name, host, channels): (String, String, String, Vec<String>) = {
+        let user_ref = ctx.matrix.users.get(ctx.uid)
+            .ok_or(HandlerError::NickOrUserMissing)?;
+        let user = user_ref.read().await;
+        (
+            user.nick.clone(),
+            user.user.clone(),
+            user.visible_host.clone(),
+            user.channels.iter().cloned().collect(),
+        )
     };
 
     for channel_lower in channels {

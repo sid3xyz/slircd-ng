@@ -398,15 +398,26 @@ async fn deliver_multiline_to_channel(
         Err(_) => return Ok(()),
     };
 
-    // Get list of members and their UIDs
-    let mut members: Vec<(String, String)> = Vec::new();
+    // Pre-fetch member data in one pass (InspIRCd/UnrealIRCd pattern: HasCapabilityFast)
+    // This eliminates N×3 RwLock acquisitions per broadcast
+    struct MemberCaps {
+        has_multiline: bool,
+        has_echo_message: bool,
+    }
+    let mut members: Vec<(String, MemberCaps)> = Vec::with_capacity(member_uids.len());
     for uid in member_uids {
-        let nick = if let Some(user) = ctx.matrix.users.get(&uid) {
-            user.read().await.nick.clone()
+        if let Some(user_ref) = ctx.matrix.users.get(&uid) {
+            let user = user_ref.read().await;
+            members.push((uid, MemberCaps {
+                has_multiline: user.caps.contains("draft/multiline"),
+                has_echo_message: user.caps.contains("echo-message"),
+            }));
         } else {
-            uid.clone()
-        };
-        members.push((uid, nick));
+            members.push((uid, MemberCaps {
+                has_multiline: false,
+                has_echo_message: false,
+            }));
+        }
     }
 
     // Generate a unique batch reference, msgid, and server_time for outgoing
@@ -415,26 +426,13 @@ async fn deliver_multiline_to_channel(
     let msgid = generate_msgid();
     let server_time = format_server_time();
 
-    // Send to each member
-    for (member_uid, _member_nick) in &members {
-        // Check if member has draft/multiline capability
-        let has_multiline = if let Some(user_ref) = ctx.matrix.users.get(member_uid) {
-            let user = user_ref.read().await;
-            user.caps.contains("draft/multiline")
-        } else {
-            false
-        };
-
+    // Send to each member using pre-fetched capabilities
+    for (member_uid, member_caps) in &members {
         // For the sender's own echo, get direct channel to bypass middleware and apply label manually
         // For other members, send directly to their sender channel
         if member_uid == ctx.uid {
-            // Echo to self - get direct sender channel and apply label manually
-            if ctx
-                .matrix
-                .users
-                .get(ctx.uid)
-                .is_some_and(|u| u.try_read().is_ok_and(|g| g.caps.contains("echo-message")))
-            {
+            // Echo to self - use pre-fetched has_echo_message
+            if member_caps.has_echo_message {
                 let Some(sender_ref) = ctx.matrix.senders.get(ctx.uid) else {
                     continue;
                 };
@@ -443,7 +441,7 @@ async fn deliver_multiline_to_channel(
 
                 let sender_middleware = ResponseMiddleware::Direct(&sender);
 
-                if has_multiline {
+                if member_caps.has_multiline {
                     send_multiline_batch(
                         &sender_middleware,
                         batch,
@@ -467,7 +465,7 @@ async fn deliver_multiline_to_channel(
                 }
             }
         } else {
-            // Send to other member - use direct channel
+            // Send to other member - use direct channel and pre-fetched caps
             let Some(member_sender_ref) = ctx.matrix.senders.get(member_uid) else {
                 continue;
             };
@@ -476,7 +474,7 @@ async fn deliver_multiline_to_channel(
 
             let member_middleware = ResponseMiddleware::Direct(&member_sender);
 
-            if has_multiline {
+            if member_caps.has_multiline {
                 send_multiline_batch(
                     &member_middleware,
                     batch,
@@ -537,11 +535,19 @@ async fn deliver_multiline_to_user(
     drop(target_sender_ref);
 
     // Check if target has draft/multiline capability
-    let has_multiline = if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
+    let target_has_multiline = if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
         let user = user_ref.read().await;
         user.caps.contains("draft/multiline")
     } else {
         false
+    };
+
+    // Pre-fetch sender capabilities for echo (single read vs 2 reads)
+    let (sender_has_echo, sender_has_multiline) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
+        let user = user_ref.read().await;
+        (user.caps.contains("echo-message"), user.caps.contains("draft/multiline"))
+    } else {
+        (false, false)
     };
 
     // Generate batch ref, msgid, and server_time (shared between target and echo)
@@ -551,7 +557,7 @@ async fn deliver_multiline_to_user(
 
     let target_middleware = ResponseMiddleware::Direct(&target_sender);
 
-    if has_multiline {
+    if target_has_multiline {
         send_multiline_batch(
             &target_middleware,
             batch,
@@ -574,49 +580,38 @@ async fn deliver_multiline_to_user(
         .await?;
     }
 
-    // Echo to sender if echo-message enabled
-    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        let user = user_ref.read().await;
-        if user.caps.contains("echo-message") {
-            drop(user);
-            let sender_has_multiline = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                user.caps.contains("draft/multiline")
-            } else {
-                false
-            };
+    // Echo to sender if echo-message enabled (using pre-fetched caps)
+    if sender_has_echo {
+        // Get direct sender channel to bypass middleware and apply label manually
+        let Some(sender_ref) = ctx.matrix.senders.get(ctx.uid) else {
+            return Ok(());
+        };
+        let sender = sender_ref.clone();
+        drop(sender_ref);
 
-            // Get direct sender channel to bypass middleware and apply label manually
-            let Some(sender_ref) = ctx.matrix.senders.get(ctx.uid) else {
-                return Ok(());
-            };
-            let sender = sender_ref.clone();
-            drop(sender_ref);
+        let sender_middleware = ResponseMiddleware::Direct(&sender);
 
-            let sender_middleware = ResponseMiddleware::Direct(&sender);
-
-            if sender_has_multiline {
-                send_multiline_batch(
-                    &sender_middleware,
-                    batch,
-                    prefix,
-                    &batch_ref,
-                    &msgid,
-                    cmd_type,
-                    batch.response_label.as_deref(),
-                )
-                .await?;
-            } else {
-                send_multiline_fallback(
-                    &sender_middleware,
-                    batch,
-                    prefix,
-                    &msgid,
-                    &server_time,
-                    cmd_type,
-                )
-                .await?;
-            }
+        if sender_has_multiline {
+            send_multiline_batch(
+                &sender_middleware,
+                batch,
+                prefix,
+                &batch_ref,
+                &msgid,
+                cmd_type,
+                batch.response_label.as_deref(),
+            )
+            .await?;
+        } else {
+            send_multiline_fallback(
+                &sender_middleware,
+                batch,
+                prefix,
+                &msgid,
+                &server_time,
+                cmd_type,
+            )
+            .await?;
         }
     }
 

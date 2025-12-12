@@ -15,14 +15,15 @@ mod validation;
 pub use notice::NoticeHandler;
 pub use privmsg::PrivmsgHandler;
 
-use super::{HandlerError, HandlerResult, user_mask_from_state, user_prefix};
+use super::{HandlerError, HandlerResult, user_prefix};
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Tag, irc_to_lower};
 use std::borrow::Cow;
 use tracing::debug;
 
 use common::{
-    ChannelRouteResult, RouteOptions, is_shunned, route_to_channel, route_to_user,
+    ChannelRouteResult, RouteOptions, SenderSnapshot, is_shunned_with_snapshot,
+    route_to_channel_with_snapshot, route_to_user_with_snapshot,
     send_cannot_send, send_no_such_channel, send_no_such_nick,
 };
 
@@ -46,7 +47,12 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // Check shun first - silently ignore if shunned
-        if is_shunned(ctx).await {
+        // Build snapshot first for shun check
+        let snapshot = SenderSnapshot::build(ctx)
+            .await
+            .ok_or(HandlerError::NickOrUserMissing)?;
+
+        if is_shunned_with_snapshot(ctx, &snapshot).await {
             return Ok(());
         }
 
@@ -62,9 +68,6 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         if target.is_empty() {
             return Err(HandlerError::NeedMoreParams);
         }
-
-        let _nick = &ctx.state.nick;
-        let _user_name = &ctx.state.user;
 
         // Collect only client-only tags (those starting with '+') AND the label tag
         // Server should not relay arbitrary tags from clients
@@ -93,14 +96,10 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
             None
         };
 
-        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
-            .await
-            .ok_or(HandlerError::NickOrUserMissing)?;
-
-        // Build the outgoing TAGMSG
+        // Build the outgoing TAGMSG using snapshot
         let out_msg = Message {
             tags,
-            prefix: Some(user_prefix(&nick, &user_name, &host)),
+            prefix: Some(user_prefix(&snapshot.nick, &snapshot.user, &snapshot.visible_host)),
             command: Command::TAGMSG(target.to_string()),
         };
 
@@ -114,26 +113,26 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
 
         if target.is_channel_name() {
             let channel_lower = irc_to_lower(target);
-            match route_to_channel(ctx, &channel_lower, out_msg, &opts, None, None).await {
+            match route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, None, None, &snapshot).await {
                 ChannelRouteResult::Sent => {
-                    debug!(from = %nick, to = %target, "TAGMSG to channel");
+                    debug!(from = %snapshot.nick, to = %target, "TAGMSG to channel");
                     // Suppress ACK for echo-message with labels (echo IS the response)
                     if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                         ctx.suppress_labeled_ack = true;
                     }
                 }
                 ChannelRouteResult::NoSuchChannel => {
-                    send_no_such_channel(ctx, &nick, target).await?;
+                    send_no_such_channel(ctx, &snapshot.nick, target).await?;
                 }
                 ChannelRouteResult::BlockedExternal => {
-                    send_cannot_send(ctx, &nick, target, "Cannot send to channel (+n)").await?;
+                    send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+n)").await?;
                 }
                 ChannelRouteResult::BlockedModerated => {
                     // TAGMSG doesn't check +m, so this shouldn't happen
                     unreachable!("TAGMSG should not check moderated mode");
                 }
                 ChannelRouteResult::BlockedRegisteredOnly => {
-                    send_cannot_send(ctx, &nick, target, "Cannot send to channel (+r)").await?;
+                    send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+r)").await?;
                 }
                 ChannelRouteResult::BlockedCTCP => {
                     // TAGMSG has no CTCP, so this shouldn't happen
@@ -144,15 +143,15 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                     unreachable!("TAGMSG is not a NOTICE");
                 }
                 ChannelRouteResult::BlockedBanned => {
-                    send_cannot_send(ctx, &nick, target, "Cannot send to channel (+b)").await?;
+                    send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+b)").await?;
                 }
             }
         } else {
             let target_lower = irc_to_lower(target);
-            if route_to_user(ctx, &target_lower, out_msg, &opts, &nick, None, None).await {
-                debug!(from = %nick, to = %target, "TAGMSG to user");
+            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, None, None, &snapshot).await {
+                debug!(from = %snapshot.nick, to = %target, "TAGMSG to user");
             } else {
-                send_no_such_nick(ctx, &nick, target).await?;
+                send_no_such_nick(ctx, &snapshot.nick, target).await?;
             }
         }
 

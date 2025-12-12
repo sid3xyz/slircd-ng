@@ -3,10 +3,10 @@
 //! Per RFC 2812, NOTICE errors are silently ignored (no error replies).
 
 use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, user_mask_from_state, user_prefix,
+    HandlerError, HandlerResult, PostRegHandler, user_prefix,
 };
 use crate::state::RegisteredState;
-use super::common::{ChannelRouteResult, RouteOptions, route_to_channel, route_to_user};
+use super::common::{ChannelRouteResult, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot, route_to_user_with_snapshot};
 use super::validation::{ErrorStrategy, validate_message_send};
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
@@ -43,7 +43,8 @@ impl PostRegHandler for NoticeHandler {
         // NOTICE silently drops errors per RFC 2812
         validate_message_send(ctx, target, text, ErrorStrategy::SilentDrop).await?;
 
-        let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
+        // Build sender snapshot once (eliminates redundant user reads)
+        let snapshot = SenderSnapshot::build(ctx)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
@@ -73,7 +74,7 @@ impl PostRegHandler for NoticeHandler {
             } else {
                 Some(preserved_tags)
             },
-            prefix: Some(user_prefix(&nick, &user_name, &host)),
+            prefix: Some(user_prefix(&snapshot.nick, &snapshot.user, &snapshot.visible_host)),
             command: Command::NOTICE(target.to_string(), text.to_string()),
         };
 
@@ -93,7 +94,7 @@ impl PostRegHandler for NoticeHandler {
             let channel_lower = irc_to_lower(routing_target);
 
             if let Some(prefix_char) = status_prefix {
-                // Route STATUSMSG
+                // Route STATUSMSG with snapshot
                 let _ = super::privmsg::route_statusmsg(
                     ctx,
                     &channel_lower,
@@ -102,17 +103,18 @@ impl PostRegHandler for NoticeHandler {
                     prefix_char,
                     None,
                     None,
+                    &snapshot,
                 )
                 .await;
-                debug!(from = %nick, to = %target, prefix = %prefix_char, "NOTICE STATUSMSG");
+                debug!(from = %snapshot.nick, to = %target, prefix = %prefix_char, "NOTICE STATUSMSG");
                 // Suppress ACK for echo-message with labels (echo IS the response)
                 if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                     ctx.suppress_labeled_ack = true;
                 }
             } else if let ChannelRouteResult::Sent =
-                route_to_channel(ctx, &channel_lower, out_msg, &opts, None, None).await
+                route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, None, None, &snapshot).await
             {
-                debug!(from = %nick, to = %target, "NOTICE to channel");
+                debug!(from = %snapshot.nick, to = %target, "NOTICE to channel");
                 // Suppress ACK for echo-message with labels (echo IS the response)
                 if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                     ctx.suppress_labeled_ack = true;
@@ -121,8 +123,8 @@ impl PostRegHandler for NoticeHandler {
             // All errors silently ignored for NOTICE
         } else {
             let target_lower = irc_to_lower(routing_target);
-            if route_to_user(ctx, &target_lower, out_msg, &opts, &nick, None, None).await {
-                debug!(from = %nick, to = %target, "NOTICE to user");
+            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, None, None, &snapshot).await {
+                debug!(from = %snapshot.nick, to = %target, "NOTICE to user");
             }
             // User not found: silently ignored for NOTICE
         }
