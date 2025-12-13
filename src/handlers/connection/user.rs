@@ -1,13 +1,16 @@
 //! USER command handler for connection registration.
 
 use super::super::{Context, HandlerError, HandlerResult, PreRegHandler};
-use super::welcome::send_welcome_burst;
 use crate::state::UnregisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Prefix, Response};
 use tracing::debug;
 
 /// Handler for USER command.
+///
+/// Sets the username and realname for the connection. Registration is NOT
+/// triggered here - it happens in the connection loop after the handler returns,
+/// using `WelcomeBurstWriter` to write directly to transport.
 pub struct UserHandler;
 
 #[async_trait]
@@ -36,10 +39,8 @@ impl PreRegHandler for UserHandler {
 
         debug!(user = %username, realname = %realname, uid = %ctx.uid, "User set");
 
-        // Check if we can complete registration
-        if ctx.state.can_register() {
-            send_welcome_burst(ctx).await?;
-        }
+        // Registration check is deferred to the connection loop, which uses
+        // WelcomeBurstWriter to write directly to transport (avoiding channel deadlock).
 
         Ok(())
     }
