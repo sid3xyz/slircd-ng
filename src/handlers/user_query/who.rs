@@ -44,8 +44,9 @@ impl PostRegHandler for WhoHandler {
         let nick = &ctx.state.nick;
 
         // Check if the user has multi-prefix CAP enabled
-        let multi_prefix = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
-            let user = user.read().await;
+        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let multi_prefix = if let Some(user_arc) = user_arc {
+            let user = user_arc.read().await;
             user.caps.contains("multi-prefix")
         } else {
             false
@@ -56,7 +57,8 @@ impl PostRegHandler for WhoHandler {
             if mask_str.is_channel_name() {
                 // Channel WHO - list channel members
                 let channel_lower = irc_to_lower(mask_str);
-                if let Some(channel_sender) = ctx.matrix.channels.get(&channel_lower) {
+                let channel_sender = ctx.matrix.channels.get(&channel_lower).map(|c| c.clone());
+                if let Some(channel_sender) = channel_sender {
                     let (tx, rx) = tokio::sync::oneshot::channel();
                     let _ = channel_sender
                         .send(crate::state::actor::ChannelEvent::GetInfo {
@@ -89,8 +91,9 @@ impl PostRegHandler for WhoHandler {
                     };
 
                     for (member_uid, member_modes) in members {
-                        if let Some(user_ref) = ctx.matrix.users.get(&member_uid) {
-                            let user = user_ref.read().await;
+                        let member_arc = ctx.matrix.users.get(&member_uid).map(|u| u.clone());
+                        if let Some(member_arc) = member_arc {
+                            let user = member_arc.read().await;
 
                             // Skip if operators_only and not an operator
                             if operators_only && !user.modes.oper {
@@ -135,23 +138,30 @@ impl PostRegHandler for WhoHandler {
                 let is_exact_query = !mask_str.contains('*') && !mask_str.contains('?');
 
                 // Get requester's operator status for invisible visibility
-                let requester_is_oper = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                    user_ref.read().await.modes.oper
+                let requester_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+                let requester_is_oper = if let Some(requester_arc) = requester_arc {
+                    requester_arc.read().await.modes.oper
                 } else {
                     false
                 };
 
                 // Pre-collect requester's channel memberships for invisible checking
                 let requester_channels: Vec<String> =
-                    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                        user_ref.read().await.channels.iter().cloned().collect()
+                    if let Some(requester_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.clone()) {
+                        requester_arc.read().await.channels.iter().cloned().collect()
                     } else {
                         Vec::new()
                     };
 
-                for user_ref in ctx.matrix.users.iter() {
-                    let user = user_ref.read().await;
-                    let target_uid = user_ref.key().clone();
+                let all_users: Vec<_> = ctx
+                    .matrix
+                    .users
+                    .iter()
+                    .map(|e| (e.key().clone(), e.value().clone()))
+                    .collect();
+
+                for (target_uid, user_arc) in all_users {
+                    let user = user_arc.read().await;
 
                     // Skip if operators_only and not an operator
                     if operators_only && !user.modes.oper {
