@@ -70,8 +70,8 @@ pub trait ServiceBase {
         Self: Sync,
     {
         async move {
-            let user = matrix.users.get(uid)?;
-            let user = user.read().await;
+            let user_arc = matrix.users.get(uid).map(|u| u.clone())?;
+            let user = user_arc.read().await;
 
             if !user.modes.registered {
                 return None;

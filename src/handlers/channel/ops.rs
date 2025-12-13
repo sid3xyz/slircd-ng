@@ -69,8 +69,8 @@ pub async fn force_join_channel<S>(
 
     // Get user data
     let (caps, user_context, sender, session_id) =
-        if let Some(user_ref) = ctx.matrix.users.get(target.uid) {
-            let user = user_ref.read().await;
+        if let Some(user_arc) = ctx.matrix.users.get(target.uid).map(|u| u.value().clone()) {
+            let user = user_arc.read().await;
             // NOTE: IP address is not stored in User struct, so we use a placeholder.
             // This means IP-based extended bans ($i:) won't match for forced joins.
             // This is acceptable because SAJOIN is an operator command that bypasses
@@ -146,8 +146,8 @@ pub async fn force_join_channel<S>(
     };
 
     // Add channel to user's list
-    if let Some(user_ref) = ctx.matrix.users.get(target.uid) {
-        let mut user = user_ref.write().await;
+    if let Some(user_arc) = ctx.matrix.users.get(target.uid).map(|u| u.value().clone()) {
+        let mut user = user_arc.write().await;
         user.channels.insert(channel_lower.clone());
     }
 
@@ -186,8 +186,8 @@ pub async fn force_join_channel<S>(
             let mut names_list = Vec::new();
 
             for (uid, member_modes) in members {
-                if let Some(user) = ctx.matrix.users.get(&uid) {
-                    let user = user.read().await;
+                if let Some(user_arc) = ctx.matrix.users.get(&uid).map(|u| u.value().clone()) {
+                    let user = user_arc.read().await;
                     let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
                         format!("{}{}", prefix, user.nick)
                     } else {

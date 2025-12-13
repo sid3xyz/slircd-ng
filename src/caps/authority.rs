@@ -58,8 +58,9 @@ impl CapabilityAuthority {
 
     /// Check if a user is an IRC operator.
     async fn is_oper(&self, uid: &str) -> bool {
-        if let Some(user_ref) = self.matrix.users.get(uid) {
-            user_ref.read().await.modes.oper
+        let user_arc = self.matrix.users.get(uid).map(|u| u.value().clone());
+        if let Some(user_arc) = user_arc {
+            user_arc.read().await.modes.oper
         } else {
             false
         }
@@ -67,8 +68,9 @@ impl CapabilityAuthority {
 
     /// Get the user's nickname for logging.
     async fn get_nick(&self, uid: &str) -> String {
-        if let Some(user_ref) = self.matrix.users.get(uid) {
-            user_ref.read().await.nick.clone()
+        let user_arc = self.matrix.users.get(uid).map(|u| u.value().clone());
+        if let Some(user_arc) = user_arc {
+            user_arc.read().await.nick.clone()
         } else {
             uid.to_string()
         }

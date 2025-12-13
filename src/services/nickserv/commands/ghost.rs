@@ -25,8 +25,9 @@ pub async fn handle_ghost(
     let password = args.get(1).copied();
 
     // Check if the user is already identified and get their account
-    let user_account = if let Some(user) = matrix.users.get(uid) {
-        let user = user.read().await;
+    let user_arc = matrix.users.get(uid).map(|u| u.clone());
+    let user_account = if let Some(user_arc) = user_arc {
+        let user = user_arc.read().await;
         if user.modes.registered {
             user.account.clone()
         } else {

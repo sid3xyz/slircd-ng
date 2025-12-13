@@ -132,8 +132,8 @@ impl PostRegHandler for OperHandler {
 
         if let Some(ref required_mask) = oper_block.hostmask {
             let (user_nick, user_user, user_host) =
-                if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                    let user = user_ref.read().await;
+                if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+                    let user = user_arc.read().await;
                     (user.nick.clone(), user.user.clone(), user.host.clone())
                 } else {
                     let hs_nick = ctx.state.nick.clone();
@@ -165,8 +165,8 @@ impl PostRegHandler for OperHandler {
         ctx.state.failed_oper_attempts = 0;
 
         let (user_nick, user_user, user_host) =
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
+            if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+                let user = user_arc.read().await;
                 (user.nick.clone(), user.user.clone(), user.host.clone())
             } else {
                 (
@@ -176,8 +176,8 @@ impl PostRegHandler for OperHandler {
                 )
             };
 
-        if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let mut user = user_ref.write().await;
+        if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+            let mut user = user_arc.write().await;
             user.modes.oper = true;
         }
 

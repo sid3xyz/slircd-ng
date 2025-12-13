@@ -340,8 +340,9 @@ async fn process_multiline_batch(
     let target = &batch.target;
 
     // Get sender info for prefix
-    let prefix = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        let user = user_ref.read().await;
+    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+    let prefix = if let Some(user_arc) = user_arc {
+        let user = user_arc.read().await;
         Prefix::new(
             user.nick.clone(),
             user.user.clone(),
@@ -375,7 +376,8 @@ async fn deliver_multiline_to_channel(
 ) -> HandlerResult {
     let channel_lower = batch.target.to_lowercase();
 
-    let Some(channel_ref) = ctx.matrix.channels.get(&channel_lower) else {
+    let channel_tx = ctx.matrix.channels.get(&channel_lower).map(|c| c.clone());
+    let Some(channel_tx) = channel_tx else {
         // Channel doesn't exist - send error
         let reply = Response::err_nosuchchannel(&ctx.state.nick, &batch.target)
             .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
@@ -386,7 +388,7 @@ async fn deliver_multiline_to_channel(
 
     // Get list of members
     let (tx, rx) = tokio::sync::oneshot::channel();
-    if (channel_ref
+    if (channel_tx
         .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
         .await)
         .is_err()
@@ -406,8 +408,9 @@ async fn deliver_multiline_to_channel(
     }
     let mut members: Vec<(String, MemberCaps)> = Vec::with_capacity(member_uids.len());
     for uid in member_uids {
-        if let Some(user_ref) = ctx.matrix.users.get(&uid) {
-            let user = user_ref.read().await;
+        let user_arc = ctx.matrix.users.get(&uid).map(|u| u.value().clone());
+        if let Some(user_arc) = user_arc {
+            let user = user_arc.read().await;
             members.push((uid, MemberCaps {
                 has_multiline: user.caps.contains("draft/multiline"),
                 has_echo_message: user.caps.contains("echo-message"),
@@ -535,16 +538,18 @@ async fn deliver_multiline_to_user(
     drop(target_sender_ref);
 
     // Check if target has draft/multiline capability
-    let target_has_multiline = if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-        let user = user_ref.read().await;
+    let target_user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.value().clone());
+    let target_has_multiline = if let Some(target_user_arc) = target_user_arc {
+        let user = target_user_arc.read().await;
         user.caps.contains("draft/multiline")
     } else {
         false
     };
 
     // Pre-fetch sender capabilities for echo (single read vs 2 reads)
-    let (sender_has_echo, sender_has_multiline) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        let user = user_ref.read().await;
+    let sender_user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+    let (sender_has_echo, sender_has_multiline) = if let Some(sender_user_arc) = sender_user_arc {
+        let user = sender_user_arc.read().await;
         (user.caps.contains("echo-message"), user.caps.contains("draft/multiline"))
     } else {
         (false, false)

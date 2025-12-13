@@ -169,8 +169,9 @@ pub async fn apply_effect(
         } => {
             // Get user info for MODE broadcast before we modify the user
             let (nick, user_str, host, channels) = {
-                if let Some(user_ref) = matrix.users.get(&target_uid) {
-                    let user = user_ref.read().await;
+                let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+                if let Some(user_arc) = user_arc {
+                    let user = user_arc.read().await;
                     (
                         user.nick.clone(),
                         user.user.clone(),
@@ -183,8 +184,9 @@ pub async fn apply_effect(
             };
 
             // Set +r mode and account on user
-            if let Some(user_ref) = matrix.users.get(&target_uid) {
-                let mut user = user_ref.write().await;
+            let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
                 user.modes.registered = true;
                 user.account = Some(account.clone());
             }

@@ -40,21 +40,25 @@ impl PostRegHandler for TraceHandler {
 
         if let Some(target_nick) = target {
             if let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) {
-                if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-                    let user = user_ref.read().await;
+                let user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.value().clone());
+                if let Some(user_arc) = user_arc {
+                    let (target_nick, is_oper) = {
+                        let user = user_arc.read().await;
+                        (user.nick.clone(), user.modes.oper)
+                    };
 
-                    let numeric = if user.modes.oper {
+                    let numeric = if is_oper {
                         Response::RPL_TRACEOPERATOR
                     } else {
                         Response::RPL_TRACEUSER
                     };
 
-                    let class = if user.modes.oper { "Oper" } else { "User" };
+                    let class = if is_oper { "Oper" } else { "User" };
 
                     let reply = server_reply(
                         server_name,
                         numeric,
-                        vec![oper_nick.clone(), class.to_string(), user.nick.clone()],
+                        vec![oper_nick.clone(), class.to_string(), target_nick],
                     );
                     ctx.sender.send(reply).await?;
                 }
@@ -66,21 +70,31 @@ impl PostRegHandler for TraceHandler {
                 return Ok(());
             }
         } else {
-            for user_entry in ctx.matrix.users.iter() {
-                let user = user_entry.read().await;
+            let user_arcs = ctx
+                .matrix
+                .users
+                .iter()
+                .map(|entry| entry.value().clone())
+                .collect::<Vec<_>>();
 
-                let numeric = if user.modes.oper {
+            for user_arc in user_arcs {
+                let (nick, is_oper) = {
+                    let user = user_arc.read().await;
+                    (user.nick.clone(), user.modes.oper)
+                };
+
+                let numeric = if is_oper {
                     Response::RPL_TRACEOPERATOR
                 } else {
                     Response::RPL_TRACEUSER
                 };
 
-                let class = if user.modes.oper { "Oper" } else { "User" };
+                let class = if is_oper { "Oper" } else { "User" };
 
                 let reply = server_reply(
                     server_name,
                     numeric,
-                    vec![oper_nick.clone(), class.to_string(), user.nick.clone()],
+                    vec![oper_nick.clone(), class.to_string(), nick],
                 );
                 ctx.sender.send(reply).await?;
             }

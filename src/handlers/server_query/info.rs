@@ -163,8 +163,9 @@ impl PostRegHandler for UseripHandler {
             let lower_nick = slirc_proto::irc_to_lower(target_nick);
             if let Some(uid_ref) = ctx.matrix.nicks.get(&lower_nick) {
                 let uid = uid_ref.value();
-                if let Some(user_ref) = ctx.matrix.users.get(uid) {
-                    let user = user_ref.read().await;
+                let user_arc = ctx.matrix.users.get(uid).map(|u| u.value().clone());
+                if let Some(user_arc) = user_arc {
+                    let user = user_arc.read().await;
                     // Format: nick[*]=+user@host
                     // * indicates oper, + indicates away (or - if away)
                     let oper_flag = if user.modes.oper { "*" } else { "" };
