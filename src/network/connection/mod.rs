@@ -386,6 +386,13 @@ impl Connection {
 
         // Unified event loop using tokio::select!
         loop {
+            // If the user has been removed from the Matrix (KILL, enforcement, slow-consumer),
+            // terminate this connection task even if no ERROR was queued.
+            if !self.matrix.users.contains_key(&self.uid) {
+                info!(uid = %self.uid, "User removed from Matrix - disconnecting");
+                break;
+            }
+
             tokio::select! {
                 // BRANCH A: Network Input (Zero-Copy)
                 // 'msg_ref' is borrowed from transport. It exists ONLY inside this match block.

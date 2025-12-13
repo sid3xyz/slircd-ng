@@ -88,7 +88,8 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_, UnregisteredState>) -> Han
         )));
         ctx.sender.send(error).await?;
 
-        return Err(HandlerError::NotRegistered);
+        // Disconnect immediately (the ERROR has already been queued).
+        return Err(HandlerError::AccessDenied);
     }
 
     // Fallback: Check database for user@host bans (G-lines, K-lines)
@@ -112,7 +113,8 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_, UnregisteredState>) -> Han
         )));
         ctx.sender.send(error).await?;
 
-        return Err(HandlerError::NotRegistered);
+        // Disconnect immediately (the ERROR has already been queued).
+        return Err(HandlerError::AccessDenied);
     }
 
     // Check for R-line (realname ban)
@@ -133,7 +135,8 @@ pub async fn send_welcome_burst(ctx: &mut Context<'_, UnregisteredState>) -> Han
         )));
         ctx.sender.send(error).await?;
 
-        return Err(HandlerError::NotRegistered);
+        // Disconnect immediately (the ERROR has already been queued).
+        return Err(HandlerError::AccessDenied);
     }
 
     // NOTE: We do NOT set ctx.state.registered = true here.

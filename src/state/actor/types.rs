@@ -141,6 +141,15 @@ pub enum ChannelEvent {
         required_cap: Option<String>,
         fallback_msg: Option<Box<Message>>,
     },
+    /// Update cached IRCv3 capabilities for a channel member.
+    ///
+    /// Channel actors keep a cached `user_caps` map for fast capability-gated broadcasts.
+    /// This event keeps that cache in sync when a registered client performs mid-session
+    /// `CAP REQ` changes.
+    UpdateCaps {
+        uid: Uid,
+        caps: HashSet<String>,
+    },
     /// User nickname change.
     NickChange {
         uid: Uid,

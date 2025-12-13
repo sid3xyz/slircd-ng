@@ -23,7 +23,7 @@ use super::user::{User, WhowasEntry};
 use crate::db::Database;
 use crate::services::{chanserv, nickserv};
 
-use crate::config::{Config, LimitsConfig, OperBlock, SecurityConfig, ServerConfig};
+use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
 use crate::db::{Dline, Gline, Kline, Shun, Zline};
 use crate::security::{BanCache, IpDenyList, RateLimitManager};
 use crate::state::UidGenerator;
@@ -38,9 +38,6 @@ use tokio::sync::{RwLock, broadcast, mpsc};
 
 /// Unique user identifier (TS6 format: 9 characters).
 pub type Uid = String;
-
-/// Server identifier (TS6 format: 3 characters).
-pub type Sid = String;
 
 /// Maximum number of WHOWAS entries to keep per nickname.
 const MAX_WHOWAS_PER_NICK: usize = 10;
@@ -67,10 +64,6 @@ pub struct Matrix {
 
     /// WHOWAS history: lowercase nick -> entries (most recent first).
     pub whowas: DashMap<String, VecDeque<WhowasEntry>>,
-
-    /// Connected servers (for future linking support).
-    #[allow(dead_code)] // Phase 4+: Server linking
-    pub servers: DashMap<Sid, Arc<Server>>,
 
     /// This server's identity.
     pub server_info: ServerInfo,
@@ -124,6 +117,10 @@ pub struct Matrix {
     /// Shutdown signal broadcaster.
     /// When DIE command is issued, a message is sent on this channel.
     pub shutdown_tx: broadcast::Sender<()>,
+
+    /// Disconnect request channel.
+    /// Channel actors use this to request disconnects without blocking.
+    disconnect_tx: mpsc::UnboundedSender<(Uid, String)>,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -133,9 +130,6 @@ pub struct MatrixConfig {
     pub server: ServerConfig,
     /// Operator blocks.
     pub oper_blocks: Vec<OperBlock>,
-    /// Rate limits (legacy - being replaced by security.rate_limits).
-    #[allow(dead_code)]
-    pub limits: LimitsConfig,
     /// Security configuration (cloaking, rate limiting).
     pub security: SecurityConfig,
     /// Account registration configuration.
@@ -145,23 +139,12 @@ pub struct MatrixConfig {
 /// This server's identity information.
 #[derive(Debug, Clone)]
 pub struct ServerInfo {
-    #[allow(dead_code)] // Phase 4+: Used in server-to-server linking
-    pub sid: Sid,
     pub name: String,
     pub network: String,
     pub description: String,
     pub created: i64,
     /// MOTD lines loaded from config file.
     pub motd_lines: Vec<String>,
-}
-
-/// A linked server (for future use).
-#[derive(Debug)]
-#[allow(dead_code)] // Phase 4+: Server linking
-pub struct Server {
-    pub sid: Sid,
-    pub name: String,
-    pub description: String,
 }
 
 impl Matrix {
@@ -188,6 +171,7 @@ impl Matrix {
         dlines: Vec<Dline>,
         glines: Vec<Gline>,
         zlines: Vec<Zline>,
+        disconnect_tx: mpsc::UnboundedSender<(Uid, String)>,
     ) -> Self {
         use slirc_proto::irc_to_lower;
 
@@ -228,9 +212,7 @@ impl Matrix {
             senders: DashMap::new(),
             enforce_timers: DashMap::new(),
             whowas: DashMap::new(),
-            servers: DashMap::new(),
             server_info: ServerInfo {
-                sid: config.server.sid.clone(),
                 name: config.server.name.clone(),
                 network: config.server.network.clone(),
                 description: config.server.description.clone(),
@@ -241,7 +223,6 @@ impl Matrix {
             config: MatrixConfig {
                 server: config.server.clone(),
                 oper_blocks: config.oper.clone(),
-                limits: config.limits.clone(),
                 security: config.security.clone(),
                 account_registration: config.account_registration.clone(),
             },
@@ -262,6 +243,7 @@ impl Matrix {
             max_local_users: AtomicUsize::new(0),
             max_global_users: AtomicUsize::new(0),
             shutdown_tx,
+            disconnect_tx,
         }
     }
 
@@ -275,14 +257,13 @@ impl Matrix {
         self.senders.remove(uid);
     }
 
-    /// Send a message to a specific user by UID.
-    #[allow(dead_code)] // TODO: Use for direct messaging (e.g., SQUERY replies)
-    pub async fn send_to_user(&self, uid: &str, msg: Message) -> bool {
-        if let Some(sender) = self.senders.get(uid) {
-            sender.send(msg).await.is_ok()
-        } else {
-            false
-        }
+    /// Request that a user be disconnected.
+    ///
+    /// This is safe to call from channel actors because it is non-blocking.
+    pub fn request_disconnect(&self, uid: &str, reason: &str) {
+        let _ = self
+            .disconnect_tx
+            .send((uid.to_string(), reason.to_string()));
     }
 
     /// Broadcast a message to all members of a channel.
@@ -311,8 +292,6 @@ impl Matrix {
     /// - If `required_cap` is Some, only sends `msg` to members who have that capability enabled
     /// - If `fallback_msg` is Some, sends that to members without the capability
     /// - If `fallback_msg` is None, members without the capability receive nothing
-    ///
-    /// Returns count of messages sent.
     pub async fn broadcast_to_channel_with_cap(
         &self,
         channel_name: &str,
@@ -320,7 +299,7 @@ impl Matrix {
         exclude: Option<&str>,
         required_cap: Option<&str>,
         fallback_msg: Option<Message>,
-    ) -> usize {
+    ) {
         let excludes: &[&str] = if let Some(e) = exclude { &[e] } else { &[] };
         self.broadcast_to_channel_with_cap_exclude_users(
             channel_name,
@@ -342,7 +321,7 @@ impl Matrix {
         exclude: &[&str],
         required_cap: Option<&str>,
         fallback_msg: Option<Message>,
-    ) -> usize {
+    ) {
         if let Some(sender) = self.channels.get(channel_name) {
             let _ = sender
                 .send(ChannelEvent::BroadcastWithCap {
@@ -353,7 +332,6 @@ impl Matrix {
                 })
                 .await;
         }
-        0
     }
 
     /// Disconnect a user from the server.
@@ -471,43 +449,4 @@ impl Matrix {
         });
     }
 
-    /// Broadcast CAP NEW or CAP DEL to all connected clients with cap-notify enabled.
-    ///
-    /// This is called when the server dynamically adds or removes capabilities.
-    /// Per IRCv3 cap-notify spec: <https://ircv3.net/specs/extensions/capability-negotiation#cap-notify>
-    ///
-    /// # Arguments
-    /// * `is_new` - true for CAP NEW, false for CAP DEL
-    /// * `caps` - list of capability names being added or removed
-    #[allow(dead_code)] // Infrastructure for dynamic capability changes (e.g., SASL backend up/down)
-    pub async fn broadcast_cap_change(&self, is_new: bool, caps: &[&str]) {
-        use slirc_proto::{CapSubCommand, Command, Prefix};
-
-        if caps.is_empty() {
-            return;
-        }
-
-        let subcommand = if is_new {
-            CapSubCommand::NEW
-        } else {
-            CapSubCommand::DEL
-        };
-        let caps_str = caps.join(" ");
-
-        let msg = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(self.server_info.name.clone())),
-            command: Command::CAP(Some("*".to_string()), subcommand, None, Some(caps_str)),
-        };
-
-        // Send to all users who have cap-notify enabled
-        for user_ref in self.users.iter() {
-            let user = user_ref.read().await;
-            if user.caps.contains("cap-notify")
-                && let Some(sender) = self.senders.get(&user.uid)
-            {
-                let _ = sender.send(msg.clone()).await;
-            }
-        }
-    }
 }

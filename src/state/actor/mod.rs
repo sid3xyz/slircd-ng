@@ -61,6 +61,12 @@ const MAX_INVITES_PER_CHANNEL: usize = 100;
 const INVITE_TTL: Duration = Duration::from_secs(60 * 60); // 1 hour
 
 impl ChannelActor {
+    fn request_disconnect(&self, uid: &Uid, reason: &str) {
+        if let Some(matrix) = self.matrix.upgrade() {
+            matrix.request_disconnect(uid, reason);
+        }
+    }
+
     /// Create a new Channel Actor and spawn it.
     pub fn spawn(name: String, matrix: Weak<Matrix>) -> mpsc::Sender<ChannelEvent> {
         let (tx, rx) = mpsc::channel(100);
@@ -193,6 +199,11 @@ impl ChannelActor {
                     fallback_msg.map(|m| *m),
                 )
                 .await;
+            }
+            ChannelEvent::UpdateCaps { uid, caps } => {
+                if self.members.contains_key(&uid) {
+                    self.user_caps.insert(uid, caps);
+                }
             }
             ChannelEvent::GetInfo {
                 requester_uid,

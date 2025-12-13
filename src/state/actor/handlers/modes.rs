@@ -2,6 +2,7 @@ use super::{ChannelActor, ChannelError, ChannelMode, Uid};
 use slirc_proto::mode::{ChannelMode as ProtoChannelMode, Mode};
 use slirc_proto::{Command, Message, Prefix};
 use std::collections::HashMap;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 impl ChannelActor {
@@ -189,8 +190,13 @@ impl ChannelActor {
                 prefix: Some(sender_prefix),
                 command: Command::ChannelMODE(self.name.clone(), applied_modes.clone()),
             };
-            for sender in self.senders.values() {
-                let _ = sender.send(msg.clone()).await;
+            for (uid, sender) in &self.senders {
+                if let Err(err) = sender.try_send(msg.clone()) {
+                    match err {
+                        TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                        TrySendError::Closed(_) => {}
+                    }
+                }
             }
         }
 

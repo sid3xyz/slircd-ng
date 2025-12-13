@@ -31,12 +31,6 @@ address = "0.0.0.0:6667"
 # Path to SQLite database file
 path = "slircd.db"
 
-[limits]
-# Messages per second (default: 2.5 = 5 messages per 2 seconds)
-rate = 2.5
-# Maximum burst of messages allowed (default: 5.0)
-burst = 5.0
-
 # Security configuration for anti-abuse protection
 [security]
 # HMAC secret for host cloaking - CHANGE IN PRODUCTION!

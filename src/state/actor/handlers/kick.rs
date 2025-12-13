@@ -1,5 +1,6 @@
 use super::{ChannelActor, ChannelError, Uid};
 use slirc_proto::{Command, Message, Prefix};
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 impl ChannelActor {
@@ -33,8 +34,13 @@ impl ChannelActor {
             command: Command::KICK(self.name.clone(), target_nick, Some(reason)),
         };
 
-        for sender in self.senders.values() {
-            let _ = sender.send(msg.clone()).await;
+        for (uid, sender) in &self.senders {
+            if let Err(err) = sender.try_send(msg.clone()) {
+                match err {
+                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                    TrySendError::Closed(_) => {}
+                }
+            }
         }
 
         self.members.remove(&target_uid);

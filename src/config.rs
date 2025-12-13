@@ -35,9 +35,6 @@ pub struct Config {
     pub webirc: Vec<WebircBlock>,
     /// Database configuration.
     pub database: Option<DatabaseConfig>,
-    /// Rate limiting configuration.
-    #[serde(default)]
-    pub limits: LimitsConfig,
     /// Security configuration (cloaking, rate limiting, anti-abuse).
     #[serde(default)]
     pub security: SecurityConfig,
@@ -123,25 +120,6 @@ impl MotdConfig {
 pub struct DatabaseConfig {
     /// Path to SQLite database file.
     pub path: String,
-}
-
-/// Rate limiting configuration (legacy - will be replaced by RateLimitConfig).
-#[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
-pub struct LimitsConfig {
-    /// Messages per second allowed (default: 2.5).
-    pub rate: f32,
-    /// Maximum burst of messages allowed (default: 5.0).
-    pub burst: f32,
-}
-
-impl Default for LimitsConfig {
-    fn default() -> Self {
-        Self {
-            rate: 2.5,
-            burst: 5.0,
-        }
-    }
 }
 
 /// Operator block configuration.

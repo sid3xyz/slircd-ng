@@ -1,5 +1,6 @@
 use super::{ChannelActor, ChannelError, ChannelMode, Uid};
 use slirc_proto::{Command, Message, Prefix};
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 impl ChannelActor {
@@ -43,8 +44,12 @@ impl ChannelActor {
             if let Some(caps) = self.user_caps.get(uid)
                 && caps.contains("invite-notify")
                 && let Some(sender) = self.senders.get(uid)
+                && let Err(err) = sender.try_send(invite_msg.clone())
             {
-                let _ = sender.send(invite_msg.clone()).await;
+                match err {
+                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                    TrySendError::Closed(_) => {}
+                }
             }
         }
 
@@ -87,8 +92,12 @@ impl ChannelActor {
         for (uid, modes) in &self.members {
             if (modes.op || modes.halfop)
                 && let Some(sender) = self.senders.get(uid)
+                && let Err(err) = sender.try_send(msg.clone())
             {
-                let _ = sender.send(msg.clone()).await;
+                match err {
+                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                    TrySendError::Closed(_) => {}
+                }
             }
         }
 

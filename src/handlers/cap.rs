@@ -94,27 +94,37 @@ async fn handle_ls<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, versio
         ctx.state.capabilities_mut().insert("cap-notify".to_string());
     }
 
-    // Build capability list (include EXTERNAL if TLS with cert)
-    let cap_list = build_cap_list(
+    let server_name = &ctx.matrix.server_info.name;
+
+    // Build capability tokens (include EXTERNAL if TLS with cert)
+    let caps = build_cap_list_tokens(
         version,
         ctx.state.is_tls() && ctx.state.certfp().is_some(),
         &ctx.matrix.config.account_registration,
     );
 
-    // Send CAP LS response
-    // Format: CAP <nick> LS [* ] :<caps>
-    // The * indicates more lines follow (multiline for >510 bytes)
-    let reply = Message {
-        tags: None,
-        prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
-        command: Command::CAP(
-            Some(nick.to_string()),
-            CapSubCommand::LS,
-            None,
-            Some(cap_list),
-        ),
-    };
-    ctx.sender.send(reply).await?;
+    // CAP LS may need to be split across multiple lines to satisfy the IRC 512-byte limit.
+    // We pack space-separated capability tokens into lines using the actual serialized
+    // message length as the constraint.
+    let cap_lines = pack_cap_ls_lines(server_name, nick, &caps);
+
+    for (i, caps_str) in cap_lines.iter().enumerate() {
+        let has_more = i + 1 < cap_lines.len();
+        let more_marker = if has_more { Some("*".to_string()) } else { None };
+
+        let reply = Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.clone())),
+            command: Command::CAP(
+                Some(nick.to_string()),
+                CapSubCommand::LS,
+                more_marker,
+                Some(caps_str.clone()),
+            ),
+        };
+
+        ctx.sender.send(reply).await?;
+    }
 
     debug!(nick = %nick, version = %version, "CAP LS sent");
     Ok(())
@@ -213,9 +223,27 @@ async fn handle_req<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, caps_
         if ctx.state.is_registered()
             && let Some(user_ref) = ctx.matrix.users.get(ctx.uid)
         {
-            let mut user = user_ref.write().await;
-            user.caps = ctx.state.capabilities().clone();
-            debug!(uid = %ctx.uid, caps = ?user.caps, "Synced caps to Matrix user");
+            let (channels, new_caps) = {
+                let mut user = user_ref.write().await;
+                user.caps = ctx.state.capabilities().clone();
+                (user.channels.iter().cloned().collect::<Vec<_>>(), user.caps.clone())
+            };
+
+            // Keep ChannelActor per-user capability caches in sync.
+            // Without this, capability-gated broadcasts (e.g., setname, away-notify) can be wrong
+            // if the user negotiates capabilities after joining channels.
+            for channel_lower in channels {
+                if let Some(sender) = ctx.matrix.channels.get(&channel_lower) {
+                    let _ = sender
+                        .send(crate::state::actor::ChannelEvent::UpdateCaps {
+                            uid: ctx.uid.to_string(),
+                            caps: new_caps.clone(),
+                        })
+                        .await;
+                }
+            }
+
+            debug!(uid = %ctx.uid, caps = ?new_caps, "Synced caps to Matrix user");
         }
     }
 
@@ -242,8 +270,12 @@ async fn handle_end<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str) -> Ha
 ///
 /// `has_cert` indicates whether the client presented a TLS certificate,
 /// which enables SASL EXTERNAL.
-fn build_cap_list(version: u32, has_cert: bool, acct_cfg: &AccountRegistrationConfig) -> String {
-    let caps: Vec<String> = SUPPORTED_CAPS
+fn build_cap_list_tokens(
+    version: u32,
+    has_cert: bool,
+    acct_cfg: &AccountRegistrationConfig,
+) -> Vec<String> {
+    SUPPORTED_CAPS
         .iter()
         .map(|cap| {
             // For CAP 302+, add values for caps that have them
@@ -286,9 +318,66 @@ fn build_cap_list(version: u32, has_cert: bool, acct_cfg: &AccountRegistrationCo
                 cap.as_ref().to_string()
             }
         })
-        .collect();
+        .collect()
+}
 
-    caps.join(" ")
+fn pack_cap_ls_lines(server_name: &str, nick: &str, caps: &[String]) -> Vec<String> {
+    // If there are no capabilities, send a single empty line.
+    if caps.is_empty() {
+        return vec![String::new()];
+    }
+
+    // Helper: check whether a CAP LS line fits the IRC 512-byte limit when serialized.
+    // For packing we always assume the "*" continuation marker is present, which makes
+    // the check stricter than the final line requires.
+    fn fits(server_name: &str, nick: &str, caps_str: &str) -> bool {
+        let msg = Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(server_name.to_string())),
+            command: Command::CAP(
+                Some(nick.to_string()),
+                CapSubCommand::LS,
+                Some("*".to_string()),
+                Some(caps_str.to_string()),
+            ),
+        };
+        msg.to_string().len() <= 512
+    }
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut current = String::new();
+
+    for cap in caps {
+        let candidate = if current.is_empty() {
+            cap.clone()
+        } else {
+            format!("{} {}", current, cap)
+        };
+
+        if fits(server_name, nick, &candidate) {
+            current = candidate;
+            continue;
+        }
+
+        if !current.is_empty() {
+            lines.push(current);
+            current = String::new();
+        }
+
+        // If a single token doesn't fit, we still have to send *something*.
+        // This should be practically unreachable with sane capability values.
+        if fits(server_name, nick, cap) {
+            current = cap.clone();
+        } else {
+            lines.push(cap.clone());
+        }
+    }
+
+    if !current.is_empty() {
+        lines.push(current);
+    }
+
+    lines
 }
 
 /// Handler for AUTHENTICATE command (SASL authentication).

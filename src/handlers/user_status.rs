@@ -209,22 +209,22 @@ impl PostRegHandler for SetnameHandler {
             Vec::new()
         };
 
+        // Always echo back to the sender to confirm the change.
+        // Do this synchronously (not via channel broadcast) so it is observed before
+        // any synchronize PING/PONG used by the test harness.
+        ctx.sender.send(setname_msg.clone()).await?;
+
         // Broadcast to each channel (only to clients with setname capability)
         for channel_name in &channels {
             ctx.matrix
                 .broadcast_to_channel_with_cap(
                     channel_name,
                     setname_msg.clone(),
-                    None,
+                    Some(ctx.uid),
                     Some("setname"),
                     None,
                 )
                 .await;
-        }
-
-        // Also echo back to the sender if not in any channels
-        if channels.is_empty() {
-            ctx.sender.send(setname_msg).await?;
         }
 
         debug!(nick = %nick, new_realname = %new_realname, "User changed realname via SETNAME");

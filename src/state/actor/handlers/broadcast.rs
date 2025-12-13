@@ -1,6 +1,7 @@
 use super::{ChannelActor, Uid};
 use slirc_proto::Message;
 use std::sync::Arc;
+use tokio::sync::mpsc::error::TrySendError;
 
 impl ChannelActor {
     pub(crate) async fn handle_broadcast(&mut self, message: Message, exclude: Option<Uid>) {
@@ -9,7 +10,12 @@ impl ChannelActor {
             if exclude.as_ref() == Some(uid) {
                 continue;
             }
-            let _ = sender.send((*msg).clone()).await;
+            if let Err(err) = sender.try_send((*msg).clone()) {
+                match err {
+                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                    TrySendError::Closed(_) => {}
+                }
+            }
         }
     }
 
@@ -39,9 +45,19 @@ impl ChannelActor {
             };
 
             if should_send_main {
-                let _ = sender.send((*msg).clone()).await;
-            } else if let Some(fb) = &fallback {
-                let _ = sender.send((**fb).clone()).await;
+                if let Err(err) = sender.try_send((*msg).clone()) {
+                    match err {
+                        TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                        TrySendError::Closed(_) => {}
+                    }
+                }
+            } else if let Some(fb) = &fallback
+                && let Err(err) = sender.try_send((**fb).clone())
+            {
+                match err {
+                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                    TrySendError::Closed(_) => {}
+                }
             }
         }
     }
