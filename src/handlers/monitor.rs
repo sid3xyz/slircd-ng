@@ -116,8 +116,13 @@ async fn handle_add(
 
         // Check if target is online
         if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
-            if let Some(user_ref) = ctx.matrix.users.get(target_uid.value()) {
-                let user = user_ref.read().await;
+            let user_arc = ctx
+                .matrix
+                .users
+                .get(target_uid.value())
+                .map(|u| u.value().clone());
+            if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
                 online.push(format!("{}!{}@{}", user.nick, user.user, user.visible_host));
             }
         } else {
@@ -231,8 +236,13 @@ async fn handle_status(ctx: &mut Context<'_, RegisteredState>, nick: &str, serve
     if let Some(user_monitors) = ctx.matrix.monitors.get(ctx.uid) {
         for target_lower in user_monitors.iter() {
             if let Some(target_uid) = ctx.matrix.nicks.get(target_lower.as_str()) {
-                if let Some(user_ref) = ctx.matrix.users.get(target_uid.value()) {
-                    let user = user_ref.read().await;
+                let user_arc = ctx
+                    .matrix
+                    .users
+                    .get(target_uid.value())
+                    .map(|u| u.value().clone());
+                if let Some(user_arc) = user_arc {
+                    let user = user_arc.read().await;
                     online.push(format!("{}!{}@{}", user.nick, user.user, user.visible_host));
                 }
             } else {

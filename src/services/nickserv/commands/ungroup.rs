@@ -21,8 +21,9 @@ pub async fn handle_ungroup(
     let target_nick = args[0];
 
     // Must be identified first
-    let (account_name, account_id) = if let Some(user) = matrix.users.get(uid) {
-        let user = user.read().await;
+    let user_arc = matrix.users.get(uid).map(|u| u.clone());
+    let (account_name, account_id) = if let Some(user_arc) = user_arc {
+        let user = user_arc.read().await;
         if !user.modes.registered {
             return reply_effects(uid, vec!["You must be identified to use this command."]);
         }

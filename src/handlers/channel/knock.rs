@@ -32,8 +32,8 @@ impl PostRegHandler for KnockHandler {
                 // ERR_NEEDMOREPARAMS (461)
                 let server_name = &ctx.matrix.server_info.name;
                 let nick = {
-                    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                        let user = user_ref.read().await;
+                    if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+                        let user = user_arc.read().await;
                         user.nick.clone()
                     } else {
                         "*".to_string()
@@ -59,8 +59,8 @@ impl PostRegHandler for KnockHandler {
 
         // Get user info
         let (nick, user, host) = {
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let u = user_ref.read().await;
+            if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+                let u = user_arc.read().await;
                 (u.nick.clone(), u.user.clone(), u.host.clone())
             } else {
                 return Ok(());

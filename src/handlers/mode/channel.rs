@@ -237,8 +237,9 @@ pub async fn handle_channel_mode(
                 }
             }
 
-            let (nick, user, host) = if let Some(u) = ctx.matrix.users.get(ctx.uid) {
-                let u = u.read().await;
+            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+            let (nick, user, host) = if let Some(user_arc) = user_arc {
+                let u = user_arc.read().await;
                 (u.nick.clone(), u.user.clone(), u.host.clone())
             } else {
                 (

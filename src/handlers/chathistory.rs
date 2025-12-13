@@ -249,8 +249,9 @@ impl ChatHistoryHandler {
                     }).unwrap_or(i64::MAX)
                 };
 
-                let channels = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                    let user = user_ref.read().await;
+                let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+                let channels = if let Some(user_arc) = user_arc {
+                    let user = user_arc.read().await;
                     user.channels.iter().cloned().collect::<Vec<_>>()
                 } else {
                     vec![]
@@ -356,9 +357,14 @@ impl PostRegHandler for ChatHistoryHandler {
         // Check if user has access to this target (must be in channel for channels)
         if subcommand != ChatHistorySubCommand::TARGETS && !is_dm {
             let target_lower = slirc_proto::irc_to_lower(&target);
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
-                if !user.channels.contains(&target_lower) {
+            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+            if let Some(user_arc) = user_arc {
+                let in_channel = {
+                    let user = user_arc.read().await;
+                    user.channels.contains(&target_lower)
+                };
+
+                if !in_channel {
                     // User not in channel - send FAIL
                     let fail = Message {
                         tags: None,

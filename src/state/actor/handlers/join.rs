@@ -29,8 +29,9 @@ impl ChannelActor {
 
         // Validate that the user still exists and the session matches.
         let session_valid = if let Some(matrix) = self.matrix.upgrade() {
-            if let Some(user_ref) = matrix.users.get(&uid) {
-                let user = user_ref.read().await;
+            let user_arc = matrix.users.get(&uid).map(|u| u.value().clone());
+            if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
                 user.session_id == session_id
             } else {
                 false

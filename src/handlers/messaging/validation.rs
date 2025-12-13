@@ -99,8 +99,9 @@ pub async fn validate_message_send(
     }
 
     // Check for content spam (skip for trusted users)
-    let is_trusted = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        let user = user_ref.read().await;
+    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+    let is_trusted = if let Some(user_arc) = user_arc {
+        let user = user_arc.read().await;
         user.modes.oper || user.account.is_some()
     } else {
         false

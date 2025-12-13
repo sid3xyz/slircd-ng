@@ -212,8 +212,9 @@ impl PostRegHandler for PrivmsgHandler {
             let target_lower = irc_to_lower(routing_target);
             let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(&target_lower) {
                  let uid = uid_ref.value();
-                 if let Some(user_ref) = ctx.matrix.users.get(uid) {
-                     let user = user_ref.read().await;
+                 let user_arc = ctx.matrix.users.get(uid).map(|u| u.value().clone());
+                 if let Some(user_arc) = user_arc {
+                     let user = user_arc.read().await;
                      user.account.clone()
                  } else {
                      None

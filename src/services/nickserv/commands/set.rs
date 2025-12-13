@@ -30,8 +30,9 @@ pub async fn handle_set(
     }
 
     // Check if user is identified and get their account name
-    let account_name = if let Some(user) = matrix.users.get(uid) {
-        let user = user.read().await;
+    let user_arc = matrix.users.get(uid).map(|u| u.clone());
+    let account_name = if let Some(user_arc) = user_arc {
+        let user = user_arc.read().await;
         if !user.modes.registered {
             return reply_effects(uid, vec!["You are not identified to any account."]);
         }

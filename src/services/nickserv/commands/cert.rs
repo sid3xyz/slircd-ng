@@ -32,11 +32,12 @@ where
     M: Fn(&str, Vec<&str>) -> Vec<ServiceEffect>,
 {
     // User must be logged in
-    let Some(user_ref) = matrix.users.get(uid) else {
+    let user_arc = matrix.users.get(uid).map(|u| u.clone());
+    let Some(user_arc) = user_arc else {
         return vec![reply(uid, "You are not connected.")];
     };
 
-    let user = user_ref.read().await;
+    let user = user_arc.read().await;
     let Some(ref account_name) = user.account else {
         return vec![reply(
             uid,
@@ -99,11 +100,12 @@ where
     F: Fn(&str, &str) -> ServiceEffect,
 {
     // Get user's current certfp from their connection
-    let Some(user_ref) = matrix.users.get(uid) else {
+    let user_arc = matrix.users.get(uid).map(|u| u.clone());
+    let Some(user_arc) = user_arc else {
         return vec![reply(uid, "You are not connected.")];
     };
 
-    let user = user_ref.read().await;
+    let user = user_arc.read().await;
     let Some(ref certfp) = user.certfp else {
         return vec![reply(
             uid,

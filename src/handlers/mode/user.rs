@@ -31,9 +31,9 @@ pub async fn handle_user_mode(
     }
 
     // Get current user modes
-    let user = match ctx.matrix.users.get(ctx.uid) {
-        Some(u) => u.clone(),
-        None => return Ok(()),
+    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+    let Some(user) = user_arc else {
+        return Ok(());
     };
 
     if modes.is_empty() {
