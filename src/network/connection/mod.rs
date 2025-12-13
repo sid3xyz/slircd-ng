@@ -31,8 +31,8 @@ use error_handling::{ReadErrorAction, classify_read_error, handler_error_to_repl
 
 use crate::db::Database;
 use crate::handlers::{
-    Context, Registry, ResponseMiddleware, cleanup_monitors, labeled_ack,
-    notify_monitors_offline, process_batch_message, send_welcome_burst, with_label,
+    Context, Registry, ResponseMiddleware, labeled_ack, process_batch_message,
+    send_welcome_burst, with_label,
 };
 use crate::state::{Matrix, UnregisteredState};
 use slirc_proto::transport::ZeroCopyTransportEnum;
@@ -652,73 +652,11 @@ impl Connection {
             }
         }
 
-        // Cleanup: record WHOWAS and remove user from all channels
-        if let Some(user_ref) = self.matrix.users.get(&self.uid) {
-            let user = user_ref.read().await;
-            let channels: Vec<String> = user.channels.iter().cloned().collect();
-            let nick = user.nick.clone();
-            let user_ident = user.user.clone();
-            let host = user.host.clone();
-
-            // Record WHOWAS entry before cleanup
-            self.matrix
-                .record_whowas(&user.nick, &user.user, &user.host, &user.realname);
-
-            drop(user);
-
-            // Broadcast QUIT to all channel members
-            let quit_text = quit_message.unwrap_or_else(|| "Client Quit".to_string());
-            let quit_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::new(nick.clone(), user_ident, host)),
-                command: Command::QUIT(Some(quit_text)),
-            };
-
-            // Send Quit event to all channels
-            for channel_lower in channels {
-                if let Some(channel) = self.matrix.channels.get(&channel_lower) {
-                    let (tx, rx) = tokio::sync::oneshot::channel();
-                    let event = crate::state::actor::ChannelEvent::Quit {
-                        uid: self.uid.clone(),
-                        quit_msg: quit_msg.clone(),
-                        reply_tx: Some(tx),
-                    };
-
-                    if (channel.send(event).await).is_ok() {
-                        if let Ok(remaining) = rx.await
-                            && remaining == 0
-                        {
-                            self.matrix.channels.remove(&channel_lower);
-                            crate::metrics::ACTIVE_CHANNELS.dec();
-                        }
-                    } else {
-                        // Actor died
-                        self.matrix.channels.remove(&channel_lower);
-                    }
-                }
-            }
-        }
-        self.matrix.users.remove(&self.uid);
-        crate::metrics::CONNECTED_USERS.dec();
-
-        // Cleanup: remove nick from index and notify MONITOR watchers
-        // RegisteredState guarantees nick is present
-        let nick = &reg_state.nick;
-        // Notify MONITOR watchers that this nick is going offline
-        notify_monitors_offline(&self.matrix, nick).await;
-
-        let nick_lower = irc_to_lower(nick);
-        self.matrix.nicks.remove(&nick_lower);
-        info!(nick = %nick, "Nick released");
-
-        // Clean up this user's MONITOR entries
-        cleanup_monitors(&self.matrix, &self.uid);
-
-        // Unregister sender from Matrix
-        self.matrix.unregister_sender(&self.uid);
-
-        // Remove from rate limiter
-        self.matrix.rate_limiter.remove_client(&self.uid);
+        // Canonical cleanup for normal disconnects.
+        // If the user was already removed from the Matrix (KILL/enforcement/slow-consumer),
+        // this will no-op.
+        let quit_text = quit_message.unwrap_or_else(|| "Client Quit".to_string());
+        let _ = self.matrix.disconnect_user(&self.uid, &quit_text).await;
 
         info!("Client disconnected");
 

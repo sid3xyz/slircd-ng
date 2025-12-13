@@ -69,7 +69,8 @@ impl PostRegHandler for KillHandler {
 
         let quit_reason = format!("Killed by {killer_nick} ({reason})");
 
-        if let Some(target_sender) = ctx.matrix.senders.get(&target_uid) {
+        let target_sender = ctx.matrix.senders.get(&target_uid).map(|s| s.clone());
+        if let Some(target_sender) = target_sender {
             let error_msg = Message {
                 tags: None,
                 prefix: None,

@@ -222,7 +222,8 @@ pub async fn apply_effect(
             }
 
             // Also send to the user themselves
-            if let Some(sender) = matrix.senders.get(&target_uid) {
+            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
+            if let Some(sender) = sender {
                 let _ = sender.send(mode_msg).await;
                 let _ = sender.send(account_msg).await;
             }
@@ -233,8 +234,9 @@ pub async fn apply_effect(
         ServiceEffect::AccountClear { target_uid } => {
             // Get user info for MODE broadcast
             let (nick, user_str, host, channels) = {
-                if let Some(user_ref) = matrix.users.get(&target_uid) {
-                    let user = user_ref.read().await;
+                let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+                if let Some(user_arc) = user_arc {
+                    let user = user_arc.read().await;
                     (
                         user.nick.clone(),
                         user.user.clone(),
@@ -247,8 +249,9 @@ pub async fn apply_effect(
             };
 
             // Clear +r mode and account on user
-            if let Some(user_ref) = matrix.users.get(&target_uid) {
-                let mut user = user_ref.write().await;
+            let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
                 user.modes.registered = false;
                 user.account = None;
             }
@@ -283,7 +286,8 @@ pub async fn apply_effect(
             }
 
             // Also send to the user themselves
-            if let Some(sender) = matrix.senders.get(&target_uid) {
+            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
+            if let Some(sender) = sender {
                 let _ = sender.send(mode_msg).await;
                 let _ = sender.send(account_msg).await;
             }
@@ -302,8 +306,9 @@ pub async fn apply_effect(
             reason,
         } => {
             // Disconnect the user
+            let quit_reason = format!("Killed by {}: {}", killer, reason);
             matrix
-                .disconnect_user(&target_uid, &format!("Killed by {}: {}", killer, reason))
+                .disconnect_user(&target_uid, &quit_reason)
                 .await;
 
             info!(uid = %target_uid, killer = %killer, reason = %reason, "User killed by service");
@@ -316,8 +321,9 @@ pub async fn apply_effect(
             adding,
         } => {
             // Get target nick for MODE message
-            let target_nick = if let Some(user_ref) = matrix.users.get(&target_uid) {
-                user_ref.read().await.nick.clone()
+            let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+            let target_nick = if let Some(user_arc) = user_arc {
+                user_arc.read().await.nick.clone()
             } else {
                 return;
             };
