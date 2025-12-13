@@ -143,8 +143,9 @@ pub fn resolve_nick_to_uid<S>(ctx: &Context<'_, S>, nick: &str) -> Option<String
 
 /// Get the current user's nick, falling back to "*" if not found.
 pub async fn get_nick_or_star<S>(ctx: &Context<'_, S>) -> String {
-    if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        user_ref.read().await.nick.clone()
+    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+    if let Some(user_arc) = user_arc {
+        user_arc.read().await.nick.clone()
     } else {
         "*".to_string()
     }
@@ -155,8 +156,8 @@ pub async fn user_mask_from_state<S>(
     ctx: &Context<'_, S>,
     uid: &str,
 ) -> Option<(String, String, String)> {
-    let user_ref = ctx.matrix.users.get(uid)?;
-    let user = user_ref.read().await;
+    let user_arc = ctx.matrix.users.get(uid).map(|u| u.clone())?;
+    let user = user_arc.read().await;
     Some((
         user.nick.clone(),
         user.user.clone(),
@@ -166,8 +167,8 @@ pub async fn user_mask_from_state<S>(
 
 /// Get the current user's nick and oper status. Returns None if user not found.
 pub async fn get_oper_info<S>(ctx: &Context<'_, S>) -> Option<(String, bool)> {
-    let user_ref = ctx.matrix.users.get(ctx.uid)?;
-    let user = user_ref.read().await;
+    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone())?;
+    let user = user_arc.read().await;
     Some((user.nick.clone(), user.modes.oper))
 }
 
@@ -175,8 +176,9 @@ pub async fn get_oper_info<S>(ctx: &Context<'_, S>) -> Option<(String, bool)> {
 ///
 /// Returns true if the user (identified by uid) is a member of the channel.
 pub async fn is_user_in_channel<S>(ctx: &Context<'_, S>, uid: &str, channel_lower: &str) -> bool {
-    if let Some(user_ref) = ctx.matrix.users.get(uid) {
-        let user = user_ref.read().await;
+    let user_arc = ctx.matrix.users.get(uid).map(|u| u.clone());
+    if let Some(user_arc) = user_arc {
+        let user = user_arc.read().await;
         user.channels.contains(channel_lower)
     } else {
         false

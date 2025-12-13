@@ -43,8 +43,8 @@ impl SenderSnapshot {
     ///
     /// Returns None if the user is not found (shouldn't happen for registered users).
     pub async fn build<S>(ctx: &Context<'_, S>) -> Option<Self> {
-        let user_ref = ctx.matrix.users.get(ctx.uid)?;
-        let user = user_ref.read().await;
+        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone())?;
+        let user = user_arc.read().await;
         Some(Self {
             nick: user.nick.clone(),
             user: user.user.clone(),
@@ -111,8 +111,9 @@ pub async fn is_shunned_with_snapshot<S>(ctx: &Context<'_, S>, snapshot: &Sender
 #[allow(dead_code)] // Kept for backward compatibility with validation.rs
 pub async fn is_shunned<S>(ctx: &Context<'_, S>) -> bool {
     // Get user's hostmask
-    let user_host = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        let user = user_ref.read().await;
+    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+    let user_host = if let Some(user_arc) = user_arc {
+        let user = user_arc.read().await;
         format!("{}@{}", user.user, user.host)
     } else {
         return false;
@@ -169,7 +170,8 @@ pub async fn route_to_channel_with_snapshot(
     msgid: Option<String>,
     snapshot: &SenderSnapshot,
 ) -> ChannelRouteResult {
-    let Some(channel_ref) = ctx.matrix.channels.get(channel_lower) else {
+    let channel_tx = ctx.matrix.channels.get(channel_lower).map(|c| c.clone());
+    let Some(channel_tx) = channel_tx else {
         return ChannelRouteResult::NoSuchChannel;
     };
 
@@ -205,7 +207,7 @@ pub async fn route_to_channel_with_snapshot(
         reply_tx,
     };
 
-    if (channel_ref.send(event).await).is_err() {
+    if (channel_tx.send(event).await).is_err() {
         return ChannelRouteResult::NoSuchChannel; // Actor died
     }
 
@@ -228,13 +230,14 @@ pub async fn route_to_channel(
     timestamp: Option<String>,
     msgid: Option<String>,
 ) -> ChannelRouteResult {
-    let Some(channel_ref) = ctx.matrix.channels.get(channel_lower) else {
+    let channel_tx = ctx.matrix.channels.get(channel_lower).map(|c| c.clone());
+    let Some(channel_tx) = channel_tx else {
         return ChannelRouteResult::NoSuchChannel;
     };
 
     // Get user info
-    let (user_context, is_registered) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-        let user = user_ref.read().await;
+    let (user_context, is_registered) = if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.clone()) {
+        let user = user_arc.read().await;
         let context = UserContext::for_registration(
             ctx.remote_addr.ip(),
             user.host.clone(),
@@ -288,7 +291,7 @@ pub async fn route_to_channel(
         reply_tx,
     };
 
-    if (channel_ref.send(event).await).is_err() {
+    if (channel_tx.send(event).await).is_err() {
         return ChannelRouteResult::NoSuchChannel; // Actor died
     }
 
@@ -339,27 +342,29 @@ pub async fn route_to_user_with_snapshot(
     }
 
     // Check away status and notify sender if requested
-    if opts.send_away_reply
-        && let Some(target_user_ref) = ctx.matrix.users.get(&target_uid)
-    {
-        let target_user = target_user_ref.read().await;
-        if let Some(away_msg) = &target_user.away {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::RPL_AWAY,
-                vec![
-                    snapshot.nick.clone(),
-                    target_user.nick.clone(),
-                    away_msg.clone(),
-                ],
-            );
-            let _ = ctx.sender.send(reply).await;
+    if opts.send_away_reply {
+        let target_user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+        if let Some(target_user_arc) = target_user_arc {
+            let target_user = target_user_arc.read().await;
+            if let Some(away_msg) = &target_user.away {
+                let reply = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_AWAY,
+                    vec![
+                        snapshot.nick.clone(),
+                        target_user.nick.clone(),
+                        away_msg.clone(),
+                    ],
+                );
+                let _ = ctx.sender.send(reply).await;
+            }
         }
     }
 
     // Check +R (registered-only PMs) - target only accepts PMs from identified users
-    if let Some(target_user_ref) = ctx.matrix.users.get(&target_uid) {
-        let target_user = target_user_ref.read().await;
+    let target_user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+    if let Some(target_user_arc) = target_user_arc {
+        let target_user = target_user_arc.read().await;
         if target_user.modes.registered_only {
             // Use pre-fetched registered status from snapshot
             if !snapshot.is_registered {
@@ -422,10 +427,11 @@ pub async fn route_to_user_with_snapshot(
     // Use sender's account from snapshot
     let sender_account = snapshot.account.as_ref();
 
-    if let Some(sender) = ctx.matrix.senders.get(&target_uid) {
+    let target_sender = ctx.matrix.senders.get(&target_uid).map(|s| s.clone());
+    if let Some(target_sender) = target_sender {
         // Check target's capabilities and build appropriate message
-        let msg_for_target = if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-            let user = user_ref.read().await;
+        let msg_for_target = if let Some(user_arc) = ctx.matrix.users.get(&target_uid).map(|u| u.clone()) {
+            let user = user_arc.read().await;
             let has_message_tags = user.caps.contains("message-tags");
             let has_server_time = user.caps.contains("server-time");
 
@@ -474,7 +480,7 @@ pub async fn route_to_user_with_snapshot(
         } else {
             msg.clone()
         };
-        let _ = sender.send(msg_for_target).await;
+        let _ = target_sender.send(msg_for_target).await;
         crate::metrics::MESSAGES_SENT.inc();
 
         // Echo message back to sender if they have echo-message capability
