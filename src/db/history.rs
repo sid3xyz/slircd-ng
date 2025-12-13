@@ -186,7 +186,7 @@ impl<'a> HistoryRepository<'a> {
             SELECT msgid, target, sender, message_data, nanotime, account
             FROM message_history
             WHERE target = ?
-            ORDER BY nanotime DESC
+            ORDER BY nanotime DESC, rowid DESC
             LIMIT ?
             "#,
         )
@@ -212,7 +212,7 @@ impl<'a> HistoryRepository<'a> {
             SELECT msgid, target, sender, message_data, nanotime, account
             FROM message_history
             WHERE target = ? AND nanotime > ?
-            ORDER BY nanotime DESC
+            ORDER BY nanotime DESC, rowid DESC
             LIMIT ?
             "#,
         )
@@ -239,7 +239,7 @@ impl<'a> HistoryRepository<'a> {
             SELECT msgid, target, sender, message_data, nanotime, account
             FROM message_history
             WHERE target = ? AND nanotime < ?
-            ORDER BY nanotime DESC
+            ORDER BY nanotime DESC, rowid DESC
             LIMIT ?
             "#,
         )
@@ -266,7 +266,7 @@ impl<'a> HistoryRepository<'a> {
             SELECT msgid, target, sender, message_data, nanotime, account
             FROM message_history
             WHERE target = ? AND nanotime > ?
-            ORDER BY nanotime ASC
+            ORDER BY nanotime ASC, rowid ASC
             LIMIT ?
             "#,
         )
@@ -294,7 +294,7 @@ impl<'a> HistoryRepository<'a> {
             SELECT msgid, target, sender, message_data, nanotime, account
             FROM message_history
             WHERE target = ? AND nanotime > ? AND nanotime < ?
-            ORDER BY nanotime ASC
+            ORDER BY nanotime ASC, rowid ASC
             LIMIT ?
             "#,
         )
@@ -323,7 +323,7 @@ impl<'a> HistoryRepository<'a> {
             SELECT msgid, target, sender, message_data, nanotime, account
             FROM message_history
             WHERE target = ? AND nanotime > ? AND nanotime < ?
-            ORDER BY nanotime DESC
+            ORDER BY nanotime DESC, rowid DESC
             LIMIT ?
             "#,
         )
@@ -354,7 +354,7 @@ impl<'a> HistoryRepository<'a> {
                 SELECT msgid, target, sender, message_data, nanotime, account
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ? AND account = ?) OR (target = ? AND lower(sender) = ? AND target_account = ?))
-                ORDER BY nanotime DESC
+                ORDER BY nanotime DESC, rowid DESC
                 LIMIT ?
                 "#,
             )
@@ -373,7 +373,7 @@ impl<'a> HistoryRepository<'a> {
                 SELECT msgid, target, sender, message_data, nanotime, account
                 FROM message_history
                 WHERE (target = ? AND lower(sender) = ?) OR (target = ? AND lower(sender) = ?)
-                ORDER BY nanotime DESC
+                ORDER BY nanotime DESC, rowid DESC
                 LIMIT ?
                 "#,
             )
@@ -408,7 +408,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ? AND account = ?) OR (target = ? AND lower(sender) = ? AND target_account = ?))
                   AND nanotime > ?
-                ORDER BY nanotime DESC
+                                ORDER BY nanotime DESC, rowid DESC
                 LIMIT ?
                 "#,
             )
@@ -429,7 +429,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ?) OR (target = ? AND lower(sender) = ?))
                   AND nanotime > ?
-                ORDER BY nanotime DESC
+                                ORDER BY nanotime DESC, rowid DESC
                 LIMIT ?
                 "#,
             )
@@ -467,7 +467,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ? AND account = ?) OR (target = ? AND lower(sender) = ? AND target_account = ?))
                   AND nanotime < ?
-                ORDER BY nanotime DESC
+                                ORDER BY nanotime DESC, rowid DESC
                 LIMIT ?
                 "#,
             )
@@ -488,7 +488,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ?) OR (target = ? AND lower(sender) = ?))
                   AND nanotime < ?
-                ORDER BY nanotime DESC
+                                ORDER BY nanotime DESC, rowid DESC
                 LIMIT ?
                 "#,
             )
@@ -524,7 +524,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ? AND account = ?) OR (target = ? AND lower(sender) = ? AND target_account = ?))
                   AND nanotime > ?
-                ORDER BY nanotime ASC
+                                ORDER BY nanotime ASC, rowid ASC
                 LIMIT ?
                 "#,
             )
@@ -545,7 +545,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ?) OR (target = ? AND lower(sender) = ?))
                   AND nanotime > ?
-                ORDER BY nanotime ASC
+                                ORDER BY nanotime ASC, rowid ASC
                 LIMIT ?
                 "#,
             )
@@ -582,7 +582,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ? AND account = ?) OR (target = ? AND lower(sender) = ? AND target_account = ?))
                   AND nanotime > ? AND nanotime < ?
-                ORDER BY nanotime ASC
+                                ORDER BY nanotime ASC, rowid ASC
                 LIMIT ?
                 "#,
             )
@@ -604,7 +604,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ?) OR (target = ? AND lower(sender) = ?))
                   AND nanotime > ? AND nanotime < ?
-                ORDER BY nanotime ASC
+                                ORDER BY nanotime ASC, rowid ASC
                 LIMIT ?
                 "#,
             )
@@ -642,7 +642,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ? AND account = ?) OR (target = ? AND lower(sender) = ? AND target_account = ?))
                   AND nanotime > ? AND nanotime < ?
-                ORDER BY nanotime DESC
+                                ORDER BY nanotime DESC, rowid DESC
                 LIMIT ?
                 "#,
             )
@@ -664,7 +664,7 @@ impl<'a> HistoryRepository<'a> {
                 FROM message_history
                 WHERE ((target = ? AND lower(sender) = ?) OR (target = ? AND lower(sender) = ?))
                   AND nanotime > ? AND nanotime < ?
-                ORDER BY nanotime DESC
+                                ORDER BY nanotime DESC, rowid DESC
                 LIMIT ?
                 "#,
             )
