@@ -9,7 +9,7 @@ mod ping;
 mod quit;
 mod user;
 mod webirc;
-mod welcome;
+mod welcome_burst;
 
 pub use nick::NickHandler;
 pub use pass::PassHandler;
@@ -17,4 +17,4 @@ pub use ping::{PingHandler, PongHandler};
 pub use quit::QuitHandler;
 pub use user::UserHandler;
 pub use webirc::WebircHandler;
-pub use welcome::send_welcome_burst;
+pub use welcome_burst::WelcomeBurstWriter;

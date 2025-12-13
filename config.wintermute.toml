@@ -1,0 +1,42 @@
+# slircd-ng Configuration for wintermute.slirc.net
+
+[server]
+name = "wintermute.slirc.net"
+network = "Straylight"
+sid = "001"
+description = "Straylight IRC Network - Wintermute Node"
+metrics_port = 9090
+
+[listen]
+address = "0.0.0.0:6667"
+
+[tls]
+address = "0.0.0.0:6697"
+cert_path = "/etc/letsencrypt/live/irc.slirc.net/fullchain.pem"
+key_path = "/etc/letsencrypt/live/irc.slirc.net/privkey.pem"
+
+[websocket]
+address = "0.0.0.0:6668"
+allow_origins = []
+
+[database]
+path = "data/slircd.db"
+
+[motd]
+file = "/opt/slircd/motd.txt"
+
+[security]
+# CRITICAL: Same cloak secret as v3.0 for consistent host cloaking
+cloak_secret = "3de5cb4b42697f7eb64572c77a099373bd52008ba69f44bad3e8170eedae15ca"
+cloak_suffix = "ip"
+spam_detection_enabled = true
+
+[security.rate_limits]
+message_rate_per_second = 10
+connection_burst_per_ip = 10
+join_burst_per_client = 20
+
+[[oper]]
+name = "case"
+password = "acacia565536"
+# hostmask = "*@*"

@@ -31,8 +31,8 @@ use error_handling::{ReadErrorAction, classify_read_error, handler_error_to_repl
 
 use crate::db::Database;
 use crate::handlers::{
-    Context, Registry, ResponseMiddleware, labeled_ack, process_batch_message,
-    send_welcome_burst, with_label,
+    Context, Registry, ResponseMiddleware, WelcomeBurstWriter, labeled_ack, process_batch_message,
+    with_label,
 };
 use crate::state::{Matrix, UnregisteredState};
 use slirc_proto::transport::ZeroCopyTransportEnum;
@@ -257,19 +257,17 @@ impl Connection {
                     // Check if registration is now possible (e.g., CAP END was received)
                     // This handles the case where CAP negotiation delayed registration.
                     if unreg_state.can_register() && !self.matrix.users.contains_key(&self.uid) {
-                        // Re-create context to call welcome burst
-                        let mut ctx = Context {
-                            uid: &self.uid,
-                            matrix: &self.matrix,
-                            sender: ResponseMiddleware::Direct(&handshake_tx),
-                            state: &mut unreg_state,
-                            db: &self.db,
-                            remote_addr: self.addr,
-                            label: None,
-                            suppress_labeled_ack: false,
-                            registry: &self.registry,
-                        };
-                        if let Err(e) = send_welcome_burst(&mut ctx).await {
+                        // Use WelcomeBurstWriter to write directly to transport.
+                        // This avoids bounded channel deadlock for large MOTDs.
+                        let writer = WelcomeBurstWriter::new(
+                            &self.uid,
+                            &self.matrix,
+                            &mut self.transport,
+                            &unreg_state,
+                            &self.db,
+                            self.addr,
+                        );
+                        if let Err(e) = writer.send().await {
                             warn!(error = ?e, "Failed to send welcome burst");
                             // Release nick if reserved
                             if let Some(nick) = &unreg_state.nick {
@@ -277,17 +275,6 @@ impl Connection {
                                 self.matrix.nicks.remove(&nick_lower);
                             }
                             return Ok(());
-                        }
-                        // Drain welcome burst messages
-                        while let Ok(response) = handshake_rx.try_recv() {
-                            if let Err(e) = self.transport.write_message(&response).await {
-                                warn!(error = ?e, "Write error sending welcome burst");
-                                if let Some(nick) = &unreg_state.nick {
-                                    let nick_lower = irc_to_lower(nick);
-                                    self.matrix.nicks.remove(&nick_lower);
-                                }
-                                return Ok(());
-                            }
                         }
                     }
 
