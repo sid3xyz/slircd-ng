@@ -38,16 +38,18 @@ impl PostRegHandler for AwayHandler {
             && !away_text.is_empty()
         {
             // Get list of channels before setting away status (for away-notify)
-            let channels = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
+            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            let channels = if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
                 user.channels.iter().cloned().collect::<Vec<_>>()
             } else {
                 Vec::new()
             };
 
             // Set away status
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let mut user = user_ref.write().await;
+            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
                 user.away = Some(away_text.to_string());
             }
 
@@ -85,16 +87,18 @@ impl PostRegHandler for AwayHandler {
         }
 
         // Get list of channels before clearing away status (for away-notify)
-        let channels = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_ref.read().await;
+        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let channels = if let Some(user_arc) = user_arc {
+            let user = user_arc.read().await;
             user.channels.iter().cloned().collect::<Vec<_>>()
         } else {
             Vec::new()
         };
 
         // Clear away status
-        if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let mut user = user_ref.write().await;
+        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        if let Some(user_arc) = user_arc {
+            let mut user = user_arc.write().await;
             user.away = None;
         }
 
@@ -179,8 +183,9 @@ impl PostRegHandler for SetnameHandler {
         };
 
         // Update the user's realname
-        let (nick, user, visible_host) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let mut user = user_ref.write().await;
+        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let (nick, user, visible_host) = if let Some(user_arc) = user_arc {
+            let mut user = user_arc.write().await;
             user.realname = new_realname.to_string();
             (
                 user.nick.clone(),
@@ -202,8 +207,9 @@ impl PostRegHandler for SetnameHandler {
         };
 
         // Get user's channels
-        let channels: Vec<String> = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_ref.read().await;
+        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let channels: Vec<String> = if let Some(user_arc) = user_arc {
+            let user = user_arc.read().await;
             user.channels.iter().cloned().collect()
         } else {
             Vec::new()
@@ -262,8 +268,9 @@ impl PostRegHandler for SilenceHandler {
 
         if mask_arg.is_none() {
             // List silence entries
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
+            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
 
                 // RPL_SILELIST (271) for each entry
                 for mask in &user.silence_list {
@@ -307,8 +314,9 @@ impl PostRegHandler for SilenceHandler {
         }
 
         // Update silence list
-        if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let mut user = user_ref.write().await;
+        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        if let Some(user_arc) = user_arc {
+            let mut user = user_arc.write().await;
 
             if adding {
                 // Add to silence list (limit to reasonable size)

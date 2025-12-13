@@ -49,8 +49,10 @@ impl PostRegHandler for WhoisHandler {
         let target_lower = irc_to_lower(target);
 
         // Look up target user
-        if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
-            if let Some(target_user_ref) = ctx.matrix.users.get(target_uid.value()) {
+        let target_uid = ctx.matrix.nicks.get(&target_lower).map(|r| r.value().clone());
+        if let Some(target_uid) = target_uid {
+            let target_user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+            if let Some(target_user_arc) = target_user_arc {
                 // Clone needed data, drop lock immediately to prevent holding during async ops
                 let (
                     target_nick,
@@ -63,7 +65,7 @@ impl PostRegHandler for WhoisHandler {
                     target_away,
                     target_uid_owned,
                 ) = {
-                    let target_user = target_user_ref.read().await;
+                    let target_user = target_user_arc.read().await;
                     (
                         target_user.nick.clone(),
                         target_user.user.clone(),
@@ -107,11 +109,12 @@ impl PostRegHandler for WhoisHandler {
 
                 // RPL_WHOISCHANNELS (319): <nick> :{[@|+]<channel>}
                 // Skip if target is invisible and requester doesn't share any channels
-                let show_channels = if target_modes.invisible && target_uid.value() != ctx.uid {
+                let show_channels = if target_modes.invisible && target_uid != ctx.uid {
                     // Check if requester shares any channel with target
                     let mut shares_channel = false;
-                    if let Some(requester) = ctx.matrix.users.get(ctx.uid) {
-                        let requester = requester.read().await;
+                    let requester_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+                    if let Some(requester_arc) = requester_arc {
+                        let requester = requester_arc.read().await;
                         for ch in &target_channels {
                             if requester.channels.contains(ch) {
                                 shares_channel = true;
@@ -127,7 +130,8 @@ impl PostRegHandler for WhoisHandler {
                 if show_channels && !target_channels.is_empty() {
                     let mut channel_list = Vec::new();
                     for channel_name in &target_channels {
-                        if let Some(channel_sender) = ctx.matrix.channels.get(channel_name) {
+                        let channel_sender = ctx.matrix.channels.get(channel_name).map(|c| c.clone());
+                        if let Some(channel_sender) = channel_sender {
                             let (tx, rx) = tokio::sync::oneshot::channel();
                             let _ = channel_sender
                                 .send(crate::state::actor::ChannelEvent::GetInfo {
