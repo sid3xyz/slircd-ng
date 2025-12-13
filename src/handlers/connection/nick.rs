@@ -58,11 +58,12 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         // Check +N (no nick change) on any channel the user is in
         // Only applies to registered (connected) users changing their nick
         if ctx.state.is_registered()
-            && let Some(user_ref) = ctx.matrix.users.get(ctx.uid)
+            && let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.clone())
         {
-            let user = user_ref.read().await;
+            let user = user_arc.read().await;
             for channel_lower in &user.channels {
-                if let Some(channel_sender) = ctx.matrix.channels.get(channel_lower) {
+                let channel_sender = ctx.matrix.channels.get(channel_lower).map(|c| c.clone());
+                if let Some(channel_sender) = channel_sender {
                     let (tx, rx) = tokio::sync::oneshot::channel();
                     let _ = channel_sender
                         .send(crate::state::actor::ChannelEvent::GetInfo {
@@ -130,8 +131,8 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         // Send NICK change message for registered users
         if let Some(old_nick) = old_nick_for_change {
             // Get user info for the prefix and channels
-            let (nick_msg, user_channels) = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
+            let (nick_msg, user_channels) = if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.clone()) {
+                let user = user_arc.read().await;
                 let msg = Message {
                     tags: None,
                     prefix: Some(Prefix::new(
@@ -168,7 +169,8 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                     .await;
 
                 // Update the channel actor's user_nicks map
-                if let Some(channel_sender) = ctx.matrix.channels.get(channel_lower) {
+                let channel_sender = ctx.matrix.channels.get(channel_lower).map(|c| c.clone());
+                if let Some(channel_sender) = channel_sender {
                     let _ = channel_sender
                         .send(crate::state::actor::ChannelEvent::NickChange {
                             uid: ctx.uid.to_string(),
@@ -180,8 +182,9 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             }
 
             // Also update the User state with the new nick
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let mut user = user_ref.write().await;
+            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
                 user.nick = nick.to_string();
             }
         }
@@ -190,8 +193,9 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         // Skip notification for case-only changes (already computed above)
         if ctx.state.is_registered() && !is_case_only_change {
             // Get user info for the hostmask
-            if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-                let user = user_ref.read().await;
+            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
                 notify_monitors_online(ctx.matrix, nick, &user.user, &user.visible_host).await;
             }
         }
@@ -200,8 +204,9 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
 
         // Check if nick enforcement should be started
         // Only if user is not already identified to an account
-        let is_identified = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
-            let user = user.read().await;
+        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let is_identified = if let Some(user_arc) = user_arc {
+            let user = user_arc.read().await;
             user.modes.registered
         } else {
             false
