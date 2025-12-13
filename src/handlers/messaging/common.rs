@@ -104,36 +104,6 @@ pub async fn is_shunned_with_snapshot<S>(ctx: &Context<'_, S>, snapshot: &Sender
     }
 }
 
-/// Check if a user is shunned (silently blocked from messaging).
-///
-/// Returns true if the user is shunned and their command should be silently ignored.
-/// Note: Prefer `is_shunned_with_snapshot` when SenderSnapshot is available.
-#[allow(dead_code)] // Kept for backward compatibility with validation.rs
-pub async fn is_shunned<S>(ctx: &Context<'_, S>) -> bool {
-    // Get user's hostmask
-    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
-    let user_host = if let Some(user_arc) = user_arc {
-        let user = user_arc.read().await;
-        format!("{}@{}", user.user, user.host)
-    } else {
-        return false;
-    };
-
-    // Check database for shuns
-    match ctx.db.bans().matches_shun(&user_host).await {
-        Ok(Some(shun)) => {
-            debug!(
-                uid = %ctx.uid,
-                mask = %shun.mask,
-                reason = ?shun.reason,
-                "Shunned user attempted to send message"
-            );
-            true
-        }
-        _ => false,
-    }
-}
-
 // ============================================================================
 // Message Routing Types
 // ============================================================================

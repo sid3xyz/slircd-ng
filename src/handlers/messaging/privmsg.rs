@@ -59,13 +59,13 @@ impl PostRegHandler for PrivmsgHandler {
             return Err(HandlerError::NoTextToSend);
         }
 
-        // Use shared validation (shun, rate limiting, spam detection)
-        validate_message_send(ctx, target, text, ErrorStrategy::SendError).await?;
-
-        // Build sender snapshot once (eliminates 3-4 redundant user reads per message)
+        // Build sender snapshot once (eliminates redundant user reads across validation + routing)
         let snapshot = SenderSnapshot::build(ctx)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
+
+        // Use shared validation (shun, rate limiting, spam detection)
+        validate_message_send(ctx, target, text, ErrorStrategy::SendError, &snapshot).await?;
 
         // Check if this is a service message (NickServ, ChanServ, etc.)
         if route_service_message(ctx.matrix, ctx.uid, &snapshot.nick, target, text, &ctx.sender).await {
