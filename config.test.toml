@@ -30,11 +30,6 @@ address = "0.0.0.0:6667"
 [database]
 path = ":memory:" # In-memory for tests, or use "slircd-test.db" for persistence
 
-[limits]
-# Standard limits - these affect all connections
-rate = 10.0  # Token bucket rate (tokens per second)
-burst = 20.0 # Token bucket burst size
-
 [security]
 # Cloaking disabled for easier test debugging
 cloak_secret = "test-secret-do-not-use-in-production"

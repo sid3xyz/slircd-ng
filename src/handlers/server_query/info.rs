@@ -205,6 +205,11 @@ impl PostRegHandler for LinksHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = &ctx.state.nick;
 
+        let services_name = server_name
+            .strip_suffix(".Server")
+            .map(|prefix| format!("{prefix}.Services"))
+            .unwrap_or_else(|| format!("{server_name}.Services"));
+
         // RPL_LINKS (364): <mask> <server> :<hopcount> <server info>
         ctx.send_reply(
             Response::RPL_LINKS,
@@ -213,6 +218,17 @@ impl PostRegHandler for LinksHandler {
                 server_name.clone(),
                 server_name.clone(),
                 format!("0 {}", ctx.matrix.server_info.description),
+            ],
+        )
+        .await?;
+
+        ctx.send_reply(
+            Response::RPL_LINKS,
+            vec![
+                nick.clone(),
+                services_name,
+                server_name.clone(),
+                "1 services".to_string(),
             ],
         )
         .await?;

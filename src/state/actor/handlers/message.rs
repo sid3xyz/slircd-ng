@@ -4,6 +4,7 @@ use crate::security::UserContext;
 use slirc_proto::message::Tag;
 use slirc_proto::{Command, Message};
 use std::borrow::Cow;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 impl ChannelActor {
@@ -190,7 +191,12 @@ impl ChannelActor {
                         Some(echo_tags)
                     };
 
-                    let _ = sender.send(echo_msg).await;
+                    if let Err(err) = sender.try_send(echo_msg) {
+                        match err {
+                            TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                            TrySendError::Closed(_) => {}
+                        }
+                    }
                     recipients_sent += 1;
                 }
                 continue;
@@ -274,7 +280,12 @@ impl ChannelActor {
                 Some(recipient_tags)
             };
 
-            let _ = sender.send(recipient_msg).await;
+            if let Err(err) = sender.try_send(recipient_msg) {
+                match err {
+                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                    TrySendError::Closed(_) => {}
+                }
+            }
             recipients_sent += 1;
         }
 

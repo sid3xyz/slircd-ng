@@ -118,6 +118,9 @@ async fn main() -> anyhow::Result<()> {
     // Create the Matrix (shared state)
     // Use database directory for data files (IP deny list, etc.)
     let data_dir = std::path::Path::new(db_path).parent();
+
+    // Disconnect worker: channel actors can request disconnects without blocking.
+    let (disconnect_tx, mut disconnect_rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
     let matrix = Arc::new(Matrix::new(
         &config,
         data_dir,
@@ -128,7 +131,18 @@ async fn main() -> anyhow::Result<()> {
         active_dlines,
         active_glines,
         active_zlines,
+        disconnect_tx,
     ));
+
+    // Process disconnect requests outside of channel actor tasks to avoid deadlocks.
+    {
+        let matrix = Arc::clone(&matrix);
+        tokio::spawn(async move {
+            while let Some((uid, reason)) = disconnect_rx.recv().await {
+                let _ = matrix.disconnect_user(&uid, &reason).await;
+            }
+        });
+    }
 
     // Prometheus metrics are optional.
     // Convention: metrics_port = 0 disables the HTTP endpoint (used by tests).
