@@ -39,14 +39,14 @@ impl PostRegHandler for NoticeHandler {
             return Ok(());
         }
 
-        // Use shared validation (shun, rate limiting, spam detection)
-        // NOTICE silently drops errors per RFC 2812
-        validate_message_send(ctx, target, text, ErrorStrategy::SilentDrop).await?;
-
-        // Build sender snapshot once (eliminates redundant user reads)
+        // Build sender snapshot once (eliminates redundant user reads across validation + routing)
         let snapshot = SenderSnapshot::build(ctx)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
+
+        // Use shared validation (shun, rate limiting, spam detection)
+        // NOTICE silently drops errors per RFC 2812
+        validate_message_send(ctx, target, text, ErrorStrategy::SilentDrop, &snapshot).await?;
 
         // Collect client-only tags (those starting with '+') AND the label tag to preserve them
         // The label tag is needed for labeled-response echoes back to the sender

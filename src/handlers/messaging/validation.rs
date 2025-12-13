@@ -9,6 +9,7 @@ use crate::handlers::{Context, HandlerError, server_reply};
 use crate::state::RegisteredState;
 use slirc_proto::Response;
 use tracing::debug;
+use super::common::SenderSnapshot;
 
 /// Error handling strategy for message validation failures.
 #[derive(Debug, Clone, Copy)]
@@ -39,9 +40,10 @@ pub async fn validate_message_send(
     target: &str,
     text: &str,
     strategy: ErrorStrategy,
+    snapshot: &SenderSnapshot,
 ) -> Result<ValidationResult, HandlerError> {
     // Check shun first - always silent
-    if super::common::is_shunned(ctx).await {
+    if super::common::is_shunned_with_snapshot(ctx, snapshot).await {
         return Ok(ValidationResult::Blocked);
     }
 
@@ -99,13 +101,7 @@ pub async fn validate_message_send(
     }
 
     // Check for content spam (skip for trusted users)
-    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
-    let is_trusted = if let Some(user_arc) = user_arc {
-        let user = user_arc.read().await;
-        user.modes.oper || user.account.is_some()
-    } else {
-        false
-    };
+    let is_trusted = snapshot.is_oper || snapshot.account.is_some();
 
     if !is_trusted
         && let Some(detector) = &ctx.matrix.spam_detector
