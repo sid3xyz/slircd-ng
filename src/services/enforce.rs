@@ -48,8 +48,9 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
 
         // Get user info
         let old_nick = {
-            if let Some(user_ref) = matrix.users.get(&uid) {
-                let user = user_ref.read().await;
+            let user_arc = matrix.users.get(&uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
                 user.nick.clone()
             } else {
                 debug!(uid = %uid, "User not found for enforcement (already disconnected?)");
