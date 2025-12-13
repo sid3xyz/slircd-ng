@@ -421,8 +421,9 @@ pub async fn apply_effect(
             reason,
         } => {
             // Get target nick for KICK message
-            let target_nick = if let Some(user_ref) = matrix.users.get(&target_uid) {
-                user_ref.read().await.nick.clone()
+            let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+            let target_nick = if let Some(user_arc) = user_arc {
+                user_arc.read().await.nick.clone()
             } else {
                 return;
             };
@@ -453,8 +454,9 @@ pub async fn apply_effect(
             {
                 // Success
                 // Remove channel from user's channel list
-                if let Some(user_ref) = matrix.users.get(&target_uid) {
-                    let mut user_guard = user_ref.write().await;
+                let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+                if let Some(user_arc) = user_arc {
+                    let mut user_guard = user_arc.write().await;
                     user_guard.channels.remove(&channel_lower);
                 }
             }
@@ -469,8 +471,9 @@ pub async fn apply_effect(
         } => {
             // Get user info for NICK message before we modify
             let (username, hostname, channels) = {
-                if let Some(user_ref) = matrix.users.get(&target_uid) {
-                    let user = user_ref.read().await;
+                let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+                if let Some(user_arc) = user_arc {
+                    let user = user_arc.read().await;
                     (
                         user.user.clone(),
                         user.host.clone(),
@@ -488,8 +491,9 @@ pub async fn apply_effect(
             matrix.nicks.remove(&old_nick_lower);
             matrix.nicks.insert(new_nick_lower, target_uid.clone());
 
-            if let Some(user_ref) = matrix.users.get(&target_uid) {
-                let mut user = user_ref.write().await;
+            let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
                 user.nick = new_nick.clone();
             }
 
@@ -508,7 +512,8 @@ pub async fn apply_effect(
             }
 
             // Also send to the user themselves
-            if let Some(sender) = matrix.senders.get(&target_uid) {
+            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
+            if let Some(sender) = sender {
                 let _ = sender.send(nick_msg).await;
             }
 
@@ -521,8 +526,9 @@ pub async fn apply_effect(
         } => {
             // Get user info for ACCOUNT broadcast
             let (nick, user_str, host, channels) = {
-                if let Some(user_ref) = matrix.users.get(&target_uid) {
-                    let user = user_ref.read().await;
+                let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+                if let Some(user_arc) = user_arc {
+                    let user = user_arc.read().await;
                     (
                         user.nick.clone(),
                         user.user.clone(),
@@ -555,7 +561,8 @@ pub async fn apply_effect(
             }
 
             // Also send to the user themselves
-            if let Some(sender) = matrix.senders.get(&target_uid) {
+            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
+            if let Some(sender) = sender {
                 let _ = sender.send(account_msg).await;
             }
 
@@ -569,8 +576,9 @@ pub async fn apply_effect(
         } => {
             // Get user info for CHGHOST broadcast BEFORE updating
             let (nick, old_user, old_host, channels) = {
-                if let Some(user_ref) = matrix.users.get(&target_uid) {
-                    let user = user_ref.read().await;
+                let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+                if let Some(user_arc) = user_arc {
+                    let user = user_arc.read().await;
                     (
                         user.nick.clone(),
                         user.user.clone(),
@@ -603,14 +611,16 @@ pub async fn apply_effect(
             }
 
             // Update the user's user and host fields
-            if let Some(user_ref) = matrix.users.get(&target_uid) {
-                let mut user = user_ref.write().await;
+            let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
                 user.user = new_user.clone();
                 user.host = new_host.clone();
             }
 
             // Also send to the user themselves
-            if let Some(sender) = matrix.senders.get(&target_uid) {
+            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
+            if let Some(sender) = sender {
                 let _ = sender.send(chghost_msg).await;
             }
 

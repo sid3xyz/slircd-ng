@@ -317,8 +317,9 @@ impl PostRegHandler for SanickHandler {
 
         // Get target user info for NICK message
         let (target_user, target_host) = {
-            if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-                let user = user_ref.read().await;
+            let user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
                 (user.user.clone(), user.host.clone())
             } else {
                 return Ok(());
@@ -341,23 +342,31 @@ impl PostRegHandler for SanickHandler {
         ctx.matrix.nicks.insert(new_lower, target_uid.clone());
 
         // Update user's nick
-        if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-            let mut user = user_ref.write().await;
+        let user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+        if let Some(user_arc) = user_arc {
+            let mut user = user_arc.write().await;
             user.nick = new_nick.to_string();
         }
 
         // Broadcast NICK change to all channels the user is in
-        if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-            let user = user_ref.read().await;
-            for channel_name in &user.channels {
-                ctx.matrix
-                    .broadcast_to_channel(channel_name, nick_msg.clone(), None)
-                    .await;
+        let target_channels = {
+            let user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
+                user.channels.iter().cloned().collect::<Vec<_>>()
+            } else {
+                Vec::new()
             }
+        };
+        for channel_name in &target_channels {
+            ctx.matrix
+                .broadcast_to_channel(channel_name, nick_msg.clone(), None)
+                .await;
         }
 
         // Also send to the target user
-        if let Some(sender) = ctx.matrix.senders.get(&target_uid) {
+        let sender = ctx.matrix.senders.get(&target_uid).map(|s| s.clone());
+        if let Some(sender) = sender {
             let _ = sender.send(nick_msg).await;
         }
 

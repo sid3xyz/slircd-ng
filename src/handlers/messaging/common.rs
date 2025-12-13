@@ -345,15 +345,19 @@ pub async fn route_to_user_with_snapshot(
     if opts.send_away_reply {
         let target_user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
         if let Some(target_user_arc) = target_user_arc {
-            let target_user = target_user_arc.read().await;
-            if let Some(away_msg) = &target_user.away {
+            let (target_nick, away_msg) = {
+                let target_user = target_user_arc.read().await;
+                (target_user.nick.clone(), target_user.away.clone())
+            };
+
+            if let Some(away_msg) = away_msg {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::RPL_AWAY,
                     vec![
                         snapshot.nick.clone(),
-                        target_user.nick.clone(),
-                        away_msg.clone(),
+                        target_nick,
+                        away_msg,
                     ],
                 );
                 let _ = ctx.sender.send(reply).await;
@@ -524,234 +528,15 @@ pub async fn route_to_user(
     target_lower: &str,
     msg: Message,
     opts: &RouteOptions,
-    sender_nick: &str,
+    _sender_nick: &str,
     timestamp: Option<String>,
     msgid: Option<String>,
 ) -> bool {
-    let target_uid = if let Some(uid) = ctx.matrix.nicks.get(target_lower) {
-        uid.clone()
-    } else {
+    let Some(snapshot) = SenderSnapshot::build(ctx).await else {
         return false;
     };
 
-    // Spam detection for direct messages (skip TAGMSG).
-    if let Some(detector) = &ctx.matrix.spam_detector
-        && let Some(text) = match &msg.command {
-            Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
-            _ => None,
-        }
-    {
-        // Check trust level
-        let is_trusted = if let Some(user_ref) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_ref.read().await;
-            user.modes.oper || user.account.is_some()
-        } else {
-            false
-        };
-
-        if !is_trusted && let SpamVerdict::Spam { pattern, .. } = detector.check_message(text) {
-            if !opts.is_notice {
-                let _ =
-                    send_cannot_send(ctx, sender_nick, target_lower, "Message rejected as spam")
-                        .await;
-            }
-            debug!(pattern = %pattern, "Direct message blocked as spam");
-            return false;
-        }
-    }
-
-    // Check away status and notify sender if requested
-    if opts.send_away_reply
-        && let Some(target_user_ref) = ctx.matrix.users.get(&target_uid)
-    {
-        let target_user = target_user_ref.read().await;
-        if let Some(away_msg) = &target_user.away {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::RPL_AWAY,
-                vec![
-                    sender_nick.to_string(),
-                    target_user.nick.clone(),
-                    away_msg.clone(),
-                ],
-            );
-            let _ = ctx.sender.send(reply).await;
-        }
-    }
-
-    // Check +R (registered-only PMs) - target only accepts PMs from identified users
-    if let Some(target_user_ref) = ctx.matrix.users.get(&target_uid) {
-        let target_user = target_user_ref.read().await;
-        if target_user.modes.registered_only {
-            // Check if sender is identified
-            let sender_identified = if let Some(sender_ref) = ctx.matrix.users.get(ctx.uid) {
-                let sender_user = sender_ref.read().await;
-                sender_user.modes.registered
-            } else {
-                false
-            };
-
-            if !sender_identified {
-                // Silently drop or send error - most servers silently drop
-                // to avoid information leakage about +R status
-                return false;
-            }
-        }
-
-        // Check SILENCE list - if sender matches any mask in target's silence list, drop silently
-        if !target_user.silence_list.is_empty() {
-            let sender_mask = if let Some(sender_ref) = ctx.matrix.users.get(ctx.uid) {
-                let sender_user = sender_ref.read().await;
-                format!(
-                    "{}!{}@{}",
-                    sender_user.nick, sender_user.user, sender_user.visible_host
-                )
-            } else {
-                String::from("*!*@*")
-            };
-
-            for silence_mask in &target_user.silence_list {
-                if super::super::matches_hostmask(silence_mask, &sender_mask) {
-                    // Silently drop the message
-                    debug!(
-                        target = %target_user.nick,
-                        sender = %sender_mask,
-                        mask = %silence_mask,
-                        "Message blocked by SILENCE"
-                    );
-                    return false;
-                }
-            }
-        }
-
-        // Check +T (no CTCP) - block CTCP messages except ACTION
-        if target_user.modes.no_ctcp {
-            // Extract text from command to check for CTCP
-            let text = match &msg.command {
-                Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
-                _ => None,
-            };
-            if let Some(text) = text
-                && Ctcp::is_ctcp(text)
-            {
-                // Check if it's an ACTION (allowed even with +T)
-                if let Some(ctcp) = Ctcp::parse(text)
-                    && !matches!(ctcp.kind, CtcpKind::Action)
-                {
-                    debug!(
-                        target = %target_user.nick,
-                        ctcp_type = ?ctcp.kind,
-                        "CTCP blocked by +T mode"
-                    );
-                    return false; // Silently drop non-ACTION CTCP
-                }
-            }
-        }
-    }
-
-    // Send to target user with appropriate tags based on their capabilities
-    let timestamp = timestamp.unwrap_or_else(|| {
-        chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string()
-    });
-    let msgid = msgid.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-    // Check if this is a TAGMSG
-    let _is_tagmsg = matches!(msg.command, Command::TAGMSG(_));
-
-    // Get sender's account name for account-tag
-    let sender_account: Option<String> = if let Some(sender_ref) = ctx.matrix.users.get(ctx.uid) {
-        let sender_user = sender_ref.read().await;
-        sender_user.account.clone()
-    } else {
-        None
-    };
-
-    if let Some(sender) = ctx.matrix.senders.get(&target_uid) {
-        // Check target's capabilities and build appropriate message
-        let msg_for_target = if let Some(user_ref) = ctx.matrix.users.get(&target_uid) {
-            let user = user_ref.read().await;
-            let has_message_tags = user.caps.contains("message-tags");
-            let has_server_time = user.caps.contains("server-time");
-
-            let mut result = msg.clone();
-
-            // Strip label tag from recipient copies (label is sender-only)
-            if ctx.label.is_some() {
-                result.tags = result
-                    .tags
-                    .map(|tags| {
-                        tags.into_iter()
-                            .filter(|tag| tag.0.as_ref() != "label")
-                            .collect::<Vec<_>>()
-                    })
-                    .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-            }
-
-            // If recipient doesn't have message-tags, strip client-only tags
-            if !has_message_tags {
-                result.tags = result
-                    .tags
-                    .map(|tags| {
-                        tags.into_iter()
-                            .filter(|tag| !tag.0.starts_with('+'))
-                            .collect::<Vec<_>>()
-                    })
-                    .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-            } else {
-                // Add msgid for users with message-tags
-                result = result.with_tag("msgid", Some(msgid.clone()));
-            }
-
-            // Add server-time if capability is enabled
-            if has_server_time {
-                result = result.with_tag("time", Some(timestamp.clone()));
-            }
-
-            // Add account-tag if sender is logged in and recipient has capability
-            if let Some(ref account) = sender_account
-                && user.caps.contains("account-tag")
-            {
-                result = result.with_tag("account", Some(account.clone()));
-            }
-
-            result
-        } else {
-            msg.clone()
-        };
-        let _ = sender.send(msg_for_target).await;
-        crate::metrics::MESSAGES_SENT.inc();
-
-        // Echo message back to sender if they have echo-message capability
-        if ctx.state.capabilities.contains("echo-message") {
-            let has_message_tags = ctx.state.capabilities.contains("message-tags");
-            let has_server_time = ctx.state.capabilities.contains("server-time");
-
-            let mut echo_msg = msg.clone();
-
-            // Add msgid if sender has message-tags
-            if has_message_tags {
-                echo_msg = echo_msg.with_tag("msgid", Some(msgid));
-            }
-
-            // Add server-time if capability is enabled
-            if has_server_time {
-                echo_msg = echo_msg.with_tag("time", Some(timestamp));
-            }
-
-            // Preserve label if present
-            if let Some(ref label) = ctx.label {
-                echo_msg = echo_msg.with_tag("label", Some(label.clone()));
-            }
-
-            let _ = ctx.sender.send(echo_msg).await;
-        }
-
-        true
-    } else {
-        false
-    }
+    route_to_user_with_snapshot(ctx, target_lower, msg, opts, timestamp, msgid, &snapshot).await
 }
 
 // ============================================================================
