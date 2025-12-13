@@ -25,6 +25,7 @@ use crate::services::{chanserv, nickserv};
 
 use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
 use crate::db::{Dline, Gline, Kline, Shun, Zline};
+use crate::handlers::{cleanup_monitors, notify_monitors_offline};
 use crate::security::{BanCache, IpDenyList, RateLimitManager};
 use crate::state::UidGenerator;
 use crate::state::actor::ChannelEvent;
@@ -252,10 +253,6 @@ impl Matrix {
         self.senders.insert(uid.to_string(), sender);
     }
 
-    /// Unregister a user's message sender.
-    pub fn unregister_sender(&self, uid: &str) {
-        self.senders.remove(uid);
-    }
 
     /// Request that a user be disconnected.
     ///
@@ -277,8 +274,9 @@ impl Matrix {
         msg: Message,
         exclude: Option<&str>,
     ) {
-        if let Some(sender) = self.channels.get(channel_name) {
-            let _ = sender
+        let channel_tx = self.channels.get(channel_name).map(|s| s.clone());
+        if let Some(channel_tx) = channel_tx {
+            let _ = channel_tx
                 .send(ChannelEvent::Broadcast {
                     message: msg,
                     exclude: exclude.map(|s| s.to_string()),
@@ -322,8 +320,9 @@ impl Matrix {
         required_cap: Option<&str>,
         fallback_msg: Option<Message>,
     ) {
-        if let Some(sender) = self.channels.get(channel_name) {
-            let _ = sender
+        let channel_tx = self.channels.get(channel_name).map(|s| s.clone());
+        if let Some(channel_tx) = channel_tx {
+            let _ = channel_tx
                 .send(ChannelEvent::BroadcastWithCap {
                     message: Box::new(msg),
                     exclude: exclude.iter().map(|s| s.to_string()).collect(),
@@ -345,13 +344,18 @@ impl Matrix {
     /// 5. Drops the sender (terminates connection task)
     ///
     /// Returns the list of channels the user was in (for logging).
-    pub async fn disconnect_user(&self, target_uid: &str, quit_reason: &str) -> Vec<String> {
+    pub async fn disconnect_user(
+        self: &Arc<Self>,
+        target_uid: &Uid,
+        quit_reason: &str,
+    ) -> Vec<String> {
         use slirc_proto::{Command, Prefix};
 
         // Get user info before removal
         let (nick, user, host, realname, user_channels) = {
-            if let Some(user_ref) = self.users.get(target_uid) {
-                let user = user_ref.read().await;
+            let user_arc = self.users.get(target_uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
                 (
                     user.nick.clone(),
                     user.user.clone(),
@@ -367,6 +371,12 @@ impl Matrix {
         // Record WHOWAS entry before user is removed
         self.record_whowas(&nick, &user, &host, &realname);
 
+        // Notify MONITOR watchers that this nick is going offline
+        notify_monitors_offline(self, &nick).await;
+
+        // Clean up this user's MONITOR entries
+        cleanup_monitors(self, target_uid.as_str());
+
         // Build QUIT message
         let quit_msg = Message {
             tags: None,
@@ -376,22 +386,24 @@ impl Matrix {
 
         // Remove from channels and broadcast QUIT
         for channel_name in &user_channels {
-            if let Some(sender) = self.channels.get(channel_name) {
+            let channel_tx = self.channels.get(channel_name).map(|s| s.clone());
+            if let Some(channel_tx) = channel_tx {
                 let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = sender
+                let _ = channel_tx
                     .send(ChannelEvent::Quit {
-                        uid: target_uid.to_string(),
+                        uid: target_uid.clone(),
                         quit_msg: quit_msg.clone(),
                         reply_tx: Some(tx),
                     })
                     .await;
 
-                if let Ok(remaining) = rx.await
-                    && remaining == 0
-                {
-                    self.channels.remove(channel_name);
-                    crate::metrics::ACTIVE_CHANNELS.dec();
-                }
+
+                    if let Ok(remaining) = rx.await
+                        && remaining == 0
+                        && self.channels.remove(channel_name).is_some()
+                    {
+                        crate::metrics::ACTIVE_CHANNELS.dec();
+                    }
             }
         }
 
@@ -407,6 +419,12 @@ impl Matrix {
 
         // Drop sender - this will cause the connection task to terminate
         self.senders.remove(target_uid);
+
+        // Clean up rate limiter state
+        self.rate_limiter.remove_client(target_uid);
+
+        // Update connected user metric
+        crate::metrics::CONNECTED_USERS.dec();
 
         user_channels
     }

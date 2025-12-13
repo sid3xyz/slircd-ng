@@ -301,7 +301,8 @@ pub async fn notify_monitors_online(matrix: &Arc<Matrix>, nick: &str, user: &str
     );
 
     for watcher_uid in watcher_uids {
-        if let Some(sender) = matrix.senders.get(&watcher_uid) {
+        let sender = matrix.senders.get(&watcher_uid).map(|s| s.clone());
+        if let Some(sender) = sender {
             let _ = sender.send(reply.clone()).await;
         }
     }
@@ -332,7 +333,8 @@ pub async fn notify_monitors_offline(matrix: &Arc<Matrix>, nick: &str) {
     );
 
     for watcher_uid in watcher_uids {
-        if let Some(sender) = matrix.senders.get(&watcher_uid) {
+        let sender = matrix.senders.get(&watcher_uid).map(|s| s.clone());
+        if let Some(sender) = sender {
             let _ = sender.send(reply.clone()).await;
         }
     }
