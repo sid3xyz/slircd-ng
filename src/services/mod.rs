@@ -195,6 +195,7 @@ pub async fn apply_effect(
             matrix.enforce_timers.remove(&target_uid);
 
             // Broadcast MODE +r to all channels the user is in
+            // Exclude the user themselves - they get a direct message below
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
@@ -216,10 +217,10 @@ pub async fn apply_effect(
 
             for channel_name in &channels {
                 matrix
-                    .broadcast_to_channel(channel_name, mode_msg.clone(), None)
+                    .broadcast_to_channel(channel_name, mode_msg.clone(), Some(&target_uid))
                     .await;
                 matrix
-                    .broadcast_to_channel(channel_name, account_msg.clone(), None)
+                    .broadcast_to_channel(channel_name, account_msg.clone(), Some(&target_uid))
                     .await;
             }
 
@@ -259,6 +260,7 @@ pub async fn apply_effect(
             }
 
             // Broadcast MODE -r to all channels the user is in
+            // Exclude the user themselves - they get a direct message below
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
@@ -280,10 +282,10 @@ pub async fn apply_effect(
 
             for channel_name in &channels {
                 matrix
-                    .broadcast_to_channel(channel_name, mode_msg.clone(), None)
+                    .broadcast_to_channel(channel_name, mode_msg.clone(), Some(&target_uid))
                     .await;
                 matrix
-                    .broadcast_to_channel(channel_name, account_msg.clone(), None)
+                    .broadcast_to_channel(channel_name, account_msg.clone(), Some(&target_uid))
                     .await;
             }
 
