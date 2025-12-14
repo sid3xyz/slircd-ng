@@ -23,78 +23,20 @@
 // Phase 1: IpDenyList engine is implemented but not yet integrated.
 // Integration happens in Phase 2-4 (Matrix, Gateway, Handlers).
 
+mod bitmap;
+mod persistence;
+mod types;
+
+pub use types::BanMetadata;
+use types::DEFAULT_PERSIST_PATH;
+
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use roaring::RoaringBitmap;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{BufReader, BufWriter};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tracing::{debug, error, info, warn};
-
-/// Default filename for MessagePack persistence.
-const DEFAULT_PERSIST_PATH: &str = "ip_bans.msgpack";
-
-/// Metadata for a banned IP or CIDR.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BanMetadata {
-    /// Human-readable reason for the ban.
-    pub reason: String,
-    /// Optional expiration time (Unix timestamp). None = permanent.
-    pub expiry: Option<u64>,
-    /// Operator or system that added the ban.
-    pub added_by: String,
-    /// When the ban was added (Unix timestamp).
-    pub added_at: u64,
-}
-
-impl BanMetadata {
-    /// Create new metadata with current timestamp.
-    pub fn new(reason: String, duration: Option<Duration>, added_by: String) -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-
-        let expiry = duration.map(|d| now + d.as_secs());
-
-        Self {
-            reason,
-            expiry,
-            added_by,
-            added_at: now,
-        }
-    }
-
-    /// Check if this ban has expired.
-    #[inline]
-    pub fn is_expired(&self) -> bool {
-        if let Some(expiry) = self.expiry {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            now > expiry
-        } else {
-            false // Permanent ban
-        }
-    }
-}
-
-/// Serializable state for persistence.
-#[derive(Debug, Serialize, Deserialize)]
-struct PersistentState {
-    /// IPv4 single-address bans (as u32 values).
-    ipv4_singles: Vec<u32>,
-    /// IPv4 CIDR bans (stored as "ip/prefix" strings).
-    ipv4_cidrs: Vec<String>,
-    /// IPv6 CIDR bans (stored as "ip/prefix" strings).
-    ipv6_cidrs: Vec<String>,
-    /// Metadata keyed by IP/CIDR string.
-    metadata: HashMap<String, BanMetadata>,
-}
+use tracing::{debug, error, info};
 
 /// High-performance IP deny list engine.
 ///
@@ -140,8 +82,15 @@ impl IpDenyList {
             return Self::with_path(path);
         }
 
-        match Self::load_from_file(path) {
-            Ok(list) => {
+        match persistence::load(path) {
+            Ok((ipv4_bitmap, ipv4_cidrs, ipv6_cidrs, metadata)) => {
+                let list = Self {
+                    ipv4_bitmap,
+                    ipv4_cidrs,
+                    ipv6_cidrs,
+                    metadata,
+                    persist_path: path.to_path_buf(),
+                };
                 info!(
                     path = %path.display(),
                     ipv4_singles = list.ipv4_bitmap.len(),
@@ -159,43 +108,6 @@ impl IpDenyList {
         }
     }
 
-    /// Internal: Load from MessagePack file.
-    fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        let state: PersistentState = rmp_serde::from_read(reader)?;
-
-        let mut list = Self::with_path(path);
-
-        // Restore IPv4 singles
-        for ip_u32 in state.ipv4_singles {
-            list.ipv4_bitmap.insert(ip_u32);
-        }
-
-        // Restore IPv4 CIDRs
-        for cidr_str in state.ipv4_cidrs {
-            if let Ok(net) = cidr_str.parse::<Ipv4Net>() {
-                list.ipv4_cidrs.push(net);
-            } else {
-                warn!(cidr = %cidr_str, "Failed to parse IPv4 CIDR from persistence");
-            }
-        }
-
-        // Restore IPv6 CIDRs
-        for cidr_str in state.ipv6_cidrs {
-            if let Ok(net) = cidr_str.parse::<Ipv6Net>() {
-                list.ipv6_cidrs.push(net);
-            } else {
-                warn!(cidr = %cidr_str, "Failed to parse IPv6 CIDR from persistence");
-            }
-        }
-
-        // Restore metadata
-        list.metadata = state.metadata;
-
-        Ok(list)
-    }
-
     /// **HOT PATH**: Check if an IP address is banned.
     ///
     /// Returns `Some(reason)` if banned (and not expired), `None` otherwise.
@@ -211,7 +123,7 @@ impl IpDenyList {
     /// Check IPv4 address against bitmap and CIDR list.
     #[inline]
     fn check_ipv4(&self, ip: &Ipv4Addr) -> Option<String> {
-        let ip_u32 = u32::from_be_bytes(ip.octets());
+        let ip_u32 = bitmap::ipv4_to_u32(ip);
         let ip_str = ip.to_string();
 
         // Fast bitmap check for single IPs
@@ -281,7 +193,7 @@ impl IpDenyList {
             IpNet::V4(v4net) => {
                 if v4net.prefix_len() == 32 {
                     // Single IP - use bitmap
-                    let ip_u32 = u32::from_be_bytes(v4net.addr().octets());
+                    let ip_u32 = bitmap::ipv4_to_u32(&v4net.addr());
                     self.ipv4_bitmap.insert(ip_u32);
                     // Store metadata under just the IP, not /32
                     let ip_key = v4net.addr().to_string();
@@ -343,7 +255,7 @@ impl IpDenyList {
             IpNet::V4(v4net) => {
                 if v4net.prefix_len() == 32 {
                     // Single IP
-                    let ip_u32 = u32::from_be_bytes(v4net.addr().octets());
+                    let ip_u32 = bitmap::ipv4_to_u32(&v4net.addr());
                     let bitmap_removed = self.ipv4_bitmap.remove(ip_u32);
                     let ip_key = v4net.addr().to_string();
                     let meta_removed = self.metadata.remove(&ip_key).is_some();
@@ -428,7 +340,7 @@ impl IpDenyList {
             // Try to parse as IP or CIDR to clean up bitmap/vecs
             if let Ok(ip) = key.parse::<IpAddr>() {
                 if let IpAddr::V4(v4) = ip {
-                    let ip_u32 = u32::from_be_bytes(v4.octets());
+                    let ip_u32 = bitmap::ipv4_to_u32(&v4);
                     self.ipv4_bitmap.remove(ip_u32);
                 }
             } else if let Ok(net) = key.parse::<Ipv4Net>() {
@@ -455,26 +367,13 @@ impl IpDenyList {
     ///
     /// Uses atomic write (temp file + rename) to prevent corruption.
     pub fn save(&self) -> Result<(), std::io::Error> {
-        let state = PersistentState {
-            ipv4_singles: self.ipv4_bitmap.iter().collect(),
-            ipv4_cidrs: self.ipv4_cidrs.iter().map(|n| n.to_string()).collect(),
-            ipv6_cidrs: self.ipv6_cidrs.iter().map(|n| n.to_string()).collect(),
-            metadata: self.metadata.clone(),
-        };
-
-        // Write to temp file first
-        let temp_path = self.persist_path.with_extension("msgpack.tmp");
-        let file = File::create(&temp_path)?;
-        let writer = BufWriter::new(file);
-
-        rmp_serde::encode::write(&mut BufWriter::new(writer), &state)
-            .map_err(std::io::Error::other)?;
-
-        // Atomic rename
-        fs::rename(&temp_path, &self.persist_path)?;
-
-        debug!(path = %self.persist_path.display(), "IP deny list saved");
-        Ok(())
+        persistence::save(
+            &self.ipv4_bitmap,
+            &self.ipv4_cidrs,
+            &self.ipv6_cidrs,
+            &self.metadata,
+            &self.persist_path,
+        )
     }
 
     /// Get the number of banned entries.
@@ -776,7 +675,7 @@ mod tests {
 
         // Add to bitmap
         if let IpAddr::V4(v4) = ip {
-            let ip_u32 = u32::from_be_bytes(v4.octets());
+            let ip_u32 = bitmap::ipv4_to_u32(&v4);
             list.ipv4_bitmap.insert(ip_u32);
         }
         list.metadata.insert(ip_str, expired_meta);
@@ -787,6 +686,8 @@ mod tests {
 
     #[test]
     fn test_persistence_roundtrip() {
+        use std::fs;
+
         let path = "/tmp/test_deny_persist.msgpack";
         let ip = IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1));
 

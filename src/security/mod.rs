@@ -22,7 +22,7 @@
 
 pub mod ban_cache;
 pub mod cloaking;
-pub mod ip_deny_list;
+pub mod ip_deny;
 pub mod rate_limit;
 pub mod spam;
 pub mod xlines;
@@ -34,7 +34,7 @@ pub use ban_cache::{BanResult, BanType};
 #[allow(unused_imports)]
 pub use cloaking::{cloak_hostname, cloak_ip_hmac};
 #[allow(unused_imports)] // BanMetadata used by STATS command
-pub use ip_deny_list::{BanMetadata, IpDenyList};
+pub use ip_deny::{BanMetadata, IpDenyList};
 pub use rate_limit::RateLimitManager;
 pub use xlines::{ExtendedBan, UserContext, matches_extended_ban};
 

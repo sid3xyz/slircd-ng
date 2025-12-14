@@ -211,7 +211,7 @@ impl Connection {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::error_handling::{classify_read_error, ReadErrorAction};
     use slirc_proto::error::{MessageParseError, ProtocolError};
     use slirc_proto::transport::TransportReadError;
 
