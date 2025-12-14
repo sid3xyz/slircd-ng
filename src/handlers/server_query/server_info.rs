@@ -159,27 +159,45 @@ impl PostRegHandler for AdminHandler {
         )
         .await?;
 
-        // RPL_ADMINLOC1 (257): :<admin info>
+        // RPL_ADMINLOC1 (257): :<admin info> - organization/server description
+        let admin_info1 = ctx
+            .matrix
+            .config
+            .server
+            .admin_info1
+            .clone()
+            .unwrap_or_else(|| ctx.matrix.server_info.description.clone());
         ctx.send_reply(
             Response::RPL_ADMINLOC1,
-            vec![nick.to_string(), "slircd-ng IRC Server".to_string()],
+            vec![nick.to_string(), admin_info1],
         )
         .await?;
 
-        // RPL_ADMINLOC2 (258): :<admin info>
+        // RPL_ADMINLOC2 (258): :<admin info> - location/network
+        let admin_info2 = ctx
+            .matrix
+            .config
+            .server
+            .admin_info2
+            .clone()
+            .unwrap_or_else(|| ctx.matrix.server_info.network.clone());
         ctx.send_reply(
             Response::RPL_ADMINLOC2,
-            vec![
-                nick.to_string(),
-                ctx.matrix.server_info.network.clone(),
-            ],
+            vec![nick.to_string(), admin_info2],
         )
         .await?;
 
         // RPL_ADMINEMAIL (259): :<admin email>
+        let admin_email = ctx
+            .matrix
+            .config
+            .server
+            .admin_email
+            .clone()
+            .unwrap_or_else(|| format!("admin@{}", server_name));
         ctx.send_reply(
             Response::RPL_ADMINEMAIL,
-            vec![nick.to_string(), format!("admin@{}", server_name)],
+            vec![nick.to_string(), admin_email],
         )
         .await?;
 

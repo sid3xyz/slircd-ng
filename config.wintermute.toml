@@ -6,6 +6,9 @@ network = "Straylight"
 sid = "001"
 description = "Straylight IRC Network - Wintermute Node"
 metrics_port = 9090
+admin_info1 = "Straylight IRC Network"
+admin_info2 = "Wintermute Node - Los Angeles, CA"
+admin_email = "case@slirc.net"
 
 [listen]
 address = "0.0.0.0:6667"
