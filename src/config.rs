@@ -179,6 +179,15 @@ pub struct ServerConfig {
     pub password: Option<String>,
     /// Prometheus metrics HTTP port (default: 9090).
     pub metrics_port: Option<u16>,
+    /// Admin info line 1 (RPL_ADMINLOC1) - typically organization name.
+    #[serde(default)]
+    pub admin_info1: Option<String>,
+    /// Admin info line 2 (RPL_ADMINLOC2) - typically location.
+    #[serde(default)]
+    pub admin_info2: Option<String>,
+    /// Admin email address (RPL_ADMINEMAIL).
+    #[serde(default)]
+    pub admin_email: Option<String>,
 }
 
 /// Network listener configuration.
