@@ -44,10 +44,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         }
 
         if !nick.is_valid_nick() {
-            let reply = Response::err_erroneusnickname(ctx.state.nick_or_star(), nick)
-                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
-            ctx.sender.send(reply).await?;
-            return Ok(());
+            return Err(HandlerError::ErroneousNickname(nick.to_string()));
         }
 
         let nick_lower = irc_to_lower(nick);
@@ -62,10 +59,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             Entry::Occupied(entry) => {
                 let owner_uid = entry.get();
                 if owner_uid != ctx.uid {
-                    let reply = Response::err_nicknameinuse(ctx.state.nick_or_star(), nick)
-                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
-                    ctx.sender.send(reply).await?;
-                    return Ok(());
+                    return Err(HandlerError::NicknameInUse(nick.to_string()));
                 }
                 // Owner is the same UID; allow case-change or reconnect continuation.
             }

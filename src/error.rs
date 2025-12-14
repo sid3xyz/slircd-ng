@@ -22,11 +22,9 @@ pub enum HandlerError {
     NoTextToSend,
 
     #[error("nickname in use: {0}")]
-    #[allow(dead_code)] // TODO: Return from NickHandler instead of sending reply directly
     NicknameInUse(String),
 
     #[error("erroneous nickname: {0}")]
-    #[allow(dead_code)] // TODO: Return from NickHandler for invalid nicks
     ErroneousNickname(String),
 
     #[error("not registered")]
@@ -111,7 +109,7 @@ impl HandlerError {
                 command: Command::Response(
                     Response::ERR_NICKNAMEINUSE,
                     vec![
-                        "*".to_string(),
+                        nick.to_string(),
                         bad_nick.clone(),
                         "Nickname is already in use".to_string(),
                     ],
@@ -123,7 +121,7 @@ impl HandlerError {
                 command: Command::Response(
                     Response::ERR_ERRONEOUSNICKNAME,
                     vec![
-                        "*".to_string(),
+                        nick.to_string(),
                         bad_nick.clone(),
                         "Erroneous nickname".to_string(),
                     ],

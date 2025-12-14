@@ -15,14 +15,14 @@ pub(super) fn validate_content_size(
         } else {
             1
         };
-    
+
     if new_bytes > MULTILINE_MAX_BYTES {
         return Err(format!(
             "FAIL BATCH MULTILINE_MAX_BYTES {} :Multiline batch max-bytes exceeded",
             MULTILINE_MAX_BYTES
         ));
     }
-    
+
     Ok(new_bytes)
 }
 
@@ -34,7 +34,7 @@ pub(super) fn validate_line_count(batch: &BatchState) -> Result<(), String> {
             MULTILINE_MAX_LINES
         ));
     }
-    
+
     Ok(())
 }
 
@@ -43,7 +43,7 @@ pub(super) fn validate_concat_content(has_concat: bool, content: &str) -> Result
     if has_concat && content.is_empty() {
         return Err("FAIL BATCH MULTILINE_INVALID :Cannot concatenate blank line".to_string());
     }
-    
+
     Ok(())
 }
 
@@ -60,7 +60,7 @@ pub(super) fn validate_command_type(
                 .to_string(),
         );
     }
-    
+
     Ok(())
 }
 
@@ -69,11 +69,11 @@ pub(super) fn validate_batch_not_empty(batch: &BatchState) -> Result<(), &'stati
     if batch.lines.is_empty() {
         return Err("Empty multiline batch");
     }
-    
+
     let all_blank = batch.lines.iter().all(|l| l.content.is_empty());
     if all_blank {
         return Err("Multiline batch with blank lines only");
     }
-    
+
     Ok(())
 }
