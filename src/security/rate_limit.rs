@@ -183,7 +183,6 @@ impl RateLimitManager {
     ///
     /// Use this when you want to always record the action, regardless of limit.
     /// Prefer `check_message_rate()` for normal flow control.
-    /// Will be used for message tracking in Phase 3.
     #[allow(dead_code)]
     pub fn record_message(&self, uid: &Uid) {
         let _ = self.check_message_rate(uid);
@@ -244,7 +243,6 @@ impl RateLimitManager {
     ///
     /// Note: This only affects new limiters. Existing clients keep their
     /// current limits until they disconnect.
-    /// Will be wired into REHASH handler in Phase 3.
     #[allow(dead_code)]
     pub fn update_config(&self, new_config: RateLimitConfig) {
         // We can't update Arc in place, but we can store the new config
@@ -257,8 +255,7 @@ impl RateLimitManager {
         );
     }
 
-    /// Get current statistics.
-    /// Will be wired into STATS command in Phase 3.
+    /// Get current statistics for STATS command.
     #[allow(dead_code)]
     pub fn stats(&self) -> RateLimitStats {
         RateLimitStats {
@@ -277,8 +274,7 @@ impl Default for RateLimitManager {
     }
 }
 
-/// Rate limiter statistics.
-/// Will be used by STATS command in Phase 3.
+/// Rate limiter statistics for STATS command.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct RateLimitStats {

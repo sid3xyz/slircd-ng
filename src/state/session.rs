@@ -1,4 +1,4 @@
-//! Session state types for true typestate enforcement (Innovation 1 Phase 3).
+//! Session state types for typestate enforcement (Innovation 1).
 //!
 //! This module defines the **data-carrying** state types that replace `HandshakeState`.
 //! The key insight is that the state type itself holds all relevant data, and state

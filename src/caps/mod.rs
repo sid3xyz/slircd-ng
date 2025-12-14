@@ -40,25 +40,8 @@
 //! }
 //! ```
 //!
-//! # Migration Status
-//!
-//! - Phase 1 ✅ Core types and Authority
-//! - Phase 2 ✅ 9 handler files migrated to use capability tokens:
-//!   - `handlers/admin.rs` - SA* commands
-//!   - `handlers/oper/kill.rs` - KILL command
-//!   - `handlers/oper/vhost.rs` - VHOST command
-//!   - `handlers/oper/trace.rs` - TRACE command
-//!   - `handlers/oper/chghost.rs` - CHGHOST command
-//!   - `handlers/oper/wallops.rs` - WALLOPS command
-//!   - `handlers/oper/admin.rs` - DIE/REHASH/RESTART commands
-//!   - `handlers/bans/shun.rs` - SHUN/UNSHUN commands
-//!   - `handlers/bans/xlines/mod.rs` - K/G/D/Z/R-LINE commands
-//! - Phase 3 ✅ Channel handlers migrated (3 handlers):
-//!   - `handlers/channel/kick.rs` - KICK command
-//!   - `handlers/channel/topic.rs` - TOPIC command
-//!   - `handlers/channel/invite.rs` - INVITE command
+//! All handlers using capability-based authorization have been migrated.
 
-// Allow dead_code for capability types not yet used by handlers (Phase 3 pending)
 #![allow(dead_code)]
 
 mod authority;
@@ -68,10 +51,10 @@ mod tokens;
 // Re-export authority (used by 9 handler files)
 pub use authority::CapabilityAuthority;
 
-// Re-export capability types - channel caps migrated in Phase 3
+// Re-export capability types
 #[allow(unused_imports)]
 pub use irc::{
-    // Channel capabilities (Phase 3 migrated)
+    // Channel capabilities
     BanCap,
     // Special capabilities
     BypassFloodCap,

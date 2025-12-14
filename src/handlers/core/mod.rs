@@ -4,7 +4,7 @@
 //! command handler system, including the handler registry, context types,
 //! and middleware for response routing.
 //!
-//! ## Typestate Handler System (Innovation 1 Phase 3)
+//! ## Typestate Handler System (Innovation 1)
 //!
 //! The handler system enforces protocol state at compile time using the type system.
 //!
@@ -37,7 +37,7 @@ pub use context::{
 pub use middleware::ResponseMiddleware;
 pub use registry::Registry;
 
-// Re-export typestate handler traits (Innovation 1 Phase 3)
+// Re-export typestate handler traits (Innovation 1)
 pub use traits::{PostRegHandler, PreRegHandler, UniversalHandler};
 
 // DynUniversalHandler is used internally by Registry

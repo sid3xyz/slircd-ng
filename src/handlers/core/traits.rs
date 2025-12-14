@@ -29,7 +29,7 @@ use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
 // ============================================================================
-// Handler Traits (Innovation 1 Phase 3)
+// Handler Traits (Innovation 1)
 // ============================================================================
 
 /// Handler for commands valid BEFORE registration (NICK, USER, CAP, PASS).

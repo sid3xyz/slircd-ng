@@ -2,9 +2,9 @@
 //!
 //! Contains the Matrix (shared server state) and related entities.
 //!
-//! ## Protocol State Machine (Innovation 1 Phase 3)
+//! ## Protocol State Machine (Innovation 1)
 //!
-//! The `session` module provides true typestate types for compile-time
+//! The `session` module provides typestate types for compile-time
 //! enforcement of protocol state transitions. State types hold actual data,
 //! not just markers. See [`session`] for details.
 
@@ -21,7 +21,7 @@ pub use user::WhowasEntry;
 pub mod actor;
 pub use user::{User, UserModes};
 
-// Session state types (Innovation 1 Phase 3: True Typestate)
+// Session state types (Innovation 1: Typestate pattern)
 pub use session::{RegisteredState, SessionState, UnregisteredState};
 
 // Internal re-exports

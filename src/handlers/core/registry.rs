@@ -314,7 +314,7 @@ impl Registry {
 
     /// Dispatch a message to a post-registration handler.
     ///
-    /// This is the Phase 3 dispatch method that receives `Context<RegisteredState>`.
+    /// Receives `Context<RegisteredState>` with compile-time guarantees.
     /// The connection loop calls this directly for registered connections.
     ///
     /// ## Typestate Guarantee

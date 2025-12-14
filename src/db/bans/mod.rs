@@ -3,6 +3,6 @@
 mod models;
 mod queries;
 
-#[allow(unused_imports)] // Phase 3b: Admin commands will use these types
+#[allow(unused_imports)] // Available for admin commands
 pub use models::{Dline, Gline, Kline, Rline, Shun, Zline};
 pub use queries::BanRepository;

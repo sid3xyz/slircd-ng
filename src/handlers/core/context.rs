@@ -1,4 +1,4 @@
-//! Command handler context and core types (Innovation 1 Phase 3).
+//! Command handler context and core types (Innovation 1).
 //!
 //! Defines the `Context<'a, S>` struct passed to all handlers. The type parameter
 //! `S` is the session state type:
@@ -48,7 +48,7 @@ pub struct Context<'a, S> {
 impl<'a, S> Context<'a, S> {
     /// Create a new context.
     #[allow(clippy::too_many_arguments)]
-    #[allow(dead_code)] // Phase 3: Will be used when connection loop switches to ConnectionState
+    #[allow(dead_code)] // Available for future use
     pub fn new(
         uid: &'a str,
         matrix: &'a Arc<Matrix>,
@@ -87,7 +87,7 @@ impl<'a, S> Context<'a, S> {
 }
 
 // ============================================================================
-// RegisteredState convenience methods (Phase 3)
+// RegisteredState convenience methods
 // ============================================================================
 
 /// Convenience methods available only for registered connections.
@@ -130,7 +130,7 @@ impl<'a> Context<'a, RegisteredState> {
 }
 
 // ============================================================================
-// User lookup helpers (Phase 1.1: DRY refactoring)
+// User lookup helpers
 // ============================================================================
 
 /// Resolve a nickname to UID. Returns None if not found.

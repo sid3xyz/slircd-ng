@@ -73,7 +73,7 @@ pub struct Zline {
 
 /// An R-line (realname/GECOS ban).
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Fields used by admin commands in Phase 3b
+#[allow(dead_code)] // Available for admin commands
 pub struct Rline {
     pub mask: String,
     pub reason: Option<String>,

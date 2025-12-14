@@ -20,9 +20,6 @@
 //!
 //! Expired bans are lazily ignored; a background task handles cleanup.
 
-// Phase 1: IpDenyList engine is implemented but not yet integrated.
-// Integration happens in Phase 2-4 (Matrix, Gateway, Handlers).
-
 mod bitmap;
 mod persistence;
 mod types;

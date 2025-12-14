@@ -9,7 +9,7 @@
 //! buffer, avoiding allocations in the hot loop. Use `msg.arg(n)` to access
 //! arguments as `&str` slices.
 //!
-//! ## Typestate Handler System (Innovation 1 Phase 3)
+//! ## Typestate Handler System (Innovation 1)
 //!
 //! The handler system enforces protocol state at compile time:
 //!
@@ -47,7 +47,7 @@ pub use core::{
     user_mask_from_state,
 };
 
-// Re-export typestate handler traits (Innovation 1 Phase 3)
+// Re-export typestate handler traits (Innovation 1)
 pub use core::{PostRegHandler, PreRegHandler, UniversalHandler};
 
 // Re-export helper functions for use by handlers
