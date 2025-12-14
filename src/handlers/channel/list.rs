@@ -33,8 +33,19 @@ impl PostRegHandler for ListHandler {
         // This prevents deadlocks if the actor tries to access the channel map
         let channels: Vec<_> = ctx.matrix.channels.iter().map(|r| r.value().clone()).collect();
 
+        // Result limiting to prevent flooding
+        let max_channels = ctx.matrix.config.limits.max_list_channels;
+        let mut result_count = 0;
+        let mut truncated = false;
+
         // Iterate channels
         for sender in channels {
+            // Check result limit
+            if result_count >= max_channels {
+                truncated = true;
+                break;
+            }
+
             let (tx, rx) = tokio::sync::oneshot::channel();
             let _ = sender
                 .send(crate::state::actor::ChannelEvent::GetInfo {
@@ -82,6 +93,21 @@ impl PostRegHandler for ListHandler {
                 ],
             );
             ctx.sender.send(reply).await?;
+            result_count += 1;
+        }
+
+        // Notify if results were truncated
+        if truncated {
+            let notice = server_reply(
+                server_name,
+                Response::RPL_TRYAGAIN,
+                vec![
+                    nick.clone(),
+                    "LIST".to_string(),
+                    format!("Output truncated, {} channels max", max_channels),
+                ],
+            );
+            ctx.sender.send(notice).await?;
         }
 
         // RPL_LISTEND (323): :End of LIST

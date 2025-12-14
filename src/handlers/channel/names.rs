@@ -55,7 +55,17 @@ impl PostRegHandler for NamesHandler {
                 .collect();
             channel_names.sort();
 
+            // Result limiting to prevent flooding
+            let max_channels = ctx.matrix.config.limits.max_names_channels;
+            let mut result_count = 0;
+            let mut truncated = false;
+
             for channel_lower in channel_names {
+                // Check result limit
+                if result_count >= max_channels {
+                    truncated = true;
+                    break;
+                }
                 let Some(channel_arc) = ctx.matrix.channels.get(&channel_lower) else {
                     continue;
                 };
@@ -123,6 +133,21 @@ impl PostRegHandler for NamesHandler {
                     ],
                 );
                 ctx.sender.send(names_reply).await?;
+                result_count += 1;
+            }
+
+            // Notify if results were truncated
+            if truncated {
+                let notice = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_TRYAGAIN,
+                    vec![
+                        nick.to_string(),
+                        "NAMES".to_string(),
+                        format!("Output truncated, {} channels max", max_channels),
+                    ],
+                );
+                ctx.sender.send(notice).await?;
             }
 
             let reply = server_reply(
