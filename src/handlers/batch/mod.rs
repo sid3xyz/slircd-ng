@@ -6,48 +6,24 @@
 //! Reference: <https://ircv3.net/specs/extensions/batch>
 //! Reference: <https://ircv3.net/specs/extensions/multiline>
 
+mod processing;
+mod types;
+mod validation;
+
+// Re-export public types
+pub use types::BatchState;
+
+// Re-export processing function
+pub use processing::process_batch_message;
+
 use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware};
-use crate::state::{RegisteredState, SessionState};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{
-    BatchSubCommand, ChannelExt, Command, Message, MessageRef, Prefix, Response, Tag, format_server_time,
-    generate_batch_ref, generate_msgid,
+    BatchSubCommand, ChannelExt, Command, Message, MessageRef, Prefix, Response, Tag,
+    format_server_time, generate_batch_ref, generate_msgid,
 };
 use tracing::debug;
-
-/// Maximum bytes allowed in a multiline batch message.
-/// Per Ergo's implementation and irctest expectations.
-pub const MULTILINE_MAX_BYTES: usize = 4096;
-/// Maximum lines allowed in a multiline batch.
-/// Per Ergo's implementation and irctest expectations.
-pub const MULTILINE_MAX_LINES: usize = 32;
-
-/// State for an in-progress batch.
-#[derive(Debug, Clone)]
-pub struct BatchState {
-    /// Batch type (e.g., "draft/multiline").
-    pub batch_type: String,
-    /// Target for the batch (e.g., channel or nick for multiline).
-    pub target: String,
-    /// Accumulated message lines.
-    pub lines: Vec<BatchLine>,
-    /// Total bytes accumulated (just the message content).
-    pub total_bytes: usize,
-    /// Command type (PRIVMSG or NOTICE).
-    pub command_type: Option<String>,
-    /// Response label from labeled-response (saved from BATCH +, applied to BATCH -).
-    pub response_label: Option<String>,
-    /// Client-only tags from BATCH + command (tags starting with '+').
-    pub client_tags: Vec<Tag>,
-}
-/// A line within a batch.
-#[derive(Debug, Clone)]
-pub struct BatchLine {
-    /// The message content.
-    pub content: String,
-    /// Whether this line should be concatenated with the previous (no newline).
-    pub concat: bool,
-}
 
 /// Handler for BATCH command.
 pub struct BatchHandler;
@@ -166,122 +142,6 @@ impl PostRegHandler for BatchHandler {
     }
 }
 
-/// Process a message within an active batch.
-///
-/// This is called from the connection loop when a message has a `batch` tag.
-/// Returns `Ok(Some(batch_ref))` if the message was consumed by the batch,
-/// `Ok(None)` if it should be dispatched normally, or `Err` with a FAIL message.
-///
-/// The BATCH handler processes batch start/end commands, but messages within
-/// a batch (PRIVMSG/NOTICE with batch=ref tag) are intercepted here before
-/// normal dispatch and accumulated in the session state's active_batch.
-pub fn process_batch_message<S: SessionState>(
-    state: &mut S,
-    msg: &MessageRef<'_>,
-    _server_name: &str,
-) -> Result<Option<String>, String> {
-    // Check if message has a batch tag
-    let batch_ref = msg.tag_value("batch");
-
-    if batch_ref.is_none() {
-        return Ok(None);
-    }
-
-    let batch_ref = batch_ref.unwrap();
-
-    // Check if it matches our active batch
-    let active_ref = match state.active_batch_ref() {
-        Some(r) => r.to_string(),
-        None => return Ok(None), // No active batch, process normally
-    };
-
-    if batch_ref != active_ref {
-        return Err(format!(
-            "FAIL BATCH MULTILINE_INVALID :Batch tag mismatch (expected {}, got {})",
-            active_ref, batch_ref
-        ));
-    }
-
-    // Add to the active batch
-    let batch = match state.active_batch_mut() {
-        Some(b) => b,
-        None => return Ok(None),
-    };
-
-    // Check command type (must be PRIVMSG or NOTICE)
-    let cmd_name = msg.command_name().to_ascii_uppercase();
-    if cmd_name != "PRIVMSG" && cmd_name != "NOTICE" {
-        return Err(format!(
-            "FAIL BATCH MULTILINE_INVALID :Invalid command {} in multiline batch",
-            cmd_name
-        ));
-    }
-
-    // Verify command type consistency
-    if let Some(ref existing_type) = batch.command_type {
-        if existing_type != &cmd_name {
-            return Err(
-                "FAIL BATCH MULTILINE_INVALID :Cannot mix PRIVMSG and NOTICE in multiline batch"
-                    .to_string(),
-            );
-        }
-    } else {
-        batch.command_type = Some(cmd_name.clone());
-    }
-
-    // Verify target matches
-    let msg_target = msg.arg(0).unwrap_or("");
-    if !msg_target.eq_ignore_ascii_case(&batch.target) {
-        return Err(format!(
-            "FAIL BATCH MULTILINE_INVALID_TARGET {} {} :Mismatched target in multiline batch",
-            batch.target, msg_target
-        ));
-    }
-
-    // Get message content
-    let content = msg.arg(1).unwrap_or("");
-
-    // Check for concat tag
-    let has_concat = msg.tag_value("draft/multiline-concat").is_some();
-
-    // Validate: concat lines must not be blank
-    if has_concat && content.is_empty() {
-        return Err("FAIL BATCH MULTILINE_INVALID :Cannot concatenate blank line".to_string());
-    }
-
-    // Check limits
-    let new_bytes = batch.total_bytes
-        + content.len()
-        + if batch.lines.is_empty() || has_concat {
-            0
-        } else {
-            1
-        };
-    if new_bytes > MULTILINE_MAX_BYTES {
-        return Err(format!(
-            "FAIL BATCH MULTILINE_MAX_BYTES {} :Multiline batch max-bytes exceeded",
-            MULTILINE_MAX_BYTES
-        ));
-    }
-
-    if batch.lines.len() >= MULTILINE_MAX_LINES {
-        return Err(format!(
-            "FAIL BATCH MULTILINE_MAX_LINES {} :Multiline batch max-lines exceeded",
-            MULTILINE_MAX_LINES
-        ));
-    }
-
-    // Add the line
-    batch.total_bytes = new_bytes;
-    batch.lines.push(BatchLine {
-        content: content.to_string(),
-        concat: has_concat,
-    });
-
-    // Return the batch ref to indicate this message was consumed
-    Ok(Some(batch_ref.to_string()))
-}
-
 /// Process a completed multiline batch by delivering to recipients.
 async fn process_multiline_batch(
     ctx: &mut Context<'_, RegisteredState>,
@@ -290,26 +150,8 @@ async fn process_multiline_batch(
     server_name: &str,
 ) -> HandlerResult {
     // Validate batch isn't empty or all blank
-    if batch.lines.is_empty() {
-        send_fail(
-            ctx,
-            server_name,
-            "MULTILINE_INVALID",
-            "Empty multiline batch",
-        )
-        .await?;
-        return Ok(());
-    }
-
-    let all_blank = batch.lines.iter().all(|l| l.content.is_empty());
-    if all_blank {
-        send_fail(
-            ctx,
-            server_name,
-            "MULTILINE_INVALID",
-            "Multiline batch with blank lines only",
-        )
-        .await?;
+    if let Err(msg) = validation::validate_batch_not_empty(batch) {
+        send_fail(ctx, server_name, "MULTILINE_INVALID", msg).await?;
         return Ok(());
     }
 
@@ -411,15 +253,21 @@ async fn deliver_multiline_to_channel(
         let user_arc = ctx.matrix.users.get(&uid).map(|u| u.value().clone());
         if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
-            members.push((uid, MemberCaps {
-                has_multiline: user.caps.contains("draft/multiline"),
-                has_echo_message: user.caps.contains("echo-message"),
-            }));
+            members.push((
+                uid,
+                MemberCaps {
+                    has_multiline: user.caps.contains("draft/multiline"),
+                    has_echo_message: user.caps.contains("echo-message"),
+                },
+            ));
         } else {
-            members.push((uid, MemberCaps {
-                has_multiline: false,
-                has_echo_message: false,
-            }));
+            members.push((
+                uid,
+                MemberCaps {
+                    has_multiline: false,
+                    has_echo_message: false,
+                },
+            ));
         }
     }
 
@@ -550,7 +398,10 @@ async fn deliver_multiline_to_user(
     let sender_user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
     let (sender_has_echo, sender_has_multiline) = if let Some(sender_user_arc) = sender_user_arc {
         let user = sender_user_arc.read().await;
-        (user.caps.contains("echo-message"), user.caps.contains("draft/multiline"))
+        (
+            user.caps.contains("echo-message"),
+            user.caps.contains("draft/multiline"),
+        )
     } else {
         (false, false)
     };
@@ -701,7 +552,7 @@ async fn send_multiline_batch(
 
 /// Send fallback individual lines to a client without draft/multiline.
 async fn send_multiline_fallback(
-    sender: &crate::handlers::ResponseMiddleware<'_>,
+    sender: &ResponseMiddleware<'_>,
     batch: &BatchState,
     prefix: &Prefix,
     msgid: &str,
