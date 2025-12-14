@@ -194,8 +194,7 @@ pub async fn apply_effect(
             // Clear any nick enforcement timer
             matrix.enforce_timers.remove(&target_uid);
 
-            // Broadcast MODE +r to all channels the user is in
-            // Exclude the user themselves - they get a direct message below
+            // Send MODE +r directly to the user (user modes are not broadcast)
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
@@ -208,7 +207,13 @@ pub async fn apply_effect(
                 ),
             };
 
+            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
+            if let Some(sender) = sender {
+                let _ = sender.send(mode_msg).await;
+            }
+
             // Broadcast ACCOUNT message for account-notify capability (IRCv3.1)
+            // This IS broadcast to shared channels (exclude the user - they get it directly)
             let account_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::new(&nick, &user_str, &host)),
@@ -217,17 +222,12 @@ pub async fn apply_effect(
 
             for channel_name in &channels {
                 matrix
-                    .broadcast_to_channel(channel_name, mode_msg.clone(), Some(&target_uid))
-                    .await;
-                matrix
                     .broadcast_to_channel(channel_name, account_msg.clone(), Some(&target_uid))
                     .await;
             }
 
-            // Also send to the user themselves
-            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
-            if let Some(sender) = sender {
-                let _ = sender.send(mode_msg).await;
+            // Send ACCOUNT to the user themselves
+            if let Some(sender) = matrix.senders.get(&target_uid).map(|s| s.clone()) {
                 let _ = sender.send(account_msg).await;
             }
 
@@ -259,8 +259,7 @@ pub async fn apply_effect(
                 user.account = None;
             }
 
-            // Broadcast MODE -r to all channels the user is in
-            // Exclude the user themselves - they get a direct message below
+            // Send MODE -r directly to the user (user modes are not broadcast)
             let mode_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
@@ -273,7 +272,13 @@ pub async fn apply_effect(
                 ),
             };
 
-            // Broadcast ACCOUNT * message (account unset)
+            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
+            if let Some(sender) = sender {
+                let _ = sender.send(mode_msg).await;
+            }
+
+            // Broadcast ACCOUNT * message (account unset) for account-notify capability
+            // This IS broadcast to shared channels (exclude the user - they get it directly)
             let account_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::new(&nick, &user_str, &host)),
@@ -282,17 +287,12 @@ pub async fn apply_effect(
 
             for channel_name in &channels {
                 matrix
-                    .broadcast_to_channel(channel_name, mode_msg.clone(), Some(&target_uid))
-                    .await;
-                matrix
                     .broadcast_to_channel(channel_name, account_msg.clone(), Some(&target_uid))
                     .await;
             }
 
-            // Also send to the user themselves
-            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
-            if let Some(sender) = sender {
-                let _ = sender.send(mode_msg).await;
+            // Send ACCOUNT to the user themselves
+            if let Some(sender) = matrix.senders.get(&target_uid).map(|s| s.clone()) {
                 let _ = sender.send(account_msg).await;
             }
 
