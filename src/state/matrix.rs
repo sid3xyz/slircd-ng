@@ -444,7 +444,7 @@ impl Matrix {
             host: host.to_string(),
             realname: realname.to_string(),
             server: self.server_info.name.clone(),
-            logout_time: chrono::Utc::now().timestamp(),
+            logout_time: chrono::Utc::now().timestamp_millis(),
         };
 
         self.whowas.entry(nick_lower).or_default().push_front(entry);

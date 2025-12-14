@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use slirc_proto::MessageRef;
 use tracing::info;
 
-/// Handler for QUIT command.
 pub struct QuitHandler;
 
 #[async_trait]

@@ -5,7 +5,6 @@ use crate::state::SessionState;
 use async_trait::async_trait;
 use slirc_proto::{Message, MessageRef, Response, prefix::Prefix};
 
-/// Handler for PING command.
 pub struct PingHandler;
 
 #[async_trait]
@@ -40,7 +39,6 @@ impl<S: SessionState> UniversalHandler<S> for PingHandler {
     }
 }
 
-/// Handler for PONG command.
 pub struct PongHandler;
 
 #[async_trait]

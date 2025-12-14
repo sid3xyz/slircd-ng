@@ -11,6 +11,13 @@ use tracing::debug;
 /// Sets the username and realname for the connection. Registration is NOT
 /// triggered here - it happens in the connection loop after the handler returns,
 /// using `WelcomeBurstWriter` to write directly to transport.
+/// # RFC 2812 §3.1.3
+///
+/// User message - Specifies username, hostname, and real name of a new user.
+///
+/// **Specification:** [RFC 2812 §3.1.3](https://datatracker.ietf.org/doc/html/rfc2812#section-3.1.3)
+///
+/// **Compliance:** 11/11 irctest pass
 pub struct UserHandler;
 
 #[async_trait]

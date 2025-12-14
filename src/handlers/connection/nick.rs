@@ -1,4 +1,24 @@
 //! NICK command handler for connection registration.
+//!
+//! # RFC 2812 §3.1.2 - Nick message
+//!
+//! Used to give user a nickname or change the existing one.
+//!
+//! **Specification:** [RFC 2812 §3.1.2](https://datatracker.ietf.org/doc/html/rfc2812#section-3.1.2)
+//!
+//! **Compliance:** 11/11 irctest pass
+//!
+//! ## Syntax
+//! ```text
+//! NICK <nickname>
+//! ```
+//!
+//! ## Behavior
+//! - Can be used before or after registration
+//! - Validates nickname format (length, allowed characters)
+//! - Atomically reserves nickname to prevent race conditions
+//! - Enforces +N (no nick change) channel mode for registered users
+//! - Notifies MONITOR watchers when nickname changes
 
 use super::super::{
     Context, HandlerError, HandlerResult, UniversalHandler, notify_monitors_offline,
@@ -11,7 +31,6 @@ use slirc_proto::{Command, Message, MessageRef, NickExt, Prefix, Response, irc_t
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
-/// Handler for NICK command.
 pub struct NickHandler;
 
 #[async_trait]

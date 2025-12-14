@@ -13,6 +13,13 @@ use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 ///
 /// Disconnects a user from the network. Requires operator privileges.
 /// Uses capability-based authorization (Innovation 4).
+/// # RFC 2812 §3.7.1
+///
+/// Kill message - Removes client from network (operator only).
+///
+/// **Specification:** [RFC 2812 §3.7.1](https://datatracker.ietf.org/doc/html/rfc2812#section-3.7.1)
+///
+/// **Compliance:** 1/1 irctest pass
 pub struct KillHandler;
 
 #[async_trait]

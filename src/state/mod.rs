@@ -17,6 +17,7 @@ mod user;
 
 pub use channel::{ListEntry, MemberModes, Topic};
 pub use matrix::Matrix;
+pub use user::WhowasEntry;
 pub mod actor;
 pub use user::{User, UserModes};
 

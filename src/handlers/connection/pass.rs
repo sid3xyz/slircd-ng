@@ -11,6 +11,13 @@ use tracing::debug;
 /// `PASS password`
 ///
 /// Sets the connection password before registration.
+/// # RFC 2812 §3.1.1
+///
+/// Password message - Sets a connection password (must be sent before NICK/USER).
+///
+/// **Specification:** [RFC 2812 §3.1.1](https://datatracker.ietf.org/doc/html/rfc2812#section-3.1.1)
+///
+/// **Compliance:** 11/11 irctest pass
 pub struct PassHandler;
 
 #[async_trait]

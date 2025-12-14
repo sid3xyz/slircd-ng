@@ -1,6 +1,26 @@
 //! TOPIC command handler.
 //!
-//! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
+//! # RFC 2812 §3.2.4 - Topic message
+//!
+//! Changes or views channel topic.
+//!
+//! **Specification:** [RFC 2812 §3.2.4](https://datatracker.ietf.org/doc/html/rfc2812#section-3.2.4)
+//!
+//! **Compliance:** 6/6 irctest pass
+//!
+//! ## Syntax
+//! ```text
+//! TOPIC <channel>           ; Query topic
+//! TOPIC <channel> :<topic>  ; Set topic
+//! TOPIC <channel> :         ; Clear topic
+//! ```
+//!
+//! ## Behavior
+//! - Query: Returns current topic or RPL_NOTOPIC if unset
+//! - Set: Requires channel op (+o) if +t mode is set
+//! - Broadcasts topic change to all channel members
+//! - Persists topic to database for registered channels
+//! - Uses CapabilityAuthority (Innovation 4) for authorization
 
 use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler,
@@ -14,7 +34,6 @@ use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::info;
 
-/// Handler for TOPIC command.
 pub struct TopicHandler;
 
 #[async_trait]

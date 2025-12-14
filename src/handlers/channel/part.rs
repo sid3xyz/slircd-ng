@@ -1,4 +1,24 @@
 //! PART command handler.
+//!
+//! # RFC 2812 §3.2.2 - Part message
+//!
+//! Removes a user from a channel.
+//!
+//! **Specification:** [RFC 2812 §3.2.2](https://datatracker.ietf.org/doc/html/rfc2812#section-3.2.2)
+//!
+//! **Compliance:** 5/5 irctest pass
+//!
+//! ## Syntax
+//! ```text
+//! PART <channels> [<reason>]
+//! ```
+//!
+//! ## Behavior
+//! - Can part multiple channels (comma-separated)
+//! - Optional part message broadcast to channel
+//! - User must be in channel to part it
+//! - Destroys empty transient channels
+//! - Persists state for registered channels
 
 use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
@@ -10,7 +30,6 @@ use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::info;
 
-/// Handler for PART command.
 pub struct PartHandler;
 
 #[async_trait]

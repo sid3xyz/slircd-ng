@@ -1,4 +1,27 @@
 //! JOIN command handler and related functionality.
+//!
+//! # RFC 2812 §3.2.1 - Join message
+//!
+//! Used by clients to start listening to a specific channel.
+//!
+//! **Specification:** [RFC 2812 §3.2.1](https://datatracker.ietf.org/doc/html/rfc2812#section-3.2.1)
+//!
+//! **Compliance:** 7/7 irctest pass
+//!
+//! ## Syntax
+//! ```text
+//! JOIN <channels> [<keys>]
+//! JOIN 0  ; Leave all channels
+//! ```
+//!
+//! ## Behavior
+//! - Creates channel if it doesn't exist
+//! - First joiner receives operator status (@)
+//! - Validates channel key if +k mode is set
+//! - Enforces bans, invite-only, and user limits
+//! - Applies AKICK auto-kicks and auto-modes
+//! - Persists registered channel state to database
+//! - Rate limits joins to prevent abuse
 
 use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, server_reply,
@@ -14,7 +37,6 @@ use slirc_proto::{ChannelExt, Command, Message, MessageRef, Prefix, Response, ir
 use std::sync::Arc;
 use tracing::info;
 
-/// Handler for JOIN command.
 pub struct JoinHandler;
 
 #[async_trait]

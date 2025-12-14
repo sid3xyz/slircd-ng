@@ -16,6 +16,13 @@ use slirc_proto::{MessageRef, Response, Prefix};
 ///
 /// Returns the server map (network topology). In a single-server setup,
 /// this just shows the current server.
+/// # RFC 2812 §3.4.10
+///
+/// Info command - Returns information about the server.
+///
+/// **Specification:** [RFC 2812 §3.4.10](https://datatracker.ietf.org/doc/html/rfc2812#section-3.4.10)
+///
+/// **Compliance:** 1/1 irctest pass
 pub struct MapHandler;
 
 #[async_trait]

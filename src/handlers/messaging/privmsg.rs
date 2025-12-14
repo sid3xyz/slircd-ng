@@ -49,10 +49,10 @@ impl PostRegHandler for PrivmsgHandler {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // PRIVMSG <target> <text>
-        let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let targets = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
 
-        if target.is_empty() {
+        if targets.is_empty() {
             return Err(HandlerError::NeedMoreParams);
         }
         if text.is_empty() {
@@ -64,181 +64,191 @@ impl PostRegHandler for PrivmsgHandler {
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Use shared validation (shun, rate limiting, spam detection)
-        validate_message_send(ctx, target, text, ErrorStrategy::SendError, &snapshot).await?;
+        // Split comma-separated targets (RFC 2812 section 3.3.1)
+        let target_list: Vec<&str> = targets.split(',').map(|s| s.trim()).collect();
 
-        // Check if this is a service message (NickServ, ChanServ, etc.)
-        if route_service_message(ctx.matrix, ctx.uid, &snapshot.nick, target, text, &ctx.sender).await {
-            return Ok(());
-        }
+        // Process each target individually
+        for target in target_list {
+            if target.is_empty() {
+                continue;
+            }
 
-        // CTCP messages (VERSION, PING, ACTION, etc.) are just forwarded as PRIVMSG.
-        // The IRC server relays them; the target's CLIENT sends NOTICE replies.
-        // See: https://modern.ircdocs.horse/ctcp.html
+            // Use shared validation (shun, rate limiting, spam detection)
+            validate_message_send(ctx, target, text, ErrorStrategy::SendError, &snapshot).await?;
 
-        // Collect client-only tags (those starting with '+') AND the label tag to preserve them
-        // The label tag is needed for labeled-response echoes back to the sender
-        // Unescape tag values since they come from wire format
-        use slirc_proto::message::Tag;
-        use std::borrow::Cow;
-        let preserved_tags: Vec<Tag> = msg
-            .tags_iter()
-            .filter(|(k, _)| k.starts_with('+') || *k == "label")
-            .map(|(k, v)| {
-                let value = if v.is_empty() {
+            // Check if this is a service message (NickServ, ChanServ, etc.)
+            if route_service_message(ctx.matrix, ctx.uid, &snapshot.nick, target, text, &ctx.sender).await {
+                continue;
+            }
+
+            // CTCP messages (VERSION, PING, ACTION, etc.) are just forwarded as PRIVMSG.
+            // The IRC server relays them; the target's CLIENT sends NOTICE replies.
+            // See: https://modern.ircdocs.horse/ctcp.html
+
+            // Collect client-only tags (those starting with '+') AND the label tag to preserve them
+            // The label tag is needed for labeled-response echoes back to the sender
+            // Unescape tag values since they come from wire format
+            use slirc_proto::message::Tag;
+            use std::borrow::Cow;
+            let preserved_tags: Vec<Tag> = msg
+                .tags_iter()
+                .filter(|(k, _)| k.starts_with('+') || *k == "label")
+                .map(|(k, v)| {
+                    let value = if v.is_empty() {
+                        None
+                    } else {
+                        Some(slirc_proto::message::tags::unescape_tag_value(v))
+                    };
+                    Tag(Cow::Owned(k.to_string()), value)
+                })
+                .collect();
+
+            // Generate timestamp once for consistency between live message and history
+            // Truncate to milliseconds to match IRCv3 server-time precision and avoid
+            // discrepancies between stored time and time tag.
+            let now = SystemTime::now();
+            let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
+            let millis = duration.as_millis() as i64;
+            let nanotime = millis * 1_000_000;
+
+            // Re-create DateTime from truncated millis to ensure consistency
+            let dt = DateTime::<Utc>::from_timestamp(millis / 1000, (millis % 1000) as u32 * 1_000_000).unwrap_or_default();
+            let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let msgid = Uuid::new_v4().to_string();
+
+            // Build the outgoing message with preserved tags (client tags + label)
+            let out_msg = Message {
+                tags: if preserved_tags.is_empty() {
                     None
                 } else {
-                    Some(slirc_proto::message::tags::unescape_tag_value(v))
-                };
-                Tag(Cow::Owned(k.to_string()), value)
-            })
-            .collect();
+                    Some(preserved_tags)
+                },
+                prefix: Some(user_prefix(&snapshot.nick, &snapshot.user, &snapshot.visible_host)),
+                command: Command::PRIVMSG(target.to_string(), text.to_string()),
+            };
 
-        // Generate timestamp once for consistency between live message and history
-        // Truncate to milliseconds to match IRCv3 server-time precision and avoid
-        // discrepancies between stored time and time tag.
-        let now = SystemTime::now();
-        let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
-        let millis = duration.as_millis() as i64;
-        let nanotime = millis * 1_000_000;
+            let opts = RouteOptions {
+                send_away_reply: true,
+                is_notice: false,
+                block_ctcp: true,
+                status_prefix: None,
+            };
 
-        // Re-create DateTime from truncated millis to ensure consistency
-        let dt = DateTime::<Utc>::from_timestamp(millis / 1000, (millis % 1000) as u32 * 1_000_000).unwrap_or_default();
-        let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let msgid = Uuid::new_v4().to_string();
+            // STATUSMSG support: @#channel sends to ops, +#channel sends to voiced+
+            // Strip status prefix if present and route accordingly
+            let (status_prefix, actual_target) = parse_statusmsg(target);
+            let routing_target = actual_target.unwrap_or(target);
 
-        // Build the outgoing message with preserved tags (client tags + label)
-        let out_msg = Message {
-            tags: if preserved_tags.is_empty() {
-                None
-            } else {
-                Some(preserved_tags)
-            },
-            prefix: Some(user_prefix(&snapshot.nick, &snapshot.user, &snapshot.visible_host)),
-            command: Command::PRIVMSG(target.to_string(), text.to_string()),
-        };
+            if routing_target.is_channel_name() {
+                let channel_lower = irc_to_lower(routing_target);
 
-        let opts = RouteOptions {
-            send_away_reply: true,
-            is_notice: false,
-            block_ctcp: true,
-            status_prefix: None,
-        };
+                // If STATUSMSG, route to specific member subset
+                if let Some(prefix_char) = status_prefix {
+                    route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await?;
+                    debug!(from = %snapshot.nick, to = %target, prefix = %prefix_char, "PRIVMSG STATUSMSG");
+                    // Suppress ACK for echo-message with labels (echo IS the response)
+                    if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
+                        ctx.suppress_labeled_ack = true;
+                    }
+                } else {
+                    // Regular channel message - use snapshot-based routing
+                    match route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await {
+                        ChannelRouteResult::Sent => {
+                            debug!(from = %snapshot.nick, to = %target, "PRIVMSG to channel");
 
-        // STATUSMSG support: @#channel sends to ops, +#channel sends to voiced+
-        // Strip status prefix if present and route accordingly
-        let (status_prefix, actual_target) = parse_statusmsg(target);
-        let routing_target = actual_target.unwrap_or(target);
+                            // If user has echo-message, suppress ACK - the echo IS the response
+                            // This is for labeled-response: when echo-message echoes back,
+                            // we don't need a separate ACK
+                            if ctx.label.is_some()
+                                && ctx.state.capabilities.contains("echo-message")
+                            {
+                                ctx.suppress_labeled_ack = true;
+                            }
 
-        if routing_target.is_channel_name() {
-            let channel_lower = irc_to_lower(routing_target);
+                            // Store message in history for CHATHISTORY support
+                            let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                            let account = ctx.state.account.as_deref();
 
-            // If STATUSMSG, route to specific member subset
-            if let Some(prefix_char) = status_prefix {
-                route_statusmsg(ctx, &channel_lower, target, out_msg, prefix_char, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await?;
-                debug!(from = %snapshot.nick, to = %target, prefix = %prefix_char, "PRIVMSG STATUSMSG");
-                // Suppress ACK for echo-message with labels (echo IS the response)
-                if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
-                    ctx.suppress_labeled_ack = true;
-                }
-            } else {
-                // Regular channel message - use snapshot-based routing
-                match route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await {
-                    ChannelRouteResult::Sent => {
-                        debug!(from = %snapshot.nick, to = %target, "PRIVMSG to channel");
+                            let params = StoreMessageParams {
+                                msgid: &msgid,
+                                channel: target,
+                                sender_nick: &snapshot.nick,
+                                prefix: &prefix,
+                                text,
+                                account,
+                                target_account: None,
+                                nanotime: Some(nanotime),
+                            };
 
-                        // If user has echo-message, suppress ACK - the echo IS the response
-                        // This is for labeled-response: when echo-message echoes back,
-                        // we don't need a separate ACK
-                        if ctx.label.is_some()
-                            && ctx.state.capabilities.contains("echo-message")
-                        {
-                            ctx.suppress_labeled_ack = true;
+                            if let Err(e) = ctx.db.history().store_message(params).await {
+                                debug!(error = %e, "Failed to store message in history");
+                            }
                         }
-
-                        // Store message in history for CHATHISTORY support
-                        let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
-                        let account = ctx.state.account.as_deref();
-
-                        let params = StoreMessageParams {
-                            msgid: &msgid,
-                            channel: target,
-                            sender_nick: &snapshot.nick,
-                            prefix: &prefix,
-                            text,
-                            account,
-                            target_account: None,
-                            nanotime: Some(nanotime),
-                        };
-
-                        if let Err(e) = ctx.db.history().store_message(params).await {
-                            debug!(error = %e, "Failed to store message in history");
+                        ChannelRouteResult::NoSuchChannel => {
+                            send_no_such_channel(ctx, &snapshot.nick, target).await?;
                         }
-                    }
-                    ChannelRouteResult::NoSuchChannel => {
-                        send_no_such_channel(ctx, &snapshot.nick, target).await?;
-                    }
-                    ChannelRouteResult::BlockedExternal => {
-                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+n)").await?;
-                    }
-                    ChannelRouteResult::BlockedModerated => {
-                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+m)").await?;
-                    }
-                    ChannelRouteResult::BlockedRegisteredOnly => {
-                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+r)").await?;
-                    }
-                    ChannelRouteResult::BlockedCTCP => {
-                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send CTCP to channel (+C)")
-                            .await?;
-                    }
-                    ChannelRouteResult::BlockedNotice => {
-                        // Should not happen for PRIVMSG, but handle anyway
-                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send NOTICE to channel (+T)")
-                            .await?;
-                    }
-                    ChannelRouteResult::BlockedBanned => {
-                        send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+b)").await?;
+                        ChannelRouteResult::BlockedExternal => {
+                            send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+n)").await?;
+                        }
+                        ChannelRouteResult::BlockedModerated => {
+                            send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+m)").await?;
+                        }
+                        ChannelRouteResult::BlockedRegisteredOnly => {
+                            send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+r)").await?;
+                        }
+                        ChannelRouteResult::BlockedCTCP => {
+                            send_cannot_send(ctx, &snapshot.nick, target, "Cannot send CTCP to channel (+C)")
+                                .await?;
+                        }
+                        ChannelRouteResult::BlockedNotice => {
+                            // Should not happen for PRIVMSG, but handle anyway
+                            send_cannot_send(ctx, &snapshot.nick, target, "Cannot send NOTICE to channel (+T)")
+                                .await?;
+                        }
+                        ChannelRouteResult::BlockedBanned => {
+                            send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+b)").await?;
+                        }
                     }
                 }
-            }
-        } else if route_to_user_with_snapshot(ctx, &irc_to_lower(routing_target), out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await {
-            debug!(from = %snapshot.nick, to = %target, "PRIVMSG to user");
+            } else if route_to_user_with_snapshot(ctx, &irc_to_lower(routing_target), out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await {
+                debug!(from = %snapshot.nick, to = %target, "PRIVMSG to user");
 
-            // Store message in history for CHATHISTORY support (DMs)
-            let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
-            let account = ctx.state.account.as_deref();
+                // Store message in history for CHATHISTORY support (DMs)
+                let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                let account = ctx.state.account.as_deref();
 
-            // Lookup target account
-            let target_lower = irc_to_lower(routing_target);
-            let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(&target_lower) {
-                 let uid = uid_ref.value();
-                 let user_arc = ctx.matrix.users.get(uid).map(|u| u.value().clone());
-                 if let Some(user_arc) = user_arc {
-                     let user = user_arc.read().await;
-                     user.account.clone()
-                 } else {
+                // Lookup target account
+                let target_lower = irc_to_lower(routing_target);
+                let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(&target_lower) {
+                     let uid = uid_ref.value();
+                     let user_arc = ctx.matrix.users.get(uid).map(|u| u.value().clone());
+                     if let Some(user_arc) = user_arc {
+                         let user = user_arc.read().await;
+                         user.account.clone()
+                     } else {
+                         None
+                     }
+                } else {
                      None
-                 }
+                };
+
+                let params = StoreMessageParams {
+                    msgid: &msgid,
+                    channel: target, // For DMs, channel is the recipient nick
+                    sender_nick: &snapshot.nick,
+                    prefix: &prefix,
+                    text,
+                    account,
+                    target_account: target_account.as_deref(),
+                    nanotime: Some(nanotime),
+                };
+
+                if let Err(e) = ctx.db.history().store_message(params).await {
+                    debug!(error = %e, "Failed to store DM in history");
+                }
             } else {
-                 None
-            };
-
-            let params = StoreMessageParams {
-                msgid: &msgid,
-                channel: target, // For DMs, channel is the recipient nick
-                sender_nick: &snapshot.nick,
-                prefix: &prefix,
-                text,
-                account,
-                target_account: target_account.as_deref(),
-                nanotime: Some(nanotime),
-            };
-
-            if let Err(e) = ctx.db.history().store_message(params).await {
-                debug!(error = %e, "Failed to store DM in history");
+                send_no_such_nick(ctx, &snapshot.nick, target).await?;
             }
-        } else {
-            send_no_such_nick(ctx, &snapshot.nick, target).await?;
         }
 
         Ok(())

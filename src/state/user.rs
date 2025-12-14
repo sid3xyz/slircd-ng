@@ -152,6 +152,6 @@ pub struct WhowasEntry {
     pub realname: String,
     /// Server name they were connected to.
     pub server: String,
-    /// When they logged out (Unix timestamp).
+    /// When they logged out (Unix timestamp in milliseconds).
     pub logout_time: i64,
 }

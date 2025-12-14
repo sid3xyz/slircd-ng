@@ -22,8 +22,8 @@ impl PostRegHandler for WhowasHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        // WHOWAS <nick> [count [server]]
-        let target = msg.arg(0).unwrap_or("");
+        // WHOWAS <nick>[,<nick>] [count [server]]
+        let targets = msg.arg(0).unwrap_or("");
 
         // Parse count parameter
         // Per RFC 1459/2812 and Modern IRC spec:
@@ -40,7 +40,7 @@ impl PostRegHandler for WhowasHandler {
             })
             .or(Some(10)); // Default to 10 if not specified
 
-        if target.is_empty() {
+        if targets.is_empty() {
             let reply = server_reply(
                 &ctx.matrix.server_info.name,
                 Response::ERR_NONICKNAMEGIVEN,
@@ -56,70 +56,70 @@ impl PostRegHandler for WhowasHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = &ctx.state.nick; // Guaranteed present in RegisteredState
 
-        // Look up WHOWAS history
-        let target_lower = irc_to_lower(target);
+        // Handle multiple targets (comma-separated): WHOWAS nick1,nick2
+        let target_list: Vec<&str> = targets.split(',').map(|s| s.trim()).collect();
 
-        if let Some(entries) = ctx.matrix.whowas.get(&target_lower) {
-            let entries_to_show: Vec<_> = if let Some(limit) = count_limit {
-                entries.iter().take(limit).cloned().collect()
-            } else {
-                // Full search - return all entries
-                entries.iter().cloned().collect()
-            };
+        // Collect all entries from all targets, then sort by logout_time (most recent first)
+        let mut all_entries: Vec<crate::state::WhowasEntry> = Vec::new();
 
-            if entries_to_show.is_empty() {
-                // No entries found
+        for target in &target_list {
+            let target_lower = irc_to_lower(target);
+            if let Some(entries) = ctx.matrix.whowas.get(&target_lower) {
+                for entry in entries.iter() {
+                    all_entries.push(entry.clone());
+                }
+            }
+        }
+
+        // Sort by logout_time (most recent first)
+        all_entries.sort_by(|a, b| b.logout_time.cmp(&a.logout_time));
+
+        // Apply count limit if specified
+        let entries_to_show: Vec<_> = if let Some(limit) = count_limit {
+            all_entries.into_iter().take(limit).collect()
+        } else {
+            all_entries
+        };
+
+        if !entries_to_show.is_empty() {
+            // Send RPL_WHOWASUSER for each entry
+            for entry in entries_to_show {
+                // RPL_WHOWASUSER (314): <nick> <user> <host> * :<realname>
                 let reply = server_reply(
                     server_name,
-                    Response::ERR_WASNOSUCHNICK,
+                    Response::RPL_WHOWASUSER,
                     vec![
                         nick.clone(),
-                        target.to_string(),
-                        "There was no such nickname".to_string(),
+                        entry.nick.clone(),
+                        entry.user,
+                        entry.host,
+                        "*".to_string(),
+                        entry.realname,
                     ],
                 );
                 ctx.sender.send(reply).await?;
-            } else {
-                // Send RPL_WHOWASUSER for each entry
-                for entry in entries_to_show {
-                    // RPL_WHOWASUSER (314): <nick> <user> <host> * :<realname>
-                    let reply = server_reply(
-                        server_name,
-                        Response::RPL_WHOWASUSER,
-                        vec![
-                            nick.clone(),
-                            entry.nick,
-                            entry.user,
-                            entry.host,
-                            "*".to_string(),
-                            entry.realname,
-                        ],
-                    );
-                    ctx.sender.send(reply).await?;
 
-                    // RPL_WHOISSERVER (312): <nick> <server> :<server info>
-                    // Note: Using same numeric for server info in WHOWAS
-                    let reply = server_reply(
-                        server_name,
-                        Response::RPL_WHOISSERVER,
-                        vec![
-                            nick.clone(),
-                            target.to_string(),
-                            entry.server.clone(),
-                            format!("Logged out at {}", format_timestamp(entry.logout_time)),
-                        ],
-                    );
-                    ctx.sender.send(reply).await?;
-                }
+                // RPL_WHOISSERVER (312): <nick> <server> :<server info>
+                let reply = server_reply(
+                    server_name,
+                    Response::RPL_WHOISSERVER,
+                    vec![
+                        nick.clone(),
+                        entry.nick.clone(),
+                        entry.server,
+                        format!("Logged out at {}", format_timestamp(entry.logout_time)),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
             }
         } else {
-            // No history for this nick at all
+            // No history found for any target
             let reply = server_reply(
                 server_name,
                 Response::ERR_WASNOSUCHNICK,
                 vec![
                     nick.clone(),
-                    target.to_string(),
+                    targets.to_string(),
                     "There was no such nickname".to_string(),
                 ],
             );
@@ -132,7 +132,7 @@ impl PostRegHandler for WhowasHandler {
             Response::RPL_ENDOFWHOWAS,
             vec![
                 nick.clone(),
-                target.to_string(),
+                targets.to_string(),
                 "End of WHOWAS".to_string(),
             ],
         );
@@ -142,9 +142,10 @@ impl PostRegHandler for WhowasHandler {
     }
 }
 
-/// Format a Unix timestamp as a human-readable string.
-fn format_timestamp(ts: i64) -> String {
-    chrono::DateTime::from_timestamp(ts, 0)
+/// Format a Unix timestamp (milliseconds) as a human-readable string.
+fn format_timestamp(ts_millis: i64) -> String {
+    let ts_secs = ts_millis / 1000;
+    chrono::DateTime::from_timestamp(ts_secs, 0)
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
         .unwrap_or_else(|| "unknown".to_string())
 }

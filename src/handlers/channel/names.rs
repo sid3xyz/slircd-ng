@@ -163,7 +163,11 @@ impl PostRegHandler for NamesHandler {
             return Ok(());
         }
 
-        let channel_lower = irc_to_lower(channel_name);
+        // Handle multiple channels (comma-separated): NAMES #chan1,#chan2
+        let channels: Vec<&str> = channel_name.split(',').collect();
+
+        for (idx, chan) in channels.iter().enumerate() {
+            let channel_lower = irc_to_lower(chan);
 
         if let Some(channel_sender) = ctx.matrix.channels.get(&channel_lower) {
             let (tx, rx) = tokio::sync::oneshot::channel();
@@ -245,28 +249,35 @@ impl PostRegHandler for NamesHandler {
             );
             ctx.sender.send(names_reply).await?;
 
-            let end_names = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::RPL_ENDOFNAMES,
-                vec![
-                    nick.to_string(),
-                    channel_info.name.clone(),
-                    "End of /NAMES list".to_string(),
-                ],
-            );
-            ctx.sender.send(end_names).await?;
+            // Only send RPL_ENDOFNAMES after the last channel
+            if idx == channels.len() - 1 {
+                let end_names = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_ENDOFNAMES,
+                    vec![
+                        nick.to_string(),
+                        channel_name.to_string(),  // Original comma-separated list
+                        "End of /NAMES list".to_string(),
+                    ],
+                );
+                ctx.sender.send(end_names).await?;
+            }
         } else {
-            let end_names = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::RPL_ENDOFNAMES,
-                vec![
-                    nick.to_string(),
-                    channel_name.to_string(),
-                    "End of /NAMES list".to_string(),
-                ],
-            );
-            ctx.sender.send(end_names).await?;
+            // Channel doesn't exist - only send RPL_ENDOFNAMES if it's the last channel
+            if idx == channels.len() - 1 {
+                let end_names = server_reply(
+                    &ctx.matrix.server_info.name,
+                    Response::RPL_ENDOFNAMES,
+                    vec![
+                        nick.to_string(),
+                        channel_name.to_string(),  // Original comma-separated list
+                        "End of /NAMES list".to_string(),
+                    ],
+                );
+                ctx.sender.send(end_names).await?;
+            }
         }
+        } // end for loop
 
         Ok(())
     }

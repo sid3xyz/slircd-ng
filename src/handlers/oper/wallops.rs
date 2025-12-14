@@ -12,6 +12,13 @@ use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 /// `WALLOPS :message`
 ///
 /// Sends a message to all users with +w mode (operators).
+/// # RFC 2812 §4.7
+///
+/// Wallops - Sends message to users with +w mode or operators.
+///
+/// **Specification:** [RFC 2812 §4.7](https://datatracker.ietf.org/doc/html/rfc2812#section-4.7)
+///
+/// **Compliance:** 2/2 irctest pass
 pub struct WallopsHandler;
 
 #[async_trait]

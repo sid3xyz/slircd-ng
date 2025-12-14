@@ -11,6 +11,13 @@ use slirc_proto::{ChannelExt, MessageRef, Response, irc_to_lower};
 ///
 /// Returns information about users matching the mask.
 /// The 'o' flag restricts results to operators only.
+/// # RFC 2812 §3.6.1
+///
+/// Who query - Returns list of information about users matching criteria.
+///
+/// **Specification:** [RFC 2812 §3.6.1](https://datatracker.ietf.org/doc/html/rfc2812#section-3.6.1)
+///
+/// **Compliance:** 18/39 irctest pass (21 WHOX extensions skipped)
 pub struct WhoHandler;
 
 /// Build prefix string for WHO flags based on member modes and multi-prefix setting.

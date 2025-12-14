@@ -5,11 +5,125 @@ use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
+/// Parse ELIST filters from LIST parameter.
+#[derive(Debug, Default)]
+struct ListFilter {
+    mask: Option<String>,
+    negative_mask: Option<String>,
+    min_users: Option<usize>,
+    max_users: Option<usize>,
+}
+
+impl ListFilter {
+    fn parse(arg: Option<&str>) -> Self {
+        let Some(filter_str) = arg else {
+            return Self::default();
+        };
+
+        let mut filter = Self::default();
+
+        // ELIST=U: >N or <N user count filtering
+        if let Some(num_str) = filter_str.strip_prefix('>') {
+            if let Ok(count) = num_str.parse() {
+                filter.min_users = Some(count);
+            }
+            return filter;
+        }
+        if let Some(num_str) = filter_str.strip_prefix('<') {
+            if let Ok(count) = num_str.parse() {
+                filter.max_users = Some(count);
+            }
+            return filter;
+        }
+
+        // ELIST=N: !pattern (negative mask)
+        if let Some(pattern) = filter_str.strip_prefix('!') {
+            filter.negative_mask = Some(pattern.to_string());
+            return filter;
+        }
+
+        // ELIST=M: pattern (positive mask) or exact channel name
+        filter.mask = Some(filter_str.to_string());
+        filter
+    }
+
+    fn matches(&self, name: &str, member_count: usize) -> bool {
+        // User count filters
+        if let Some(min) = self.min_users
+            && member_count <= min
+        {
+            return false;
+        }
+        if let Some(max) = self.max_users
+            && member_count >= max
+        {
+            return false;
+        }
+
+        // Negative mask (ELIST=N)
+        if let Some(ref neg_mask) = self.negative_mask
+            && wildcard_match(neg_mask, name)
+        {
+            return false;
+        }
+
+        // Positive mask (ELIST=M) or exact match
+        if let Some(ref mask) = self.mask {
+            return wildcard_match(mask, name);
+        }
+
+        true
+    }
+}
+
+/// Simple wildcard matcher for IRC channel names.
+/// Supports * (any chars) and ? (single char).
+fn wildcard_match(pattern: &str, text: &str) -> bool {
+    let pattern = pattern.as_bytes();
+    let text = text.as_bytes();
+    let mut pi = 0;
+    let mut ti = 0;
+    let mut star_pi = None;
+    let mut star_ti = None;
+
+    while ti < text.len() {
+        if pi < pattern.len() && (pattern[pi] == b'*') {
+            star_pi = Some(pi);
+            star_ti = Some(ti);
+            pi += 1;
+        } else if pi < pattern.len()
+            && (pattern[pi] == b'?' || pattern[pi].eq_ignore_ascii_case(&text[ti]))
+        {
+            pi += 1;
+            ti += 1;
+        } else if let Some(s_pi) = star_pi {
+            pi = s_pi + 1;
+            star_ti = Some(star_ti.unwrap() + 1);
+            ti = star_ti.unwrap();
+        } else {
+            return false;
+        }
+    }
+
+    while pi < pattern.len() && pattern[pi] == b'*' {
+        pi += 1;
+    }
+
+    pi == pattern.len()
+}
+
 /// Handler for LIST command.
 ///
 /// `LIST [channels [target]]`
 ///
 /// Lists channels and their topics.
+/// # RFC 2812 §3.2.6
+///
+/// List message - Lists channels and their topics.
+///
+/// **Specification:** [RFC 2812 §3.2.6](https://datatracker.ietf.org/doc/html/rfc2812#section-3.2.6)
+///
+/// **Compliance:** 3/8 irctest pass (5 WHOX extensions skipped)
 pub struct ListHandler;
 
 #[async_trait]
@@ -24,8 +138,8 @@ impl PostRegHandler for ListHandler {
         let server_name = &ctx.matrix.server_info.name;
         let nick = &ctx.state.nick;
 
-        // LIST [channels]
-        let filter = msg.arg(0);
+        // Parse ELIST filters from argument
+        let filter = ListFilter::parse(msg.arg(0));
 
         // RPL_LISTSTART (321): Channel :Users Name (optional, some clients don't expect it)
 
@@ -68,10 +182,8 @@ impl PostRegHandler for ListHandler {
                 continue;
             }
 
-            // Apply filter if provided
-            if let Some(f) = filter
-                && !channel.name.eq_ignore_ascii_case(f)
-            {
+            // Apply ELIST filters
+            if !filter.matches(&channel.name, channel.member_count) {
                 continue;
             }
 
