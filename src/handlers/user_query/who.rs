@@ -90,7 +90,18 @@ impl PostRegHandler for WhoHandler {
                         Err(_) => return Ok(()),
                     };
 
+                    // Result count limit to prevent pathologically large responses
+                    let max_results = ctx.matrix.config.limits.max_who_results;
+                    let mut result_count = 0;
+                    let mut truncated = false;
+
                     for (member_uid, member_modes) in members {
+                        // Check limit before emitting each result
+                        if result_count >= max_results {
+                            truncated = true;
+                            break;
+                        }
+
                         let member_arc = ctx.matrix.users.get(&member_uid).map(|u| u.clone());
                         if let Some(member_arc) = member_arc {
                             let user = member_arc.read().await;
@@ -127,7 +138,22 @@ impl PostRegHandler for WhoHandler {
                                 ],
                             );
                             ctx.sender.send(reply).await?;
+                            result_count += 1;
                         }
+                    }
+
+                    // Notify if output was truncated
+                    if truncated {
+                        let truncate_notice = server_reply(
+                            server_name,
+                            Response::RPL_TRYAGAIN,
+                            vec![
+                                nick.clone(),
+                                "WHO".to_string(),
+                                format!("Output truncated, {} matches shown", max_results),
+                            ],
+                        );
+                        ctx.sender.send(truncate_notice).await?;
                     }
                 }
             } else {
@@ -160,7 +186,17 @@ impl PostRegHandler for WhoHandler {
                     .map(|e| (e.key().clone(), e.value().clone()))
                     .collect();
 
+                // Result limiting to prevent flooding
+                let max_results = ctx.matrix.config.limits.max_who_results;
+                let mut result_count = 0;
+                let mut truncated = false;
+
                 for (target_uid, user_arc) in all_users {
+                    // Check result limit
+                    if result_count >= max_results {
+                        truncated = true;
+                        break;
+                    }
                     let user = user_arc.read().await;
 
                     // Skip if operators_only and not an operator
@@ -218,7 +254,22 @@ impl PostRegHandler for WhoHandler {
                             ],
                         );
                         ctx.sender.send(reply).await?;
+                        result_count += 1;
                     }
+                }
+
+                // Notify if results were truncated
+                if truncated {
+                    let notice = server_reply(
+                        server_name,
+                        Response::RPL_TRYAGAIN,
+                        vec![
+                            nick.clone(),
+                            "WHO".to_string(),
+                            format!("Output truncated, {} results max", max_results),
+                        ],
+                    );
+                    ctx.sender.send(notice).await?;
                 }
             }
         }

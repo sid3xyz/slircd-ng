@@ -135,6 +135,8 @@ pub struct MatrixConfig {
     pub security: SecurityConfig,
     /// Account registration configuration.
     pub account_registration: crate::config::AccountRegistrationConfig,
+    /// Command output limits (WHO, LIST, NAMES).
+    pub limits: crate::config::LimitsConfig,
 }
 
 /// This server's identity information.
@@ -226,6 +228,7 @@ impl Matrix {
                 oper_blocks: config.oper.clone(),
                 security: config.security.clone(),
                 account_registration: config.account_registration.clone(),
+                limits: config.limits.clone(),
             },
             rate_limiter: RateLimitManager::new(config.security.rate_limits.clone()),
             spam_detector: if config.security.spam_detection_enabled {
