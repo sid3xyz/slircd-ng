@@ -22,6 +22,7 @@ use crate::db::Database;
 use crate::error::{HandlerError, HandlerResult};
 use crate::handlers::{notify_monitors_online, server_reply};
 use crate::state::{Matrix, UnregisteredState, User};
+use slirc_proto::isupport::{ChanModesBuilder, IsupportBuilder, TargMaxBuilder};
 use slirc_proto::transport::ZeroCopyTransportEnum;
 use slirc_proto::{Command, Message, Prefix, Response};
 use std::net::SocketAddr;
@@ -90,6 +91,12 @@ impl<'a> WelcomeBurstWriter<'a> {
         let server_name = &self.matrix.server_info.name;
         let network = &self.matrix.server_info.network;
         let remote_ip = self.remote_addr.ip().to_string();
+
+        // Record successful connection for reputation
+        if let Some(spam) = &self.matrix.spam_detector {
+            spam.record_connection_success(self.remote_addr.ip()).await;
+        }
+
         let webirc_ip = self.state.webirc_ip.clone();
         let webirc_host = self.state.webirc_host.clone();
 
@@ -181,12 +188,14 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         // Create user in Matrix
         let security_config = &self.matrix.config.security;
+        let ip = webirc_ip.clone().unwrap_or_else(|| remote_ip.clone());
         let mut user_obj = User::new(
             self.uid.to_string(),
             nick.clone(),
             user.clone(),
             realname,
             host.clone(),
+            ip,
             &security_config.cloak_secret,
             &security_config.cloak_suffix,
             self.state.capabilities.clone(),
@@ -272,45 +281,56 @@ impl<'a> WelcomeBurstWriter<'a> {
         );
         self.write(myinfo).await?;
 
-        // 005 RPL_ISUPPORT (Line 1)
-        let isupport1 = server_reply(
-            server_name,
-            Response::RPL_ISUPPORT,
-            vec![
-                nick.clone(),
-                format!("NETWORK={}", network),
-                "CASEMAPPING=rfc1459".to_string(),
-                "CHANTYPES=#&+!".to_string(),
-                "PREFIX=(qaohv)~&@%+".to_string(),
-                "CHANMODES=beIq,k,l,imnrst".to_string(),
-                "are supported by this server".to_string(),
-            ],
-        );
-        self.write(isupport1).await?;
+        // Build ISUPPORT tokens using typed builders
+        let chanmodes = ChanModesBuilder::new()
+            .list_modes("beIq")
+            .param_always("k")
+            .param_set("l")
+            .no_param("imnrst");
 
-        // 005 RPL_ISUPPORT (Line 2)
-        let isupport2 = server_reply(
-            server_name,
-            Response::RPL_ISUPPORT,
-            vec![
-                nick.clone(),
-                "NICKLEN=30".to_string(),
-                "CHANNELLEN=50".to_string(),
-                "TOPICLEN=390".to_string(),
-                "KICKLEN=390".to_string(),
-                "AWAYLEN=200".to_string(),
-                "MODES=6".to_string(),
-                "MAXTARGETS=4".to_string(),
-                "TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10".to_string(),
-                "MONITOR=100".to_string(),
-                "EXCEPTS=e".to_string(),
-                "INVEX=I".to_string(),
-                "ELIST=MNU".to_string(),
-                "STATUSMSG=~&@%+".to_string(),
-                "are supported by this server".to_string(),
-            ],
-        );
-        self.write(isupport2).await?;
+        let targmax = TargMaxBuilder::new()
+            .add("JOIN", 10)
+            .add("PART", 10)
+            .add("KICK", 4)
+            .add("PRIVMSG", 4)
+            .add("NOTICE", 4)
+            .add("NAMES", 10)
+            .add("WHOIS", 1)
+            .add("WHOWAS", 10);
+
+        let builder = IsupportBuilder::new()
+            .network(network)
+            .casemapping("rfc1459")
+            .chantypes("#&+!")
+            .prefix("~&@%+", "qaohv")
+            .chanmodes_typed(chanmodes)
+            .max_nick_length(30)
+            .custom("CHANNELLEN", Some("50"))
+            .max_topic_length(390)
+            .custom("KICKLEN", Some("390"))
+            .custom("AWAYLEN", Some("200"))
+            .modes_count(6)
+            .custom("MAXTARGETS", Some("4"))
+            .targmax(targmax)
+            .custom("MONITOR", Some("100"))
+            .excepts(Some('e'))
+            .invex(Some('I'))
+            .custom("ELIST", Some("MNU"))
+            .status_msg("~&@%+");
+
+        // Send ISUPPORT lines (max 13 tokens per line to be safe)
+        for line in builder.build_lines(13) {
+            let reply = server_reply(
+                server_name,
+                Response::RPL_ISUPPORT,
+                vec![
+                    nick.clone(),
+                    line,
+                    "are supported by this server".to_string(),
+                ],
+            );
+            self.write(reply).await?;
+        }
 
         // 396 RPL_HOSTHIDDEN
         let hosthidden = server_reply(
