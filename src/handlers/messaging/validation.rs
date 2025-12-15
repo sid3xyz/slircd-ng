@@ -77,6 +77,11 @@ pub async fn validate_message_send(
         && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
             detector.check_message_repetition(&uid_string, text)
     {
+        // Record violation
+        if let Ok(ip) = snapshot.ip.parse() {
+            detector.record_violation(ip, "repetition").await;
+        }
+
         debug!(
             uid = %uid_string,
             pattern = %pattern,
@@ -102,12 +107,18 @@ pub async fn validate_message_send(
 
     // Check for content spam (skip for trusted users)
     let is_trusted = snapshot.is_oper || snapshot.account.is_some();
+    let is_private = !target.starts_with('#') && !target.starts_with('&');
 
     if !is_trusted
         && let Some(detector) = &ctx.matrix.spam_detector
         && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
-            detector.check_message(text)
+            detector.check_message(&uid_string, &snapshot.ip, text, is_private).await
     {
+        // Record violation
+        if let Ok(ip) = snapshot.ip.parse() {
+            detector.record_violation(ip, &pattern).await;
+        }
+
         debug!(
             uid = %uid_string,
             pattern = %pattern,

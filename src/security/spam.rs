@@ -20,8 +20,14 @@ use dashmap::DashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
+use std::net::IpAddr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, warn};
+
+use crate::config::SecurityConfig;
+use crate::db::Database;
+use crate::security::{DnsblService, HeuristicsEngine, ReputationManager};
 
 /// Spam detection result
 #[derive(Debug, Clone, PartialEq)]
@@ -49,11 +55,16 @@ pub struct SpamDetectionService {
     max_char_repetition: usize,
     /// Recent message hashes per user for repetition detection.
     recent_messages: DashMap<String, VecDeque<(Instant, u64)>>,
+
+    // New Components (TODO: integrate fully)
+    reputation: Option<Arc<ReputationManager>>,
+    dnsbl: Option<Arc<DnsblService>>,
+    heuristics: Option<HeuristicsEngine>,
 }
 
 impl SpamDetectionService {
-    /// Create new spam detection service with default patterns
-    pub fn new() -> Self {
+    /// Create new spam detection service
+    pub fn new(db: Option<Database>, config: SecurityConfig) -> Self {
         let keywords = Self::default_spam_keywords();
         let matcher = match AhoCorasick::builder()
             .ascii_case_insensitive(true)
@@ -70,13 +81,62 @@ impl SpamDetectionService {
             }
         };
 
+        // Initialize Heuristics with config
+        let heuristics_config = config.spam.heuristics.clone();
+        let heuristics = if heuristics_config.enabled {
+            Some(HeuristicsEngine::new(heuristics_config))
+        } else {
+            None
+        };
+
+        // Initialize Reputation
+        let reputation = if config.spam.reputation_enabled {
+            db.map(|d| Arc::new(ReputationManager::new(d.pool().clone())))
+        } else {
+            None
+        };
+
+        // Initialize DNSBL
+        let dnsbl = if config.spam.dnsbl_enabled {
+            Some(Arc::new(DnsblService::new()))
+        } else {
+            None
+        };
+
         Self {
             keyword_matcher: matcher,
             raw_keywords: keywords.into_iter().collect(),
             url_shorteners: Self::default_url_shorteners(),
-            entropy_threshold: 3.0, // Tuned based on IRC spam corpus analysis
+            entropy_threshold: 3.0,
             max_char_repetition: 10,
             recent_messages: DashMap::new(),
+            reputation,
+            dnsbl,
+            heuristics,
+        }
+    }
+
+    /// Check if an IP is listed in DNSBLs.
+    pub async fn check_ip_dnsbl(&self, ip: IpAddr) -> bool {
+        if let Some(dnsbl) = &self.dnsbl {
+            dnsbl.check_ip(ip).await.is_some()
+        } else {
+            false
+        }
+    }
+
+    /// Record a successful connection (boost reputation).
+    pub async fn record_connection_success(&self, ip: IpAddr) {
+        if let Some(rep) = &self.reputation {
+            rep.record_connection(&ip.to_string()).await;
+        }
+    }
+
+    /// Record a spam violation (penalize reputation).
+    pub async fn record_violation(&self, ip: IpAddr, _reason: &str) {
+        if let Some(rep) = &self.reputation {
+            // Default penalty 20 for spam
+            rep.record_violation(&ip.to_string(), 20).await;
         }
     }
 
@@ -187,7 +247,51 @@ impl SpamDetectionService {
         shorteners.into_iter().map(|s| s.to_lowercase()).collect()
     }
 
-    /// Check if message is spam
+    /// Check if message is spam using weighted scoring
+    pub async fn check_message(&self, uid: &str, _ip: &str, text: &str, is_private: bool) -> SpamVerdict {
+        // 1. Reputation Check (Fast Path)
+        // High trust users bypass spam checks
+        if let Some(reputation) = &self.reputation {
+            let trust_score = reputation.get_trust_score(uid).await;
+            if trust_score > 80 {
+                return SpamVerdict::Clean;
+            }
+        }
+
+        // 2. Heuristics Analysis
+        let heuristic_risk = if let Some(heuristics) = &self.heuristics {
+            heuristics.analyze(uid, text, is_private)
+        } else {
+            0.0
+        };
+
+        // 3. Content Analysis
+        let content_verdict = self.check_content(text);
+        let content_risk = match &content_verdict {
+            SpamVerdict::Clean => 0.0,
+            SpamVerdict::Spam { confidence, .. } => *confidence,
+        };
+
+        // 4. Weighted Scoring
+        // Heuristics: 40%, Content: 60%
+        let total_risk = (heuristic_risk * 0.4) + (content_risk * 0.6);
+
+        if total_risk > 0.7 {
+             // If content triggered it, return that reason
+             if let SpamVerdict::Spam { pattern, .. } = content_verdict {
+                 return SpamVerdict::Spam { pattern, confidence: total_risk };
+             }
+             // Otherwise return heuristic reason
+             return SpamVerdict::Spam {
+                 pattern: format!("heuristic_risk:{:.2}", heuristic_risk),
+                 confidence: total_risk
+             };
+        }
+
+        SpamVerdict::Clean
+    }
+
+    /// Check content for spam indicators (Internal)
     ///
     /// # Arguments
     /// * `text` - Message content to analyze
@@ -201,7 +305,7 @@ impl SpamDetectionService {
     /// - Entropy: O(m) where m = message length
     /// - URL check: O(u) where u = number of URLs
     /// - Total: ~1-5μs per message on modern hardware
-    pub fn check_message(&self, text: &str) -> SpamVerdict {
+    pub(crate) fn check_content(&self, text: &str) -> SpamVerdict {
         // LAYER 1: Keyword matching
         if let Some(keyword) = self.check_keywords(text) {
             debug!("Spam keyword detected: {}", keyword);
@@ -431,47 +535,45 @@ impl SpamDetectionService {
     }
 }
 
-impl Default for SpamDetectionService {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn new_test() -> SpamDetectionService {
+        SpamDetectionService::new(None, SecurityConfig::default())
+    }
+
     #[test]
     fn test_clean_message() {
-        let service = SpamDetectionService::new();
-        let verdict = service.check_message("Hello everyone, how are you today?");
+        let service = new_test();
+        let verdict = service.check_content("Hello everyone, how are you today?");
         assert_eq!(verdict, SpamVerdict::Clean);
     }
 
     #[test]
     fn test_spam_keyword() {
-        let service = SpamDetectionService::new();
-        let verdict = service.check_message("Buy viagra now at discount prices!");
+        let service = new_test();
+        let verdict = service.check_content("Buy viagra now at discount prices!");
         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
     }
 
     #[test]
     fn test_character_repetition() {
-        let service = SpamDetectionService::new();
-        let verdict = service.check_message("aaaaaaaaaaaaaaaaaaaaaa");
+        let service = new_test();
+        let verdict = service.check_content("aaaaaaaaaaaaaaaaaaaaaa");
         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
     }
 
     #[test]
     fn test_url_shortener() {
-        let service = SpamDetectionService::new();
-        let verdict = service.check_message("Check out this link: bit.ly/spam123");
+        let service = new_test();
+        let verdict = service.check_content("Check out this link: bit.ly/spam123");
         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
     }
 
     #[test]
     fn test_entropy_calculation() {
-        let service = SpamDetectionService::new();
+        let service = new_test();
 
         // Normal text should have high entropy
         let high_entropy = service.calculate_entropy("The quick brown fox jumps over the lazy dog");
@@ -484,30 +586,30 @@ mod tests {
 
     #[test]
     fn test_ctcp_flood() {
-        let service = SpamDetectionService::new();
-        let verdict = service.check_message("\x01VERSION\x01\x01PING\x01\x01FINGER\x01");
+        let service = new_test();
+        let verdict = service.check_content("\x01VERSION\x01\x01PING\x01\x01FINGER\x01");
         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
     }
 
     #[test]
     fn test_custom_keyword() {
-        let mut service = SpamDetectionService::new();
+        let mut service = new_test();
         service.add_keyword("testspam".to_string());
 
-        let verdict = service.check_message("This message contains testspam");
+        let verdict = service.check_content("This message contains testspam");
         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
     }
 
     #[test]
     fn test_case_insensitive_keyword() {
-        let service = SpamDetectionService::new();
-        let verdict = service.check_message("Buy VIAGRA now!");
+        let service = new_test();
+        let verdict = service.check_content("Buy VIAGRA now!");
         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
     }
 
     #[test]
     fn test_configuration() {
-        let mut service = SpamDetectionService::new();
+        let mut service = new_test();
 
         // Test entropy threshold modification
         service.set_entropy_threshold(2.5);
@@ -519,13 +621,13 @@ mod tests {
 
         // Test repetition configuration
         service.set_max_repetition(5);
-        let verdict = service.check_message("aaaaaa"); // 6 chars
+        let verdict = service.check_content("aaaaaa"); // 6 chars
         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
     }
 
     #[test]
     fn test_message_repetition() {
-        let service = SpamDetectionService::new();
+        let service = new_test();
         let uid = "000AAAAAA";
         let msg = "Hello world";
 
