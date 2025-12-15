@@ -77,8 +77,6 @@ pub enum ServiceEffect {
     /// Broadcast account change to all shared channels (account-notify capability).
     /// Sends `:old_prefix ACCOUNT new_account` to channel members with account-notify.
     /// If new_account is "*", user logged out.
-    /// TODO: Use from NickServ IDENTIFY/LOGOUT when account-notify is fully implemented.
-    #[allow(dead_code)]
     BroadcastAccount {
         target_uid: String,
         /// Account name, or "*" for logout.
@@ -168,16 +166,11 @@ pub async fn apply_effect(
             account,
         } => {
             // Get user info for MODE broadcast before we modify the user
-            let (nick, user_str, host, channels) = {
+            let nick = {
                 let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
-                    (
-                        user.nick.clone(),
-                        user.user.clone(),
-                        user.host.clone(),
-                        user.channels.iter().cloned().collect::<Vec<_>>(),
-                    )
+                    user.nick.clone()
                 } else {
                     return;
                 }
@@ -212,40 +205,16 @@ pub async fn apply_effect(
                 let _ = sender.send(mode_msg).await;
             }
 
-            // Broadcast ACCOUNT message for account-notify capability (IRCv3.1)
-            // This IS broadcast to shared channels (exclude the user - they get it directly)
-            let account_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::new(&nick, &user_str, &host)),
-                command: Command::ACCOUNT(account.clone()),
-            };
-
-            for channel_name in &channels {
-                matrix
-                    .broadcast_to_channel(channel_name, account_msg.clone(), Some(&target_uid))
-                    .await;
-            }
-
-            // Send ACCOUNT to the user themselves
-            if let Some(sender) = matrix.senders.get(&target_uid).map(|s| s.clone()) {
-                let _ = sender.send(account_msg).await;
-            }
-
             info!(uid = %target_uid, account = %account, "User identified to account");
         }
 
         ServiceEffect::AccountClear { target_uid } => {
             // Get user info for MODE broadcast
-            let (nick, user_str, host, channels) = {
+            let nick = {
                 let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
-                    (
-                        user.nick.clone(),
-                        user.user.clone(),
-                        user.host.clone(),
-                        user.channels.iter().cloned().collect::<Vec<_>>(),
-                    )
+                    user.nick.clone()
                 } else {
                     return;
                 }
@@ -275,25 +244,6 @@ pub async fn apply_effect(
             let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
             if let Some(sender) = sender {
                 let _ = sender.send(mode_msg).await;
-            }
-
-            // Broadcast ACCOUNT * message (account unset) for account-notify capability
-            // This IS broadcast to shared channels (exclude the user - they get it directly)
-            let account_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::new(&nick, &user_str, &host)),
-                command: Command::ACCOUNT("*".to_string()),
-            };
-
-            for channel_name in &channels {
-                matrix
-                    .broadcast_to_channel(channel_name, account_msg.clone(), Some(&target_uid))
-                    .await;
-            }
-
-            // Send ACCOUNT to the user themselves
-            if let Some(sender) = matrix.senders.get(&target_uid).map(|s| s.clone()) {
-                let _ = sender.send(account_msg).await;
             }
 
             info!(uid = %target_uid, "User account cleared");

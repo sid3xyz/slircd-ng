@@ -32,7 +32,11 @@ pub async fn handle_register(
                 reply_effect(uid, "You are now identified to your account."),
                 ServiceEffect::AccountIdentify {
                     target_uid: uid.to_string(),
-                    account: account.name,
+                    account: account.name.clone(),
+                },
+                ServiceEffect::BroadcastAccount {
+                    target_uid: uid.to_string(),
+                    new_account: account.name,
                 },
             ]
         }

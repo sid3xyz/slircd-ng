@@ -30,7 +30,11 @@ pub async fn handle_identify(
                 ),
                 ServiceEffect::AccountIdentify {
                     target_uid: uid.to_string(),
-                    account: account.name,
+                    account: account.name.clone(),
+                },
+                ServiceEffect::BroadcastAccount {
+                    target_uid: uid.to_string(),
+                    new_account: account.name,
                 },
                 // Cancel any pending nick enforcement timer
                 ServiceEffect::ClearEnforceTimer {

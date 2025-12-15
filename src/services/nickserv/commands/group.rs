@@ -41,6 +41,10 @@ pub async fn handle_group(
                     target_uid: uid.to_string(),
                     account: account_name.to_string(),
                 },
+                ServiceEffect::BroadcastAccount {
+                    target_uid: uid.to_string(),
+                    new_account: account_name.to_string(),
+                },
             ]
         }
         Err(crate::db::DbError::AccountNotFound(_)) => reply_effects(

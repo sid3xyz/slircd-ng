@@ -33,6 +33,10 @@ pub async fn handle_drop(
                 ServiceEffect::AccountClear {
                     target_uid: uid.to_string(),
                 },
+                ServiceEffect::BroadcastAccount {
+                    target_uid: uid.to_string(),
+                    new_account: "*".to_string(),
+                },
             ]
         }
         Err(crate::db::DbError::AccountNotFound(_)) => {
