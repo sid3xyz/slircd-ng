@@ -41,8 +41,8 @@ use crate::handlers::{
     mode::ModeHandler,
     monitor::MonitorHandler,
     oper::{
-        ChghostHandler, DieHandler, KillHandler, OperHandler, RehashHandler, RestartHandler,
-        TraceHandler, VhostHandler, WallopsHandler,
+        ChghostHandler, ChgIdentHandler, DieHandler, GlobOpsHandler, KillHandler, OperHandler,
+        RehashHandler, RestartHandler, TraceHandler, VhostHandler, WallopsHandler,
     },
     server_query::{
         AdminHandler, HelpHandler, InfoHandler, LinksHandler, LusersHandler, MapHandler,
@@ -177,10 +177,12 @@ impl Registry {
         post_reg_handlers.insert("OPER", Box::new(OperHandler));
         post_reg_handlers.insert("KILL", Box::new(KillHandler));
         post_reg_handlers.insert("WALLOPS", Box::new(WallopsHandler));
+        post_reg_handlers.insert("GLOBOPS", Box::new(GlobOpsHandler));
         post_reg_handlers.insert("DIE", Box::new(DieHandler));
         post_reg_handlers.insert("REHASH", Box::new(RehashHandler));
         post_reg_handlers.insert("RESTART", Box::new(RestartHandler));
         post_reg_handlers.insert("CHGHOST", Box::new(ChghostHandler));
+        post_reg_handlers.insert("CHGIDENT", Box::new(ChgIdentHandler));
         post_reg_handlers.insert("VHOST", Box::new(VhostHandler));
         post_reg_handlers.insert("TRACE", Box::new(TraceHandler));
 

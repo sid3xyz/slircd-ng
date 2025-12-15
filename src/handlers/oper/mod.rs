@@ -3,6 +3,8 @@
 mod admin;
 mod auth;
 mod chghost;
+mod chgident;
+mod globops;
 mod kill;
 mod trace;
 mod vhost;
@@ -11,6 +13,8 @@ mod wallops;
 pub use admin::{DieHandler, RehashHandler, RestartHandler};
 pub use auth::OperHandler;
 pub use chghost::ChghostHandler;
+pub use chgident::ChgIdentHandler;
+pub use globops::GlobOpsHandler;
 pub use kill::KillHandler;
 pub use trace::TraceHandler;
 pub use vhost::VhostHandler;
