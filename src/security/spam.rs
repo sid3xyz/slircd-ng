@@ -212,16 +212,20 @@ impl SpamDetectionService {
         }
 
         // LAYER 2: Entropy analysis (gibberish detection)
-        let entropy = self.calculate_entropy(text);
-        if entropy < self.entropy_threshold {
-            debug!(
-                "Low entropy detected: {} (threshold: {})",
-                entropy, self.entropy_threshold
-            );
-            return SpamVerdict::Spam {
-                pattern: format!("entropy:{:.2}", entropy),
-                confidence: 0.7,
-            };
+        // Only check entropy for messages long enough to be statistically significant
+        // Short messages (e.g. "hi", "hello", "ok") naturally have low entropy
+        if text.len() > 20 {
+            let entropy = self.calculate_entropy(text);
+            if entropy < self.entropy_threshold {
+                debug!(
+                    "Low entropy detected: {} (threshold: {})",
+                    entropy, self.entropy_threshold
+                );
+                return SpamVerdict::Spam {
+                    pattern: format!("entropy:{:.2}", entropy),
+                    confidence: 0.7,
+                };
+            }
         }
 
         // LAYER 3: Character repetition (flood detection)
