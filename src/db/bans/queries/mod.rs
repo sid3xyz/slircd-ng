@@ -123,6 +123,10 @@ impl<'a> BanRepository<'a> {
         fn matches_rline(realname: &str) -> Result<Option<super::models::Rline>, DbError>
             => rline::matches_rline;
 
+        /// Get all active R-lines (not expired).
+        fn get_active_rlines() -> Result<Vec<super::models::Rline>, DbError>
+            => rline::get_active_rlines;
+
         // ========== Shun operations ==========
 
         /// Add a shun.

@@ -152,23 +152,48 @@ impl<S: SessionState> UniversalHandler<S> for RegisterHandler {
         }
 
         // Create the account
-        // For now, we'll use a mock implementation
-        // In production, this would hash the password and store in DB
-
-        // Send success response
-        let success_msg = Message {
-            tags: None,
-            prefix: Some(Prefix::new_from_str(server_name)),
-            command: Command::Raw(
-                "REGISTER".to_string(),
-                vec![
-                    "SUCCESS".to_string(),
-                    target_account.to_string(),
-                    "Account created".to_string(),
-                ],
-            ),
-        };
-        ctx.sender.send(success_msg).await?;
+        match ctx
+            .db
+            .accounts()
+            .register(&target_account, password, Some(email))
+            .await
+        {
+            Ok(_) => {
+                // Send success response
+                let success_msg = Message {
+                    tags: None,
+                    prefix: Some(Prefix::new_from_str(server_name)),
+                    command: Command::Raw(
+                        "REGISTER".to_string(),
+                        vec![
+                            "SUCCESS".to_string(),
+                            target_account.to_string(),
+                            "Account created".to_string(),
+                        ],
+                    ),
+                };
+                ctx.sender.send(success_msg).await?;
+            }
+            Err(crate::db::DbError::AccountExists(_)) => {
+                let reply = fail_response(
+                    server_name,
+                    "ACCOUNT_EXISTS",
+                    &nick,
+                    "Account already exists",
+                );
+                ctx.sender.send(reply).await?;
+            }
+            Err(e) => {
+                tracing::error!("Failed to register account: {}", e);
+                let reply = fail_response(
+                    server_name,
+                    "REG_INVALID_CALLBACK",
+                    &nick,
+                    "Internal error during registration",
+                );
+                ctx.sender.send(reply).await?;
+            }
+        }
 
         Ok(())
     }

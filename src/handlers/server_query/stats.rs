@@ -157,6 +157,74 @@ impl PostRegHandler for StatsHandler {
                     }
                 }
             }
+            'd' | 'D' => {
+                // D-lines (IP bans)
+                if let Ok(dlines) = ctx.db.bans().get_active_dlines().await {
+                    for dline in dlines {
+                        let duration = dline.expires_at.map(|exp| exp - dline.set_at).unwrap_or(0);
+                        let reason = dline.reason.unwrap_or_default();
+                        // :server 220 nick D <mask> <set_at> <duration> <setter> :<reason>
+                        ctx.send_reply(
+                            Response::RPL_STATSDLINE,
+                            vec![
+                                nick.to_string(),
+                                "D".to_string(),
+                                dline.mask,
+                                dline.set_at.to_string(),
+                                duration.to_string(),
+                                dline.set_by,
+                                reason,
+                            ],
+                        )
+                        .await?;
+                    }
+                }
+            }
+            'r' | 'R' => {
+                // R-lines (Realname bans)
+                if let Ok(rlines) = ctx.db.bans().get_active_rlines().await {
+                    for rline in rlines {
+                        let duration = rline.expires_at.map(|exp| exp - rline.set_at).unwrap_or(0);
+                        let reason = rline.reason.unwrap_or_default();
+                        // :server 220 nick R <mask> <set_at> <duration> <setter> :<reason>
+                        ctx.send_reply(
+                            Response::RPL_STATSDLINE,
+                            vec![
+                                nick.to_string(),
+                                "R".to_string(),
+                                rline.mask,
+                                rline.set_at.to_string(),
+                                duration.to_string(),
+                                rline.set_by,
+                                reason,
+                            ],
+                        )
+                        .await?;
+                    }
+                }
+            }
+            's' | 'S' => {
+                // Shuns
+                if let Ok(shuns) = ctx.db.bans().get_active_shuns().await {
+                    for shun in shuns {
+                        let duration = shun.expires_at.map(|exp| exp - shun.set_at).unwrap_or(0);
+                        let reason = shun.reason.unwrap_or_default();
+                        // :server 226 nick <mask> <set_at> <duration> <setter> :<reason>
+                        ctx.send_reply(
+                            Response::RPL_STATSSHUN,
+                            vec![
+                                nick.to_string(),
+                                shun.mask,
+                                shun.set_at.to_string(),
+                                duration.to_string(),
+                                shun.set_by,
+                                reason,
+                            ],
+                        )
+                        .await?;
+                    }
+                }
+            }
             'c' | 'C' => {
                 // Connection statistics
                 let current_users = ctx.matrix.users.len();
@@ -212,6 +280,9 @@ impl PostRegHandler for StatsHandler {
                     "*** k - K-lines (local bans)",
                     "*** g - G-lines (global bans)",
                     "*** z - Z-lines (IP bans)",
+                    "*** d - D-lines (IP bans)",
+                    "*** r - R-lines (Realname bans)",
+                    "*** s - Shuns",
                     "*** c - Connection statistics",
                     "*** m - Command usage statistics",
                     "*** ? - This help message",
