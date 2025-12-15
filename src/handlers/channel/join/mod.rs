@@ -90,6 +90,33 @@ impl PostRegHandler for JoinHandler {
             vec![None; channels.len()]
         };
 
+        // IRCv3 labeled-response: Wrap multi-channel JOIN in BATCH if labeled
+        let needs_batch = channels.len() > 1
+            && ctx.label.is_some()
+            && ctx.state.capabilities.contains("labeled-response")
+            && ctx.state.capabilities.contains("batch");
+
+        if needs_batch {
+            use uuid::Uuid;
+            let id = Uuid::new_v4().simple().to_string();
+
+            // Start BATCH
+            let batch_start = slirc_proto::Message {
+                tags: None,
+                prefix: Some(slirc_proto::Prefix::ServerName(ctx.matrix.server_info.name.clone())),
+                command: slirc_proto::Command::BATCH(
+                    format!("+{}", id),
+                    Some(slirc_proto::BatchSubCommand::CUSTOM("labeled-response".to_string())),
+                    None,
+                ),
+            };
+            ctx.sender.send(batch_start).await?;
+
+            // Set active batch and suppress automatic label handling
+            ctx.active_batch_id = Some(id);
+            ctx.suppress_labeled_ack = true;
+        }
+
         for (i, channel_name) in channels.iter().enumerate() {
             let channel_name = channel_name.trim();
             if channel_name.is_empty() {
@@ -97,7 +124,7 @@ impl PostRegHandler for JoinHandler {
             }
 
             if !channel_name.is_channel_name() {
-                let reply = server_reply(
+                let mut reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHCHANNEL,
                     vec![
@@ -106,12 +133,32 @@ impl PostRegHandler for JoinHandler {
                         "Invalid channel name".to_string(),
                     ],
                 );
+
+                // Add batch tag if we're in a batch
+                if let Some(bid) = &ctx.active_batch_id {
+                    reply = reply.with_tag("batch", Some(bid));
+                }
+
                 ctx.sender.send(reply).await?;
                 continue;
             }
 
             let key = keys.get(i).and_then(|k| *k);
             join_channel(ctx, channel_name, key).await?;
+        }
+
+        // End BATCH if we started one
+        if let Some(bid) = ctx.active_batch_id.take() {
+            let batch_end = slirc_proto::Message {
+                tags: None,
+                prefix: Some(slirc_proto::Prefix::ServerName(ctx.matrix.server_info.name.clone())),
+                command: slirc_proto::Command::BATCH(
+                    format!("-{}", bid),
+                    None,
+                    None,
+                ),
+            };
+            ctx.sender.send(batch_end).await?;
         }
 
         Ok(())

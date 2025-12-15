@@ -41,6 +41,8 @@ pub struct Context<'a, S> {
     pub label: Option<String>,
     /// Suppress automatic labeled-response ACK/BATCH wrapping.
     pub suppress_labeled_ack: bool,
+    /// Active batch ID for grouping labeled responses.
+    pub active_batch_id: Option<String>,
     /// Command registry (for STATS m command usage tracking).
     pub registry: &'a Arc<Registry>,
 }
@@ -68,6 +70,7 @@ impl<'a, S> Context<'a, S> {
             remote_addr,
             label,
             suppress_labeled_ack: false,
+            active_batch_id: None,
             registry,
         }
     }

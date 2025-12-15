@@ -55,6 +55,7 @@ pub async fn run_handshake_loop(
                     remote_addr: addr,
                     label,
                     suppress_labeled_ack: false,
+                    active_batch_id: None,
                     registry,
                 };
 
@@ -262,6 +263,7 @@ pub async fn run_event_loop(
                                 remote_addr: addr,
                                 label: label.clone(),
                                 suppress_labeled_ack: false,
+                                active_batch_id: None,
                                 registry,
                             };
 

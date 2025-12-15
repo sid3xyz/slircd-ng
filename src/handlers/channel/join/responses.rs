@@ -26,11 +26,17 @@ pub(super) async fn handle_join_success(
     }
 
     // Send JOIN message to user
-    let self_join_msg = if ctx.state.capabilities.contains("extended-join") {
+    let mut self_join_msg = if ctx.state.capabilities.contains("extended-join") {
         extended_join_msg.clone()
     } else {
         standard_join_msg.clone()
     };
+
+    // Add batch tag if we're in a batch
+    if let Some(ref batch_id) = ctx.active_batch_id {
+        self_join_msg = self_join_msg.with_tag("batch", Some(batch_id));
+    }
+
     ctx.sender.send(self_join_msg).await?;
 
     // Broadcast AWAY if user is away
@@ -67,7 +73,7 @@ pub(super) async fn send_channel_topic(
     data: &crate::state::actor::JoinSuccessData,
 ) -> HandlerResult {
     if let Some(topic) = &data.topic {
-        let topic_reply = server_reply(
+        let mut topic_reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_TOPIC,
             vec![
@@ -76,6 +82,12 @@ pub(super) async fn send_channel_topic(
                 topic.text.clone(),
             ],
         );
+
+        // Add batch tag if we're in a batch
+        if let Some(ref batch_id) = ctx.active_batch_id {
+            topic_reply = topic_reply.with_tag("batch", Some(batch_id));
+        }
+
         ctx.sender.send(topic_reply).await?;
 
         let topic_who_reply = server_reply(
@@ -123,7 +135,7 @@ pub(super) async fn send_names_list(
             }
         }
 
-        let names_reply = server_reply(
+        let mut names_reply = server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_NAMREPLY,
             vec![
@@ -133,10 +145,16 @@ pub(super) async fn send_names_list(
                 names_list.join(" "),
             ],
         );
+
+        // Add batch tag if we're in a batch
+        if let Some(ref batch_id) = ctx.active_batch_id {
+            names_reply = names_reply.with_tag("batch", Some(batch_id));
+        }
+
         ctx.sender.send(names_reply).await?;
     }
 
-    let end_names = with_label(
+    let mut end_names = with_label(
         server_reply(
             &ctx.matrix.server_info.name,
             Response::RPL_ENDOFNAMES,
@@ -148,6 +166,12 @@ pub(super) async fn send_names_list(
         ),
         ctx.label.as_deref(),
     );
+
+    // Add batch tag if we're in a batch
+    if let Some(ref batch_id) = ctx.active_batch_id {
+        end_names = end_names.with_tag("batch", Some(batch_id));
+    }
+
     ctx.sender.send(end_names).await?;
 
     Ok(())
