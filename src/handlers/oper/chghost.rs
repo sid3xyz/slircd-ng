@@ -28,7 +28,7 @@ impl PostRegHandler for ChghostHandler {
 
         // Request oper capability from authority (Innovation 4)
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
-        if authority.request_kill_cap(ctx.uid).await.is_none() {
+        if authority.request_chghost_cap(ctx.uid).await.is_none() {
             let reply = Response::err_noprivileges(&oper_nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
             ctx.sender.send(reply).await?;

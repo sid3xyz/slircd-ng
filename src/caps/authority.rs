@@ -460,6 +460,86 @@ impl CapabilityAuthority {
         }
     }
 
+    /// Request capability to change user hosts (CHGHOST).
+    ///
+    /// Returns `Some(Cap<ChgHostCap>)` if the user is an IRC operator.
+    #[instrument(skip(self), level = "trace")]
+    pub async fn request_chghost_cap(&self, uid: &str) -> Option<Cap<ChgHostCap>> {
+        let nick = self.get_nick(uid).await;
+
+        if self.is_oper(uid).await {
+            self.log_grant::<ChgHostCap>(&nick, uid, &());
+            Some(Cap::new(()))
+        } else {
+            self.log_denial::<ChgHostCap>(&nick, uid, &());
+            None
+        }
+    }
+
+    /// Request capability to change user idents (CHGIDENT).
+    ///
+    /// Returns `Some(Cap<ChgIdentCap>)` if the user is an IRC operator.
+    #[instrument(skip(self), level = "trace")]
+    pub async fn request_chgident_cap(&self, uid: &str) -> Option<Cap<ChgIdentCap>> {
+        let nick = self.get_nick(uid).await;
+
+        if self.is_oper(uid).await {
+            self.log_grant::<ChgIdentCap>(&nick, uid, &());
+            Some(Cap::new(()))
+        } else {
+            self.log_denial::<ChgIdentCap>(&nick, uid, &());
+            None
+        }
+    }
+
+    /// Request capability to set VHOSTs.
+    ///
+    /// Returns `Some(Cap<VhostCap>)` if the user is an IRC operator.
+    #[instrument(skip(self), level = "trace")]
+    pub async fn request_vhost_cap(&self, uid: &str) -> Option<Cap<VhostCap>> {
+        let nick = self.get_nick(uid).await;
+
+        if self.is_oper(uid).await {
+            self.log_grant::<VhostCap>(&nick, uid, &());
+            Some(Cap::new(()))
+        } else {
+            self.log_denial::<VhostCap>(&nick, uid, &());
+            None
+        }
+    }
+
+    /// Request capability to send WALLOPS.
+    ///
+    /// Returns `Some(Cap<WallopsCap>)` if the user is an IRC operator.
+    #[instrument(skip(self), level = "trace")]
+    pub async fn request_wallops_cap(&self, uid: &str) -> Option<Cap<WallopsCap>> {
+        let nick = self.get_nick(uid).await;
+
+        if self.is_oper(uid).await {
+            self.log_grant::<WallopsCap>(&nick, uid, &());
+            Some(Cap::new(()))
+        } else {
+            self.log_denial::<WallopsCap>(&nick, uid, &());
+            None
+        }
+    }
+
+    /// Request capability to send GLOBOPS.
+    ///
+    /// Returns `Some(Cap<GlobOpsCap>)` if the user is an IRC operator.
+    #[instrument(skip(self), level = "trace")]
+    pub async fn request_globops_cap(&self, uid: &str) -> Option<Cap<GlobOpsCap>> {
+        let nick = self.get_nick(uid).await;
+
+        if self.is_oper(uid).await {
+            self.log_grant::<GlobOpsCap>(&nick, uid, &());
+            Some(Cap::new(()))
+        } else {
+            self.log_denial::<GlobOpsCap>(&nick, uid, &());
+            None
+        }
+    }
+
     // ========================================================================
     // Special Capability Requests
     // ========================================================================

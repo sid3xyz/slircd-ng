@@ -51,7 +51,7 @@ impl PostRegHandler for WallopsHandler {
 
         // Request GlobalNotice capability from authority (Innovation 4)
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
-        let _wallops_cap = match authority.request_global_notice_cap(ctx.uid).await {
+        let _wallops_cap = match authority.request_wallops_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
                 let reply = Response::err_noprivileges(&sender_nick)

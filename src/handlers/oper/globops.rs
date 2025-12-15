@@ -44,7 +44,7 @@ impl PostRegHandler for GlobOpsHandler {
 
         // Request GlobalNotice capability from authority (reusing this for now)
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
-        if authority.request_global_notice_cap(ctx.uid).await.is_none() {
+        if authority.request_globops_cap(ctx.uid).await.is_none() {
             let reply = Response::err_noprivileges(&sender_nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
             ctx.sender.send(reply).await?;

@@ -26,12 +26,8 @@ impl PostRegHandler for ChgIdentHandler {
         let oper_nick = get_nick_or_star(ctx).await;
 
         // Request oper capability from authority
-        // We reuse request_kill_cap or similar high-level privilege?
-        // Or maybe we need a specific one. For now, let's use request_kill_cap as a placeholder for "oper".
-        // Ideally we should have request_chghost_cap or similar.
-        // Let's check CapabilityAuthority.
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
-        if authority.request_kill_cap(ctx.uid).await.is_none() {
+        if authority.request_chgident_cap(ctx.uid).await.is_none() {
             let reply = Response::err_noprivileges(&oper_nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
             ctx.sender.send(reply).await?;

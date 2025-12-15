@@ -202,6 +202,61 @@ impl Capability for RestartCap {
     const NAME: &'static str = "oper:restart";
 }
 
+/// Capability to change user hosts (CHGHOST).
+///
+/// Scope: Unit (global).
+/// Required: IRC operator with chghost privilege.
+pub struct ChgHostCap;
+
+impl Capability for ChgHostCap {
+    type Scope = ();
+    const NAME: &'static str = "oper:chghost";
+}
+
+/// Capability to change user idents (CHGIDENT).
+///
+/// Scope: Unit (global).
+/// Required: IRC operator with chgident privilege.
+pub struct ChgIdentCap;
+
+impl Capability for ChgIdentCap {
+    type Scope = ();
+    const NAME: &'static str = "oper:chgident";
+}
+
+/// Capability to set VHOSTs.
+///
+/// Scope: Unit (global).
+/// Required: IRC operator with vhost privilege.
+pub struct VhostCap;
+
+impl Capability for VhostCap {
+    type Scope = ();
+    const NAME: &'static str = "oper:vhost";
+}
+
+/// Capability to send WALLOPS.
+///
+/// Scope: Unit (global).
+/// Required: IRC operator with wallops privilege.
+pub struct WallopsCap;
+
+impl Capability for WallopsCap {
+    type Scope = ();
+    const NAME: &'static str = "oper:wallops";
+}
+
+/// Capability to send GLOBOPS.
+///
+/// Scope: Unit (global).
+/// Required: IRC operator with globops privilege.
+pub struct GlobOpsCap;
+
+impl Capability for GlobOpsCap {
+    type Scope = ();
+    const NAME: &'static str = "oper:globops";
+}
+
 // ============================================================================
 // Special Capabilities
 // ============================================================================
