@@ -11,6 +11,8 @@ pub struct User {
     pub user: String,
     pub realname: String,
     pub host: String,
+    /// Real IP address of the connection.
+    pub ip: String,
     /// Visible hostname shown to other users (cloaked for privacy).
     pub visible_host: String,
     /// Unique session identifier for this connection (guards against ghost joins).
@@ -109,14 +111,15 @@ impl User {
         user: String,
         realname: String,
         host: String,
+        ip: String,
         cloak_secret: &str,
         cloak_suffix: &str,
         caps: HashSet<String>,
         certfp: Option<String>,
     ) -> Self {
         // Try to parse as IP for proper cloaking, fall back to hostname cloaking
-        let visible_host = if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-            crate::security::cloaking::cloak_ip_hmac_with_suffix(&ip, cloak_secret, cloak_suffix)
+        let visible_host = if let Ok(addr) = ip.parse::<std::net::IpAddr>() {
+            crate::security::cloaking::cloak_ip_hmac_with_suffix(&addr, cloak_secret, cloak_suffix)
         } else {
             crate::security::cloaking::cloak_hostname(&host, cloak_secret)
         };
@@ -126,6 +129,7 @@ impl User {
             user,
             realname,
             host,
+            ip,
             visible_host,
             session_id: Uuid::new_v4(),
             channels: HashSet::new(),

@@ -75,3 +75,4 @@ aho-corasick = "1.1.4"
 bcrypt = "0.17.1"
 im = "15.1.0"
 redb = "3.1.0"
+hickory-resolver = { version = "0.25.2", features = ["tokio"] }

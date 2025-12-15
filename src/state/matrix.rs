@@ -237,7 +237,10 @@ impl Matrix {
             },
             rate_limiter: RateLimitManager::new(config.security.rate_limits.clone()),
             spam_detector: if config.security.spam_detection_enabled {
-                Some(Arc::new(crate::security::spam::SpamDetectionService::new()))
+                Some(Arc::new(crate::security::spam::SpamDetectionService::new(
+                    Some(db.clone()),
+                    config.security.clone(),
+                )))
             } else {
                 None
             },

@@ -139,6 +139,7 @@ pub struct HistoryConfig {
     pub backend: String,
     /// Retention period (e.g., "7d").
     #[serde(default = "default_history_retention")]
+    #[allow(dead_code)]
     pub retention: String,
     /// Path to history database file.
     #[serde(default = "default_history_path")]
@@ -275,6 +276,9 @@ pub struct SecurityConfig {
     /// Enable spam detection for message content (default: true).
     #[serde(default = "default_spam_detection_enabled")]
     pub spam_detection_enabled: bool,
+    /// Spam detection configuration.
+    #[serde(default)]
+    pub spam: SpamConfig,
     /// Rate limiting configuration.
     #[serde(default)]
     pub rate_limits: RateLimitConfig,
@@ -286,10 +290,77 @@ impl Default for SecurityConfig {
             cloak_secret: default_cloak_secret(),
             cloak_suffix: default_cloak_suffix(),
             spam_detection_enabled: default_spam_detection_enabled(),
+            spam: SpamConfig::default(),
             rate_limits: RateLimitConfig::default(),
         }
     }
 }
+
+/// Spam detection configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SpamConfig {
+    /// Enable DNS Blocklist checks (default: true).
+    #[serde(default = "default_true")]
+    pub dnsbl_enabled: bool,
+    /// Enable Reputation system (default: true).
+    #[serde(default = "default_true")]
+    pub reputation_enabled: bool,
+    /// Heuristics configuration.
+    #[serde(default)]
+    pub heuristics: HeuristicsConfig,
+}
+
+impl Default for SpamConfig {
+    fn default() -> Self {
+        Self {
+            dnsbl_enabled: true,
+            reputation_enabled: true,
+            heuristics: HeuristicsConfig::default(),
+        }
+    }
+}
+
+/// Configuration for behavioral heuristics
+#[derive(Debug, Clone, Deserialize)]
+pub struct HeuristicsConfig {
+    /// Enable heuristics engine (default: true).
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Window size for velocity tracking (seconds)
+    #[serde(default = "default_velocity_window")]
+    pub velocity_window: u64,
+    /// Max messages allowed in velocity window before penalty
+    #[serde(default = "default_max_velocity")]
+    pub max_velocity: usize,
+    /// Window size for fan-out tracking (seconds)
+    #[serde(default = "default_fanout_window")]
+    pub fanout_window: u64,
+    /// Max unique recipients allowed in fan-out window before penalty
+    #[serde(default = "default_max_fanout")]
+    pub max_fanout: usize,
+    /// Decay factor for repetition score (0.0 - 1.0)
+    #[serde(default = "default_repetition_decay")]
+    pub repetition_decay: f32,
+}
+
+impl Default for HeuristicsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            velocity_window: default_velocity_window(),
+            max_velocity: default_max_velocity(),
+            fanout_window: default_fanout_window(),
+            max_fanout: default_max_fanout(),
+            repetition_decay: default_repetition_decay(),
+        }
+    }
+}
+
+fn default_velocity_window() -> u64 { 10 }
+fn default_max_velocity() -> usize { 5 }
+fn default_fanout_window() -> u64 { 60 }
+fn default_max_fanout() -> usize { 10 }
+fn default_repetition_decay() -> f32 { 0.8 }
 
 fn default_cloak_secret() -> String {
     let secret: String = rand::thread_rng()

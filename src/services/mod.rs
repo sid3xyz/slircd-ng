@@ -21,9 +21,7 @@ use tracing::info;
 pub enum ServiceEffect {
     /// Send a message to a specific user (e.g., NOTICE reply).
     Reply {
-        /// Target UID (currently unused - replies go to sender directly).
-        /// TODO: Use for routing when sender != target (e.g., admin commands)
-        #[allow(dead_code)]
+        /// Target UID to route the reply to.
         target_uid: String,
         msg: Message,
     },
@@ -145,20 +143,31 @@ pub async fn apply_effects(
 /// and callers use this function to apply them consistently.
 pub async fn apply_effect(
     matrix: &Arc<Matrix>,
-    nick: &str,
-    sender: &ResponseMiddleware<'_>,
+    _nick: &str,
+    _sender: &ResponseMiddleware<'_>,
     effect: ServiceEffect,
 ) {
     match effect {
         ServiceEffect::Reply {
-            target_uid: _,
+            target_uid,
             mut msg,
         } => {
-            // Set the target nick for the NOTICE
-            if let Command::NOTICE(_, text) = &msg.command {
-                msg.command = Command::NOTICE(nick.to_string(), text.clone());
+            // 1. Resolve the target nickname for the NOTICE command
+            let target_nick = if let Some(user_arc) = matrix.users.get(&target_uid) {
+                user_arc.read().await.nick.clone()
+            } else {
+                // User not found (disconnected?)
+                return;
+            };
+
+            // 2. Route the message to the target's sender channel
+            if let Some(target_tx) = matrix.senders.get(&target_uid) {
+                // Update the NOTICE command with the correct target nick
+                if let Command::NOTICE(_, text) = &msg.command {
+                    msg.command = Command::NOTICE(target_nick, text.clone());
+                }
+                let _ = target_tx.send(msg).await;
             }
-            let _ = sender.send(msg).await;
         }
 
         ServiceEffect::AccountIdentify {

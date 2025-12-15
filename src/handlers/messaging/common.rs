@@ -30,6 +30,8 @@ pub struct SenderSnapshot {
     pub visible_host: String,
     /// Sender's realname (GECOS).
     pub realname: String,
+    /// Sender's IP address.
+    pub ip: String,
     /// Account name if identified.
     pub account: Option<String>,
     /// Whether sender is identified (+r).
@@ -51,6 +53,7 @@ impl SenderSnapshot {
             host: user.host.clone(),
             visible_host: user.visible_host.clone(),
             realname: user.realname.clone(),
+            ip: user.ip.clone(),
             account: user.account.clone(),
             is_registered: user.modes.registered,
             is_oper: user.modes.oper,
@@ -300,7 +303,7 @@ pub async fn route_to_user_with_snapshot(
         // Use pre-fetched trust level from snapshot
         let is_trusted = snapshot.is_oper || snapshot.account.is_some();
 
-        if !is_trusted && let SpamVerdict::Spam { pattern, .. } = detector.check_message(text) {
+        if !is_trusted && let SpamVerdict::Spam { pattern, .. } = detector.check_message(ctx.uid, &snapshot.ip, text, true).await {
             if !opts.is_notice {
                 let _ =
                     send_cannot_send(ctx, &snapshot.nick, target_lower, "Message rejected as spam")

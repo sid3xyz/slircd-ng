@@ -172,6 +172,16 @@ impl Gateway {
                                     let ip = addr.ip();
 
                                     tokio::spawn(async move {
+                                        // DNSBL Check
+                                        #[allow(clippy::collapsible_if)]
+                                        if let Some(spam) = &matrix_conn.spam_detector {
+                                            if spam.check_ip_dnsbl(ip).await {
+                                                warn!(%addr, "Connection rejected by DNSBL");
+                                                matrix_rl.rate_limiter.on_connection_end(ip);
+                                                return;
+                                            }
+                                        }
+
                                         // Perform TLS handshake
                                         match acceptor.accept(stream).await {
                                             Ok(tls_stream) => {
@@ -243,6 +253,16 @@ impl Gateway {
                                     let ip = addr.ip();
 
                                     tokio::spawn(async move {
+                                        // DNSBL Check
+                                        #[allow(clippy::collapsible_if)]
+                                        if let Some(spam) = &matrix_conn.spam_detector {
+                                            if spam.check_ip_dnsbl(ip).await {
+                                                warn!(%addr, "Connection rejected by DNSBL");
+                                                matrix_rl.rate_limiter.on_connection_end(ip);
+                                                return;
+                                            }
+                                        }
+
                                         // CORS validation callback for WebSocket handshake
                                         let cors_callback = |req: &http::Request<()>, response: http::Response<()>| {
                                             // If allow_origins is empty, allow all origins
@@ -334,6 +354,16 @@ impl Gateway {
                             let ip = addr.ip();
 
                             tokio::spawn(async move {
+                                // DNSBL Check
+                                #[allow(clippy::collapsible_if)]
+                                if let Some(spam) = &matrix_conn.spam_detector {
+                                    if spam.check_ip_dnsbl(ip).await {
+                                        warn!(%addr, "Connection rejected by DNSBL");
+                                        matrix_rl.rate_limiter.on_connection_end(ip);
+                                        return;
+                                    }
+                                }
+
                                 let connection = Connection::new_plaintext(
                                     uid.clone(),
                                     stream,
