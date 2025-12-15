@@ -69,7 +69,7 @@ impl PostRegHandler for WhowasHandler {
                 ],
             );
             ctx.sender.send(reply).await?;
-            
+
             // Per RFC 2812, WHOWAS with no params should still send ENDOFWHOWAS
             // Use a placeholder nick for the end message
             let end_reply = server_reply(
@@ -96,7 +96,7 @@ impl PostRegHandler for WhowasHandler {
 
         for target in &target_list {
             let target_lower = irc_to_lower(target);
-            
+
             // Check if target contains wildcards
             if target.contains('*') || target.contains('?') {
                 // Wildcard match - search all entries

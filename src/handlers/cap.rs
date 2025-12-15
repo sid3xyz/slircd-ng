@@ -32,6 +32,7 @@ const SUPPORTED_CAPS: &[Capability] = &[
     Capability::Multiline,
     Capability::AccountRegistration,
     Capability::ChatHistory,
+    Capability::EventPlayback,
 ];
 
 /// Maximum bytes allowed in a multiline batch message.

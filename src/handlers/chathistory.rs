@@ -20,10 +20,57 @@ use uuid::Uuid;
 /// Maximum messages per CHATHISTORY request.
 const MAX_HISTORY_LIMIT: u32 = 100;
 
+/// 1 millisecond in nanoseconds.
+/// IRC timestamps use millisecond precision (ISO8601 with `.3f`), but we store nanoseconds.
+/// When excluding a boundary timestamp, we need to add a full millisecond to ensure
+/// messages at the same millisecond but different sub-millisecond times are excluded.
+const ONE_MILLISECOND_NS: i64 = 1_000_000;
+
 /// Handler for CHATHISTORY command.
 pub struct ChatHistoryHandler;
 
 impl ChatHistoryHandler {
+    async fn resolve_dm_key(
+        &self,
+        ctx: &Context<'_, RegisteredState>,
+        nick: &str,
+        target: &str,
+    ) -> String {
+        // Resolve self (nick) to account
+        // Prefix with 'a:' for account, 'u:' for unregistered nick to avoid collisions
+
+        let sender_key_part = if let Some(acct) = &ctx.state.account {
+            format!("a:{}", slirc_proto::irc_to_lower(acct))
+        } else {
+            // This should not happen for RegisteredState context, but fallback to nick
+            format!("u:{}", slirc_proto::irc_to_lower(nick))
+        };
+
+        // Resolve target to account
+        let target_lower = slirc_proto::irc_to_lower(target);
+        let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(&target_lower) {
+            let uid = uid_ref.value();
+            if let Some(user) = ctx.matrix.users.get(uid) {
+                let u = user.read().await;
+                u.account.clone()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let target_key_part = if let Some(acct) = target_account {
+            format!("a:{}", slirc_proto::irc_to_lower(&acct))
+        } else {
+            format!("u:{}", target_lower)
+        };
+
+        let mut users = [sender_key_part, target_key_part];
+        users.sort();
+        format!("dm:{}:{}", users[0], users[1])
+    }
+
     async fn handle_latest(
         &self,
         ctx: &Context<'_, RegisteredState>,
@@ -36,9 +83,7 @@ impl ChatHistoryHandler {
         let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = [nick.to_string(), target.to_string()];
-            users.sort();
-            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+            self.resolve_dm_key(ctx, nick, target).await
         } else {
             target.to_string()
         };
@@ -51,8 +96,12 @@ impl ChatHistoryHandler {
                 Ok(MessageReference::MsgId(id)) => {
                     ctx.matrix.history.lookup_timestamp(&query_target, &id).await
                         .map_err(|e| HandlerError::Internal(e.to_string()))?
+                        .map(|ts| ts + 1) // Exclusive: exact nanotime, so +1 ns is sufficient
                 }
-                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
+                Ok(MessageReference::Timestamp(ts)) => {
+                    // Timestamps have millisecond precision, add 1ms for exclusivity
+                    Some(parse_server_time(&ts) + ONE_MILLISECOND_NS)
+                }
                 _ => None,
             }
         };
@@ -83,9 +132,7 @@ impl ChatHistoryHandler {
         let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = [nick.to_string(), target.to_string()];
-            users.sort();
-            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+            self.resolve_dm_key(ctx, nick, target).await
         } else {
             target.to_string()
         };
@@ -130,9 +177,7 @@ impl ChatHistoryHandler {
         let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = [nick.to_string(), target.to_string()];
-            users.sort();
-            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+            self.resolve_dm_key(ctx, nick, target).await
         } else {
             target.to_string()
         };
@@ -145,8 +190,12 @@ impl ChatHistoryHandler {
                 Ok(MessageReference::MsgId(id)) => {
                     ctx.matrix.history.lookup_timestamp(&query_target, &id).await
                         .map_err(|e| HandlerError::Internal(e.to_string()))?
+                        .map(|ts| ts + 1) // Exclusive: exact nanotime, so +1 ns is sufficient
                 }
-                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
+                Ok(MessageReference::Timestamp(ts)) => {
+                    // Timestamps have millisecond precision, add 1ms for exclusivity
+                    Some(parse_server_time(&ts) + ONE_MILLISECOND_NS)
+                }
                 _ => None,
             }
         };
@@ -176,9 +225,7 @@ impl ChatHistoryHandler {
         let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = [nick.to_string(), target.to_string()];
-            users.sort();
-            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+            self.resolve_dm_key(ctx, nick, target).await
         } else {
             target.to_string()
         };
@@ -239,54 +286,59 @@ impl ChatHistoryHandler {
         let ref2_str = msg.arg(3).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = [nick.to_string(), target.to_string()];
-            users.sort();
-            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+            self.resolve_dm_key(ctx, nick, target).await
         } else {
             target.to_string()
         };
 
-        // Helper to resolve timestamp
-        // We can't use closure easily with async in this context without boxing or complex types.
-        // Just duplicate logic or use a helper method.
-        // I'll duplicate for now to keep it simple.
-
-        let start_ts = if ref1_str == "*" {
-            None
+        // Parse references, tracking whether they're timestamps (millisecond precision)
+        // or msgids (nanosecond precision) for correct exclusivity offset
+        let (ts1, is_ts1_timestamp) = if ref1_str == "*" {
+            (None, false)
         } else {
             match MessageReference::parse(ref1_str) {
                 Ok(MessageReference::MsgId(id)) => {
-                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
-                        .map_err(|e| HandlerError::Internal(e.to_string()))?
+                    let ts = ctx.matrix.history.lookup_timestamp(&query_target, &id).await
+                        .map_err(|e| HandlerError::Internal(e.to_string()))?;
+                    (ts, false) // msgid has nanosecond precision
                 }
-                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
-                _ => None,
+                Ok(MessageReference::Timestamp(ts)) => {
+                    (Some(parse_server_time(&ts)), true) // timestamp has millisecond precision
+                }
+                _ => (None, false),
             }
         };
 
-        let end_ts = if ref2_str == "*" {
-            None
+        let (ts2, is_ts2_timestamp) = if ref2_str == "*" {
+            (None, false)
         } else {
             match MessageReference::parse(ref2_str) {
                 Ok(MessageReference::MsgId(id)) => {
-                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
-                        .map_err(|e| HandlerError::Internal(e.to_string()))?
+                    let ts = ctx.matrix.history.lookup_timestamp(&query_target, &id).await
+                        .map_err(|e| HandlerError::Internal(e.to_string()))?;
+                    (ts, false) // msgid has nanosecond precision
                 }
-                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
-                _ => None,
+                Ok(MessageReference::Timestamp(ts)) => {
+                    (Some(parse_server_time(&ts)), true) // timestamp has millisecond precision
+                }
+                _ => (None, false),
             }
         };
 
-        let (start, end, reverse) = match (start_ts, end_ts) {
-            (Some(s), Some(e)) => {
-                if s < e {
-                    (Some(s), Some(e), false)
+        // Determine exclusivity offsets based on precision
+        let offset1 = if is_ts1_timestamp { ONE_MILLISECOND_NS } else { 1 };
+        let offset2 = if is_ts2_timestamp { ONE_MILLISECOND_NS } else { 1 };
+
+        let (start, end, reverse) = match (ts1, ts2) {
+            (Some(t1), Some(t2)) => {
+                if t1 > t2 {
+                    (Some(t2 + offset2), Some(t1), true)
                 } else {
-                    (Some(e), Some(s), true)
+                    (Some(t1 + offset1), Some(t2), false)
                 }
             }
-            (Some(s), None) => (Some(s), None, false),
-            (None, Some(e)) => (None, Some(e), true),
+            (Some(t1), None) => (Some(t1 + offset1), None, false),
+            (None, Some(t2)) => (None, Some(t2), false),
             (None, None) => (None, None, false),
         };
 
@@ -298,8 +350,12 @@ impl ChatHistoryHandler {
             reverse,
         };
 
-        let msgs = ctx.matrix.history.query(query).await
+        let mut msgs = ctx.matrix.history.query(query).await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
+
+        if reverse {
+            msgs.reverse();
+        }
 
         Ok(msgs)
     }
@@ -307,7 +363,7 @@ impl ChatHistoryHandler {
     async fn handle_targets(
         &self,
         ctx: &Context<'_, RegisteredState>,
-        _nick: &str,
+        nick: &str,
         limit: u32,
         msg: &MessageRef<'_>,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
@@ -316,7 +372,7 @@ impl ChatHistoryHandler {
 
         let start = if start_str == "*" { 0 } else {
             MessageReference::parse(start_str).ok().and_then(|r| match r {
-                MessageReference::Timestamp(ts) => Some(parse_server_time(&ts)),
+                MessageReference::Timestamp(ts) => Some(parse_server_time(&ts) + 1), // Exclusive start
                 _ => None
             }).unwrap_or(0)
         };
@@ -336,18 +392,35 @@ impl ChatHistoryHandler {
             vec![]
         };
 
-        let targets = ctx.matrix.history.query_targets(start, end, limit as usize, channels).await
+        let targets = ctx.matrix.history.query_targets(start, end, limit as usize, nick.to_string(), channels).await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
 
         let mut msgs = Vec::new();
+        let nick_lower = slirc_proto::irc_to_lower(nick);
+
         for (target_name, timestamp) in targets {
+            let display_target = if target_name.contains('\0') {
+                let parts: Vec<&str> = target_name.split('\0').collect();
+                if parts.len() == 2 {
+                    if parts[0] == nick_lower {
+                        parts[1].to_string()
+                    } else {
+                        parts[0].to_string()
+                    }
+                } else {
+                    target_name.clone()
+                }
+            } else {
+                target_name.clone()
+            };
+
             let dt = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_nanos(timestamp as u64));
             let ts_str = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
             let envelope = MessageEnvelope {
                 command: "TARGET".to_string(),
                 prefix: "".to_string(),
-                target: target_name.clone(),
+                target: display_target.clone(),
                 text: ts_str,
                 tags: None,
             };
@@ -355,7 +428,7 @@ impl ChatHistoryHandler {
             msgs.push(StoredMessage {
                 msgid: "".to_string(),
                 nanotime: timestamp,
-                target: target_name,
+                target: display_target,
                 sender: "".to_string(),
                 account: None,
                 envelope,
@@ -517,6 +590,10 @@ impl PostRegHandler for ChatHistoryHandler {
 }
 
 /// Send history messages wrapped in a BATCH.
+///
+/// Filters events based on client capabilities:
+/// - Without event-playback: only PRIVMSG and NOTICE
+/// - With event-playback: also includes TOPIC, TAGMSG, and future event types
 async fn send_history_batch(
     ctx: &mut Context<'_, crate::state::RegisteredState>,
     _nick: &str,
@@ -526,6 +603,9 @@ async fn send_history_batch(
 ) -> Result<(), crate::handlers::HandlerError> {
     let server_name = &ctx.matrix.server_info.name;
     let batch_id = format!("chathistory-{}", Uuid::new_v4().simple());
+
+    // Check if client has event-playback capability (Innovation 5)
+    let has_event_playback = ctx.state.capabilities.contains("draft/event-playback");
 
     // Start BATCH
     let batch_params = if batch_type == "draft/chathistory-targets" {
@@ -549,8 +629,6 @@ async fn send_history_batch(
     for msg in messages {
         if msg.envelope.command == "TARGET" {
             // Special handling for TARGETS response
-            // Format: CHATHISTORY TARGETS <target> <timestamp>
-            // We stored target in `target` and timestamp in `text`
             let history_msg = Message {
                 tags: Some(vec![Tag::new("batch", Some(batch_id.clone()))]),
                 prefix: None,
@@ -558,6 +636,26 @@ async fn send_history_batch(
             };
             ctx.sender.send(history_msg).await?;
             continue;
+        }
+
+        // Filter events based on event-playback capability
+        let command_type = msg.envelope.command.as_str();
+        match command_type {
+            "PRIVMSG" | "NOTICE" => {
+                // Always include messages
+            }
+            "TOPIC" | "TAGMSG" => {
+                // Only include if client has event-playback
+                if !has_event_playback {
+                    continue;
+                }
+            }
+            _ => {
+                // Future event types (JOIN, PART, MODE, etc.) - require event-playback
+                if !has_event_playback {
+                    continue;
+                }
+            }
         }
 
         let mut tags = vec![
@@ -570,10 +668,32 @@ async fn send_history_batch(
             tags.push(Tag::new("account", Some(account.clone())));
         }
 
+        // Add preserved client-only tags for TAGMSG
+        if let Some(env_tags) = &msg.envelope.tags {
+            for env_tag in env_tags {
+                if env_tag.key.starts_with('+') {
+                    tags.push(Tag::new(&env_tag.key, env_tag.value.clone()));
+                }
+            }
+        }
+
+        // Build the appropriate IRC command based on event type
+        let command = match command_type {
+            "PRIVMSG" => Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone()),
+            "NOTICE" => Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone()),
+            "TOPIC" => Command::TOPIC(msg.envelope.target.clone(), Some(msg.envelope.text.clone())),
+            "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
+            _ => {
+                // Unknown command type - skip
+                warn!(command = %command_type, "Unknown history command type");
+                continue;
+            }
+        };
+
         let history_msg = Message {
             tags: Some(tags),
             prefix: Some(Prefix::new_from_str(&msg.envelope.prefix)),
-            command: Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone()),
+            command,
         };
         ctx.sender.send(history_msg).await?;
     }

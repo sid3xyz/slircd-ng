@@ -249,14 +249,42 @@ impl PostRegHandler for PrivmsgHandler {
                     account: ctx.state.account.clone(),
                 };
 
-                // Store for recipient (so sender can see it when querying recipient)
-                if let Err(e) = ctx.matrix.history.store(target, stored_msg.clone()).await {
-                    debug!(error = %e, "Failed to store DM for recipient");
-                }
+                // Store DM under canonical key (dm:user1:user2 sorted)
+                // Use account name if available, otherwise nick
+                // Prefix with 'a:' for account, 'u:' for unregistered nick to avoid collisions
+                // when account name == nickname.
 
-                // Store for sender (so recipient can see it when querying sender)
-                if let Err(e) = ctx.matrix.history.store(&snapshot.nick, stored_msg).await {
-                    debug!(error = %e, "Failed to store DM for sender");
+                let sender_key_part = if let Some(acct) = &snapshot.account {
+                    format!("a:{}", irc_to_lower(acct))
+                } else {
+                    format!("u:{}", irc_to_lower(&snapshot.nick))
+                };
+
+                let target_lower = irc_to_lower(target);
+                let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(&target_lower) {
+                    let uid = uid_ref.value();
+                    if let Some(user) = ctx.matrix.users.get(uid) {
+                        let u = user.read().await;
+                        u.account.clone()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let target_key_part = if let Some(acct) = target_account {
+                    format!("a:{}", irc_to_lower(&acct))
+                } else {
+                    format!("u:{}", target_lower)
+                };
+
+                let mut users = [sender_key_part, target_key_part];
+                users.sort();
+                let dm_key = format!("dm:{}:{}", users[0], users[1]);
+
+                if let Err(e) = ctx.matrix.history.store(&dm_key, stored_msg).await {
+                    debug!(error = %e, "Failed to store DM");
                 }
             } else {
                 send_no_such_nick(ctx, &snapshot.nick, target).await?;

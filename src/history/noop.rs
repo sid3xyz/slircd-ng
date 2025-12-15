@@ -26,7 +26,7 @@ impl HistoryProvider for NoOpProvider {
         Ok(None)
     }
 
-    async fn query_targets(&self, _start: i64, _end: i64, _limit: usize, _candidates: Vec<String>) -> Result<Vec<(String, i64)>, HistoryError> {
+    async fn query_targets(&self, _start: i64, _end: i64, _limit: usize, _nick: String, _channels: Vec<String>) -> Result<Vec<(String, i64)>, HistoryError> {
         Ok(vec![])
     }
 }

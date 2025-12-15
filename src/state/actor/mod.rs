@@ -285,10 +285,12 @@ impl ChannelActor {
                 sender_uid,
                 sender_prefix,
                 topic,
+                msgid,
+                timestamp,
                 force,
                 reply_tx,
             } => {
-                self.handle_set_topic(sender_uid, sender_prefix, topic, force, reply_tx)
+                self.handle_set_topic(sender_uid, sender_prefix, topic, msgid, timestamp, force, reply_tx)
                     .await;
             }
             ChannelEvent::Invite {

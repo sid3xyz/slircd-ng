@@ -6,6 +6,7 @@
 //! - CTCP protocol
 //! - Spam detection
 //! - Service integration (NickServ, ChanServ)
+//! - Event-sourced history (Innovation 5)
 
 mod common;
 mod notice;
@@ -16,10 +17,14 @@ pub use notice::NoticeHandler;
 pub use privmsg::PrivmsgHandler;
 
 use super::{HandlerError, HandlerResult, user_prefix};
+use crate::history::{StoredMessage, MessageEnvelope};
+use crate::history::types::MessageTag as HistoryTag;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Tag, irc_to_lower};
 use std::borrow::Cow;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
+use uuid::Uuid;
 
 use common::{
     ChannelRouteResult, RouteOptions, SenderSnapshot, is_shunned_with_snapshot,
@@ -69,10 +74,18 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
+        // Check for +draft/persist tag (required for history storage per IRCv3)
+        let has_persist_tag = msg.tags_iter().any(|(k, _)| k == "+draft/persist");
+
+        // Generate msgid for history storage and echo-message (with dashes for IRCv3 compatibility)
+        let msgid = Uuid::new_v4().to_string();
+
         // Collect only client-only tags (those starting with '+') AND the label tag
         // Server should not relay arbitrary tags from clients
         // The label tag is needed for labeled-response echoes
         // Unescape tag values since they come from wire format
+        // Also track which tags to persist for history
+        let mut persist_tags: Vec<(String, Option<String>)> = Vec::new();
         let tags: Option<Vec<Tag>> = if msg.tags.is_some() {
             let client_tags: Vec<Tag> = msg
                 .tags_iter()
@@ -84,6 +97,10 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                         // Unescape tag value from wire format
                         Some(slirc_proto::message::tags::unescape_tag_value(v))
                     };
+                    // Track client-only tags for persistence (not label)
+                    if k.starts_with('+') {
+                        persist_tags.push((k.to_string(), value.clone()));
+                    }
                     Tag(Cow::Owned(k.to_string()), value)
                 })
                 .collect();
@@ -95,6 +112,11 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         } else {
             None
         };
+
+        // Add msgid tag for outgoing message
+        let mut out_tags = tags.unwrap_or_default();
+        out_tags.push(Tag(Cow::Borrowed("msgid"), Some(msgid.clone())));
+        let tags = Some(out_tags);
 
         // Build the outgoing TAGMSG using snapshot
         let out_msg = Message {
@@ -113,12 +135,52 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
 
         if target.is_channel_name() {
             let channel_lower = irc_to_lower(target);
-            match route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, None, None, &snapshot).await {
+            // Pass msgid to route function to ensure consistency between echo and history
+            match route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, None, Some(msgid.clone()), &snapshot).await {
                 ChannelRouteResult::Sent => {
                     debug!(from = %snapshot.nick, to = %target, "TAGMSG to channel");
                     // Suppress ACK for echo-message with labels (echo IS the response)
                     if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                         ctx.suppress_labeled_ack = true;
+                    }
+
+                    // Store TAGMSG in history if +draft/persist tag is present (Innovation 5)
+                    if has_persist_tag && ctx.matrix.config.history.should_store_event("TAGMSG") {
+                        let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                        let nanotime = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos() as i64;
+
+                        let history_tags: Option<Vec<HistoryTag>> = if !persist_tags.is_empty() {
+                            Some(persist_tags.iter().map(|t| HistoryTag {
+                                key: t.0.to_string(),
+                                value: t.1.clone(),
+                            }).collect())
+                        } else {
+                            None
+                        };
+
+                        let envelope = MessageEnvelope {
+                            command: "TAGMSG".to_string(),
+                            prefix: prefix.clone(),
+                            target: target.to_string(),
+                            text: String::new(), // TAGMSG has no text
+                            tags: history_tags,
+                        };
+
+                        let stored_msg = StoredMessage {
+                            msgid: msgid.clone(),
+                            target: channel_lower.clone(),
+                            sender: snapshot.nick.clone(),
+                            envelope,
+                            nanotime,
+                            account: ctx.state.account.clone(),
+                        };
+
+                        if let Err(e) = ctx.matrix.history.store(target, stored_msg).await {
+                            debug!(error = %e, "Failed to store TAGMSG in history");
+                        }
                     }
                 }
                 ChannelRouteResult::NoSuchChannel => {
@@ -148,8 +210,77 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
             }
         } else {
             let target_lower = irc_to_lower(target);
-            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, None, None, &snapshot).await {
+            // Pass msgid to route function to ensure consistency between echo and history
+            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, None, Some(msgid.clone()), &snapshot).await {
                 debug!(from = %snapshot.nick, to = %target, "TAGMSG to user");
+
+                // Store TAGMSG in history for DMs if +draft/persist tag is present (Innovation 5)
+                if has_persist_tag && ctx.matrix.config.history.should_store_event("TAGMSG") {
+                    let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                    let nanotime = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_nanos() as i64;
+
+                    let history_tags: Option<Vec<HistoryTag>> = if !persist_tags.is_empty() {
+                        Some(persist_tags.iter().map(|t| HistoryTag {
+                            key: t.0.to_string(),
+                            value: t.1.clone(),
+                        }).collect())
+                    } else {
+                        None
+                    };
+
+                    let envelope = MessageEnvelope {
+                        command: "TAGMSG".to_string(),
+                        prefix: prefix.clone(),
+                        target: target.to_string(),
+                        text: String::new(),
+                        tags: history_tags,
+                    };
+
+                    let stored_msg = StoredMessage {
+                        msgid: msgid.clone(),
+                        target: target_lower.clone(),
+                        sender: snapshot.nick.clone(),
+                        envelope,
+                        nanotime,
+                        account: ctx.state.account.clone(),
+                    };
+
+                    // Build DM key (same pattern as PRIVMSG)
+                    let sender_key_part = if let Some(acct) = &snapshot.account {
+                        format!("a:{}", irc_to_lower(acct))
+                    } else {
+                        format!("u:{}", irc_to_lower(&snapshot.nick))
+                    };
+
+                    let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(&target_lower) {
+                        let uid = uid_ref.value();
+                        if let Some(user) = ctx.matrix.users.get(uid) {
+                            let u = user.read().await;
+                            u.account.clone()
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    let target_key_part = if let Some(acct) = target_account {
+                        format!("a:{}", irc_to_lower(&acct))
+                    } else {
+                        format!("u:{}", target_lower)
+                    };
+
+                    let mut users = [sender_key_part, target_key_part];
+                    users.sort();
+                    let dm_key = format!("dm:{}:{}", users[0], users[1]);
+
+                    if let Err(e) = ctx.matrix.history.store(&dm_key, stored_msg).await {
+                        debug!(error = %e, "Failed to store TAGMSG DM in history");
+                    }
+                }
             } else {
                 send_no_such_nick(ctx, &snapshot.nick, target).await?;
             }

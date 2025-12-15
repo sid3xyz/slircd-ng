@@ -48,5 +48,5 @@ pub trait HistoryProvider: Send + Sync {
     async fn lookup_timestamp(&self, target: &str, msgid: &str) -> Result<Option<i64>, HistoryError>;
 
     /// Query targets with activity.
-    async fn query_targets(&self, start: i64, end: i64, limit: usize, candidates: Vec<String>) -> Result<Vec<(String, i64)>, HistoryError>;
+    async fn query_targets(&self, start: i64, end: i64, limit: usize, nick: String, channels: Vec<String>) -> Result<Vec<(String, i64)>, HistoryError>;
 }

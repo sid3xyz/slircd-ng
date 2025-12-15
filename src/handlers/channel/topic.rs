@@ -20,6 +20,7 @@
 //! - Set: Requires channel op (+o) if +t mode is set
 //! - Broadcasts topic change to all channel members
 //! - Persists topic to database for registered channels with keeptopic enabled
+//! - Stores TOPIC event in history for event-playback (Innovation 5)
 //! - Uses CapabilityAuthority (Innovation 4) for authorization
 
 use super::super::{Context,
@@ -29,10 +30,13 @@ use super::super::{Context,
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
+use crate::history::{StoredMessage, MessageEnvelope};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
+use uuid::Uuid;
 
 pub struct TopicHandler;
 
@@ -129,6 +133,15 @@ impl PostRegHandler for TopicHandler {
                 // Save prefix string for persistence (before moving into event)
                 let set_by_string = sender_prefix.to_string();
 
+                // Generate msgid and timestamp for event-playback (Innovation 5)
+                let msgid = Uuid::new_v4().to_string();
+                let now = SystemTime::now();
+                let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+                let nanotime = now
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos() as i64;
+
                 // Request TOPIC capability from authority (Innovation 4)
                 let authority = CapabilityAuthority::new(ctx.matrix.clone());
                 let has_topic_cap = authority
@@ -140,6 +153,8 @@ impl PostRegHandler for TopicHandler {
                     sender_uid: ctx.uid.to_string(),
                     sender_prefix,
                     topic: topic_text.to_string(),
+                    msgid: msgid.clone(),
+                    timestamp,
                     force: has_topic_cap,
                     reply_tx,
                 };
@@ -151,6 +166,30 @@ impl PostRegHandler for TopicHandler {
                 match reply_rx.await {
                     Ok(Ok(())) => {
                         info!(nick = %nick, channel = %channel_name, "Topic changed");
+
+                        // Store TOPIC event in history for event-playback (Innovation 5)
+                        if ctx.matrix.config.history.should_store_event("TOPIC") {
+                            let envelope = MessageEnvelope {
+                                command: "TOPIC".to_string(),
+                                prefix: set_by_string.clone(),
+                                target: channel_name.to_string(),
+                                text: topic_text.to_string(),
+                                tags: None,
+                            };
+
+                            let stored_msg = StoredMessage {
+                                msgid,
+                                target: channel_lower.clone(),
+                                sender: nick.clone(),
+                                envelope,
+                                nanotime,
+                                account: ctx.state.account.clone(),
+                            };
+
+                            if let Err(e) = ctx.matrix.history.store(channel_name, stored_msg).await {
+                                debug!(error = %e, "Failed to store TOPIC in history");
+                            }
+                        }
 
                         // Persist topic to database for registered channels with keeptopic
                         if let Some(channel_record) = ctx.db.channels().find_by_name(&channel_lower).await.ok().flatten()

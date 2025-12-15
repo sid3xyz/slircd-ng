@@ -302,7 +302,7 @@ pub async fn run_event_loop(
                         {
                             let mut messages = buf.lock().await;
                             let msg_count = messages.len();
-                            
+
                             if msg_count == 0 {
                                 // No responses - send ACK unless suppressed
                                 if !suppress_ack {
@@ -317,7 +317,7 @@ pub async fn run_event_loop(
                             } else {
                                 // Multiple responses - wrap in BATCH
                                 let batch_ref = generate_batch_ref();
-                                
+
                                 // BATCH +ref labeled-response with label tag
                                 let batch_start = Message {
                                     tags: None,
@@ -329,13 +329,13 @@ pub async fn run_event_loop(
                                     ),
                                 }.with_tag("label", Some(&label_str));
                                 let _ = transport.write_message(&batch_start).await;
-                                
+
                                 // Send all messages with batch tag
                                 for msg in messages.drain(..) {
                                     let batched = msg.with_tag("batch", Some(&batch_ref));
                                     let _ = transport.write_message(&batched).await;
                                 }
-                                
+
                                 // BATCH -ref
                                 let batch_end = Message {
                                     tags: None,

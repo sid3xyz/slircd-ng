@@ -111,6 +111,10 @@ pub enum ChannelEvent {
         sender_uid: Uid,
         sender_prefix: Prefix,
         topic: String,
+        /// msgid for event-playback (Innovation 5)
+        msgid: String,
+        /// ISO8601 timestamp for event-playback
+        timestamp: String,
         force: bool,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
