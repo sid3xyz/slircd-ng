@@ -5,9 +5,11 @@
 *.db-journal
 *.db-shm
 *.db-wal
+data/
 
 # Test artifacts
 slircd.log
+*.log
 
 # Secrets and Keys
 *.pem
@@ -30,4 +32,36 @@ slircd.log
 .DS_Store
 Thumbs.db
 
+# =============================================================================
+# PRODUCTION CONFIGURATION - NEVER COMMIT REAL CREDENTIALS
+# =============================================================================
+# Any config file with real passwords, secrets, or production hostnames
+# goes here. Use config.toml as the EXAMPLE with placeholder values only.
+#
+# Naming convention for local configs:
+#   config.*.local.toml  - Local development overrides
+#   config.*.prod.toml   - Production configs (NEVER COMMIT)
+#   config.<hostname>.toml - Host-specific configs (NEVER COMMIT)
+# =============================================================================
+config.*.local.toml
+config.*.prod.toml
 config.wintermute.toml
+config.production.toml
+
+# Backup files that might contain secrets
+*.bak
+*.backup
+*.old
+
+# Deployment scripts with credentials
+deploy*.sh
+!deploy.example.sh
+
+# SSL/TLS certificates and keys
+certs/
+ssl/
+tls/
+
+# Service files with paths
+*.service
+!*.service.example
