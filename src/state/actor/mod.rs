@@ -68,7 +68,8 @@ impl ChannelActor {
     }
 
     /// Create a new Channel Actor and spawn it.
-    pub fn spawn(name: String, matrix: Weak<Matrix>) -> mpsc::Sender<ChannelEvent> {
+    /// Optionally pass an initial topic for registered channels (loaded from DB).
+    pub fn spawn(name: String, matrix: Weak<Matrix>, initial_topic: Option<Topic>) -> mpsc::Sender<ChannelEvent> {
         let (tx, rx) = mpsc::channel(100);
 
         let mut modes = HashSet::new();
@@ -82,7 +83,7 @@ impl ChannelActor {
             senders: HashMap::new(),
             user_caps: HashMap::new(),
             modes,
-            topic: None,
+            topic: initial_topic,
             created: Utc::now().timestamp(),
             bans: Vec::new(),
             excepts: Vec::new(),

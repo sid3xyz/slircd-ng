@@ -67,14 +67,17 @@ impl<'a> ChannelRepository<'a> {
             description: description.map(String::from),
             mlock: None,
             keeptopic: true,
+            topic_text: None,
+            topic_set_by: None,
+            topic_set_at: None,
         })
     }
 
     /// Find channel by name.
     pub async fn find_by_name(&self, name: &str) -> Result<Option<ChannelRecord>, DbError> {
-        let row = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool)>(
+        let row = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool, Option<String>, Option<String>, Option<i64>)>(
             r#"
-            SELECT id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic
+            SELECT id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic, topic_text, topic_set_by, topic_set_at
             FROM channels
             WHERE name = ? COLLATE NOCASE
             "#,
@@ -93,6 +96,9 @@ impl<'a> ChannelRepository<'a> {
                 description,
                 mlock,
                 keeptopic,
+                topic_text,
+                topic_set_by,
+                topic_set_at,
             )| {
                 ChannelRecord {
                     id,
@@ -103,6 +109,9 @@ impl<'a> ChannelRepository<'a> {
                     description,
                     mlock,
                     keeptopic,
+                    topic_text,
+                    topic_set_by,
+                    topic_set_at,
                 }
             },
         ))
@@ -110,9 +119,9 @@ impl<'a> ChannelRepository<'a> {
 
     /// Load all registered channels from the database.
     pub async fn load_all_channels(&self) -> Result<Vec<ChannelRecord>, DbError> {
-        let rows = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool)>(
+        let rows = sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<String>, Option<String>, bool, Option<String>, Option<String>, Option<i64>)>(
             r#"
-            SELECT id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic
+            SELECT id, name, founder_account_id, registered_at, last_used_at, description, mlock, keeptopic, topic_text, topic_set_by, topic_set_at
             FROM channels
             "#,
         )
@@ -131,6 +140,9 @@ impl<'a> ChannelRepository<'a> {
                     description,
                     mlock,
                     keeptopic,
+                    topic_text,
+                    topic_set_by,
+                    topic_set_at,
                 )| {
                     ChannelRecord {
                         id,
@@ -141,6 +153,9 @@ impl<'a> ChannelRepository<'a> {
                         description,
                         mlock,
                         keeptopic,
+                        topic_text,
+                        topic_set_by,
+                        topic_set_at,
                     }
                 },
             )
@@ -282,6 +297,30 @@ impl<'a> ChannelRepository<'a> {
                 return Err(DbError::UnknownOption(option.to_string()));
             }
         }
+        Ok(())
+    }
+
+    /// Save topic for a registered channel (if keeptopic is enabled).
+    pub async fn save_topic(
+        &self,
+        channel_id: i64,
+        topic_text: &str,
+        topic_set_by: &str,
+        topic_set_at: i64,
+    ) -> Result<(), DbError> {
+        sqlx::query(
+            r#"
+            UPDATE channels
+            SET topic_text = ?, topic_set_by = ?, topic_set_at = ?
+            WHERE id = ? AND keeptopic = 1
+            "#,
+        )
+        .bind(topic_text)
+        .bind(topic_set_by)
+        .bind(topic_set_at)
+        .bind(channel_id)
+        .execute(self.pool)
+        .await?;
         Ok(())
     }
 

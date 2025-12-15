@@ -19,7 +19,7 @@
 //! - Query: Returns current topic or RPL_NOTOPIC if unset
 //! - Set: Requires channel op (+o) if +t mode is set
 //! - Broadcasts topic change to all channel members
-//! - Persists topic to database for registered channels
+//! - Persists topic to database for registered channels with keeptopic enabled
 //! - Uses CapabilityAuthority (Innovation 4) for authorization
 
 use super::super::{Context,
@@ -32,7 +32,7 @@ use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
-use tracing::info;
+use tracing::{info, warn};
 
 pub struct TopicHandler;
 
@@ -126,6 +126,9 @@ impl PostRegHandler for TopicHandler {
                     .ok_or(HandlerError::NickOrUserMissing)?;
                 let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
 
+                // Save prefix string for persistence (before moving into event)
+                let set_by_string = sender_prefix.to_string();
+
                 // Request TOPIC capability from authority (Innovation 4)
                 let authority = CapabilityAuthority::new(ctx.matrix.clone());
                 let has_topic_cap = authority
@@ -148,6 +151,21 @@ impl PostRegHandler for TopicHandler {
                 match reply_rx.await {
                     Ok(Ok(())) => {
                         info!(nick = %nick, channel = %channel_name, "Topic changed");
+
+                        // Persist topic to database for registered channels with keeptopic
+                        if let Some(channel_record) = ctx.db.channels().find_by_name(&channel_lower).await.ok().flatten()
+                            && channel_record.keeptopic
+                        {
+                            let set_at = chrono::Utc::now().timestamp();
+                            if let Err(e) = ctx.db.channels().save_topic(
+                                channel_record.id,
+                                topic_text,
+                                &set_by_string,
+                                set_at,
+                            ).await {
+                                warn!(channel = %channel_name, error = %e, "Failed to persist topic");
+                            }
+                        }
                     }
                     Ok(Err(e)) => {
                         let reply = e.to_irc_reply(

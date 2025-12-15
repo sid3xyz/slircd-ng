@@ -6,7 +6,7 @@
 
 use crate::error::ChannelError;
 use crate::security::UserContext;
-use crate::state::RegisteredState;
+use crate::state::{RegisteredState, Topic};
 use super::super::super::{Context, HandlerError, HandlerResult, user_prefix};
 use super::enforcement::{check_akick, check_auto_modes};
 use super::responses::{handle_join_success, send_join_error};
@@ -112,6 +112,23 @@ pub(super) async fn join_channel(
 
     let matrix = ctx.matrix.clone();
     let mut attempt = 0;
+    let is_registered_channel = ctx.matrix.registered_channels.contains(&channel_lower);
+
+    // Pre-load saved topic for registered channels (passed to actor at spawn)
+    let initial_topic = if is_registered_channel {
+        ctx.db.channels().find_by_name(&channel_lower).await
+            .ok()
+            .flatten()
+            .filter(|r| r.keeptopic)
+            .and_then(|r| {
+                match (r.topic_text, r.topic_set_by, r.topic_set_at) {
+                    (Some(text), Some(set_by), Some(set_at)) => Some(Topic { text, set_by, set_at }),
+                    _ => None,
+                }
+            })
+    } else {
+        None
+    };
 
     loop {
         let channel_sender = ctx
@@ -123,6 +140,7 @@ pub(super) async fn join_channel(
                 crate::state::actor::ChannelActor::spawn(
                     channel_name.to_string(),
                     Arc::downgrade(&matrix),
+                    initial_topic.clone(),
                 )
             })
             .clone();

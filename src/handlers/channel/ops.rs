@@ -63,6 +63,7 @@ pub async fn force_join_channel<S>(
             crate::state::actor::ChannelActor::spawn(
                 channel_name.to_string(),
                 std::sync::Arc::downgrade(ctx.matrix),
+                None, // No initial topic for SAJOIN-created channels
             )
         })
         .clone();

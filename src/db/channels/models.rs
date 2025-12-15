@@ -11,6 +11,12 @@ pub struct ChannelRecord {
     pub description: Option<String>,
     pub mlock: Option<String>,
     pub keeptopic: bool,
+    /// Persisted topic text (when keeptopic is enabled)
+    pub topic_text: Option<String>,
+    /// Who set the persisted topic
+    pub topic_set_by: Option<String>,
+    /// When the persisted topic was set (Unix timestamp)
+    pub topic_set_at: Option<i64>,
 }
 
 /// Channel access entry.
