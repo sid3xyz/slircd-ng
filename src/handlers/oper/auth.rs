@@ -183,6 +183,9 @@ impl PostRegHandler for OperHandler {
 
         tracing::info!(nick = %nick, oper_name = %name, "OPER successful");
 
+        // Send snomask 'o'
+        ctx.matrix.send_snomask('o', &format!("OPER: {} ({}) is now an IRC operator", nick, name)).await;
+
         let reply = server_reply(
             server_name,
             Response::RPL_YOUREOPER,

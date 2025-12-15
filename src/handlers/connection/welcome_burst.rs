@@ -356,6 +356,9 @@ impl<'a> WelcomeBurstWriter<'a> {
         // Notify MONITOR watchers
         notify_monitors_online(self.matrix, nick, user, &cloaked_host).await;
 
+        // Send snomask 'c' (Connect)
+        self.matrix.send_snomask('c', &format!("Client connecting: {} ({}) [{}]", nick, user, ban_host)).await;
+
         Ok(())
     }
 }

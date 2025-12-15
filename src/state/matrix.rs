@@ -267,6 +267,33 @@ impl Matrix {
     }
 
     /// Broadcast a message to all members of a channel.
+    /// Send a server notice to all operators subscribed to the given snomask.
+    ///
+    /// # Arguments
+    /// - `mask`: The snomask character (e.g., 'c' for connect, 'k' for kill).
+    /// - `message`: The message text.
+    pub async fn send_snomask(&self, mask: char, message: &str) {
+        use slirc_proto::{Command, Message, Prefix};
+
+        let notice_msg = Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(self.server_info.name.clone())),
+            command: Command::NOTICE(
+                "*".to_string(), // Target is * for server notices
+                format!("*** Notice -- {}", message),
+            ),
+        };
+
+        for user_entry in self.users.iter() {
+            let user_guard = user_entry.value().read().await;
+            if user_guard.modes.has_snomask(mask)
+                && let Some(sender) = self.senders.get(&user_guard.uid)
+            {
+                let _ = sender.send(notice_msg.clone()).await;
+            }
+        }
+    }
+
     /// Optionally exclude one UID (usually the sender).
     /// Note: `channel_name` should already be lowercased by the caller.
     ///

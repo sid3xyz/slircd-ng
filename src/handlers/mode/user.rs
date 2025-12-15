@@ -136,6 +136,27 @@ pub fn apply_user_modes_typed(
                 user_modes.no_ctcp = adding;
                 applied.push(mode.clone());
             }
+            UserMode::ServerNotices => {
+                if let Some(arg) = mode.arg() {
+                    for c in arg.chars() {
+                        if adding {
+                            user_modes.snomasks.insert(c);
+                        } else {
+                            user_modes.snomasks.remove(&c);
+                        }
+                    }
+                    applied.push(mode.clone());
+                } else if !adding {
+                    user_modes.snomasks.clear();
+                    applied.push(mode.clone());
+                } else {
+                    // Defaults: c (connect), k (kill), o (oper)
+                    user_modes.snomasks.insert('c');
+                    user_modes.snomasks.insert('k');
+                    user_modes.snomasks.insert('o');
+                    applied.push(mode.clone());
+                }
+            }
             _ => {
                 // Unknown/unsupported modes
                 rejected.push(mode_type.clone());

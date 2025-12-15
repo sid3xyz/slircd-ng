@@ -90,6 +90,9 @@ impl PostRegHandler for KillHandler {
 
         tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
 
+        // Send snomask 'k'
+        ctx.matrix.send_snomask('k', &format!("Received KILL message for {}. From {} Path: {}!{}@{} ({})", target_nick, killer_nick, killer_nick, killer_user, killer_host, reason)).await;
+
         let kill_msg = Message {
             tags: None,
             prefix: Some(Prefix::new(
