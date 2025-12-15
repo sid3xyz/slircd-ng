@@ -9,7 +9,7 @@ use crate::db::Database;
 use crate::handlers::{Context, Registry, ResponseMiddleware, WelcomeBurstWriter, process_batch_message, labeled_ack, with_label};
 use crate::state::{Matrix, RegisteredState, UnregisteredState};
 use slirc_proto::transport::ZeroCopyTransportEnum;
-use slirc_proto::{Command, Message, Prefix, Response, irc_to_lower};
+use slirc_proto::{Command, Message, Prefix, Response, generate_batch_ref, irc_to_lower};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
@@ -296,19 +296,53 @@ pub async fn run_event_loop(
                             }
                         }
 
-                        // Labeled-response handling
+                        // Labeled-response handling (IRCv3 spec compliant)
                         if let Some(label_str) = label
                             && let Some(buf) = capture_buffer
                         {
                             let mut messages = buf.lock().await;
-                            if !messages.is_empty() {
-                                for msg in messages.drain(..) {
-                                    let tagged = with_label(msg, Some(&label_str));
-                                    let _ = transport.write_message(&tagged).await;
+                            let msg_count = messages.len();
+                            
+                            if msg_count == 0 {
+                                // No responses - send ACK unless suppressed
+                                if !suppress_ack {
+                                    let ack = labeled_ack(&matrix.server_info.name, &label_str);
+                                    let _ = transport.write_message(&ack).await;
                                 }
-                            } else if !suppress_ack {
-                                let ack = labeled_ack(&matrix.server_info.name, &label_str);
-                                let _ = transport.write_message(&ack).await;
+                            } else if msg_count == 1 {
+                                // Single response - just add label tag
+                                let msg = messages.drain(..).next().unwrap();
+                                let tagged = with_label(msg, Some(&label_str));
+                                let _ = transport.write_message(&tagged).await;
+                            } else {
+                                // Multiple responses - wrap in BATCH
+                                let batch_ref = generate_batch_ref();
+                                
+                                // BATCH +ref labeled-response with label tag
+                                let batch_start = Message {
+                                    tags: None,
+                                    prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
+                                    command: Command::BATCH(
+                                        format!("+{}", batch_ref),
+                                        Some(slirc_proto::BatchSubCommand::CUSTOM("labeled-response".to_string())),
+                                        None,
+                                    ),
+                                }.with_tag("label", Some(&label_str));
+                                let _ = transport.write_message(&batch_start).await;
+                                
+                                // Send all messages with batch tag
+                                for msg in messages.drain(..) {
+                                    let batched = msg.with_tag("batch", Some(&batch_ref));
+                                    let _ = transport.write_message(&batched).await;
+                                }
+                                
+                                // BATCH -ref
+                                let batch_end = Message {
+                                    tags: None,
+                                    prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
+                                    command: Command::BATCH(format!("-{}", batch_ref), None, None),
+                                };
+                                let _ = transport.write_message(&batch_end).await;
                             }
                         }
                     }
