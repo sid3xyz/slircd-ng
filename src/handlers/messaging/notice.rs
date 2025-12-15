@@ -8,8 +8,13 @@ use super::super::{Context,
 use crate::state::RegisteredState;
 use super::common::{ChannelRouteResult, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot, route_to_user_with_snapshot};
 use super::validation::{ErrorStrategy, validate_message_send};
+use crate::history::{StoredMessage, MessageEnvelope};
+use crate::history::types::MessageTag as HistoryTag;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
+use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
 use tracing::debug;
 
 // ============================================================================
@@ -67,6 +72,26 @@ impl PostRegHandler for NoticeHandler {
             })
             .collect();
 
+        // Generate timestamp and msgid
+        let now = SystemTime::now();
+        let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
+        let millis = duration.as_millis() as i64;
+        let nanotime = millis * 1_000_000;
+
+        let dt = DateTime::<Utc>::from_timestamp(millis / 1000, (millis % 1000) as u32 * 1_000_000).unwrap_or_default();
+        let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let msgid = Uuid::new_v4().to_string();
+
+        // Prepare tags for history
+        let history_tags: Option<Vec<HistoryTag>> = if preserved_tags.is_empty() {
+            None
+        } else {
+            Some(preserved_tags.iter().map(|t| HistoryTag {
+                key: t.0.to_string(),
+                value: t.1.as_ref().map(|v| v.to_string()),
+            }).collect())
+        };
+
         // Build the outgoing message with preserved tags (client tags + label)
         let out_msg = Message {
             tags: if preserved_tags.is_empty() {
@@ -101,8 +126,8 @@ impl PostRegHandler for NoticeHandler {
                     target,
                     out_msg,
                     prefix_char,
-                    None,
-                    None,
+                    Some(timestamp_iso.clone()),
+                    Some(msgid.clone()),
                     &snapshot,
                 )
                 .await;
@@ -112,19 +137,67 @@ impl PostRegHandler for NoticeHandler {
                     ctx.suppress_labeled_ack = true;
                 }
             } else if let ChannelRouteResult::Sent =
-                route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, None, None, &snapshot).await
+                route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await
             {
                 debug!(from = %snapshot.nick, to = %target, "NOTICE to channel");
                 // Suppress ACK for echo-message with labels (echo IS the response)
                 if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                     ctx.suppress_labeled_ack = true;
                 }
+
+                // Store message in history
+                let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                let envelope = MessageEnvelope {
+                    command: "NOTICE".to_string(),
+                    prefix: prefix.clone(),
+                    target: target.to_string(),
+                    text: text.to_string(),
+                    tags: history_tags.clone(),
+                };
+                let stored_msg = StoredMessage {
+                    msgid: msgid.clone(),
+                    target: irc_to_lower(target),
+                    sender: snapshot.nick.clone(),
+                    envelope,
+                    nanotime,
+                    account: ctx.state.account.clone(),
+                };
+                if let Err(e) = ctx.matrix.history.store(target, stored_msg).await {
+                    debug!(error = %e, "Failed to store NOTICE in history");
+                }
             }
             // All errors silently ignored for NOTICE
         } else {
             let target_lower = irc_to_lower(routing_target);
-            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, None, None, &snapshot).await {
+            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await {
                 debug!(from = %snapshot.nick, to = %target, "NOTICE to user");
+
+                // Store message in history (DMs)
+                let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                let envelope = MessageEnvelope {
+                    command: "NOTICE".to_string(),
+                    prefix: prefix.clone(),
+                    target: target.to_string(),
+                    text: text.to_string(),
+                    tags: history_tags.clone(),
+                };
+                let stored_msg = StoredMessage {
+                    msgid: msgid.clone(),
+                    target: irc_to_lower(target),
+                    sender: snapshot.nick.clone(),
+                    envelope,
+                    nanotime,
+                    account: ctx.state.account.clone(),
+                };
+
+                // Store for recipient
+                if let Err(e) = ctx.matrix.history.store(target, stored_msg.clone()).await {
+                    debug!(error = %e, "Failed to store NOTICE DM for recipient");
+                }
+                // Store for sender
+                if let Err(e) = ctx.matrix.history.store(&snapshot.nick, stored_msg).await {
+                    debug!(error = %e, "Failed to store NOTICE DM for sender");
+                }
             }
             // User not found: silently ignored for NOTICE
         }

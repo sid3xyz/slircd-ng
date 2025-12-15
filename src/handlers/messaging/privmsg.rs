@@ -23,7 +23,8 @@ use super::common::{
     route_to_user_with_snapshot, send_cannot_send, send_no_such_channel, send_no_such_nick,
 };
 use super::validation::{ErrorStrategy, validate_message_send};
-use crate::db::StoreMessageParams;
+use crate::history::{StoredMessage, MessageEnvelope};
+use crate::history::types::MessageTag as HistoryTag;
 use crate::services::route_service_message;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
@@ -116,6 +117,16 @@ impl PostRegHandler for PrivmsgHandler {
             let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
             let msgid = Uuid::new_v4().to_string();
 
+            // Prepare tags for history (before preserved_tags is moved)
+            let history_tags: Option<Vec<HistoryTag>> = if preserved_tags.is_empty() {
+                None
+            } else {
+                Some(preserved_tags.iter().map(|t| HistoryTag {
+                    key: t.0.to_string(),
+                    value: t.1.as_ref().map(|v| v.to_string()),
+                }).collect())
+            };
+
             // Build the outgoing message with preserved tags (client tags + label)
             let out_msg = Message {
                 tags: if preserved_tags.is_empty() {
@@ -167,20 +178,25 @@ impl PostRegHandler for PrivmsgHandler {
 
                             // Store message in history for CHATHISTORY support
                             let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
-                            let account = ctx.state.account.as_deref();
 
-                            let params = StoreMessageParams {
-                                msgid: &msgid,
-                                channel: target,
-                                sender_nick: &snapshot.nick,
-                                prefix: &prefix,
-                                text,
-                                account,
-                                target_account: None,
-                                nanotime: Some(nanotime),
+                            let envelope = MessageEnvelope {
+                                command: "PRIVMSG".to_string(),
+                                prefix: prefix.clone(),
+                                target: target.to_string(),
+                                text: text.to_string(),
+                                tags: history_tags.clone(),
                             };
 
-                            if let Err(e) = ctx.db.history().store_message(params).await {
+                            let stored_msg = StoredMessage {
+                                msgid: msgid.clone(),
+                                target: irc_to_lower(target),
+                                sender: snapshot.nick.clone(),
+                                envelope,
+                                nanotime,
+                                account: ctx.state.account.clone(),
+                            };
+
+                            if let Err(e) = ctx.matrix.history.store(target, stored_msg).await {
                                 debug!(error = %e, "Failed to store message in history");
                             }
                         }
@@ -215,36 +231,32 @@ impl PostRegHandler for PrivmsgHandler {
 
                 // Store message in history for CHATHISTORY support (DMs)
                 let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
-                let account = ctx.state.account.as_deref();
 
-                // Lookup target account
-                let target_lower = irc_to_lower(routing_target);
-                let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(&target_lower) {
-                     let uid = uid_ref.value();
-                     let user_arc = ctx.matrix.users.get(uid).map(|u| u.value().clone());
-                     if let Some(user_arc) = user_arc {
-                         let user = user_arc.read().await;
-                         user.account.clone()
-                     } else {
-                         None
-                     }
-                } else {
-                     None
+                let envelope = MessageEnvelope {
+                    command: "PRIVMSG".to_string(),
+                    prefix: prefix.clone(),
+                    target: target.to_string(),
+                    text: text.to_string(),
+                    tags: history_tags.clone(),
                 };
 
-                let params = StoreMessageParams {
-                    msgid: &msgid,
-                    channel: target, // For DMs, channel is the recipient nick
-                    sender_nick: &snapshot.nick,
-                    prefix: &prefix,
-                    text,
-                    account,
-                    target_account: target_account.as_deref(),
-                    nanotime: Some(nanotime),
+                let stored_msg = StoredMessage {
+                    msgid: msgid.clone(),
+                    target: irc_to_lower(target),
+                    sender: snapshot.nick.clone(),
+                    envelope,
+                    nanotime,
+                    account: ctx.state.account.clone(),
                 };
 
-                if let Err(e) = ctx.db.history().store_message(params).await {
-                    debug!(error = %e, "Failed to store DM in history");
+                // Store for recipient (so sender can see it when querying recipient)
+                if let Err(e) = ctx.matrix.history.store(target, stored_msg.clone()).await {
+                    debug!(error = %e, "Failed to store DM for recipient");
+                }
+
+                // Store for sender (so recipient can see it when querying sender)
+                if let Err(e) = ctx.matrix.history.store(&snapshot.nick, stored_msg).await {
+                    debug!(error = %e, "Failed to store DM for sender");
                 }
             } else {
                 send_no_such_nick(ctx, &snapshot.nick, target).await?;

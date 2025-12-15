@@ -35,6 +35,9 @@ pub struct Config {
     pub webirc: Vec<WebircBlock>,
     /// Database configuration.
     pub database: Option<DatabaseConfig>,
+    /// History configuration.
+    #[serde(default)]
+    pub history: HistoryConfig,
     /// Security configuration (cloaking, rate limiting, anti-abuse).
     #[serde(default)]
     pub security: SecurityConfig,
@@ -123,6 +126,46 @@ impl MotdConfig {
 pub struct DatabaseConfig {
     /// Path to SQLite database file.
     pub path: String,
+}
+
+/// History configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct HistoryConfig {
+    /// Whether history is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Backend type: "redb", "sqlite", "none".
+    #[serde(default = "default_history_backend")]
+    pub backend: String,
+    /// Retention period (e.g., "7d").
+    #[serde(default = "default_history_retention")]
+    pub retention: String,
+    /// Path to history database file.
+    #[serde(default = "default_history_path")]
+    pub path: String,
+}
+
+impl Default for HistoryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            backend: "none".to_string(),
+            retention: "7d".to_string(),
+            path: "history.db".to_string(),
+        }
+    }
+}
+
+fn default_history_backend() -> String {
+    "none".to_string()
+}
+
+fn default_history_retention() -> String {
+    "7d".to_string()
+}
+
+fn default_history_path() -> String {
+    "history.db".to_string()
 }
 
 /// Operator block configuration.

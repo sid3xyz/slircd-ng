@@ -3,9 +3,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Row type from database query: (msgid, target, sender, message_data, nanotime, account)
-pub(super) type HistoryRow = (String, String, String, Vec<u8>, i64, Option<String>);
-
 /// Message envelope stored as JSON BLOB.
 /// Allows adding fields without schema migrations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,20 +27,8 @@ pub struct MessageTag {
     pub value: Option<String>,
 }
 
-/// Parameters for storing a channel message.
-pub struct StoreMessageParams<'a> {
-    pub msgid: &'a str,
-    pub channel: &'a str,
-    pub sender_nick: &'a str,
-    pub prefix: &'a str,
-    pub text: &'a str,
-    pub account: Option<&'a str>,
-    pub target_account: Option<&'a str>,
-    pub nanotime: Option<i64>,
-}
-
 /// Stored message retrieved from database.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredMessage {
     pub msgid: String,
     /// Target channel (lowercased for lookup).
@@ -71,30 +56,4 @@ impl StoredMessage {
             "1970-01-01T00:00:00.000Z".to_string()
         }
     }
-
-    /// Parse a database row into a StoredMessage.
-    pub(super) fn from_row(row: HistoryRow) -> Option<Self> {
-        let (msgid, target, sender, data, nanotime, account) = row;
-        let envelope: MessageEnvelope = serde_json::from_slice(&data).ok()?;
-        Some(StoredMessage {
-            msgid,
-            target,
-            sender,
-            envelope,
-            nanotime,
-            account,
-        })
-    }
-}
-
-/// Convert database rows to StoredMessages, optionally reversing for chronological order.
-pub(super) fn rows_to_messages(rows: Vec<HistoryRow>, reverse: bool) -> Vec<StoredMessage> {
-    let mut messages: Vec<StoredMessage> = rows
-        .into_iter()
-        .filter_map(StoredMessage::from_row)
-        .collect();
-    if reverse {
-        messages.reverse();
-    }
-    messages
 }

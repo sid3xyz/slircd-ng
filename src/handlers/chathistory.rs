@@ -5,9 +5,10 @@
 //! # Reference
 //! - IRCv3 chathistory: <https://ircv3.net/specs/extensions/chathistory>
 
-use crate::db::{DbError, StoredMessage};
-use crate::handlers::{Context, HandlerResult, PostRegHandler};
+use crate::history::{StoredMessage, MessageEnvelope};
+use crate::handlers::{Context, HandlerResult, PostRegHandler, HandlerError};
 use crate::state::RegisteredState;
+use crate::history::HistoryQuery;
 use async_trait::async_trait;
 use slirc_proto::{
     BatchSubCommand, ChatHistorySubCommand, Command, Message, MessageRef, MessageReference,
@@ -23,6 +24,347 @@ const MAX_HISTORY_LIMIT: u32 = 100;
 pub struct ChatHistoryHandler;
 
 impl ChatHistoryHandler {
+    async fn handle_latest(
+        &self,
+        ctx: &Context<'_, RegisteredState>,
+        target: &str,
+        nick: &str,
+        limit: u32,
+        is_dm: bool,
+        msg: &MessageRef<'_>,
+    ) -> Result<Vec<StoredMessage>, HandlerError> {
+        let msgref_str = msg.arg(2).unwrap_or("*");
+
+        let query_target = if is_dm {
+            let mut users = vec![nick.to_string(), target.to_string()];
+            users.sort();
+            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+        } else {
+            target.to_string()
+        };
+
+        let start = if msgref_str == "*" {
+            None
+        } else {
+            let msgref = MessageReference::parse(msgref_str);
+            match msgref {
+                Ok(MessageReference::MsgId(id)) => {
+                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
+                        .map_err(|e| HandlerError::Internal(e.to_string()))?
+                }
+                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
+                _ => None,
+            }
+        };
+
+        let query = HistoryQuery {
+            target: query_target,
+            start,
+            end: None,
+            limit: limit as usize,
+            reverse: true,
+        };
+
+        let mut msgs = ctx.matrix.history.query(query).await
+            .map_err(|e| HandlerError::Internal(e.to_string()))?;
+        msgs.reverse();
+        Ok(msgs)
+    }
+
+    async fn handle_before(
+        &self,
+        ctx: &Context<'_, RegisteredState>,
+        target: &str,
+        nick: &str,
+        limit: u32,
+        is_dm: bool,
+        msg: &MessageRef<'_>,
+    ) -> Result<Vec<StoredMessage>, HandlerError> {
+        let msgref_str = msg.arg(2).unwrap_or("*");
+
+        let query_target = if is_dm {
+            let mut users = vec![nick.to_string(), target.to_string()];
+            users.sort();
+            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+        } else {
+            target.to_string()
+        };
+
+        let end = if msgref_str == "*" {
+            None
+        } else {
+            let msgref = MessageReference::parse(msgref_str);
+            match msgref {
+                Ok(MessageReference::MsgId(id)) => {
+                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
+                        .map_err(|e| HandlerError::Internal(e.to_string()))?
+                }
+                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
+                _ => None,
+            }
+        };
+
+        let query = HistoryQuery {
+            target: query_target,
+            start: None,
+            end,
+            limit: limit as usize,
+            reverse: true,
+        };
+
+        let mut msgs = ctx.matrix.history.query(query).await
+            .map_err(|e| HandlerError::Internal(e.to_string()))?;
+        msgs.reverse();
+        Ok(msgs)
+    }
+
+    async fn handle_after(
+        &self,
+        ctx: &Context<'_, RegisteredState>,
+        target: &str,
+        nick: &str,
+        limit: u32,
+        is_dm: bool,
+        msg: &MessageRef<'_>,
+    ) -> Result<Vec<StoredMessage>, HandlerError> {
+        let msgref_str = msg.arg(2).unwrap_or("*");
+
+        let query_target = if is_dm {
+            let mut users = vec![nick.to_string(), target.to_string()];
+            users.sort();
+            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+        } else {
+            target.to_string()
+        };
+
+        let start = if msgref_str == "*" {
+            None
+        } else {
+            let msgref = MessageReference::parse(msgref_str);
+            match msgref {
+                Ok(MessageReference::MsgId(id)) => {
+                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
+                        .map_err(|e| HandlerError::Internal(e.to_string()))?
+                }
+                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
+                _ => None,
+            }
+        };
+
+        let query = HistoryQuery {
+            target: query_target,
+            start,
+            end: None,
+            limit: limit as usize,
+            reverse: false,
+        };
+
+        let msgs = ctx.matrix.history.query(query).await
+            .map_err(|e| HandlerError::Internal(e.to_string()))?;
+        Ok(msgs)
+    }
+
+    async fn handle_around(
+        &self,
+        ctx: &Context<'_, RegisteredState>,
+        target: &str,
+        nick: &str,
+        limit: u32,
+        is_dm: bool,
+        msg: &MessageRef<'_>,
+    ) -> Result<Vec<StoredMessage>, HandlerError> {
+        let msgref_str = msg.arg(2).unwrap_or("*");
+
+        let query_target = if is_dm {
+            let mut users = vec![nick.to_string(), target.to_string()];
+            users.sort();
+            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+        } else {
+            target.to_string()
+        };
+
+        let center_ts = if msgref_str == "*" {
+            None
+        } else {
+            match MessageReference::parse(msgref_str) {
+                Ok(MessageReference::MsgId(id)) => {
+                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
+                        .map_err(|e| HandlerError::Internal(e.to_string()))?
+                }
+                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
+                _ => None,
+            }
+        };
+
+        let center_ts = center_ts.unwrap_or(0);
+
+        let limit_before = limit / 2;
+        let limit_after = limit - limit_before;
+
+        let before_query = HistoryQuery {
+            target: query_target.clone(),
+            start: None,
+            end: Some(center_ts),
+            limit: limit_before as usize,
+            reverse: true,
+        };
+        let mut before = ctx.matrix.history.query(before_query).await
+            .map_err(|e| HandlerError::Internal(e.to_string()))?;
+        before.reverse();
+
+        let after_query = HistoryQuery {
+            target: query_target,
+            start: Some(center_ts),
+            end: None,
+            limit: limit_after as usize,
+            reverse: false,
+        };
+        let after = ctx.matrix.history.query(after_query).await
+            .map_err(|e| HandlerError::Internal(e.to_string()))?;
+
+        before.extend(after);
+        Ok(before)
+    }
+
+    async fn handle_between(
+        &self,
+        ctx: &Context<'_, RegisteredState>,
+        target: &str,
+        nick: &str,
+        limit: u32,
+        is_dm: bool,
+        msg: &MessageRef<'_>,
+    ) -> Result<Vec<StoredMessage>, HandlerError> {
+        let ref1_str = msg.arg(2).unwrap_or("*");
+        let ref2_str = msg.arg(3).unwrap_or("*");
+
+        let query_target = if is_dm {
+            let mut users = vec![nick.to_string(), target.to_string()];
+            users.sort();
+            format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
+        } else {
+            target.to_string()
+        };
+
+        // Helper to resolve timestamp
+        // We can't use closure easily with async in this context without boxing or complex types.
+        // Just duplicate logic or use a helper method.
+        // I'll duplicate for now to keep it simple.
+
+        let start_ts = if ref1_str == "*" {
+            None
+        } else {
+            match MessageReference::parse(ref1_str) {
+                Ok(MessageReference::MsgId(id)) => {
+                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
+                        .map_err(|e| HandlerError::Internal(e.to_string()))?
+                }
+                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
+                _ => None,
+            }
+        };
+
+        let end_ts = if ref2_str == "*" {
+            None
+        } else {
+            match MessageReference::parse(ref2_str) {
+                Ok(MessageReference::MsgId(id)) => {
+                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
+                        .map_err(|e| HandlerError::Internal(e.to_string()))?
+                }
+                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
+                _ => None,
+            }
+        };
+
+        let (start, end, reverse) = match (start_ts, end_ts) {
+            (Some(s), Some(e)) => {
+                if s < e {
+                    (Some(s), Some(e), false)
+                } else {
+                    (Some(e), Some(s), true)
+                }
+            }
+            (Some(s), None) => (Some(s), None, false),
+            (None, Some(e)) => (None, Some(e), true),
+            (None, None) => (None, None, false),
+        };
+
+        let query = HistoryQuery {
+            target: query_target,
+            start,
+            end,
+            limit: limit as usize,
+            reverse,
+        };
+
+        let msgs = ctx.matrix.history.query(query).await
+            .map_err(|e| HandlerError::Internal(e.to_string()))?;
+
+        Ok(msgs)
+    }
+
+    async fn handle_targets(
+        &self,
+        ctx: &Context<'_, RegisteredState>,
+        _nick: &str,
+        limit: u32,
+        msg: &MessageRef<'_>,
+    ) -> Result<Vec<StoredMessage>, HandlerError> {
+        let start_str = msg.arg(1).unwrap_or("*");
+        let end_str = msg.arg(2).unwrap_or("*");
+
+        let start = if start_str == "*" { 0 } else {
+            MessageReference::parse(start_str).ok().and_then(|r| match r {
+                MessageReference::Timestamp(ts) => Some(parse_server_time(&ts)),
+                _ => None
+            }).unwrap_or(0)
+        };
+
+        let end = if end_str == "*" { i64::MAX } else {
+            MessageReference::parse(end_str).ok().and_then(|r| match r {
+                MessageReference::Timestamp(ts) => Some(parse_server_time(&ts)),
+                _ => None
+            }).unwrap_or(i64::MAX)
+        };
+
+        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+        let channels = if let Some(user_arc) = user_arc {
+            let user = user_arc.read().await;
+            user.channels.iter().cloned().collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+
+        let targets = ctx.matrix.history.query_targets(start, end, limit as usize, channels).await
+            .map_err(|e| HandlerError::Internal(e.to_string()))?;
+
+        let mut msgs = Vec::new();
+        for (target_name, timestamp) in targets {
+            let dt = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_nanos(timestamp as u64));
+            let ts_str = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+            let envelope = MessageEnvelope {
+                command: "TARGET".to_string(),
+                prefix: "".to_string(),
+                target: target_name.clone(),
+                text: ts_str,
+                tags: None,
+            };
+
+            msgs.push(StoredMessage {
+                msgid: "".to_string(),
+                nanotime: timestamp,
+                target: target_name,
+                sender: "".to_string(),
+                account: None,
+                envelope,
+            });
+        }
+
+        Ok(msgs)
+    }
+
     #[allow(clippy::too_many_arguments)] // Complex query dispatch needs all context
     async fn execute_query(
         &self,
@@ -33,260 +375,14 @@ impl ChatHistoryHandler {
         limit: u32,
         is_dm: bool,
         msg: &MessageRef<'_>,
-    ) -> Result<Vec<StoredMessage>, DbError> {
-        let account = ctx.state.account.as_deref();
+    ) -> Result<Vec<StoredMessage>, HandlerError> {
         match subcommand {
-            ChatHistorySubCommand::LATEST => {
-                let msgref_str = msg.arg(2).unwrap_or("*");
-                if msgref_str == "*" {
-                    if is_dm {
-                        ctx.db.history().query_dm_latest(nick, account, target, limit).await
-                    } else {
-                        ctx.db.history().query_latest(target, limit).await
-                    }
-                } else {
-                    let msgref = MessageReference::parse(msgref_str);
-                    match msgref {
-                        Ok(MessageReference::MsgId(id)) => {
-                            let nanos = if is_dm {
-                                ctx.db.history().lookup_dm_msgid_nanotime(nick, target, &id).await?
-                            } else {
-                                ctx.db.history().lookup_msgid_nanotime(target, &id).await?
-                            };
-
-                            if let Some(n) = nanos {
-                                if is_dm {
-                                    ctx.db.history().query_dm_latest_after(nick, account, target, n, limit).await
-                                } else {
-                                    ctx.db.history().query_latest_after(target, n, limit).await
-                                }
-                            } else if is_dm {
-                                ctx.db.history().query_dm_latest(nick, account, target, limit).await
-                            } else {
-                                ctx.db.history().query_latest(target, limit).await
-                            }
-                        }
-                        Ok(MessageReference::Timestamp(ts)) => {
-                            let nanos = parse_server_time(&ts);
-                            if is_dm {
-                                ctx.db.history().query_dm_latest_after(nick, account, target, nanos, limit).await
-                            } else {
-                                ctx.db.history().query_latest_after(target, nanos, limit).await
-                            }
-                        }
-                        _ => if is_dm {
-                            ctx.db.history().query_dm_latest(nick, account, target, limit).await
-                        } else {
-                            ctx.db.history().query_latest(target, limit).await
-                        },
-                    }
-                }
-            }
-            ChatHistorySubCommand::BEFORE => {
-                let msgref_str = msg.arg(2).unwrap_or("*");
-                let msgref = MessageReference::parse(msgref_str);
-                let nanos = match msgref {
-                    Ok(MessageReference::MsgId(id)) => {
-                        let n = if is_dm {
-                            ctx.db.history().lookup_dm_msgid_nanotime(nick, target, &id).await?
-                        } else {
-                            ctx.db.history().lookup_msgid_nanotime(target, &id).await?
-                        };
-                        n.unwrap_or(i64::MAX)
-                    }
-                    Ok(MessageReference::Timestamp(ts)) => parse_server_time(&ts),
-                    _ => i64::MAX,
-                };
-                if is_dm {
-                    ctx.db.history().query_dm_before(nick, account, target, nanos, limit).await
-                } else {
-                    ctx.db.history().query_before(target, nanos, limit).await
-                }
-            }
-            ChatHistorySubCommand::AFTER => {
-                let msgref_str = msg.arg(2).unwrap_or("*");
-                let msgref = MessageReference::parse(msgref_str);
-                let nanos = match msgref {
-                    Ok(MessageReference::MsgId(id)) => {
-                        let n = if is_dm {
-                            ctx.db.history().lookup_dm_msgid_nanotime(nick, target, &id).await?
-                        } else {
-                            ctx.db.history().lookup_msgid_nanotime(target, &id).await?
-                        };
-                        n.unwrap_or(0)
-                    }
-                    Ok(MessageReference::Timestamp(ts)) => parse_server_time(&ts),
-                    _ => 0,
-                };
-                if is_dm {
-                    ctx.db.history().query_dm_after(nick, account, target, nanos, limit).await
-                } else {
-                    ctx.db.history().query_after(target, nanos, limit).await
-                }
-            }
-            ChatHistorySubCommand::AROUND => {
-                let msgref_str = msg.arg(2).unwrap_or("*");
-                let msgref = MessageReference::parse(msgref_str);
-
-                let (nanos, center_msg) = match msgref {
-                    Ok(MessageReference::MsgId(id)) => {
-                        let n = if is_dm {
-                            ctx.db.history().lookup_dm_msgid_nanotime(nick, target, &id).await?
-                        } else {
-                            ctx.db.history().lookup_msgid_nanotime(target, &id).await?
-                        };
-
-                        let msg = if n.is_some() {
-                            ctx.db.history().get_message_by_id(&id).await?
-                        } else {
-                            None
-                        };
-
-                        debug!("AROUND lookup: id={} n={:?} msg={:?}", id, n, msg.is_some());
-                        (n.unwrap_or(0), msg)
-                    }
-                    Ok(MessageReference::Timestamp(ts)) => {
-                        let n = parse_server_time(&ts);
-                        let center = if is_dm {
-                            ctx.db.history().query_dm_between(nick, account, target, n - 1, n + 1, 1).await?
-                        } else {
-                            ctx.db.history().query_between(target, n - 1, n + 1, 1).await?
-                        };
-                        (n, center.into_iter().next())
-                    },
-                    _ => (0, None),
-                };
-
-                let (before_limit, after_limit) = if center_msg.is_some() {
-                    let rem = limit.saturating_sub(1);
-                    let b = rem / 2;
-                    (b, rem - b)
-                } else {
-                    let b = limit / 2;
-                    (b, limit - b)
-                };
-
-                debug!("AROUND limits: limit={} before={} after={}", limit, before_limit, after_limit);
-
-                let mut before = if is_dm {
-                    ctx.db.history().query_dm_before(nick, account, target, nanos, before_limit).await?
-                } else {
-                    ctx.db.history().query_before(target, nanos, before_limit).await?
-                };
-
-                let after = if is_dm {
-                    ctx.db.history().query_dm_after(nick, account, target, nanos, after_limit).await?
-                } else {
-                    ctx.db.history().query_after(target, nanos, after_limit).await?
-                };
-
-                before.reverse();
-                if let Some(m) = center_msg {
-                    before.push(m);
-                }
-                before.extend(after);
-                debug!("AROUND results: {}", before.len());
-                Ok(before)
-            }
-            ChatHistorySubCommand::BETWEEN => {
-                let ref1_str = msg.arg(2).unwrap_or("*");
-                let ref2_str = msg.arg(3).unwrap_or("*");
-                let ref1 = MessageReference::parse(ref1_str);
-                let ref2 = MessageReference::parse(ref2_str);
-
-                let start_nanos = match ref1 {
-                    Ok(MessageReference::MsgId(id)) => {
-                        let n = if is_dm {
-                            ctx.db.history().lookup_dm_msgid_nanotime(nick, target, &id).await?
-                        } else {
-                            ctx.db.history().lookup_msgid_nanotime(target, &id).await?
-                        };
-                        n.unwrap_or(0)
-                    }
-                    Ok(MessageReference::Timestamp(ts)) => parse_server_time(&ts),
-                    _ => 0,
-                };
-                let end_nanos = match ref2 {
-                    Ok(MessageReference::MsgId(id)) => {
-                        let n = if is_dm {
-                            ctx.db.history().lookup_dm_msgid_nanotime(nick, target, &id).await?
-                        } else {
-                            ctx.db.history().lookup_msgid_nanotime(target, &id).await?
-                        };
-                        n.unwrap_or(i64::MAX)
-                    }
-                    Ok(MessageReference::Timestamp(ts)) => parse_server_time(&ts),
-                    _ => i64::MAX,
-                };
-
-                if start_nanos < end_nanos {
-                    if is_dm {
-                        ctx.db.history().query_dm_between(nick, account, target, start_nanos, end_nanos, limit).await
-                    } else {
-                        ctx.db.history().query_between(target, start_nanos, end_nanos, limit).await
-                    }
-                } else if is_dm {
-                    ctx.db.history().query_dm_between_desc(nick, account, target, end_nanos, start_nanos, limit).await
-                } else {
-                    ctx.db.history().query_between_desc(target, end_nanos, start_nanos, limit).await
-                }
-            }
-            ChatHistorySubCommand::TARGETS => {
-                let start_str = msg.arg(1).unwrap_or("*");
-                let end_str = msg.arg(2).unwrap_or("*");
-
-                let start = if start_str == "*" { 0 } else {
-                    MessageReference::parse(start_str).ok().and_then(|r| match r {
-                        MessageReference::Timestamp(ts) => Some(parse_server_time(&ts)),
-                        _ => None
-                    }).unwrap_or(0)
-                };
-
-                let end = if end_str == "*" { i64::MAX } else {
-                    MessageReference::parse(end_str).ok().and_then(|r| match r {
-                        MessageReference::Timestamp(ts) => Some(parse_server_time(&ts)),
-                        _ => None
-                    }).unwrap_or(i64::MAX)
-                };
-
-                let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
-                let channels = if let Some(user_arc) = user_arc {
-                    let user = user_arc.read().await;
-                    user.channels.iter().cloned().collect::<Vec<_>>()
-                } else {
-                    vec![]
-                };
-
-                let targets = ctx.db.history().query_targets(nick, &channels, start, end, limit as usize).await?;
-
-                let mut msgs = Vec::new();
-                for (target_name, timestamp) in targets {
-                    let dt = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_nanos(timestamp as u64));
-                    let ts_str = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-
-                    // Create a dummy StoredMessage for TARGETS
-                    // We use "TARGET" as command, target_name as target, and timestamp as text
-                    // This is a hack to pass data to send_history_batch
-                    let envelope = crate::db::MessageEnvelope {
-                        command: "TARGET".to_string(),
-                        prefix: "".to_string(),
-                        target: target_name.clone(),
-                        text: ts_str,
-                        tags: None,
-                    };
-
-                    msgs.push(StoredMessage {
-                        msgid: "".to_string(),
-                        nanotime: timestamp,
-                        target: target_name,
-                        sender: "".to_string(),
-                        account: None,
-                        envelope,
-                    });
-                }
-
-                Ok(msgs)
-            }
+            ChatHistorySubCommand::LATEST => self.handle_latest(ctx, target, nick, limit, is_dm, msg).await,
+            ChatHistorySubCommand::BEFORE => self.handle_before(ctx, target, nick, limit, is_dm, msg).await,
+            ChatHistorySubCommand::AFTER => self.handle_after(ctx, target, nick, limit, is_dm, msg).await,
+            ChatHistorySubCommand::AROUND => self.handle_around(ctx, target, nick, limit, is_dm, msg).await,
+            ChatHistorySubCommand::BETWEEN => self.handle_between(ctx, target, nick, limit, is_dm, msg).await,
+            ChatHistorySubCommand::TARGETS => self.handle_targets(ctx, nick, limit, msg).await,
             _ => {
                 debug!("Unknown CHATHISTORY subcommand");
                 Ok(vec![])

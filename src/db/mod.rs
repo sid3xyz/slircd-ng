@@ -9,12 +9,10 @@
 mod accounts;
 mod bans;
 mod channels;
-mod history;
 
 pub use accounts::AccountRepository;
 pub use bans::{BanRepository, Dline, Gline, Kline, Shun, Zline};
 pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
-pub use history::{HistoryRepository, StoreMessageParams, StoredMessage, MessageEnvelope};
 
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -244,10 +242,5 @@ impl Database {
     /// Get ban repository.
     pub fn bans(&self) -> BanRepository<'_> {
         BanRepository::new(&self.pool)
-    }
-
-    /// Get history repository.
-    pub fn history(&self) -> HistoryRepository<'_> {
-        HistoryRepository::new(&self.pool)
     }
 }

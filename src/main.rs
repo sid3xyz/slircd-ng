@@ -7,6 +7,7 @@ mod config;
 mod db;
 mod error;
 mod handlers;
+mod history;
 mod http;
 mod metrics;
 mod network;
@@ -115,6 +116,23 @@ async fn main() -> anyhow::Result<()> {
         "Loaded active bans into cache"
     );
 
+    // Initialize history provider
+    let history: Arc<dyn crate::history::HistoryProvider> = if config.history.enabled {
+        match config.history.backend.as_str() {
+            "redb" => {
+                info!(path = %config.history.path, "Initializing Redb history backend");
+                Arc::new(crate::history::redb::RedbProvider::new(&config.history.path)?)
+            }
+            _ => {
+                info!("History backend 'none' or unknown. Using NoOp.");
+                Arc::new(crate::history::noop::NoOpProvider)
+            }
+        }
+    } else {
+        info!("History disabled. Using NoOp provider.");
+        Arc::new(crate::history::noop::NoOpProvider)
+    };
+
     // Create the Matrix (shared state)
     // Use database directory for data files (IP deny list, etc.)
     let data_dir = std::path::Path::new(db_path).parent();
@@ -125,6 +143,7 @@ async fn main() -> anyhow::Result<()> {
         &config,
         data_dir,
         db.clone(),
+        history,
         registered_channels,
         active_shuns,
         active_klines,
@@ -218,10 +237,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Start message history pruning task (runs at startup + daily, retains 30 days)
     {
-        let db = db.clone();
+        let matrix = Arc::clone(&matrix);
         tokio::spawn(async move {
+            let retention = std::time::Duration::from_secs(30 * 86400);
             // Run immediately at startup
-            match db.history().prune_old_messages(30).await {
+            match matrix.history.prune(retention).await {
                 Ok(removed) if removed > 0 => {
                     info!(
                         removed = removed,
@@ -238,7 +258,7 @@ async fn main() -> anyhow::Result<()> {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(86400));
             loop {
                 interval.tick().await;
-                match db.history().prune_old_messages(30).await {
+                match matrix.history.prune(retention).await {
                     Ok(removed) if removed > 0 => {
                         info!(removed = removed, "Old messages pruned from history");
                     }

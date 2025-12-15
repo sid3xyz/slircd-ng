@@ -22,6 +22,7 @@
 use super::user::{User, WhowasEntry};
 use crate::db::Database;
 use crate::services::{chanserv, nickserv};
+use crate::history::HistoryProvider;
 
 use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
 use crate::db::{Dline, Gline, Kline, Shun, Zline};
@@ -99,6 +100,9 @@ pub struct Matrix {
     /// In-memory ban cache for fast connection-time ban checks.
     pub ban_cache: BanCache,
 
+    /// Message history provider (Opt-In Hybrid Architecture).
+    pub history: Arc<dyn HistoryProvider>,
+
     /// High-performance IP deny list (Roaring Bitmap engine).
     /// Used for nanosecond-scale IP rejection in the gateway accept loop.
     pub ip_deny_list: std::sync::RwLock<IpDenyList>,
@@ -168,6 +172,7 @@ impl Matrix {
         config: &Config,
         data_dir: Option<&std::path::Path>,
         db: Database,
+        history: Arc<dyn HistoryProvider>,
         registered_channels: Vec<String>,
         shuns: Vec<Shun>,
         klines: Vec<Kline>,
@@ -241,6 +246,7 @@ impl Matrix {
             monitors: DashMap::new(),
             monitoring: DashMap::new(),
             ban_cache,
+            history,
             ip_deny_list: std::sync::RwLock::new(ip_deny_list),
             nickserv: nickserv::NickServ::new(db.clone()),
             chanserv: chanserv::ChanServ::new(db),
