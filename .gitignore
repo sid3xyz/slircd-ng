@@ -43,10 +43,10 @@ Thumbs.db
 #   config.*.prod.toml   - Production configs (NEVER COMMIT)
 #   config.<hostname>.toml - Host-specific configs (NEVER COMMIT)
 # =============================================================================
-config.*.local.toml
-config.*.prod.toml
-config.wintermute.toml
-config.production.toml
+# Block all config variants except explicit test configs
+config.*.toml
+!config.test.toml
+!config.password-test.toml
 
 # Backup files that might contain secrets
 *.bak
