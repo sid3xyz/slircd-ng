@@ -3,7 +3,26 @@
 use crate::handlers::{Context, HandlerResult, PostRegHandler, server_reply};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
+use regex::Regex;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
+
+/// Convert a glob pattern (with * and ?) to a regex.
+fn glob_to_regex(pattern: &str) -> Regex {
+    let mut regex_str = String::from("^");
+    for c in pattern.chars() {
+        match c {
+            '*' => regex_str.push_str(".*"),
+            '?' => regex_str.push('.'),
+            '.' | '+' | '(' | ')' | '[' | ']' | '{' | '}' | '^' | '$' | '|' | '\\' => {
+                regex_str.push('\\');
+                regex_str.push(c);
+            }
+            _ => regex_str.push(c),
+        }
+    }
+    regex_str.push('$');
+    Regex::new(&regex_str).unwrap_or_else(|_| Regex::new("^$").unwrap())
+}
 
 /// Handler for WHOWAS command.
 ///
@@ -50,6 +69,19 @@ impl PostRegHandler for WhowasHandler {
                 ],
             );
             ctx.sender.send(reply).await?;
+            
+            // Per RFC 2812, WHOWAS with no params should still send ENDOFWHOWAS
+            // Use a placeholder nick for the end message
+            let end_reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::RPL_ENDOFWHOWAS,
+                vec![
+                    ctx.state.nick.clone(),
+                    "*".to_string(),
+                    "End of WHOWAS".to_string(),
+                ],
+            );
+            ctx.sender.send(end_reply).await?;
             return Ok(());
         }
 
@@ -64,7 +96,19 @@ impl PostRegHandler for WhowasHandler {
 
         for target in &target_list {
             let target_lower = irc_to_lower(target);
-            if let Some(entries) = ctx.matrix.whowas.get(&target_lower) {
+            
+            // Check if target contains wildcards
+            if target.contains('*') || target.contains('?') {
+                // Wildcard match - search all entries
+                let pattern = glob_to_regex(&target_lower);
+                for entry in ctx.matrix.whowas.iter() {
+                    if pattern.is_match(entry.key()) {
+                        for e in entry.value().iter() {
+                            all_entries.push(e.clone());
+                        }
+                    }
+                }
+            } else if let Some(entries) = ctx.matrix.whowas.get(&target_lower) {
                 for entry in entries.iter() {
                     all_entries.push(entry.clone());
                 }
