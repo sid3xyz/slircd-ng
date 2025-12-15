@@ -60,6 +60,7 @@ pub enum ChannelEvent {
         user_context: Box<UserContext>,
         is_registered: bool,
         is_tls: bool,
+        is_bot: bool,
         status_prefix: Option<char>,
         timestamp: Option<String>,
         msgid: Option<String>,

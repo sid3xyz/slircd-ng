@@ -43,6 +43,7 @@ pub struct UserModes {
     pub secure: bool,          // +Z (TLS connection)
     pub registered_only: bool, // +R (only registered users can PM)
     pub no_ctcp: bool,         // +T (block CTCP except ACTION)
+    pub bot: bool,             // +B (marked as a bot)
     /// +s - Server notices with granular snomasks (c, r, k, o, etc.)
     /// Empty set means no server notices
     pub snomasks: HashSet<char>,
@@ -72,6 +73,9 @@ impl UserModes {
         }
         if self.no_ctcp {
             s.push('T');
+        }
+        if self.bot {
+            s.push('B');
         }
         if !self.snomasks.is_empty() {
             s.push('s');

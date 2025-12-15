@@ -1,4 +1,6 @@
 //! WHO handler for listing users matching a mask.
+//!
+//! Supports both standard WHO (RFC 2812) and WHOX (IRCv3) extensions.
 
 use super::super::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
 use crate::state::RegisteredState;
@@ -7,18 +9,191 @@ use slirc_proto::{ChannelExt, MessageRef, Response, irc_to_lower};
 
 /// Handler for WHO command.
 ///
-/// `WHO [mask [o]]`
+/// `WHO <mask> [%<fields>[,<token>]]`
 ///
 /// Returns information about users matching the mask.
-/// The 'o' flag restricts results to operators only.
-/// # RFC 2812 §3.6.1
-///
-/// Who query - Returns list of information about users matching criteria.
+/// Supports WHOX extensions when %fields are specified.
 ///
 /// **Specification:** [RFC 2812 §3.6.1](https://datatracker.ietf.org/doc/html/rfc2812#section-3.6.1)
-///
-/// **Compliance:** 18/39 irctest pass (21 WHOX extensions skipped)
+/// **Extension:** [IRCv3 WHOX](https://ircv3.net/specs/extensions/whox)
 pub struct WhoHandler;
+
+/// WHOX field request parsed from %fields string.
+#[derive(Default, Clone)]
+struct WhoxFields {
+    token: bool,          // t
+    channel: bool,        // c
+    username: bool,       // u
+    ip: bool,             // i
+    hostname: bool,       // h
+    server: bool,         // s
+    nick: bool,           // n
+    flags: bool,          // f
+    hopcount: bool,       // d
+    idle: bool,           // l
+    account: bool,        // a
+    oplevel: bool,        // o
+    realname: bool,       // r
+    query_token: Option<String>, // The token value if provided
+}
+
+impl WhoxFields {
+    /// Parse WHOX fields from a string like "%cuhnar" or "%afnt,42"
+    fn parse(s: &str) -> Option<Self> {
+        if !s.starts_with('%') {
+            return None;
+        }
+        let s = &s[1..]; // Remove %
+        
+        // Check for token: %fields,token
+        let (fields_str, token_value) = if let Some(comma_pos) = s.find(',') {
+            let fields = &s[..comma_pos];
+            let token = &s[comma_pos + 1..];
+            // Token must be 1-3 digits
+            if token.len() > 3 || token.is_empty() || !token.chars().all(|c| c.is_ascii_digit()) {
+                return None;
+            }
+            (fields, Some(token.to_string()))
+        } else {
+            (s, None)
+        };
+        
+        let mut result = WhoxFields {
+            query_token: token_value,
+            ..Default::default()
+        };
+        
+        for c in fields_str.chars() {
+            match c {
+                't' => result.token = true,
+                'c' => result.channel = true,
+                'u' => result.username = true,
+                'i' => result.ip = true,
+                'h' => result.hostname = true,
+                's' => result.server = true,
+                'n' => result.nick = true,
+                'f' => result.flags = true,
+                'd' => result.hopcount = true,
+                'l' => result.idle = true,
+                'a' => result.account = true,
+                'o' => result.oplevel = true,
+                'r' => result.realname = true,
+                _ => {} // Ignore unknown fields per spec
+            }
+        }
+        
+        // 't' requires a token value
+        if result.token && result.query_token.is_none() {
+            return None;
+        }
+        
+        Some(result)
+    }
+}
+
+/// User info needed for WHO/WHOX replies.
+struct WhoUserInfo<'a> {
+    nick: &'a str,
+    user: &'a str,
+    visible_host: &'a str,
+    realname: &'a str,
+    account: Option<&'a str>,
+    is_away: bool,
+    is_oper: bool,
+    is_bot: bool,
+    channel_prefixes: String,
+}
+
+/// Build WHO response (either 352 or 354 depending on WHOX).
+fn build_who_reply(
+    server_name: &str,
+    requester_nick: &str,
+    channel: &str,
+    user_info: &WhoUserInfo,
+    whox: Option<&WhoxFields>,
+) -> slirc_proto::Message {
+    if let Some(fields) = whox {
+        // WHOX: RPL_WHOSPCRPL (354)
+        // Order: token, channel, user, ip, host, server, nick, flags, hopcount, idle, account, oplevel, realname
+        let mut params = vec![requester_nick.to_string()];
+        
+        if fields.token {
+            params.push(fields.query_token.clone().unwrap_or_default());
+        }
+        if fields.channel {
+            params.push(channel.to_string());
+        }
+        if fields.username {
+            params.push(user_info.user.to_string());
+        }
+        if fields.ip {
+            // Privacy: don't disclose IP
+            params.push("255.255.255.255".to_string());
+        }
+        if fields.hostname {
+            params.push(user_info.visible_host.to_string());
+        }
+        if fields.server {
+            params.push(server_name.to_string());
+        }
+        if fields.nick {
+            params.push(user_info.nick.to_string());
+        }
+        if fields.flags {
+            let mut flags = if user_info.is_away { "G" } else { "H" }.to_string();
+            if user_info.is_oper {
+                flags.push('*');
+            }
+            if user_info.is_bot {
+                flags.push('B');
+            }
+            flags.push_str(&user_info.channel_prefixes);
+            params.push(flags);
+        }
+        if fields.hopcount {
+            params.push("0".to_string());
+        }
+        if fields.idle {
+            params.push("0".to_string()); // We don't track idle time currently
+        }
+        if fields.account {
+            params.push(user_info.account.unwrap_or("0").to_string());
+        }
+        if fields.oplevel {
+            params.push("n/a".to_string()); // We don't support op levels
+        }
+        if fields.realname {
+            params.push(user_info.realname.to_string());
+        }
+        
+        server_reply(server_name, Response::RPL_WHOSPCRPL, params)
+    } else {
+        // Standard WHO: RPL_WHOREPLY (352)
+        let mut flags = if user_info.is_away { "G" } else { "H" }.to_string();
+        if user_info.is_oper {
+            flags.push('*');
+        }
+        if user_info.is_bot {
+            flags.push('B');
+        }
+        flags.push_str(&user_info.channel_prefixes);
+        
+        server_reply(
+            server_name,
+            Response::RPL_WHOREPLY,
+            vec![
+                requester_nick.to_string(),
+                channel.to_string(),
+                user_info.user.to_string(),
+                user_info.visible_host.to_string(),
+                server_name.to_string(),
+                user_info.nick.to_string(),
+                flags,
+                format!("0 {}", user_info.realname),
+            ],
+        )
+    }
+}
 
 /// Build prefix string for WHO flags based on member modes and multi-prefix setting.
 fn get_member_prefixes(member_modes: &crate::state::MemberModes, multi_prefix: bool) -> String {
@@ -38,14 +213,16 @@ impl PostRegHandler for WhoHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
-
-        // WHO [mask] [o]
         let mask = msg.arg(0);
-        let operators_only = msg
-            .arg(1)
-            .map(|s| s.eq_ignore_ascii_case("o"))
-            .unwrap_or(false);
+        let second_arg = msg.arg(1);
+        
+        // Parse WHOX fields if present, otherwise check for 'o' flag
+        let whox = second_arg.and_then(WhoxFields::parse);
+        let operators_only = if whox.is_none() {
+            second_arg.map(|s| s.eq_ignore_ascii_case("o")).unwrap_or(false)
+        } else {
+            false // WHOX doesn't use 'o' flag
+        };
 
         let server_name = &ctx.matrix.server_info.name;
         let nick = &ctx.state.nick;
@@ -118,31 +295,24 @@ impl PostRegHandler for WhoHandler {
                                 continue;
                             }
 
-                            // Build flags: H=here, G=gone (away), *=ircop, then channel prefixes
-                            let mut flags = if user.away.is_some() {
-                                "G".to_string()
-                            } else {
-                                "H".to_string()
+                            let user_info = WhoUserInfo {
+                                nick: &user.nick,
+                                user: &user.user,
+                                visible_host: &user.visible_host,
+                                realname: &user.realname,
+                                account: user.account.as_deref(),
+                                is_away: user.away.is_some(),
+                                is_oper: user.modes.oper,
+                                is_bot: user.modes.bot,
+                                channel_prefixes: get_member_prefixes(&member_modes, multi_prefix),
                             };
-                            if user.modes.oper {
-                                flags.push('*');
-                            }
-                            flags.push_str(&get_member_prefixes(&member_modes, multi_prefix));
 
-                            // RPL_WHOREPLY (352): <channel> <user> <host> <server> <nick> <flags> :<hopcount> <realname>
-                            let reply = server_reply(
+                            let reply = build_who_reply(
                                 server_name,
-                                Response::RPL_WHOREPLY,
-                                vec![
-                                    nick.clone(),
-                                    channel_info.name.clone(),
-                                    user.user.clone(),
-                                    user.visible_host.clone(),
-                                    server_name.clone(),
-                                    user.nick.clone(),
-                                    flags,
-                                    format!("0 {}", user.realname),
-                                ],
+                                nick,
+                                &channel_info.name,
+                                &user_info,
+                                whox.as_ref(),
                             );
                             ctx.sender.send(reply).await?;
                             result_count += 1;
@@ -237,28 +407,24 @@ impl PostRegHandler for WhoHandler {
                     // Match against nick (simple case-insensitive match or wildcard)
                     let nick_lower = irc_to_lower(&user.nick);
                     if matches_mask(&nick_lower, &mask_lower) {
-                        let mut flags = if user.away.is_some() {
-                            "G".to_string()
-                        } else {
-                            "H".to_string()
+                        let user_info = WhoUserInfo {
+                            nick: &user.nick,
+                            user: &user.user,
+                            visible_host: &user.visible_host,
+                            realname: &user.realname,
+                            account: user.account.as_deref(),
+                            is_away: user.away.is_some(),
+                            is_oper: user.modes.oper,
+                            is_bot: user.modes.bot,
+                            channel_prefixes: String::new(), // No channel context for mask WHO
                         };
-                        if user.modes.oper {
-                            flags.push('*');
-                        }
 
-                        let reply = server_reply(
+                        let reply = build_who_reply(
                             server_name,
-                            Response::RPL_WHOREPLY,
-                            vec![
-                                nick.clone(),
-                                "*".to_string(), // No specific channel
-                                user.user.clone(),
-                                user.visible_host.clone(),
-                                server_name.clone(),
-                                user.nick.clone(),
-                                flags,
-                                format!("0 {}", user.realname),
-                            ],
+                            nick,
+                            "*", // No specific channel
+                            &user_info,
+                            whox.as_ref(),
                         );
                         ctx.sender.send(reply).await?;
                         result_count += 1;

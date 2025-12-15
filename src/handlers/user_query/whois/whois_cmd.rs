@@ -201,6 +201,20 @@ impl PostRegHandler for WhoisHandler {
                     ctx.sender.send(reply).await?;
                 }
 
+                // RPL_WHOISBOT (335): <nick> :is a Bot
+                if target_modes.bot {
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_WHOISBOT,
+                        vec![
+                            nick.clone(),
+                            target_nick.clone(),
+                            format!("is a Bot on {}", ctx.matrix.server_info.network),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+
                 // RPL_WHOISACCOUNT (330): <nick> <account> :is logged in as
                 if let Some(account) = &target_account {
                     let reply = server_reply(

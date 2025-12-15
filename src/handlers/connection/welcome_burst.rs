@@ -316,7 +316,9 @@ impl<'a> WelcomeBurstWriter<'a> {
             .excepts(Some('e'))
             .invex(Some('I'))
             .custom("ELIST", Some("MNU"))
-            .status_msg("~&@%+");
+            .status_msg("~&@%+")
+            .custom("BOT", Some("B"))
+            .custom("WHOX", None);
 
         // Send ISUPPORT lines (max 13 tokens per line to be safe)
         for line in builder.build_lines(13) {

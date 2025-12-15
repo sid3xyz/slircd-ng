@@ -19,6 +19,7 @@ impl ChannelActor {
         user_context: UserContext,
         is_registered: bool,
         is_tls: bool,
+        is_bot: bool,
         status_prefix: Option<char>,
         timestamp: Option<String>,
         msgid: Option<String>,
@@ -270,6 +271,11 @@ impl ChannelActor {
                 if has_account_tag {
                     recipient_tags.push(Tag(Cow::Borrowed("account"), Some(account.clone())));
                 }
+            }
+
+            // Add bot tag if sender is a bot and recipient has message-tags
+            if is_bot && has_message_tags {
+                recipient_tags.push(Tag(Cow::Borrowed("bot"), None));
             }
 
             // Note: label tag is NOT included for non-sender recipients

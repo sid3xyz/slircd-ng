@@ -38,6 +38,8 @@ pub struct SenderSnapshot {
     pub is_registered: bool,
     /// Whether sender is an IRC operator.
     pub is_oper: bool,
+    /// Whether sender is marked as a bot (+B).
+    pub is_bot: bool,
 }
 
 impl SenderSnapshot {
@@ -57,6 +59,7 @@ impl SenderSnapshot {
             account: user.account.clone(),
             is_registered: user.modes.registered,
             is_oper: user.modes.oper,
+            is_bot: user.modes.bot,
         })
     }
 
@@ -174,90 +177,7 @@ pub async fn route_to_channel_with_snapshot(
         user_context: Box::new(user_context),
         is_registered: snapshot.is_registered,
         is_tls: ctx.state.is_tls,
-        status_prefix: opts.status_prefix,
-        timestamp,
-        msgid,
-        reply_tx,
-    };
-
-    if (channel_tx.send(event).await).is_err() {
-        return ChannelRouteResult::NoSuchChannel; // Actor died
-    }
-
-    match reply_rx.await {
-        Ok(result) => result,
-        Err(_) => ChannelRouteResult::NoSuchChannel,
-    }
-}
-
-/// Check if sender can speak in a channel, and broadcast if allowed.
-///
-/// Returns the result of the routing attempt for the caller to handle errors.
-/// Note: Prefer `route_to_channel_with_snapshot` when SenderSnapshot is available.
-#[allow(dead_code)] // Kept for potential future use
-pub async fn route_to_channel(
-    ctx: &Context<'_, crate::state::RegisteredState>,
-    channel_lower: &str,
-    msg: Message,
-    opts: &RouteOptions,
-    timestamp: Option<String>,
-    msgid: Option<String>,
-) -> ChannelRouteResult {
-    let channel_tx = ctx.matrix.channels.get(channel_lower).map(|c| c.clone());
-    let Some(channel_tx) = channel_tx else {
-        return ChannelRouteResult::NoSuchChannel;
-    };
-
-    // Get user info
-    let (user_context, is_registered) = if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.clone()) {
-        let user = user_arc.read().await;
-        let context = UserContext::for_registration(
-            ctx.remote_addr.ip(),
-            user.host.clone(),
-            user.nick.clone(),
-            user.user.clone(),
-            user.realname.clone(),
-            ctx.matrix.server_info.name.clone(),
-            user.account.clone(),
-        );
-        (context, user.modes.registered)
-    } else {
-        // Fallback for unregistered users (shouldn't happen usually)
-        let context = UserContext::for_registration(
-            ctx.remote_addr.ip(),
-            "unknown".to_string(),
-            "unknown".to_string(),
-            "unknown".to_string(),
-            "unknown".to_string(),
-            ctx.matrix.server_info.name.clone(),
-            None,
-        );
-        (context, false)
-    };
-
-    // Extract text and tags from message
-    // TAGMSG has no text body, just tags
-    let (text, tags, is_tagmsg) = match &msg.command {
-        Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => {
-            (text.clone(), msg.tags.clone(), false)
-        }
-        Command::TAGMSG(_) => (String::new(), msg.tags.clone(), true),
-        _ => return ChannelRouteResult::Sent, // Should not happen
-    };
-
-    let is_notice = matches!(msg.command, Command::NOTICE(_, _));
-
-    // Send to actor
-    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    let event = crate::state::actor::ChannelEvent::Message {
-        sender_uid: ctx.uid.to_string(),
-        text,
-        tags,
-        is_notice,
-        is_tagmsg,
-        user_context: Box::new(user_context),
-        is_registered,
-        is_tls: ctx.state.is_tls,
+        is_bot: snapshot.is_bot,
         status_prefix: opts.status_prefix,
         timestamp,
         msgid,
@@ -453,6 +373,11 @@ pub async fn route_to_user_with_snapshot(
                 result = result.with_tag("account", Some(account.clone()));
             }
 
+            // Add bot tag if sender is a bot and recipient has message-tags
+            if snapshot.is_bot && has_message_tags {
+                result = result.with_tag("bot", None::<String>);
+            }
+
             result
         } else {
             msg.clone()
@@ -489,27 +414,6 @@ pub async fn route_to_user_with_snapshot(
     } else {
         false
     }
-}
-
-/// Route a message to a user target, optionally sending RPL_AWAY.
-///
-/// Returns true if the user was found and message sent, false otherwise.
-/// Note: Prefer `route_to_user_with_snapshot` when SenderSnapshot is available.
-#[allow(dead_code)] // Kept for potential future use
-pub async fn route_to_user(
-    ctx: &Context<'_, crate::state::RegisteredState>,
-    target_lower: &str,
-    msg: Message,
-    opts: &RouteOptions,
-    _sender_nick: &str,
-    timestamp: Option<String>,
-    msgid: Option<String>,
-) -> bool {
-    let Some(snapshot) = SenderSnapshot::build(ctx).await else {
-        return false;
-    };
-
-    route_to_user_with_snapshot(ctx, target_lower, msg, opts, timestamp, msgid, &snapshot).await
 }
 
 // ============================================================================
