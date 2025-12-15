@@ -93,12 +93,11 @@ impl HistoryProvider for RedbProvider {
                 let (k, _v) = item.map_err(|e| HistoryError::Database(e.to_string()))?;
                 let key_str = k.value();
                 let parts: Vec<&str> = key_str.split('\0').collect();
-                if parts.len() >= 2 {
-                    if let Ok(ts) = parts[1].parse::<i64>() {
-                        if ts < cutoff {
-                            to_delete.push(key_str.to_string());
-                        }
-                    }
+                if parts.len() >= 2
+                    && let Ok(ts) = parts[1].parse::<i64>()
+                    && ts < cutoff
+                {
+                    to_delete.push(key_str.to_string());
                 }
             }
 
@@ -150,10 +149,10 @@ impl HistoryProvider for RedbProvider {
         if let Some(v) = index.get(msgid).map_err(|e| HistoryError::Database(e.to_string()))? {
             let val_str = std::str::from_utf8(v.value()).map_err(|e| HistoryError::Serialization(e.to_string()))?;
             let parts: Vec<&str> = val_str.split('\0').collect();
-            if parts.len() >= 2 {
-                if let Ok(ts) = parts[1].parse::<i64>() {
-                    return Ok(Some(ts));
-                }
+            if parts.len() >= 2
+                && let Ok(ts) = parts[1].parse::<i64>()
+            {
+                return Ok(Some(ts));
             }
         }
         Ok(None)
@@ -170,16 +169,16 @@ impl HistoryProvider for RedbProvider {
             let start_key = format!("{}\0{:020}\0", target_lower, start);
             let end_key = format!("{}\0{:020}\0\u{FFFF}", target_lower, end);
 
-            let range = table.range(start_key.as_str()..end_key.as_str()).map_err(|e| HistoryError::Database(e.to_string()))?;
+            let mut range = table.range(start_key.as_str()..end_key.as_str()).map_err(|e| HistoryError::Database(e.to_string()))?;
 
-            if let Some(item) = range.rev().next() {
+            if let Some(item) = range.next_back() {
                 let (k, _) = item.map_err(|e| HistoryError::Database(e.to_string()))?;
                 let key_str = k.value();
                 let parts: Vec<&str> = key_str.split('\0').collect();
-                if parts.len() >= 2 {
-                    if let Ok(ts) = parts[1].parse::<i64>() {
-                        results.push((target, ts));
-                    }
+                if parts.len() >= 2
+                    && let Ok(ts) = parts[1].parse::<i64>()
+                {
+                    results.push((target, ts));
                 }
             }
         }

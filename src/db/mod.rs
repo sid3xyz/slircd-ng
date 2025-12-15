@@ -100,6 +100,11 @@ impl Database {
         Ok(Self { pool })
     }
 
+    /// Get reference to the underlying connection pool.
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     /// Run embedded migrations.
     /// Checks for each table and runs the full migration if any are missing.
     async fn run_migrations(pool: &SqlitePool) -> Result<(), DbError> {

@@ -36,7 +36,7 @@ impl ChatHistoryHandler {
         let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = vec![nick.to_string(), target.to_string()];
+            let mut users = [nick.to_string(), target.to_string()];
             users.sort();
             format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
         } else {
@@ -83,7 +83,7 @@ impl ChatHistoryHandler {
         let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = vec![nick.to_string(), target.to_string()];
+            let mut users = [nick.to_string(), target.to_string()];
             users.sort();
             format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
         } else {
@@ -130,7 +130,7 @@ impl ChatHistoryHandler {
         let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = vec![nick.to_string(), target.to_string()];
+            let mut users = [nick.to_string(), target.to_string()];
             users.sort();
             format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
         } else {
@@ -176,7 +176,7 @@ impl ChatHistoryHandler {
         let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = vec![nick.to_string(), target.to_string()];
+            let mut users = [nick.to_string(), target.to_string()];
             users.sort();
             format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
         } else {
@@ -239,7 +239,7 @@ impl ChatHistoryHandler {
         let ref2_str = msg.arg(3).unwrap_or("*");
 
         let query_target = if is_dm {
-            let mut users = vec![nick.to_string(), target.to_string()];
+            let mut users = [nick.to_string(), target.to_string()];
             users.sort();
             format!("dm:{}:{}", slirc_proto::irc_to_lower(&users[0]), slirc_proto::irc_to_lower(&users[1]))
         } else {
