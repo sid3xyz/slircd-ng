@@ -157,6 +157,22 @@ pub enum ChannelEvent {
         old_nick: String,
         new_nick: String,
     },
+    /// Clear channel state (modes, bans, etc).
+    Clear {
+        sender_uid: Uid,
+        sender_prefix: Prefix,
+        target: ClearTarget,
+        reply_tx: oneshot::Sender<Result<(), ChannelError>>,
+    },
+}
+
+/// Target for CLEAR command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClearTarget {
+    Modes,
+    Bans,
+    Ops,
+    Voices,
 }
 
 /// Snapshot of channel information for queries.

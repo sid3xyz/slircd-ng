@@ -322,8 +322,15 @@ impl ChannelActor {
                 new_nick,
             } => {
                 self.handle_nick_change(uid, new_nick).await;
-            }
-        }
+            }            ChannelEvent::Clear {
+                sender_uid,
+                sender_prefix,
+                target,
+                reply_tx,
+            } => {
+                self.handle_clear(sender_uid, sender_prefix, target, reply_tx)
+                    .await;
+            }        }
     }
 
     fn cleanup_if_empty(&mut self) {

@@ -33,16 +33,7 @@ impl ChanServ {
             return self.error_reply(uid, "Channel name must start with #");
         }
 
-        // Only USERS subcommand for now
-        if subcommand != "USERS" {
-            return self.error_reply(
-                uid,
-                &format!(
-                    "Unknown CLEAR subcommand: \x02{}\x02. Use: CLEAR #channel USERS [reason]",
-                    subcommand
-                ),
-            );
-        }
+
 
         let reason = if args.len() > 2 {
             args[2..].join(" ")
@@ -93,73 +84,141 @@ impl ChanServ {
 
         // Get channel state and collect UIDs to kick
         let channel_lower = irc_to_lower(channel_name);
-        let users_to_kick: Vec<String> = {
-            if let Some(channel_ref) = matrix.channels.get(&channel_lower) {
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = channel_ref
-                    .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
-                    .await;
-                if let Ok(members) = rx.await {
-                    members
-                        .iter()
-                        .filter(|(member_uid, modes)| {
-                            // Don't kick opped users or the person running the command
-                            !modes.op && *member_uid != uid
-                        })
-                        .map(|(member_uid, _)| member_uid.clone())
-                        .collect()
-                } else {
-                    return self.error_reply(
-                        uid,
-                        &format!("Channel \x02{}\x02 does not exist.", channel_name),
-                    );
-                }
-            } else {
-                return self.error_reply(
-                    uid,
-                    &format!("Channel \x02{}\x02 does not exist.", channel_name),
-                );
-            }
+
+        // Common setup for all commands
+        let channel_sender = if let Some(c) = matrix.channels.get(&channel_lower) {
+            c.clone()
+        } else {
+             return self.error_reply(uid, &format!("Channel \x02{}\x02 does not exist.", channel_name));
         };
 
-        if users_to_kick.is_empty() {
-            return self.reply_effects(
-                uid,
-                vec!["No users to kick (all users have +o or you're alone)."],
-            );
-        }
-
-        info!(
-            channel = %channel_name,
-            by = %nick,
-            count = users_to_kick.len(),
-            "ChanServ CLEAR USERS executed"
+        let sender_prefix = slirc_proto::Prefix::new(
+            "ChanServ".to_string(),
+            "ChanServ".to_string(),
+            "services.".to_string(),
         );
 
-        // Build kick effects
-        let mut effects: Vec<ServiceEffect> = vec![self.reply_effect(
-            uid,
-            &format!(
-                "Clearing \x02{}\x02 users from \x02{}\x02...",
-                users_to_kick.len(),
-                channel_name
-            ),
-        )];
+        match subcommand.as_str() {
+            "USERS" => {
+                let users_to_kick: Vec<String> = {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let _ = channel_sender
+                        .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
+                        .await;
+                    if let Ok(members) = rx.await {
+                        members
+                            .iter()
+                            .filter(|(member_uid, modes)| {
+                                // Don't kick opped users or the person running the command
+                                !modes.op && *member_uid != uid
+                            })
+                            .map(|(member_uid, _)| member_uid.clone())
+                            .collect()
+                    } else {
+                        return self.error_reply(
+                            uid,
+                            &format!("Channel \x02{}\x02 does not exist.", channel_name),
+                        );
+                    }
+                };
 
-        for target_uid in users_to_kick {
-            effects.push(ServiceEffect::Kick {
-                channel: channel_name.to_string(),
-                target_uid,
-                kicker: "ChanServ".to_string(),
-                reason: reason.clone(),
-            });
+                if users_to_kick.is_empty() {
+                    return self.reply_effects(
+                        uid,
+                        vec!["No users to kick (all users have +o or you're alone)."],
+                    );
+                }
+
+                info!(
+                    channel = %channel_name,
+                    by = %nick,
+                    count = users_to_kick.len(),
+                    "ChanServ CLEAR USERS executed"
+                );
+
+                // Build kick effects
+                let mut effects: Vec<ServiceEffect> = vec![self.reply_effect(
+                    uid,
+                    &format!(
+                        "Clearing \x02{}\x02 users from \x02{}\x02...",
+                        users_to_kick.len(),
+                        channel_name
+                    ),
+                )];
+
+                for target_uid in users_to_kick {
+                    effects.push(ServiceEffect::Kick {
+                        channel: channel_name.to_string(),
+                        target_uid,
+                        kicker: "ChanServ".to_string(),
+                        reason: reason.clone(),
+                    });
+                }
+
+                effects.push(self.reply_effect(
+                    uid,
+                    &format!("Channel \x02{}\x02 has been cleared.", channel_name),
+                ));
+
+                effects
+            }
+            "MODES" => {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let event = crate::state::actor::ChannelEvent::Clear {
+                    sender_uid: "ChanServ".to_string(),
+                    sender_prefix,
+                    target: crate::state::actor::ClearTarget::Modes,
+                    reply_tx: tx,
+                };
+                let _ = channel_sender.send(event).await;
+                let _ = rx.await;
+                vec![self.reply_effect(uid, &format!("Cleared modes on \x02{}\x02.", channel_name))]
+            }
+            "BANS" => {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let event = crate::state::actor::ChannelEvent::Clear {
+                    sender_uid: "ChanServ".to_string(),
+                    sender_prefix,
+                    target: crate::state::actor::ClearTarget::Bans,
+                    reply_tx: tx,
+                };
+                let _ = channel_sender.send(event).await;
+                let _ = rx.await;
+                vec![self.reply_effect(uid, &format!("Cleared bans on \x02{}\x02.", channel_name))]
+            }
+            "OPS" => {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let event = crate::state::actor::ChannelEvent::Clear {
+                    sender_uid: "ChanServ".to_string(),
+                    sender_prefix,
+                    target: crate::state::actor::ClearTarget::Ops,
+                    reply_tx: tx,
+                };
+                let _ = channel_sender.send(event).await;
+                let _ = rx.await;
+                vec![self.reply_effect(uid, &format!("Deopped all users on \x02{}\x02.", channel_name))]
+            }
+            "VOICES" => {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let event = crate::state::actor::ChannelEvent::Clear {
+                    sender_uid: "ChanServ".to_string(),
+                    sender_prefix,
+                    target: crate::state::actor::ClearTarget::Voices,
+                    reply_tx: tx,
+                };
+                let _ = channel_sender.send(event).await;
+                let _ = rx.await;
+                vec![self.reply_effect(uid, &format!("Devoiced all users on \x02{}\x02.", channel_name))]
+            }
+            _ => {
+                self.error_reply(
+                    uid,
+                    &format!(
+                        "Unknown CLEAR subcommand: \x02{}\x02. Use: CLEAR #channel [USERS|MODES|BANS|OPS|VOICES] [reason]",
+                        subcommand
+                    ),
+                )
+            }
         }
-
-        effects.push(self.reply_effect(
-            uid,
-            &format!("Channel \x02{}\x02 has been cleared.", channel_name),
-        ));
-
-        effects
     }
 }

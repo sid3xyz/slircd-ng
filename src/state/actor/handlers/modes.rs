@@ -1,4 +1,4 @@
-use super::{ChannelActor, ChannelError, ChannelMode, Uid};
+use super::{ChannelActor, ChannelError, ChannelMode, Uid, ClearTarget};
 use slirc_proto::mode::{ChannelMode as ProtoChannelMode, Mode};
 use slirc_proto::{Command, Message, Prefix};
 use std::collections::HashMap;
@@ -201,6 +201,81 @@ impl ChannelActor {
         }
 
         let _ = reply_tx.send(Ok(applied_modes));
+    }
+
+    pub(crate) async fn handle_clear(
+        &mut self,
+        _sender_uid: Uid,
+        sender_prefix: Prefix,
+        target: ClearTarget,
+        reply_tx: oneshot::Sender<Result<(), ChannelError>>,
+    ) {
+        let mut changes = Vec::new();
+
+        match target {
+            ClearTarget::Modes => {
+                // Reset all modes to default
+                self.modes.clear();
+                self.modes.insert(ChannelMode::NoExternal);
+                self.modes.insert(ChannelMode::TopicLock);
+
+                // Notify about mode clear
+                let msg = Message {
+                    tags: None,
+                    prefix: Some(sender_prefix.clone()),
+                    command: Command::NOTICE(self.name.clone(), "Channel modes cleared".to_string()),
+                };
+                self.handle_broadcast(msg, None).await;
+            }
+            ClearTarget::Bans => {
+                self.bans.clear();
+                self.excepts.clear();
+                self.invex.clear();
+                self.quiets.clear();
+
+                let msg = Message {
+                    tags: None,
+                    prefix: Some(sender_prefix.clone()),
+                    command: Command::NOTICE(self.name.clone(), "Channel bans cleared".to_string()),
+                };
+                self.handle_broadcast(msg, None).await;
+            }
+            ClearTarget::Ops => {
+                for (uid, modes) in self.members.iter_mut() {
+                    if modes.op {
+                        modes.op = false;
+                        if let Some(nick) = self.user_nicks.get(uid) {
+                             changes.push(Mode::minus(ProtoChannelMode::Oper, Some(nick.as_str())));
+                        }
+                    }
+                }
+            }
+            ClearTarget::Voices => {
+                for (uid, modes) in self.members.iter_mut() {
+                    if modes.voice {
+                        modes.voice = false;
+                        if let Some(nick) = self.user_nicks.get(uid) {
+                             changes.push(Mode::minus(ProtoChannelMode::Voice, Some(nick.as_str())));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Broadcast changes if any
+        if !changes.is_empty() {
+             // Batch into messages of max 12 modes (standard limit)
+             for chunk in changes.chunks(12) {
+                 let msg = Message {
+                     tags: None,
+                     prefix: Some(sender_prefix.clone()),
+                     command: Command::ChannelMODE(self.name.clone(), chunk.to_vec()),
+                 };
+                 self.handle_broadcast(msg, None).await;
+             }
+        }
+
+        let _ = reply_tx.send(Ok(()));
     }
 }
 
