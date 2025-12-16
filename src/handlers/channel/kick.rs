@@ -2,7 +2,7 @@
 
 use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler,
-    user_mask_from_state,
+    user_mask_from_state, resolve_nick_to_uid,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
@@ -75,21 +75,20 @@ impl PostRegHandler for KickHandler {
             let channel_lower = irc_to_lower(channel_name);
 
             // Get channel
-            let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
-                Some(c) => c.clone(),
-                None => {
-                    let reply = Response::err_nosuchchannel(&nick, channel_name)
-                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
-                    ctx.sender.send(reply).await?;
-                    crate::metrics::record_command_error("KICK", "ERR_NOSUCHCHANNEL");
+            let channel_tx = match ctx.require_channel_exists(channel_name) {
+                Ok(tx) => tx,
+                Err(e) => {
+                    if let Some(msg) = e.to_irc_reply(&ctx.matrix.server_info.name, &nick, "KICK") {
+                        ctx.sender.send(msg).await?;
+                    }
+                    crate::metrics::record_command_error("KICK", e.error_code());
                     continue;
                 }
             };
 
             // Find target user
-            let target_lower = irc_to_lower(target_nick);
-            let target_uid = match ctx.matrix.nicks.get(&target_lower) {
-                Some(uid) => uid.value().clone(),
+            let target_uid = match resolve_nick_to_uid(ctx, target_nick) {
+                Some(uid) => uid,
                 None => {
                     let reply = Response::err_nosuchnick(&nick, target_nick)
                         .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));

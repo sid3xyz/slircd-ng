@@ -300,9 +300,7 @@ impl Registry {
             crate::metrics::record_command_error(&cmd_name, "not_registered");
             Err(super::context::HandlerError::NotRegistered)
         } else {
-            Err(super::context::HandlerError::Internal(
-                "Command not found".into(),
-            ))
+            Err(super::context::HandlerError::UnknownCommand(cmd_name.clone()))
         };
 
         // Copy values needed for error handling before passing ctx as mutable
@@ -372,9 +370,7 @@ impl Registry {
             crate::metrics::record_command_error(&cmd_name, "already_registered");
             Err(super::context::HandlerError::AlreadyRegistered)
         } else {
-            Err(super::context::HandlerError::Internal(
-                "Command not found".into(),
-            ))
+            Err(super::context::HandlerError::UnknownCommand(cmd_name.clone()))
         };
 
         // Copy values needed for error handling before passing ctx as mutable
@@ -401,7 +397,7 @@ impl Registry {
     {
         match result {
             Ok(_) => Ok(()),
-            Err(super::context::HandlerError::Internal(msg)) if msg == "Command not found" => {
+            Err(super::context::HandlerError::UnknownCommand(_)) => {
                 // Unknown command
                 let nick_str = nick.unwrap_or("*");
                 let reply = Response::err_unknowncommand(nick_str, cmd_name)

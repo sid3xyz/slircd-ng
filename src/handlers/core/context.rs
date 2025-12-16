@@ -12,8 +12,10 @@ use super::middleware::ResponseMiddleware;
 use super::registry::Registry;
 use crate::db::Database;
 use crate::state::{Matrix, RegisteredState};
+use crate::state::actor::ChannelEvent;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 // Re-export error types from central module
 pub use crate::error::{HandlerError, HandlerResult};
@@ -129,6 +131,42 @@ impl<'a> Context<'a, RegisteredState> {
     #[allow(dead_code)]
     pub fn account_tag(&self) -> Option<&str> {
         self.state.account.as_deref()
+    }
+
+    /// Ensure the user is an IRC operator.
+    #[allow(dead_code)]
+    pub async fn require_oper(&self) -> Result<(), HandlerError> {
+        if let Some(user_lock) = self.matrix.users.get(self.uid) {
+            let user = user_lock.read().await;
+            if user.modes.oper {
+                return Ok(());
+            }
+        }
+        Err(HandlerError::NoPrivileges)
+    }
+
+    /// Ensure the user is a member of the specified channel.
+    #[allow(dead_code)]
+    pub async fn require_channel_membership(&self, channel: &str) -> Result<(), HandlerError> {
+        let channel_lower = slirc_proto::irc_to_lower(channel);
+        if let Some(user_lock) = self.matrix.users.get(self.uid) {
+            let user = user_lock.read().await;
+            if user.channels.contains(&channel_lower) {
+                return Ok(());
+            }
+        }
+        Err(HandlerError::NotOnChannel(channel.to_string()))
+    }
+
+    /// Ensure the channel exists and return its sender.
+    #[allow(clippy::result_large_err)]
+    pub fn require_channel_exists(&self, channel: &str) -> Result<mpsc::Sender<ChannelEvent>, HandlerError> {
+        let channel_lower = slirc_proto::irc_to_lower(channel);
+        if let Some(sender) = self.matrix.channels.get(&channel_lower) {
+            Ok(sender.clone())
+        } else {
+            Err(HandlerError::NoSuchChannel(channel.to_string()))
+        }
     }
 }
 

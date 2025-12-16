@@ -44,7 +44,7 @@ impl WhoxFields {
             return None;
         }
         let s = &s[1..]; // Remove %
-        
+
         // Check for token: %fields,token
         let (fields_str, token_value) = if let Some(comma_pos) = s.find(',') {
             let fields = &s[..comma_pos];
@@ -57,12 +57,12 @@ impl WhoxFields {
         } else {
             (s, None)
         };
-        
+
         let mut result = WhoxFields {
             query_token: token_value,
             ..Default::default()
         };
-        
+
         for c in fields_str.chars() {
             match c {
                 't' => result.token = true,
@@ -81,12 +81,12 @@ impl WhoxFields {
                 _ => {} // Ignore unknown fields per spec
             }
         }
-        
+
         // 't' requires a token value
         if result.token && result.query_token.is_none() {
             return None;
         }
-        
+
         Some(result)
     }
 }
@@ -116,7 +116,7 @@ fn build_who_reply(
         // WHOX: RPL_WHOSPCRPL (354)
         // Order: token, channel, user, ip, host, server, nick, flags, hopcount, idle, account, oplevel, realname
         let mut params = vec![requester_nick.to_string()];
-        
+
         if fields.token {
             params.push(fields.query_token.clone().unwrap_or_default());
         }
@@ -165,7 +165,7 @@ fn build_who_reply(
         if fields.realname {
             params.push(user_info.realname.to_string());
         }
-        
+
         server_reply(server_name, Response::RPL_WHOSPCRPL, params)
     } else {
         // Standard WHO: RPL_WHOREPLY (352)
@@ -177,7 +177,7 @@ fn build_who_reply(
             flags.push('B');
         }
         flags.push_str(&user_info.channel_prefixes);
-        
+
         server_reply(
             server_name,
             Response::RPL_WHOREPLY,
@@ -215,7 +215,7 @@ impl PostRegHandler for WhoHandler {
     ) -> HandlerResult {
         let mask = msg.arg(0);
         let second_arg = msg.arg(1);
-        
+
         // Parse WHOX fields if present, otherwise check for 'o' flag
         let whox = second_arg.and_then(WhoxFields::parse);
         let operators_only = if whox.is_none() {

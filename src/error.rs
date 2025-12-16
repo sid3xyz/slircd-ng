@@ -37,6 +37,37 @@ pub enum HandlerError {
     #[error("already registered")]
     AlreadyRegistered,
 
+    #[allow(dead_code)]
+    #[error("no such nick: {0}")]
+    NoSuchNick(String),
+
+    #[allow(dead_code)]
+    #[error("no such channel: {0}")]
+    NoSuchChannel(String),
+
+    #[allow(dead_code)]
+    #[error("channel privileges needed: {0}")]
+    ChanPrivsNeeded(String),
+
+    #[allow(dead_code)]
+    #[error("user not in channel: {0} {1}")]
+    UserNotInChannel(String, String),
+
+    #[allow(dead_code)]
+    #[error("not on channel: {0}")]
+    NotOnChannel(String),
+
+    #[allow(dead_code)]
+    #[error("user on channel: {0} {1}")]
+    UserOnChannel(String, String),
+
+    #[allow(dead_code)]
+    #[error("permission denied: you're not an IRC operator")]
+    NoPrivileges,
+
+    #[error("unknown command: {0}")]
+    UnknownCommand(String),
+
     #[error("internal error: nick or user missing after registration")]
     NickOrUserMissing,
 
@@ -62,6 +93,14 @@ impl HandlerError {
             Self::NotRegistered => "not_registered",
             Self::AccessDenied => "access_denied",
             Self::AlreadyRegistered => "already_registered",
+            Self::NoSuchNick(_) => "no_such_nick",
+            Self::NoSuchChannel(_) => "no_such_channel",
+            Self::ChanPrivsNeeded(_) => "chan_privs_needed",
+            Self::UserNotInChannel(_, _) => "user_not_in_channel",
+            Self::NotOnChannel(_) => "not_on_channel",
+            Self::UserOnChannel(_, _) => "user_on_channel",
+            Self::NoPrivileges => "no_privileges",
+            Self::UnknownCommand(_) => "unknown_command",
             Self::NickOrUserMissing => "nick_or_user_missing",
             Self::Send(_) => "send_error",
             Self::Quit(_) => "quit",
@@ -74,74 +113,33 @@ impl HandlerError {
     /// Returns `None` for errors that don't warrant a client-visible reply
     /// (e.g., internal errors, send failures, quit).
     pub fn to_irc_reply(&self, server_name: &str, nick: &str, cmd_name: &str) -> Option<Message> {
-        match self {
-            Self::NotRegistered => Some(Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(server_name.to_string())),
-                command: Command::Response(
-                    Response::ERR_NOTREGISTERED,
-                    vec!["*".to_string(), "You have not registered".to_string()],
-                ),
-            }),
-            Self::NeedMoreParams => Some(Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(server_name.to_string())),
-                command: Command::Response(
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![
-                        nick.to_string(),
-                        cmd_name.to_string(),
-                        "Not enough parameters".to_string(),
-                    ],
-                ),
-            }),
-            Self::NoTextToSend => Some(Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(server_name.to_string())),
-                command: Command::Response(
-                    Response::ERR_NOTEXTTOSEND,
-                    vec![nick.to_string(), "No text to send".to_string()],
-                ),
-            }),
-            Self::NicknameInUse(bad_nick) => Some(Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(server_name.to_string())),
-                command: Command::Response(
-                    Response::ERR_NICKNAMEINUSE,
-                    vec![
-                        nick.to_string(),
-                        bad_nick.clone(),
-                        "Nickname is already in use".to_string(),
-                    ],
-                ),
-            }),
-            Self::ErroneousNickname(bad_nick) => Some(Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(server_name.to_string())),
-                command: Command::Response(
-                    Response::ERR_ERRONEOUSNICKNAME,
-                    vec![
-                        nick.to_string(),
-                        bad_nick.clone(),
-                        "Erroneous nickname".to_string(),
-                    ],
-                ),
-            }),
-            Self::AlreadyRegistered => Some(Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(server_name.to_string())),
-                command: Command::Response(
-                    Response::ERR_ALREADYREGISTERED,
-                    vec!["*".to_string(), "You may not reregister".to_string()],
-                ),
-            }),
+        let mut msg = match self {
+            Self::NotRegistered => Response::err_notregistered(nick),
+            Self::NeedMoreParams => Response::err_needmoreparams(nick, cmd_name),
+            Self::NoTextToSend => Response::err_notexttosend(nick),
+            Self::NicknameInUse(bad_nick) => Response::err_nicknameinuse(nick, bad_nick),
+            Self::ErroneousNickname(bad_nick) => Response::err_erroneusnickname(nick, bad_nick),
+            Self::AlreadyRegistered => Response::err_alreadyregistred(nick),
+            Self::NoSuchNick(bad_nick) => Response::err_nosuchnick(nick, bad_nick),
+            Self::NoSuchChannel(bad_chan) => Response::err_nosuchchannel(nick, bad_chan),
+            Self::ChanPrivsNeeded(chan) => Response::err_chanoprivsneeded(nick, chan),
+            Self::UserNotInChannel(target, chan) => Response::err_usernotinchannel(nick, target, chan),
+            Self::NotOnChannel(chan) => Response::err_notonchannel(nick, chan),
+            Self::UserOnChannel(target, chan) => Response::err_useronchannel(nick, target, chan),
+            Self::NoPrivileges => Response::err_noprivileges(nick),
+            Self::UnknownCommand(cmd) => Response::err_unknowncommand(nick, cmd),
+
             // These errors don't get client-visible replies
-            Self::AccessDenied => None,          // Error already sent
-            Self::NickOrUserMissing => None,     // Internal error
-            Self::Send(_) => None,               // Internal error
-            Self::Quit(_) => None,               // Handled specially by connection loop
-            Self::Internal(_) => None,           // Internal error
-        }
+            Self::AccessDenied => return None,
+            Self::NickOrUserMissing => return None,
+            Self::Send(_) => return None,
+            Self::Quit(_) => return None,
+            Self::Internal(_) => return None,
+        };
+
+        // Set the prefix to the server name
+        msg.prefix = Some(Prefix::ServerName(server_name.to_string()));
+        Some(msg)
     }
 }
 
