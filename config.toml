@@ -59,3 +59,9 @@ message_rate_per_second = 2
 connection_burst_per_ip = 3
 # Maximum channel join burst per client in 10 seconds (default: 5)
 join_burst_per_client = 5
+# Maximum concurrent connections per IP (default: 10)
+max_connections_per_ip = 10
+# IP addresses exempt from ALL rate limiting and connection limits.
+# Use sparingly for trusted operators, bots, or services.
+# Example: exempt_ips = ["192.168.1.100", "10.0.0.1"]
+exempt_ips = []

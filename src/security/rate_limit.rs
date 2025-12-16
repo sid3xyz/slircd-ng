@@ -58,6 +58,15 @@ impl RateLimitManager {
         }
     }
 
+    /// Check if an IP address is exempt from rate limiting.
+    ///
+    /// Exempt IPs bypass all rate limits and connection limits.
+    /// Use sparingly for trusted operators/bots only.
+    pub fn is_exempt(&self, ip: IpAddr) -> bool {
+        let ip_str = ip.to_string();
+        self.config.exempt_ips.contains(&ip_str)
+    }
+
     /// Check if a client can send a message.
     ///
     /// Returns `true` if allowed, `false` if rate limited.
@@ -78,7 +87,13 @@ impl RateLimitManager {
     /// Check if an IP can make a new connection.
     ///
     /// Returns `true` if allowed, `false` if rate limited.
+    /// Exempt IPs always return `true`.
     pub fn check_connection_rate(&self, ip: IpAddr) -> bool {
+        // Exempt IPs bypass rate limiting
+        if self.is_exempt(ip) {
+            return true;
+        }
+
         let limiter = self.connection_limiters.entry(ip).or_insert_with(|| {
             let burst = NonZeroU32::new(self.config.connection_burst_per_ip)
                 .unwrap_or(NonZeroU32::new(3).unwrap());
@@ -138,7 +153,13 @@ impl RateLimitManager {
 
     /// Record that a connection has started for an IP.
     /// Returns `true` if allowed, `false` if max connections per IP exceeded.
+    /// Exempt IPs always return `true` and are not tracked.
     pub fn on_connection_start(&self, ip: IpAddr) -> bool {
+        // Exempt IPs bypass connection limits entirely
+        if self.is_exempt(ip) {
+            return true;
+        }
+
         let mut allowed = true;
         self.active_connections
             .entry(ip)
@@ -158,7 +179,13 @@ impl RateLimitManager {
     }
 
     /// Record that a connection has ended for an IP.
+    /// Does nothing for exempt IPs (they aren't tracked).
     pub fn on_connection_end(&self, ip: IpAddr) {
+        // Exempt IPs aren't tracked, so nothing to clean up
+        if self.is_exempt(ip) {
+            return;
+        }
+
         // Use entry API for atomic check-and-modify/remove
         // We need to avoid holding a reference while calling remove()
         let should_remove = {
@@ -302,6 +329,7 @@ mod tests {
             ctcp_rate_per_second: 1,
             ctcp_burst_per_client: 2,
             max_connections_per_ip: 3,
+            exempt_ips: Vec::new(),
         }
     }
 

@@ -40,7 +40,7 @@ pub async fn run_handshake_loop(
     // Registration timeout from config
     let registration_timeout = Duration::from_secs(matrix.server_info.idle_timeouts.registration);
     let handshake_start = Instant::now();
-    
+
     loop {
         // Check if registration has timed out
         let elapsed = Instant::now().duration_since(handshake_start);
@@ -58,13 +58,13 @@ pub async fn run_handshake_loop(
             let _ = transport.write_message(&error_msg).await;
             return Err(HandshakeExit::ProtocolError(unreg_state.nick.clone()));
         }
-        
+
         // Calculate remaining time until timeout
         let remaining = registration_timeout.saturating_sub(elapsed);
-        
+
         // Wait for next message with timeout
         let result = tokio::time::timeout(remaining, transport.next()).await;
-        
+
         match result {
             Ok(Some(Ok(msg_ref))) => {
                 debug!(raw = %msg_ref.raw.trim(), "Received message");
@@ -234,7 +234,7 @@ pub async fn run_event_loop(
                         reg_state.last_activity = Instant::now();
                         reg_state.ping_pending = false;
                         reg_state.ping_sent_at = None;
-                        
+
                         // Flood protection
                         if !matrix.rate_limiter.check_message_rate(&uid.to_string()) {
                             flood_violations += 1;
@@ -445,11 +445,11 @@ pub async fn run_event_loop(
                     break;
                 }
             }
-            
+
             _ = ping_check_timer.tick() => {
                 let now = Instant::now();
                 let idle_time = now.duration_since(reg_state.last_activity);
-                
+
                 if reg_state.ping_pending {
                     // We sent a PING and are waiting for PONG
                     if let Some(sent_at) = reg_state.ping_sent_at {

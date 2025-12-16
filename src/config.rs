@@ -555,6 +555,11 @@ pub struct RateLimitConfig {
     /// Maximum concurrent connections allowed per IP (default: 10).
     #[serde(default = "default_max_connections")]
     pub max_connections_per_ip: u32,
+    /// IP addresses exempt from all rate limiting and connection limits.
+    /// These IPs get unlimited connections and no flood protection.
+    /// Use sparingly - only for trusted operators/bots.
+    #[serde(default)]
+    pub exempt_ips: Vec<String>,
 }
 
 impl Default for RateLimitConfig {
@@ -566,6 +571,7 @@ impl Default for RateLimitConfig {
             ctcp_rate_per_second: default_ctcp_rate(),
             ctcp_burst_per_client: default_ctcp_burst(),
             max_connections_per_ip: default_max_connections(),
+            exempt_ips: Vec::new(),
         }
     }
 }
