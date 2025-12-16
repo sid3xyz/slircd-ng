@@ -83,7 +83,7 @@ pub enum ServiceEffect {
 
     /// Broadcast host change to all shared channels (chghost capability).
     /// Sends `:old_prefix CHGHOST new_user new_host` to channel members with chghost.
-    /// TODO: Use from HostServ or vhost changes when chghost is fully implemented.
+    /// Used by CHGHOST/VHOST oper commands. Future HostServ could also use this.
     #[allow(dead_code)]
     BroadcastChghost {
         target_uid: String,

@@ -50,6 +50,14 @@ pub struct Context<'a, S> {
 }
 
 impl<'a, S> Context<'a, S> {
+    /// Get the server name for prefixing replies.
+    ///
+    /// Use this instead of `ctx.matrix.server_info.name` for cleaner code.
+    #[inline]
+    pub fn server_name(&self) -> &str {
+        &self.matrix.server_info.name
+    }
+
     /// Create a new context.
     #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)] // Available for future use

@@ -56,7 +56,7 @@ pub struct SpamDetectionService {
     /// Recent message hashes per user for repetition detection.
     recent_messages: DashMap<String, VecDeque<(Instant, u64)>>,
 
-    // New Components (TODO: integrate fully)
+    // Integrated sub-systems (config-driven initialization)
     reputation: Option<Arc<ReputationManager>>,
     dnsbl: Option<Arc<DnsblService>>,
     heuristics: Option<HeuristicsEngine>,

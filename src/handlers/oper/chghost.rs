@@ -1,6 +1,6 @@
 use super::super::{Context,
     HandlerResult, PostRegHandler,
-    get_nick_or_star, resolve_nick_to_uid, server_notice,
+    resolve_nick_to_uid, server_notice,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
@@ -23,13 +23,13 @@ impl PostRegHandler for ChghostHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
-        let oper_nick = get_nick_or_star(ctx).await;
+        let server_name = ctx.server_name();
+        let oper_nick = ctx.nick();
 
         // Request oper capability from authority (Innovation 4)
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         if authority.request_chghost_cap(ctx.uid).await.is_none() {
-            let reply = Response::err_noprivileges(&oper_nick)
+            let reply = Response::err_noprivileges(oper_nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("CHGHOST", "ERR_NOPRIVILEGES");
@@ -39,7 +39,7 @@ impl PostRegHandler for ChghostHandler {
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                let reply = Response::err_needmoreparams(&oper_nick, "CHGHOST")
+                let reply = Response::err_needmoreparams(oper_nick, "CHGHOST")
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
@@ -50,7 +50,7 @@ impl PostRegHandler for ChghostHandler {
         let new_user = match msg.arg(1) {
             Some(u) if !u.is_empty() => u,
             _ => {
-                let reply = Response::err_needmoreparams(&oper_nick, "CHGHOST")
+                let reply = Response::err_needmoreparams(oper_nick, "CHGHOST")
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
@@ -61,7 +61,7 @@ impl PostRegHandler for ChghostHandler {
         let new_host = match msg.arg(2) {
             Some(h) if !h.is_empty() => h,
             _ => {
-                let reply = Response::err_needmoreparams(&oper_nick, "CHGHOST")
+                let reply = Response::err_needmoreparams(oper_nick, "CHGHOST")
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
@@ -70,7 +70,7 @@ impl PostRegHandler for ChghostHandler {
         };
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            let reply = Response::err_nosuchnick(&oper_nick, target_nick)
+            let reply = Response::err_nosuchnick(oper_nick, target_nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("CHGHOST", "ERR_NOSUCHNICK");
@@ -79,7 +79,7 @@ impl PostRegHandler for ChghostHandler {
 
         let (old_nick, old_user, old_host, channels) = {
             let Some(user_ref) = ctx.matrix.users.get(&target_uid) else {
-                let reply = Response::err_nosuchnick(&oper_nick, target_nick)
+                let reply = Response::err_nosuchnick(oper_nick, target_nick)
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGHOST", "ERR_NOSUCHNICK");
@@ -132,7 +132,7 @@ impl PostRegHandler for ChghostHandler {
         ctx.sender
             .send(server_notice(
                 server_name,
-                &oper_nick,
+                oper_nick,
                 format!(
                     "Changed host of {} from {}@{} to {}@{}",
                     old_nick, old_user, old_host, new_user, new_host

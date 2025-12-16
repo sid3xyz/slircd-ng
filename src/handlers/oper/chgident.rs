@@ -1,6 +1,6 @@
 use super::super::{Context,
     HandlerResult, PostRegHandler,
-    get_nick_or_star, resolve_nick_to_uid, server_notice,
+    resolve_nick_to_uid, server_notice,
 };
 use crate::state::RegisteredState;
 use crate::caps::CapabilityAuthority;
@@ -22,13 +22,13 @@ impl PostRegHandler for ChgIdentHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
-        let oper_nick = get_nick_or_star(ctx).await;
+        let server_name = ctx.server_name();
+        let oper_nick = ctx.nick();
 
         // Request oper capability from authority
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         if authority.request_chgident_cap(ctx.uid).await.is_none() {
-            let reply = Response::err_noprivileges(&oper_nick)
+            let reply = Response::err_noprivileges(oper_nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("CHGIDENT", "ERR_NOPRIVILEGES");
@@ -38,7 +38,7 @@ impl PostRegHandler for ChgIdentHandler {
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                let reply = Response::err_needmoreparams(&oper_nick, "CHGIDENT")
+                let reply = Response::err_needmoreparams(oper_nick, "CHGIDENT")
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGIDENT", "ERR_NEEDMOREPARAMS");
@@ -49,7 +49,7 @@ impl PostRegHandler for ChgIdentHandler {
         let new_ident = match msg.arg(1) {
             Some(u) if !u.is_empty() => u,
             _ => {
-                let reply = Response::err_needmoreparams(&oper_nick, "CHGIDENT")
+                let reply = Response::err_needmoreparams(oper_nick, "CHGIDENT")
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGIDENT", "ERR_NEEDMOREPARAMS");
@@ -60,7 +60,7 @@ impl PostRegHandler for ChgIdentHandler {
         // Validate ident length/chars? For now, just accept it.
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            let reply = Response::err_nosuchnick(&oper_nick, target_nick)
+            let reply = Response::err_nosuchnick(oper_nick, target_nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("CHGIDENT", "ERR_NOSUCHNICK");
@@ -69,7 +69,7 @@ impl PostRegHandler for ChgIdentHandler {
 
         let (old_nick, old_user, old_host, channels) = {
             let Some(user_ref) = ctx.matrix.users.get(&target_uid) else {
-                let reply = Response::err_nosuchnick(&oper_nick, target_nick)
+                let reply = Response::err_nosuchnick(oper_nick, target_nick)
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGIDENT", "ERR_NOSUCHNICK");
@@ -123,7 +123,7 @@ impl PostRegHandler for ChgIdentHandler {
         ctx.sender
             .send(server_notice(
                 server_name,
-                &oper_nick,
+                oper_nick,
                 format!(
                     "Changed ident of {} from {} to {}",
                     old_nick, old_user, new_ident

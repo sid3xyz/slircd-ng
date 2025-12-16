@@ -1,5 +1,5 @@
 use super::super::{Context,
-    HandlerResult, PostRegHandler, get_nick_or_star,
+    HandlerResult, PostRegHandler,
     resolve_nick_to_uid, server_reply,
 };
 use crate::state::RegisteredState;
@@ -22,14 +22,14 @@ impl PostRegHandler for TraceHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
-        let oper_nick = get_nick_or_star(ctx).await;
+        let server_name = ctx.server_name();
+        let oper_nick = ctx.nick();
 
         // Request oper capability from authority (Innovation 4)
         // TRACE requires oper privileges (uses KillCap as a general oper check)
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         if authority.request_kill_cap(ctx.uid).await.is_none() {
-            let reply = Response::err_noprivileges(&oper_nick)
+            let reply = Response::err_noprivileges(oper_nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("TRACE", "ERR_NOPRIVILEGES");
@@ -58,12 +58,12 @@ impl PostRegHandler for TraceHandler {
                     let reply = server_reply(
                         server_name,
                         numeric,
-                        vec![oper_nick.clone(), class.to_string(), target_nick],
+                        vec![oper_nick.to_string(), class.to_string(), target_nick],
                     );
                     ctx.sender.send(reply).await?;
                 }
             } else {
-                let reply = Response::err_nosuchnick(&oper_nick, target_nick)
+                let reply = Response::err_nosuchnick(oper_nick, target_nick)
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("TRACE", "ERR_NOSUCHNICK");
@@ -94,7 +94,7 @@ impl PostRegHandler for TraceHandler {
                 let reply = server_reply(
                     server_name,
                     numeric,
-                    vec![oper_nick.clone(), class.to_string(), nick],
+                    vec![oper_nick.to_string(), class.to_string(), nick],
                 );
                 ctx.sender.send(reply).await?;
             }
@@ -104,8 +104,8 @@ impl PostRegHandler for TraceHandler {
             server_name,
             Response::RPL_TRACEEND,
             vec![
-                oper_nick.clone(),
-                server_name.clone(),
+                oper_nick.to_string(),
+                server_name.to_string(),
                 "End of TRACE".to_string(),
             ],
         );

@@ -1,6 +1,6 @@
 use super::super::{Context,
     HandlerResult, PostRegHandler,
-    get_nick_or_star, resolve_nick_to_uid, server_notice,
+    resolve_nick_to_uid, server_notice,
 };
 use crate::state::RegisteredState;
 use super::is_valid_hostname;
@@ -23,13 +23,13 @@ impl PostRegHandler for VhostHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
-        let oper_nick = get_nick_or_star(ctx).await;
+        let server_name = ctx.server_name();
+        let oper_nick = ctx.nick();
 
         // Request oper capability from authority (Innovation 4)
         let authority = CapabilityAuthority::new(ctx.matrix.clone());
         if authority.request_vhost_cap(ctx.uid).await.is_none() {
-            let reply = Response::err_noprivileges(&oper_nick)
+            let reply = Response::err_noprivileges(oper_nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("VHOST", "ERR_NOPRIVILEGES");
@@ -39,7 +39,7 @@ impl PostRegHandler for VhostHandler {
         let target_nick = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
-                let reply = Response::err_needmoreparams(&oper_nick, "VHOST")
+                let reply = Response::err_needmoreparams(oper_nick, "VHOST")
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("VHOST", "ERR_NEEDMOREPARAMS");
@@ -50,7 +50,7 @@ impl PostRegHandler for VhostHandler {
         let new_vhost = match msg.arg(1) {
             Some(h) if !h.is_empty() => h,
             _ => {
-                let reply = Response::err_needmoreparams(&oper_nick, "VHOST")
+                let reply = Response::err_needmoreparams(oper_nick, "VHOST")
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("VHOST", "ERR_NEEDMOREPARAMS");
@@ -59,7 +59,7 @@ impl PostRegHandler for VhostHandler {
         };
 
         if new_vhost.len() > 64 {
-            let reply = server_notice(server_name, &oper_nick, "Vhost too long (max 64 chars)");
+            let reply = server_notice(server_name, oper_nick, "Vhost too long (max 64 chars)");
             ctx.sender.send(reply).await?;
             return Ok(());
         }
@@ -67,7 +67,7 @@ impl PostRegHandler for VhostHandler {
         if !is_valid_hostname(new_vhost) {
             let reply = server_notice(
                 server_name,
-                &oper_nick,
+                oper_nick,
                 "Invalid vhost: use alphanumeric, hyphens, dots only",
             );
             ctx.sender.send(reply).await?;
@@ -77,7 +77,7 @@ impl PostRegHandler for VhostHandler {
         let target_uid = match resolve_nick_to_uid(ctx, target_nick) {
             Some(uid) => uid,
             None => {
-                let reply = Response::err_nosuchnick(&oper_nick, target_nick)
+                let reply = Response::err_nosuchnick(oper_nick, target_nick)
                     .with_prefix(Prefix::ServerName(server_name.to_string()));
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("VHOST", "ERR_NOSUCHNICK");
@@ -92,7 +92,7 @@ impl PostRegHandler for VhostHandler {
 
             let reply = server_notice(
                 server_name,
-                &oper_nick,
+                oper_nick,
                 format!(
                     "Changed vhost for {} from {} to {}",
                     target_user.nick, old_vhost, new_vhost

@@ -11,6 +11,27 @@ use slirc_proto::{Command, Message, Prefix, Response, Tag};
 pub use slirc_proto::matches_hostmask;
 
 // ============================================================================
+// Argument extraction macro
+// ============================================================================
+
+/// Extract a required argument from a message, returning `NeedMoreParams` if missing.
+///
+/// # Usage
+/// ```ignore
+/// let target = require_arg!(msg, 0);  // Gets arg(0), returns NeedMoreParams on missing/empty
+/// let text = require_arg!(msg, 1);    // Gets arg(1)
+/// ```
+#[macro_export]
+macro_rules! require_arg {
+    ($msg:expr, $idx:expr) => {
+        match $msg.arg($idx) {
+            Some(s) if !s.is_empty() => s,
+            _ => return Err($crate::error::HandlerError::NeedMoreParams),
+        }
+    };
+}
+
+// ============================================================================
 // Common reply helpers
 // ============================================================================
 
