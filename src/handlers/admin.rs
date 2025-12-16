@@ -11,6 +11,7 @@ use super::{
     force_join_channel, force_part_channel,
     format_modes_for_log, resolve_nick_to_uid, server_notice,
 };
+use crate::{require_admin_cap, require_arg_or_reply};
 use crate::state::RegisteredState;
 use crate::state::MemberModes;
 use async_trait::async_trait;
@@ -38,39 +39,11 @@ impl PostRegHandler for SajoinHandler {
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = ctx.server_name();
-
-        // Get nick and check admin capability
         let oper_nick = ctx.nick();
-        let authority = ctx.authority();
-        let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
-            let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SAJOIN", "ERR_NOPRIVILEGES");
-            return Ok(());
-        };
 
-        // SAJOIN <nick> <channel>
-        let target_nick = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "SAJOIN")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SAJOIN", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
-        let channel_name = match msg.arg(1) {
-            Some(c) if !c.is_empty() => c,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "SAJOIN")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SAJOIN", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(_cap) = require_admin_cap!(ctx, "SAJOIN") else { return Ok(()); };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "SAJOIN") else { return Ok(()); };
+        let Some(channel_name) = require_arg_or_reply!(ctx, msg, 1, "SAJOIN") else { return Ok(()); };
 
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
@@ -151,39 +124,11 @@ impl PostRegHandler for SapartHandler {
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = ctx.server_name();
-
-        // Get nick and check admin capability
         let oper_nick = ctx.nick();
-        let authority = ctx.authority();
-        let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
-            let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SAPART", "ERR_NOPRIVILEGES");
-            return Ok(());
-        };
 
-        // SAPART <nick> <channel>
-        let target_nick = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "SAPART")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SAPART", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
-        let channel_name = match msg.arg(1) {
-            Some(c) if !c.is_empty() => c,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "SAPART")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SAPART", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(_cap) = require_admin_cap!(ctx, "SAPART") else { return Ok(()); };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "SAPART") else { return Ok(()); };
+        let Some(channel_name) = require_arg_or_reply!(ctx, msg, 1, "SAPART") else { return Ok(()); };
 
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
@@ -255,39 +200,11 @@ impl PostRegHandler for SanickHandler {
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = ctx.server_name();
-
-        // Get nick and check admin capability
         let oper_nick = ctx.nick();
-        let authority = ctx.authority();
-        let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
-            let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SANICK", "ERR_NOPRIVILEGES");
-            return Ok(());
-        };
 
-        // SANICK <oldnick> <newnick>
-        let old_nick = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "SANICK")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SANICK", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
-        let new_nick = match msg.arg(1) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "SANICK")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SANICK", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(_cap) = require_admin_cap!(ctx, "SANICK") else { return Ok(()); };
+        let Some(old_nick) = require_arg_or_reply!(ctx, msg, 0, "SANICK") else { return Ok(()); };
+        let Some(new_nick) = require_arg_or_reply!(ctx, msg, 1, "SANICK") else { return Ok(()); };
 
         // Find target user
         let old_lower = irc_to_lower(old_nick);
@@ -404,39 +321,11 @@ impl PostRegHandler for SamodeHandler {
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = ctx.server_name();
-
-        // Get nick and check admin capability
         let oper_nick = ctx.nick();
-        let authority = ctx.authority();
-        let Some(_cap) = authority.request_admin_cap(ctx.uid).await else {
-            let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SAMODE", "ERR_NOPRIVILEGES");
-            return Ok(());
-        };
 
-        // SAMODE <channel> <modes> [params]
-        let channel_name = match msg.arg(0) {
-            Some(c) if !c.is_empty() => c,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "SAMODE")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SAMODE", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
-        let modes_str = match msg.arg(1) {
-            Some(m) if !m.is_empty() => m,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "SAMODE")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SAMODE", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(_cap) = require_admin_cap!(ctx, "SAMODE") else { return Ok(()); };
+        let Some(channel_name) = require_arg_or_reply!(ctx, msg, 0, "SAMODE") else { return Ok(()); };
+        let Some(modes_str) = require_arg_or_reply!(ctx, msg, 1, "SAMODE") else { return Ok(()); };
 
         let channel_lower = irc_to_lower(channel_name);
 

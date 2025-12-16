@@ -2,6 +2,7 @@ use super::super::{Context,
     HandlerResult, PostRegHandler,
     resolve_nick_to_uid, server_notice,
 };
+use crate::{require_arg_or_reply, require_oper_cap};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
@@ -26,47 +27,10 @@ impl PostRegHandler for ChghostHandler {
         let oper_nick = ctx.nick();
 
         // Request oper capability from authority (Innovation 4)
-        let authority = ctx.authority();
-        if authority.request_chghost_cap(ctx.uid).await.is_none() {
-            let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("CHGHOST", "ERR_NOPRIVILEGES");
-            return Ok(());
-        }
-
-        let target_nick = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "CHGHOST")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
-
-        let new_user = match msg.arg(1) {
-            Some(u) if !u.is_empty() => u,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "CHGHOST")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
-
-        let new_host = match msg.arg(2) {
-            Some(h) if !h.is_empty() => h,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "CHGHOST")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(_cap) = require_oper_cap!(ctx, "CHGHOST", request_chghost_cap) else { return Ok(()); };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "CHGHOST") else { return Ok(()); };
+        let Some(new_user) = require_arg_or_reply!(ctx, msg, 1, "CHGHOST") else { return Ok(()); };
+        let Some(new_host) = require_arg_or_reply!(ctx, msg, 2, "CHGHOST") else { return Ok(()); };
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             let reply = Response::err_nosuchnick(oper_nick, target_nick)

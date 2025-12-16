@@ -1,10 +1,11 @@
 use super::super::{Context,
-    HandlerResult, PostRegHandler, get_nick_or_star,
+    HandlerResult, PostRegHandler,
     user_mask_from_state,
 };
+use crate::{require_arg_or_reply, require_oper_cap};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{Command, Message, MessageRef, Prefix};
 
 /// Handler for WALLOPS command. Uses capability-based authorization (Innovation 4).
 ///
@@ -27,17 +28,7 @@ impl PostRegHandler for WallopsHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let wallops_text = match msg.arg(0) {
-            Some(t) if !t.is_empty() => t,
-            _ => {
-                let nick = get_nick_or_star(ctx).await;
-                let reply = Response::err_needmoreparams(&nick, "WALLOPS")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("WALLOPS", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(wallops_text) = require_arg_or_reply!(ctx, msg, 0, "WALLOPS") else { return Ok(()); };
 
         // Get sender's identity
         let Some((sender_nick, sender_user, sender_host)) =
@@ -47,17 +38,7 @@ impl PostRegHandler for WallopsHandler {
         };
 
         // Request GlobalNotice capability from authority (Innovation 4)
-        let authority = ctx.authority();
-        let _wallops_cap = match authority.request_wallops_cap(ctx.uid).await {
-            Some(cap) => cap,
-            None => {
-                let reply = Response::err_noprivileges(&sender_nick)
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("WALLOPS", "ERR_NOPRIVILEGES");
-                return Ok(());
-            }
-        };
+        let Some(_wallops_cap) = require_oper_cap!(ctx, "WALLOPS", request_wallops_cap) else { return Ok(()); };
 
         let wallops_msg = Message {
             tags: None,

@@ -2,6 +2,7 @@ use super::super::{Context,
     HandlerResult, PostRegHandler, matches_hostmask,
     server_reply,
 };
+use crate::require_arg_or_reply;
 use crate::state::RegisteredState;
 use crate::state::actor::validation::format_user_mask;
 use async_trait::async_trait;
@@ -24,27 +25,8 @@ impl PostRegHandler for OperHandler {
     ) -> HandlerResult {
         let server_name = ctx.server_name().to_string();
 
-        // OPER <name> <password>
-        let name = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                let reply = Response::err_needmoreparams(ctx.nick(), "OPER")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("OPER", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
-        let password = match msg.arg(1) {
-            Some(p) if !p.is_empty() => p,
-            _ => {
-                let reply = Response::err_needmoreparams(ctx.nick(), "OPER")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("OPER", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(name) = require_arg_or_reply!(ctx, msg, 0, "OPER") else { return Ok(()); };
+        let Some(password) = require_arg_or_reply!(ctx, msg, 1, "OPER") else { return Ok(()); };
 
         let nick = ctx.nick().to_string();
 

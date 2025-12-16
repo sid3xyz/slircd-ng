@@ -1,7 +1,8 @@
 use super::super::{Context,
     HandlerResult, PostRegHandler,
-    get_nick_or_star, resolve_nick_to_uid, user_mask_from_state,
+    resolve_nick_to_uid, user_mask_from_state,
 };
+use crate::{require_arg_or_reply, require_oper_cap};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
@@ -28,17 +29,7 @@ impl PostRegHandler for KillHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let target_nick = match msg.arg(0) {
-            Some(t) if !t.is_empty() => t,
-            _ => {
-                let nick = get_nick_or_star(ctx).await;
-                let reply = Response::err_needmoreparams(&nick, "KILL")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("KILL", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "KILL") else { return Ok(()); };
         let reason = msg.arg(1).unwrap_or("No reason given");
 
         // Get killer's identity
@@ -49,19 +40,7 @@ impl PostRegHandler for KillHandler {
         };
 
         // Request KILL capability from authority (Innovation 4)
-        // This replaces the legacy `if !is_oper` check with capability-based auth
-        let authority = ctx.authority();
-        let _kill_cap = match authority.request_kill_cap(ctx.uid).await {
-            Some(cap) => cap, // Authorization granted - cap proves it
-            None => {
-                // Not an operator - no capability granted
-                let reply = Response::err_noprivileges(&killer_nick)
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("KILL", "ERR_NOPRIVILEGES");
-                return Ok(());
-            }
-        };
+        let Some(_kill_cap) = require_oper_cap!(ctx, "KILL", request_kill_cap) else { return Ok(()); };
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             let reply = Response::err_nosuchnick(&killer_nick, target_nick)

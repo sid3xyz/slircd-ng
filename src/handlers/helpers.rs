@@ -77,6 +77,50 @@ macro_rules! send_noprivileges {
     }};
 }
 
+/// Require admin capability for SA* commands.
+///
+/// Returns `Some(Cap)` if authorized, or sends ERR_NOPRIVILEGES and returns `None`.
+///
+/// # Usage
+/// ```ignore
+/// let Some(_cap) = require_admin_cap!(ctx, "SAJOIN") else { return Ok(()); };
+/// ```
+#[macro_export]
+macro_rules! require_admin_cap {
+    ($ctx:expr, $cmd:expr) => {{
+        let authority = $ctx.authority();
+        match authority.request_admin_cap($ctx.uid).await {
+            Some(cap) => Some(cap),
+            None => {
+                $crate::send_noprivileges!($ctx, $cmd);
+                None
+            }
+        }
+    }};
+}
+
+/// Require an arbitrary oper capability.
+///
+/// Returns `Some(Cap)` if authorized, or sends ERR_NOPRIVILEGES and returns `None`.
+///
+/// # Usage
+/// ```ignore
+/// let Some(_cap) = require_oper_cap!(ctx, "KILL", request_kill_cap) else { return Ok(()); };
+/// ```
+#[macro_export]
+macro_rules! require_oper_cap {
+    ($ctx:expr, $cmd:expr, $cap_method:ident) => {{
+        let authority = $ctx.authority();
+        match authority.$cap_method($ctx.uid).await {
+            Some(cap) => Some(cap),
+            None => {
+                $crate::send_noprivileges!($ctx, $cmd);
+                None
+            }
+        }
+    }};
+}
+
 // ============================================================================
 // Common reply helpers
 // ============================================================================

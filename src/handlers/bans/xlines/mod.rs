@@ -93,9 +93,9 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
     ) -> HandlerResult {
         let server_name = ctx.server_name();
         let cmd_name = self.config.command_name();
-
-        // Get nick and check capability
         let nick = ctx.nick();
+
+        // Check capability via trait
         let authority = ctx.authority();
         if !self.config.check_capability(&authority, ctx.uid).await {
             let reply = Response::err_noprivileges(nick)
@@ -105,7 +105,8 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
             return Ok(());
         }
 
-        // Parse target (mask/ip/pattern)
+        // Parse target (mask/ip/pattern) - using require_arg_or_reply! here would need
+        // a compile-time command string, but we have a dynamic cmd_name, so keep manual
         let target = match msg.arg(0) {
             Some(t) if !t.is_empty() => t,
             _ => {

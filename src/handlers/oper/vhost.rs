@@ -2,6 +2,7 @@ use super::super::{Context,
     HandlerResult, PostRegHandler,
     resolve_nick_to_uid, server_notice,
 };
+use crate::{require_arg_or_reply, require_oper_cap};
 use crate::state::RegisteredState;
 use super::is_valid_hostname;
 use async_trait::async_trait;
@@ -26,36 +27,9 @@ impl PostRegHandler for VhostHandler {
         let oper_nick = ctx.nick();
 
         // Request oper capability from authority (Innovation 4)
-        let authority = ctx.authority();
-        if authority.request_vhost_cap(ctx.uid).await.is_none() {
-            let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("VHOST", "ERR_NOPRIVILEGES");
-            return Ok(());
-        }
-
-        let target_nick = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "VHOST")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("VHOST", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
-
-        let new_vhost = match msg.arg(1) {
-            Some(h) if !h.is_empty() => h,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "VHOST")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("VHOST", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(_cap) = require_oper_cap!(ctx, "VHOST", request_vhost_cap) else { return Ok(()); };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "VHOST") else { return Ok(()); };
+        let Some(new_vhost) = require_arg_or_reply!(ctx, msg, 1, "VHOST") else { return Ok(()); };
 
         if new_vhost.len() > 64 {
             let reply = server_notice(server_name, oper_nick, "Vhost too long (max 64 chars)");

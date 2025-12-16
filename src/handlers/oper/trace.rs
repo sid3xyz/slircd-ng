@@ -2,6 +2,7 @@ use super::super::{Context,
     HandlerResult, PostRegHandler,
     resolve_nick_to_uid, server_reply,
 };
+use crate::require_oper_cap;
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -26,14 +27,7 @@ impl PostRegHandler for TraceHandler {
 
         // Request oper capability from authority (Innovation 4)
         // TRACE requires oper privileges (uses KillCap as a general oper check)
-        let authority = ctx.authority();
-        if authority.request_kill_cap(ctx.uid).await.is_none() {
-            let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("TRACE", "ERR_NOPRIVILEGES");
-            return Ok(());
-        }
+        let Some(_cap) = require_oper_cap!(ctx, "TRACE", request_kill_cap) else { return Ok(()); };
 
         let target = msg.arg(0);
 

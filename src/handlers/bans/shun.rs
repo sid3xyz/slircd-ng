@@ -8,6 +8,7 @@ use crate::db::Shun;
 use crate::handlers::{Context,
     HandlerResult, PostRegHandler, server_notice,
 };
+use crate::{require_arg_or_reply, require_oper_cap};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -27,29 +28,10 @@ impl PostRegHandler for ShunHandler {
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         let server_name = ctx.server_name();
-
-        // Get nick and check capability
         let nick = ctx.nick();
-        let authority = ctx.authority();
-        let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
-            let reply = Response::err_noprivileges(nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SHUN", "ERR_NOPRIVILEGES");
-            return Ok(());
-        };
 
-        // SHUN [time] <mask> [reason]
-        let mask = match msg.arg(0) {
-            Some(m) if !m.is_empty() => m,
-            _ => {
-                let reply = Response::err_needmoreparams(nick, "SHUN")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SHUN", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(_cap) = require_oper_cap!(ctx, "SHUN", request_shun_cap) else { return Ok(()); };
+        let Some(mask) = require_arg_or_reply!(ctx, msg, 0, "SHUN") else { return Ok(()); };
         let reason = msg.arg(1).unwrap_or("Shunned");
 
         // Store shun in database

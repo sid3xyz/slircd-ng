@@ -2,6 +2,7 @@ use super::super::{Context,
     HandlerResult, PostRegHandler,
     resolve_nick_to_uid, server_notice,
 };
+use crate::{require_arg_or_reply, require_oper_cap};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
@@ -25,36 +26,9 @@ impl PostRegHandler for ChgIdentHandler {
         let oper_nick = ctx.nick();
 
         // Request oper capability from authority
-        let authority = ctx.authority();
-        if authority.request_chgident_cap(ctx.uid).await.is_none() {
-            let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("CHGIDENT", "ERR_NOPRIVILEGES");
-            return Ok(());
-        }
-
-        let target_nick = match msg.arg(0) {
-            Some(n) if !n.is_empty() => n,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "CHGIDENT")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("CHGIDENT", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
-
-        let new_ident = match msg.arg(1) {
-            Some(u) if !u.is_empty() => u,
-            _ => {
-                let reply = Response::err_needmoreparams(oper_nick, "CHGIDENT")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("CHGIDENT", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
-        };
+        let Some(_cap) = require_oper_cap!(ctx, "CHGIDENT", request_chgident_cap) else { return Ok(()); };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "CHGIDENT") else { return Ok(()); };
+        let Some(new_ident) = require_arg_or_reply!(ctx, msg, 1, "CHGIDENT") else { return Ok(()); };
 
         // Validate ident length/chars? For now, just accept it.
 
