@@ -10,7 +10,61 @@ use crate::state::Matrix;
 use crate::state::actor::ChannelEvent;
 use std::sync::Arc;
 use tokio::sync::oneshot;
-use tracing::{debug, instrument, trace};
+use tracing::{debug, trace};
+
+// ============================================================================
+// Request Method Generation Macros
+// ============================================================================
+
+/// Macro to generate oper capability request methods (unit scope, oper check only).
+macro_rules! impl_oper_cap_request {
+    ($(
+        $(#[$meta:meta])*
+        $method:ident -> $cap:ident
+    ),* $(,)?) => {
+        $(
+            $(#[$meta])*
+            pub async fn $method(&self, uid: &str) -> Option<Cap<$cap>> {
+                let nick = self.get_nick(uid).await;
+                if self.is_oper(uid).await {
+                    self.log_grant::<$cap>(&nick, uid, &());
+                    Some(Cap::new(()))
+                } else {
+                    self.log_denial::<$cap>(&nick, uid, &());
+                    None
+                }
+            }
+        )*
+    };
+}
+
+/// Macro to generate channel capability request methods (chanop or oper check).
+macro_rules! impl_chanop_cap_request {
+    ($(
+        $(#[$meta:meta])*
+        $method:ident -> $cap:ident
+    ),* $(,)?) => {
+        $(
+            $(#[$meta])*
+            pub async fn $method(&self, uid: &str, channel: &str) -> Option<Cap<$cap>> {
+                let nick = self.get_nick(uid).await;
+                let channel_lower = slirc_proto::irc_to_lower(channel);
+                let has_permission = self.is_oper(uid).await || self.is_chanop(uid, channel).await;
+                if has_permission {
+                    self.log_grant::<$cap>(&nick, uid, &channel_lower);
+                    Some(Cap::new(channel_lower))
+                } else {
+                    self.log_denial::<$cap>(&nick, uid, &channel_lower);
+                    None
+                }
+            }
+        )*
+    };
+}
+
+// ============================================================================
+// Capability Authority
+// ============================================================================
 
 /// The Capability Authority - sole minter of capability tokens.
 ///
@@ -26,21 +80,6 @@ use tracing::{debug, instrument, trace};
 /// - The Authority is the only code path that can call `Cap::new()`
 /// - All grants are logged with user ID and scope for audit
 /// - Permission checks are centralized, not scattered through handlers
-///
-/// # Example
-///
-/// ```ignore
-/// let authority = CapabilityAuthority::new(matrix.clone());
-///
-/// // Request a capability
-/// if let Some(kick_cap) = authority.request_kick_cap(uid, "#channel").await {
-///     // Perform kick - function signature proves authorization
-///     channel.kick(target, kick_cap);
-/// } else {
-///     // User is not a channel operator
-///     send_error(ERR_CHANOPRIVSNEEDED);
-/// }
-/// ```
 pub struct CapabilityAuthority {
     matrix: Arc<Matrix>,
 }
@@ -77,18 +116,14 @@ impl CapabilityAuthority {
     }
 
     /// Check if a user has operator status (+o or higher) in a channel.
-    ///
-    /// This sends a query to the channel actor and awaits the response.
     async fn is_chanop(&self, uid: &str, channel: &str) -> bool {
         let channel_lower = slirc_proto::irc_to_lower(channel);
 
-        // Get channel actor sender
         let channel_tx = match self.matrix.channels.get(&channel_lower) {
             Some(tx) => tx.clone(),
             None => return false,
         };
 
-        // Query member modes
         let (reply_tx, reply_rx) = oneshot::channel();
         let event = ChannelEvent::GetMemberModes {
             uid: uid.to_string(),
@@ -159,92 +194,29 @@ impl CapabilityAuthority {
     }
 
     // ========================================================================
-    // Channel Capability Requests
+    // Channel Capability Requests (chanop or oper required)
     // ========================================================================
 
-    /// Request capability to kick a user from a channel.
-    ///
-    /// Returns `Some(Cap<KickCap>)` if the user is a channel operator or higher.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_kick_cap(&self, uid: &str, channel: &str) -> Option<Cap<KickCap>> {
-        let nick = self.get_nick(uid).await;
-        let channel_lower = slirc_proto::irc_to_lower(channel);
+    impl_chanop_cap_request! {
+        /// Request capability to kick a user from a channel.
+        request_kick_cap -> KickCap,
 
-        // IRC operators can kick in any channel (oper override)
-        let has_permission = self.is_oper(uid).await || self.is_chanop(uid, channel).await;
+        /// Request capability to set/unset bans on a channel.
+        request_ban_cap -> BanCap,
 
-        if has_permission {
-            self.log_grant::<KickCap>(&nick, uid, &channel_lower);
-            Some(Cap::new(channel_lower))
-        } else {
-            self.log_denial::<KickCap>(&nick, uid, &channel_lower);
-            None
-        }
-    }
+        /// Request capability to set the channel topic.
+        request_topic_cap -> TopicCap,
 
-    /// Request capability to set/unset bans on a channel.
-    ///
-    /// Returns `Some(Cap<BanCap>)` if the user is a channel operator or higher.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_ban_cap(&self, uid: &str, channel: &str) -> Option<Cap<BanCap>> {
-        let nick = self.get_nick(uid).await;
-        let channel_lower = slirc_proto::irc_to_lower(channel);
+        /// Request capability to modify channel modes.
+        request_mode_cap -> ChannelModeCap,
 
-        let has_permission = self.is_oper(uid).await || self.is_chanop(uid, channel).await;
-
-        if has_permission {
-            self.log_grant::<BanCap>(&nick, uid, &channel_lower);
-            Some(Cap::new(channel_lower))
-        } else {
-            self.log_denial::<BanCap>(&nick, uid, &channel_lower);
-            None
-        }
-    }
-
-    /// Request capability to set the channel topic.
-    ///
-    /// Returns `Some(Cap<TopicCap>)` if the user can set the topic.
-    /// For channels with +t, requires channel operator or higher.
-    /// For channels without +t, any member can set the topic (handled elsewhere).
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_topic_cap(&self, uid: &str, channel: &str) -> Option<Cap<TopicCap>> {
-        let nick = self.get_nick(uid).await;
-        let channel_lower = slirc_proto::irc_to_lower(channel);
-
-        let has_permission = self.is_oper(uid).await || self.is_chanop(uid, channel).await;
-
-        if has_permission {
-            self.log_grant::<TopicCap>(&nick, uid, &channel_lower);
-            Some(Cap::new(channel_lower))
-        } else {
-            self.log_denial::<TopicCap>(&nick, uid, &channel_lower);
-            None
-        }
-    }
-
-    /// Request capability to modify channel modes.
-    ///
-    /// Returns `Some(Cap<ChannelModeCap>)` if the user is a channel operator or higher.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_mode_cap(&self, uid: &str, channel: &str) -> Option<Cap<ChannelModeCap>> {
-        let nick = self.get_nick(uid).await;
-        let channel_lower = slirc_proto::irc_to_lower(channel);
-
-        let has_permission = self.is_oper(uid).await || self.is_chanop(uid, channel).await;
-
-        if has_permission {
-            self.log_grant::<ChannelModeCap>(&nick, uid, &channel_lower);
-            Some(Cap::new(channel_lower))
-        } else {
-            self.log_denial::<ChannelModeCap>(&nick, uid, &channel_lower);
-            None
-        }
+        /// Request capability to invite users to a channel.
+        request_invite_cap -> InviteCap,
     }
 
     /// Request capability to give/take voice on a channel.
     ///
     /// Returns `Some(Cap<VoiceCap>)` if the user is halfop or higher.
-    #[instrument(skip(self), level = "trace")]
     pub async fn request_voice_cap(&self, uid: &str, channel: &str) -> Option<Cap<VoiceCap>> {
         let nick = self.get_nick(uid).await;
         let channel_lower = slirc_proto::irc_to_lower(channel);
@@ -261,309 +233,69 @@ impl CapabilityAuthority {
         }
     }
 
-    /// Request capability to invite users to a channel.
-    ///
-    /// Returns `Some(Cap<InviteCap>)` if the user is a channel operator or higher.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_invite_cap(&self, uid: &str, channel: &str) -> Option<Cap<InviteCap>> {
-        let nick = self.get_nick(uid).await;
-        let channel_lower = slirc_proto::irc_to_lower(channel);
-
-        let has_permission = self.is_oper(uid).await || self.is_chanop(uid, channel).await;
-
-        if has_permission {
-            self.log_grant::<InviteCap>(&nick, uid, &channel_lower);
-            Some(Cap::new(channel_lower))
-        } else {
-            self.log_denial::<InviteCap>(&nick, uid, &channel_lower);
-            None
-        }
-    }
-
     // ========================================================================
-    // Oper Capability Requests
+    // Oper Capability Requests (oper only)
     // ========================================================================
 
-    /// Request capability to KILL a user.
-    ///
-    /// Returns `Some(Cap<KillCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_kill_cap(&self, uid: &str) -> Option<Cap<KillCap>> {
-        let nick = self.get_nick(uid).await;
+    impl_oper_cap_request! {
+        /// Request capability to KILL a user.
+        request_kill_cap -> KillCap,
 
-        if self.is_oper(uid).await {
-            self.log_grant::<KillCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<KillCap>(&nick, uid, &());
-            None
-        }
-    }
+        /// Request capability to set K-lines.
+        request_kline_cap -> KlineCap,
 
-    /// Request capability to set K-lines.
-    ///
-    /// Returns `Some(Cap<KlineCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_kline_cap(&self, uid: &str) -> Option<Cap<KlineCap>> {
-        let nick = self.get_nick(uid).await;
+        /// Request capability to set D-lines.
+        request_dline_cap -> DlineCap,
 
-        if self.is_oper(uid).await {
-            self.log_grant::<KlineCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<KlineCap>(&nick, uid, &());
-            None
-        }
-    }
+        /// Request capability to set G-lines.
+        request_gline_cap -> GlineCap,
 
-    /// Request capability to set D-lines.
-    ///
-    /// Returns `Some(Cap<DlineCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_dline_cap(&self, uid: &str) -> Option<Cap<DlineCap>> {
-        let nick = self.get_nick(uid).await;
+        /// Request capability to set Z-lines.
+        request_zline_cap -> ZlineCap,
 
-        if self.is_oper(uid).await {
-            self.log_grant::<DlineCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<DlineCap>(&nick, uid, &());
-            None
-        }
-    }
+        /// Request capability to set R-lines.
+        request_rline_cap -> RlineCap,
 
-    /// Request capability to set G-lines.
-    ///
-    /// Returns `Some(Cap<GlineCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_gline_cap(&self, uid: &str) -> Option<Cap<GlineCap>> {
-        let nick = self.get_nick(uid).await;
+        /// Request capability to SHUN users.
+        request_shun_cap -> ShunCap,
 
-        if self.is_oper(uid).await {
-            self.log_grant::<GlineCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<GlineCap>(&nick, uid, &());
-            None
-        }
-    }
+        /// Request capability for SA* admin commands.
+        request_admin_cap -> AdminCap,
 
-    /// Request capability to set Z-lines.
-    ///
-    /// Returns `Some(Cap<ZlineCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_zline_cap(&self, uid: &str) -> Option<Cap<ZlineCap>> {
-        let nick = self.get_nick(uid).await;
+        /// Request capability to REHASH the server.
+        request_rehash_cap -> RehashCap,
 
-        if self.is_oper(uid).await {
-            self.log_grant::<ZlineCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<ZlineCap>(&nick, uid, &());
-            None
-        }
-    }
+        /// Request capability to DIE (shut down the server).
+        request_die_cap -> DieCap,
 
-    /// Request capability to set R-lines.
-    ///
-    /// Returns `Some(Cap<RlineCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_rline_cap(&self, uid: &str) -> Option<Cap<RlineCap>> {
-        let nick = self.get_nick(uid).await;
+        /// Request capability to RESTART the server.
+        request_restart_cap -> RestartCap,
 
-        if self.is_oper(uid).await {
-            self.log_grant::<RlineCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<RlineCap>(&nick, uid, &());
-            None
-        }
-    }
+        /// Request capability to change user hosts (CHGHOST).
+        request_chghost_cap -> ChgHostCap,
 
-    /// Request capability to SHUN users.
-    ///
-    /// Returns `Some(Cap<ShunCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_shun_cap(&self, uid: &str) -> Option<Cap<ShunCap>> {
-        let nick = self.get_nick(uid).await;
+        /// Request capability to change user idents (CHGIDENT).
+        request_chgident_cap -> ChgIdentCap,
 
-        if self.is_oper(uid).await {
-            self.log_grant::<ShunCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<ShunCap>(&nick, uid, &());
-            None
-        }
-    }
+        /// Request capability to set VHOSTs.
+        request_vhost_cap -> VhostCap,
 
-    /// Request capability for SA* admin commands.
-    ///
-    /// Returns `Some(Cap<AdminCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_admin_cap(&self, uid: &str) -> Option<Cap<AdminCap>> {
-        let nick = self.get_nick(uid).await;
+        /// Request capability to send WALLOPS.
+        request_wallops_cap -> WallopsCap,
 
-        if self.is_oper(uid).await {
-            self.log_grant::<AdminCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<AdminCap>(&nick, uid, &());
-            None
-        }
-    }
+        /// Request capability to send GLOBOPS.
+        request_globops_cap -> GlobOpsCap,
 
-    /// Request capability to REHASH the server.
-    ///
-    /// Returns `Some(Cap<RehashCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_rehash_cap(&self, uid: &str) -> Option<Cap<RehashCap>> {
-        let nick = self.get_nick(uid).await;
+        /// Request capability to bypass flood protection.
+        request_bypass_flood_cap -> BypassFloodCap,
 
-        if self.is_oper(uid).await {
-            self.log_grant::<RehashCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<RehashCap>(&nick, uid, &());
-            None
-        }
-    }
-
-    /// Request capability to DIE (shut down the server).
-    ///
-    /// Returns `Some(Cap<DieCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_die_cap(&self, uid: &str) -> Option<Cap<DieCap>> {
-        let nick = self.get_nick(uid).await;
-
-        if self.is_oper(uid).await {
-            self.log_grant::<DieCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<DieCap>(&nick, uid, &());
-            None
-        }
-    }
-
-    /// Request capability to RESTART the server.
-    ///
-    /// Returns `Some(Cap<RestartCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_restart_cap(&self, uid: &str) -> Option<Cap<RestartCap>> {
-        let nick = self.get_nick(uid).await;
-
-        if self.is_oper(uid).await {
-            self.log_grant::<RestartCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<RestartCap>(&nick, uid, &());
-            None
-        }
-    }
-
-    /// Request capability to change user hosts (CHGHOST).
-    ///
-    /// Returns `Some(Cap<ChgHostCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_chghost_cap(&self, uid: &str) -> Option<Cap<ChgHostCap>> {
-        let nick = self.get_nick(uid).await;
-
-        if self.is_oper(uid).await {
-            self.log_grant::<ChgHostCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<ChgHostCap>(&nick, uid, &());
-            None
-        }
-    }
-
-    /// Request capability to change user idents (CHGIDENT).
-    ///
-    /// Returns `Some(Cap<ChgIdentCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_chgident_cap(&self, uid: &str) -> Option<Cap<ChgIdentCap>> {
-        let nick = self.get_nick(uid).await;
-
-        if self.is_oper(uid).await {
-            self.log_grant::<ChgIdentCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<ChgIdentCap>(&nick, uid, &());
-            None
-        }
-    }
-
-    /// Request capability to set VHOSTs.
-    ///
-    /// Returns `Some(Cap<VhostCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_vhost_cap(&self, uid: &str) -> Option<Cap<VhostCap>> {
-        let nick = self.get_nick(uid).await;
-
-        if self.is_oper(uid).await {
-            self.log_grant::<VhostCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<VhostCap>(&nick, uid, &());
-            None
-        }
-    }
-
-    /// Request capability to send WALLOPS.
-    ///
-    /// Returns `Some(Cap<WallopsCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_wallops_cap(&self, uid: &str) -> Option<Cap<WallopsCap>> {
-        let nick = self.get_nick(uid).await;
-
-        if self.is_oper(uid).await {
-            self.log_grant::<WallopsCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<WallopsCap>(&nick, uid, &());
-            None
-        }
-    }
-
-    /// Request capability to send GLOBOPS.
-    ///
-    /// Returns `Some(Cap<GlobOpsCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_globops_cap(&self, uid: &str) -> Option<Cap<GlobOpsCap>> {
-        let nick = self.get_nick(uid).await;
-
-        if self.is_oper(uid).await {
-            self.log_grant::<GlobOpsCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<GlobOpsCap>(&nick, uid, &());
-            None
-        }
-    }
-
-    // ========================================================================
-    // Special Capability Requests
-    // ========================================================================
-
-    /// Request capability to bypass flood protection.
-    ///
-    /// Returns `Some(Cap<BypassFloodCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_bypass_flood_cap(&self, uid: &str) -> Option<Cap<BypassFloodCap>> {
-        let nick = self.get_nick(uid).await;
-
-        if self.is_oper(uid).await {
-            self.log_grant::<BypassFloodCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<BypassFloodCap>(&nick, uid, &());
-            None
-        }
+        /// Request capability to send global notices.
+        request_global_notice_cap -> GlobalNoticeCap,
     }
 
     /// Request capability to bypass mode restrictions on a channel.
     ///
     /// Returns `Some(Cap<BypassModeCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
     pub async fn request_bypass_mode_cap(
         &self,
         uid: &str,
@@ -572,7 +304,6 @@ impl CapabilityAuthority {
         let nick = self.get_nick(uid).await;
         let channel_lower = slirc_proto::irc_to_lower(channel);
 
-        // Only IRC operators can bypass mode restrictions
         if self.is_oper(uid).await {
             self.log_grant::<BypassModeCap>(&nick, uid, &channel_lower);
             Some(Cap::new(channel_lower))
@@ -581,33 +312,13 @@ impl CapabilityAuthority {
             None
         }
     }
-
-    /// Request capability to send global notices.
-    ///
-    /// Returns `Some(Cap<GlobalNoticeCap>)` if the user is an IRC operator.
-    #[instrument(skip(self), level = "trace")]
-    pub async fn request_global_notice_cap(&self, uid: &str) -> Option<Cap<GlobalNoticeCap>> {
-        let nick = self.get_nick(uid).await;
-
-        if self.is_oper(uid).await {
-            self.log_grant::<GlobalNoticeCap>(&nick, uid, &());
-            Some(Cap::new(()))
-        } else {
-            self.log_denial::<GlobalNoticeCap>(&nick, uid, &());
-            None
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    // Note: Full integration tests require setting up a Matrix with users.
-    // Unit tests here verify the basic structure compiles correctly.
-
     #[test]
     fn authority_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         // CapabilityAuthority should be Send+Sync for async usage
-        // (Can't fully test without Matrix, but structure check is valid)
     }
 }
