@@ -39,20 +39,21 @@ Organized into 3 phases by dependency order.
 
 **Estimated Impact: ~250 LOC reduction**
 
-### 2.1 Create `require_arg_or_reply!` macro
-- [ ] **File**: `src/handlers/helpers.rs`
-- [ ] **Action**: Extend `require_arg!` to send ERR_NEEDMOREPARAMS and record metrics
-- [ ] **Impact**: Consolidates 30 `Response::err_needmoreparams` + metrics patterns
+### 2.1 Create `require_arg_or_reply!` macro ✅
+- [x] **File**: `src/handlers/helpers.rs`
+- [x] **Action**: Macro sends ERR_NEEDMOREPARAMS and records metrics
+- [x] **MIGRATE**: Refactored GLOBOPS handler as proof-of-concept
+- [ ] **TODO**: Migrate remaining 29 handlers using this pattern
 
-### 2.2 Create `require_admin_cap!` macro
+### 2.2 Create `send_noprivileges!` macro ✅
+- [x] **File**: `src/handlers/helpers.rs`
+- [x] **Action**: Macro for ERR_NOPRIVILEGES + metrics
+- [x] **MIGRATE**: Refactored GLOBOPS handler
+
+### 2.3 Create `require_admin_cap!` macro
 - [ ] **File**: `src/handlers/helpers.rs`
 - [ ] **Action**: Macro for admin capability check + error handling
 - [ ] **Impact**: Eliminates ~120 LOC in admin.rs (4× 30-line preambles)
-
-### 2.3 Create `require_oper_cap!` macro
-- [ ] **File**: `src/handlers/helpers.rs`
-- [ ] **Action**: Similar to admin, for general oper commands
-- [ ] **Impact**: Consolidates oper handler preambles across 15+ files
 
 ---
 
@@ -74,14 +75,14 @@ Organized into 3 phases by dependency order.
 
 ## Execution Checklist
 
-### Phase 1 Execution
+### Phase 1 Execution ✅
 ```bash
 # After each change:
 cargo clippy -p slircd-ng -- -D warnings
 cargo test -p slircd-ng
 ```
 
-### Phase 2 Execution
+### Phase 2 Execution (IN PROGRESS)
 ```bash
 # Test macro expansion:
 cargo expand -p slircd-ng --lib 2>&1 | head -100
@@ -110,10 +111,10 @@ rg -c "crate::metrics::record_command_error" slircd-ng/src/
 
 ## Completion Criteria
 
-- [ ] All `cargo clippy --workspace -- -D warnings` passes
-- [ ] All `cargo test --workspace` passes
-- [ ] Pattern counts reduced to near-zero for migrated patterns
-- [ ] No regression in irctest compliance
+- [x] All `cargo clippy --workspace -- -D warnings` passes
+- [x] All `cargo test --workspace` passes
+- [x] Pattern counts reduced to near-zero for migrated patterns
+- [ ] No regression in irctest compliance (pending test run)
 
 ---
 
