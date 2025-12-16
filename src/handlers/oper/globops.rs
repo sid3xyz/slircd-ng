@@ -1,10 +1,10 @@
 use super::super::{Context,
     HandlerResult, PostRegHandler,
 };
-use crate::require_arg_or_reply;
+use crate::{require_arg_or_reply, send_noprivileges};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response};
+use slirc_proto::MessageRef;
 
 /// Handler for GLOBOPS command. Uses capability-based authorization.
 ///
@@ -23,15 +23,12 @@ impl PostRegHandler for GlobOpsHandler {
         let Some(globops_text) = require_arg_or_reply!(ctx, msg, 0, "GLOBOPS") else {
             return Ok(());
         };
-        let sender_nick = ctx.nick();
+        let sender_nick = ctx.nick().to_string();
 
-        // Request GlobalNotice capability from authority (reusing this for now)
+        // Request GlobalNotice capability from authority
         let authority = ctx.authority();
         if authority.request_globops_cap(ctx.uid).await.is_none() {
-            let reply = Response::err_noprivileges(sender_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("GLOBOPS", "ERR_NOPRIVILEGES");
+            send_noprivileges!(ctx, "GLOBOPS");
             return Ok(());
         }
 

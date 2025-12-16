@@ -56,6 +56,27 @@ macro_rules! require_arg_or_reply {
     }};
 }
 
+/// Send ERR_NOPRIVILEGES and record metrics, returning from handler.
+///
+/// Use this after a failed capability check for operator commands.
+///
+/// # Usage
+/// ```ignore
+/// if authority.request_kill_cap(ctx.uid).await.is_none() {
+///     send_noprivileges!(ctx, "KILL");
+///     return Ok(());
+/// }
+/// ```
+#[macro_export]
+macro_rules! send_noprivileges {
+    ($ctx:expr, $cmd:expr) => {{
+        let reply = slirc_proto::Response::err_noprivileges($ctx.nick())
+            .with_prefix($ctx.server_prefix());
+        let _ = $ctx.sender.send(reply).await;
+        $crate::metrics::record_command_error($cmd, "ERR_NOPRIVILEGES");
+    }};
+}
+
 // ============================================================================
 // Common reply helpers
 // ============================================================================
