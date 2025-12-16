@@ -10,9 +10,11 @@
 
 use super::middleware::ResponseMiddleware;
 use super::registry::Registry;
+use crate::caps::CapabilityAuthority;
 use crate::db::Database;
 use crate::state::{Matrix, RegisteredState};
 use crate::state::actor::ChannelEvent;
+use slirc_proto::Prefix;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -56,6 +58,22 @@ impl<'a, S> Context<'a, S> {
     #[inline]
     pub fn server_name(&self) -> &str {
         &self.matrix.server_info.name
+    }
+
+    /// Get a server prefix for building messages.
+    ///
+    /// Use this instead of `Prefix::ServerName(ctx.server_name().to_string())`.
+    #[inline]
+    pub fn server_prefix(&self) -> Prefix {
+        Prefix::ServerName(self.matrix.server_info.name.clone())
+    }
+
+    /// Get a capability authority for this context.
+    ///
+    /// Use this instead of `CapabilityAuthority::new(ctx.matrix.clone())`.
+    #[inline]
+    pub fn authority(&self) -> CapabilityAuthority {
+        CapabilityAuthority::new(self.matrix.clone())
     }
 
     /// Create a new context.

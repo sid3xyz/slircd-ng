@@ -3,7 +3,6 @@ use super::super::{Context,
     resolve_nick_to_uid, server_notice,
 };
 use crate::state::RegisteredState;
-use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
@@ -27,10 +26,10 @@ impl PostRegHandler for ChghostHandler {
         let oper_nick = ctx.nick();
 
         // Request oper capability from authority (Innovation 4)
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         if authority.request_chghost_cap(ctx.uid).await.is_none() {
             let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("CHGHOST", "ERR_NOPRIVILEGES");
             return Ok(());
@@ -40,7 +39,7 @@ impl PostRegHandler for ChghostHandler {
             Some(n) if !n.is_empty() => n,
             _ => {
                 let reply = Response::err_needmoreparams(oper_nick, "CHGHOST")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -51,7 +50,7 @@ impl PostRegHandler for ChghostHandler {
             Some(u) if !u.is_empty() => u,
             _ => {
                 let reply = Response::err_needmoreparams(oper_nick, "CHGHOST")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -62,7 +61,7 @@ impl PostRegHandler for ChghostHandler {
             Some(h) if !h.is_empty() => h,
             _ => {
                 let reply = Response::err_needmoreparams(oper_nick, "CHGHOST")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -71,7 +70,7 @@ impl PostRegHandler for ChghostHandler {
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("CHGHOST", "ERR_NOSUCHNICK");
             return Ok(());
@@ -80,7 +79,7 @@ impl PostRegHandler for ChghostHandler {
         let (old_nick, old_user, old_host, channels) = {
             let Some(user_ref) = ctx.matrix.users.get(&target_uid) else {
                 let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGHOST", "ERR_NOSUCHNICK");
                 return Ok(());

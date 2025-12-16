@@ -61,7 +61,7 @@ impl PostRegHandler for WhowasHandler {
 
         if targets.is_empty() {
             let reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::ERR_NONICKNAMEGIVEN,
                 vec![
                     ctx.state.nick.clone(),
@@ -73,7 +73,7 @@ impl PostRegHandler for WhowasHandler {
             // Per RFC 2812, WHOWAS with no params should still send ENDOFWHOWAS
             // Use a placeholder nick for the end message
             let end_reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::RPL_ENDOFWHOWAS,
                 vec![
                     ctx.state.nick.clone(),
@@ -85,7 +85,7 @@ impl PostRegHandler for WhowasHandler {
             return Ok(());
         }
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = &ctx.state.nick; // Guaranteed present in RegisteredState
 
         // Handle multiple targets (comma-separated): WHOWAS nick1,nick2

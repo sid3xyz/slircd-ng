@@ -21,7 +21,7 @@ impl PostRegHandler for UserhostHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = &ctx.state.nick;
 
         // USERHOST <nick> [<nick> ...]

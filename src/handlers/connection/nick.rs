@@ -95,7 +95,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                             nick,
                             &info.name,
                         )
-                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                        .with_prefix(ctx.server_prefix());
                         ctx.sender.send(reply).await?;
                         return Ok(());
                     }

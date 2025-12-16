@@ -74,7 +74,7 @@ pub(super) async fn send_channel_topic(
 ) -> HandlerResult {
     if let Some(topic) = &data.topic {
         let mut topic_reply = server_reply(
-            &ctx.matrix.server_info.name,
+            ctx.server_name(),
             Response::RPL_TOPIC,
             vec![
                 nick.to_string(),
@@ -91,7 +91,7 @@ pub(super) async fn send_channel_topic(
         ctx.sender.send(topic_reply).await?;
 
         let topic_who_reply = server_reply(
-            &ctx.matrix.server_info.name,
+            ctx.server_name(),
             Response::RPL_TOPICWHOTIME,
             vec![
                 nick.to_string(),
@@ -136,7 +136,7 @@ pub(super) async fn send_names_list(
         }
 
         let mut names_reply = server_reply(
-            &ctx.matrix.server_info.name,
+            ctx.server_name(),
             Response::RPL_NAMREPLY,
             vec![
                 nick.to_string(),
@@ -156,7 +156,7 @@ pub(super) async fn send_names_list(
 
     let mut end_names = with_label(
         server_reply(
-            &ctx.matrix.server_info.name,
+            ctx.server_name(),
             Response::RPL_ENDOFNAMES,
             vec![
                 nick.to_string(),
@@ -184,7 +184,7 @@ pub(super) async fn send_join_error(
     channel_name: &str,
     error: ChannelError,
 ) -> HandlerResult {
-    let reply = error.to_irc_reply(&ctx.matrix.server_info.name, nick, channel_name);
+    let reply = error.to_irc_reply(ctx.server_name(), nick, channel_name);
     ctx.sender.send(reply).await?;
     Ok(())
 }

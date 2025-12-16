@@ -18,7 +18,7 @@ use crate::handlers::{Context,
 use crate::state::{Matrix, RegisteredState};
 use async_trait::async_trait;
 use ipnet::IpNet;
-use slirc_proto::{MessageRef, Prefix, Response};
+use slirc_proto::{MessageRef, Response};
 use std::sync::Arc;
 
 // -----------------------------------------------------------------------------
@@ -91,15 +91,15 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let cmd_name = self.config.command_name();
 
         // Get nick and check capability
         let nick = ctx.nick();
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         if !self.config.check_capability(&authority, ctx.uid).await {
             let reply = Response::err_noprivileges(nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error(cmd_name, "ERR_NOPRIVILEGES");
             return Ok(());
@@ -110,7 +110,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
             Some(t) if !t.is_empty() => t,
             _ => {
                 let reply = Response::err_needmoreparams(nick, cmd_name)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error(cmd_name, "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -174,15 +174,15 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let cmd_name = self.config.unset_command_name();
 
         // Get nick and check capability
         let nick = ctx.nick();
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         if !self.config.check_capability(&authority, ctx.uid).await {
             let reply = Response::err_noprivileges(nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error(cmd_name, "ERR_NOPRIVILEGES");
             return Ok(());
@@ -193,7 +193,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
             Some(t) if !t.is_empty() => t,
             _ => {
                 let reply = Response::err_needmoreparams(nick, cmd_name)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error(cmd_name, "ERR_NEEDMOREPARAMS");
                 return Ok(());

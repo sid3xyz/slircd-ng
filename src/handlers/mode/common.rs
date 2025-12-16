@@ -25,7 +25,7 @@ pub async fn parse_channel_modes(
             debug!(error = ?e, "Failed to parse channel modes");
             let nick = &ctx.state.nick;
             let reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::ERR_UNKNOWNMODE,
                 vec![
                     nick.clone(),
@@ -54,7 +54,7 @@ pub async fn parse_user_modes(
             debug!(error = ?e, "Failed to parse user modes");
             let nick = &ctx.state.nick;
             let reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::ERR_UMODEUNKNOWNFLAG,
                 vec![nick.clone(), "Unknown MODE flag".to_string()],
             );

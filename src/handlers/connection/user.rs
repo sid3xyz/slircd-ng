@@ -3,7 +3,7 @@
 use super::super::{Context, HandlerError, HandlerResult, PreRegHandler};
 use crate::state::UnregisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response};
+use slirc_proto::{MessageRef, Response};
 use tracing::debug;
 
 /// Handler for USER command.
@@ -27,7 +27,7 @@ impl PreRegHandler for UserHandler {
         if ctx.state.user.is_some() {
             let nick = ctx.state.nick.as_deref().unwrap_or("*");
             let reply = Response::err_alreadyregistred(nick)
-                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             return Ok(());
         }

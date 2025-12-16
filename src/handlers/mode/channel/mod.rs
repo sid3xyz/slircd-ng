@@ -9,7 +9,7 @@ mod mlock;
 use crate::handlers::{Context, HandlerError, HandlerResult, server_reply, with_label};
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelError;
-use slirc_proto::{ChannelMode, Mode, Prefix, Response, irc_to_lower};
+use slirc_proto::{ChannelMode, Mode, Response, irc_to_lower};
 
 use lists::{get_list_mode_query, send_list_mode};
 use mlock::apply_mlock_filter;
@@ -29,7 +29,7 @@ pub async fn handle_channel_mode(
         Some(c) => c.clone(),
         None => {
             let reply = Response::err_nosuchchannel(nick, channel_name)
-                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("MODE", "ERR_NOSUCHCHANNEL");
             return Ok(());
@@ -89,7 +89,7 @@ pub async fn handle_channel_mode(
 
         let reply = with_label(
             server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::RPL_CHANNELMODEIS,
                 params,
             ),
@@ -99,7 +99,7 @@ pub async fn handle_channel_mode(
 
         // Also send creation time
         let time_reply = server_reply(
-            &ctx.matrix.server_info.name,
+            ctx.server_name(),
             Response::RPL_CREATIONTIME,
             vec![nick.to_string(), canonical_name.to_string(), info.created.to_string()],
         );
@@ -115,7 +115,7 @@ pub async fn handle_channel_mode(
         if !is_op {
             ctx.sender
                 .send(ChannelError::ChanOpPrivsNeeded.to_irc_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     nick,
                     &canonical_name,
                 ))
@@ -144,7 +144,7 @@ pub async fn handle_channel_mode(
                                 } else {
                                     // ERR_USERNOTINCHANNEL (441)
                                     let reply = server_reply(
-                                        &ctx.matrix.server_info.name,
+                                        ctx.server_name(),
                                         Response::ERR_USERNOTINCHANNEL,
                                         vec![
                                             nick.to_string(),
@@ -159,7 +159,7 @@ pub async fn handle_channel_mode(
                             None => {
                                 // ERR_NOSUCHNICK (401)
                                 let reply = Response::err_nosuchnick(nick, target_nick)
-                                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                                    .with_prefix(ctx.server_prefix());
                                 ctx.sender.send(reply).await?;
                                 crate::metrics::record_command_error("MODE", "ERR_NOSUCHNICK");
                             }
@@ -175,7 +175,7 @@ pub async fn handle_channel_mode(
                             // Validate: no spaces, not empty, max 23 chars
                             if key.is_empty() || key.contains(' ') || key.len() > 23 {
                                 let reply = server_reply(
-                                    &ctx.matrix.server_info.name,
+                                    ctx.server_name(),
                                     Response::ERR_INVALIDKEY,
                                     vec![
                                         nick.to_string(),
@@ -266,28 +266,28 @@ pub async fn handle_channel_mode(
                 Ok(Err(e)) => {
                     let reply = match e {
                         ChannelError::ChanOpPrivsNeeded => {
-                            Response::err_chanoprivsneeded(&ctx.matrix.server_info.name, &canonical_name)
+                            Response::err_chanoprivsneeded(ctx.server_name(), &canonical_name)
                         }
                         ChannelError::KeySet => {
-                            Response::err_keyset(&ctx.matrix.server_info.name, &canonical_name)
+                            Response::err_keyset(ctx.server_name(), &canonical_name)
                         }
                         ChannelError::UnknownMode(c, _) => {
-                            Response::err_unknownmode(&ctx.matrix.server_info.name, c, &canonical_name)
+                            Response::err_unknownmode(ctx.server_name(), c, &canonical_name)
                         }
                         ChannelError::NoChanModes => {
-                            Response::err_nochanmodes(&ctx.matrix.server_info.name, &canonical_name)
+                            Response::err_nochanmodes(ctx.server_name(), &canonical_name)
                         }
                         ChannelError::BanListFull(c) => {
-                            Response::err_banlistfull(&ctx.matrix.server_info.name, &canonical_name, c)
+                            Response::err_banlistfull(ctx.server_name(), &canonical_name, c)
                         }
                         ChannelError::UniqOpPrivsNeeded => {
-                            Response::err_uniqopprivsneeded(&ctx.matrix.server_info.name)
+                            Response::err_uniqopprivsneeded(ctx.server_name())
                         }
                         ChannelError::UserNotInChannel(target) => {
-                            Response::err_usernotinchannel(&ctx.matrix.server_info.name, &nick, &target)
+                            Response::err_usernotinchannel(ctx.server_name(), &nick, &target)
                         }
                         _ => server_reply(
-                            &ctx.matrix.server_info.name,
+                            ctx.server_name(),
                             Response::ERR_UNKNOWNERROR,
                             vec![
                                 nick.to_string(),

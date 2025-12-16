@@ -9,10 +9,9 @@ use super::super::{Context,
     server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
-use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix, Response, irc_to_lower};
+use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
 use tokio::sync::oneshot;
 
 /// Handler for INVITE command.
@@ -31,7 +30,7 @@ impl PostRegHandler for InviteHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = &ctx.state.nick;
 
         // INVITE <nickname> <channel> or INVITE <channel> <nickname>
@@ -61,7 +60,7 @@ impl PostRegHandler for InviteHandler {
             Some(uid) => uid.value().clone(),
             None => {
                 let reply = Response::err_nosuchnick(nick, target_nick)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("INVITE", "ERR_NOSUCHNICK");
                 return Ok(());
@@ -82,7 +81,7 @@ impl PostRegHandler for InviteHandler {
 
             if !user_in_channel {
                 let reply = Response::err_notonchannel(nick, channel_name)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("INVITE", "ERR_NOTONCHANNEL");
                 return Ok(());
@@ -95,7 +94,7 @@ impl PostRegHandler for InviteHandler {
             let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
 
             // Request INVITE capability from authority (Innovation 4)
-            let authority = CapabilityAuthority::new(ctx.matrix.clone());
+            let authority = ctx.authority();
             let has_invite_cap = authority
                 .request_invite_cap(ctx.uid, channel_name)
                 .await

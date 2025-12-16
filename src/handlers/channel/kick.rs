@@ -5,10 +5,9 @@ use super::super::{Context,
     user_mask_from_state, resolve_nick_to_uid,
 };
 use crate::state::RegisteredState;
-use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
+use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::info;
 
@@ -78,7 +77,7 @@ impl PostRegHandler for KickHandler {
             let channel_tx = match ctx.require_channel_exists(channel_name) {
                 Ok(tx) => tx,
                 Err(e) => {
-                    if let Some(msg) = e.to_irc_reply(&ctx.matrix.server_info.name, &nick, "KICK") {
+                    if let Some(msg) = e.to_irc_reply(ctx.server_name(), &nick, "KICK") {
                         ctx.sender.send(msg).await?;
                     }
                     crate::metrics::record_command_error("KICK", e.error_code());
@@ -91,7 +90,7 @@ impl PostRegHandler for KickHandler {
                 Some(uid) => uid,
                 None => {
                     let reply = Response::err_nosuchnick(&nick, target_nick)
-                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                        .with_prefix(ctx.server_prefix());
                     ctx.sender.send(reply).await?;
                     crate::metrics::record_command_error("KICK", "ERR_NOSUCHNICK");
                     continue;
@@ -99,7 +98,7 @@ impl PostRegHandler for KickHandler {
             };
 
             // Request KICK capability from authority (Innovation 4)
-            let authority = CapabilityAuthority::new(ctx.matrix.clone());
+            let authority = ctx.authority();
             let has_kick_cap = authority
                 .request_kick_cap(ctx.uid, channel_name)
                 .await
@@ -141,7 +140,7 @@ impl PostRegHandler for KickHandler {
                     );
                 }
                 Ok(Err(e)) => {
-                    let reply = e.to_irc_reply(&ctx.matrix.server_info.name, &nick, channel_name);
+                    let reply = e.to_irc_reply(ctx.server_name(), &nick, channel_name);
                     ctx.sender.send(reply).await?;
                 }
                 Err(_) => {}

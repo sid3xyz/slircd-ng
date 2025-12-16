@@ -224,7 +224,7 @@ impl PostRegHandler for WhoHandler {
             false // WHOX doesn't use 'o' flag
         };
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = &ctx.state.nick;
 
         // Check if the user has multi-prefix CAP enabled

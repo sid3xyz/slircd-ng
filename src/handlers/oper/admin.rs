@@ -3,9 +3,8 @@ use super::super::{Context,
     server_notice, server_reply,
 };
 use crate::state::RegisteredState;
-use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response};
+use slirc_proto::{MessageRef, Response};
 use tokio::sync::mpsc;
 
 /// Handler for DIE command. Uses capability-based authorization (Innovation 4).
@@ -18,16 +17,16 @@ impl PostRegHandler for DieHandler {
         ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = get_nick_or_star(ctx).await;
 
         // Request DIE capability from authority (Innovation 4)
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         let _die_cap = match authority.request_die_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
                 let reply = Response::err_noprivileges(&nick)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("DIE", "ERR_NOPRIVILEGES");
                 return Ok(());
@@ -66,16 +65,16 @@ impl PostRegHandler for RehashHandler {
         ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = get_nick_or_star(ctx).await;
 
         // Request REHASH capability from authority (Innovation 4)
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         let _rehash_cap = match authority.request_rehash_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
                 let reply = Response::err_noprivileges(&nick)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("REHASH", "ERR_NOPRIVILEGES");
                 return Ok(());
@@ -146,16 +145,16 @@ impl PostRegHandler for RestartHandler {
         ctx: &mut Context<'_, RegisteredState>,
         _msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = get_nick_or_star(ctx).await;
 
         // Request RESTART capability from authority (Innovation 4)
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         let _restart_cap = match authority.request_restart_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
                 let reply = Response::err_noprivileges(&nick)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("RESTART", "ERR_NOPRIVILEGES");
                 return Ok(());

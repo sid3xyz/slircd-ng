@@ -81,7 +81,7 @@ pub(super) async fn send_list_mode(
 
         for entry in list {
             let reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 reply_code,
                 vec![
                     nick.to_string(),
@@ -95,7 +95,7 @@ pub(super) async fn send_list_mode(
         }
 
         let end_reply = server_reply(
-            &ctx.matrix.server_info.name,
+            ctx.server_name(),
             end_code,
             vec![
                 nick.to_string(),

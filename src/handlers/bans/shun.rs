@@ -4,14 +4,13 @@
 //! This is less disruptive than traditional bans and useful for dealing with
 //! automated abuse.
 
-use crate::caps::CapabilityAuthority;
 use crate::db::Shun;
 use crate::handlers::{Context,
     HandlerResult, PostRegHandler, server_notice,
 };
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response};
+use slirc_proto::{MessageRef, Response};
 
 /// Handler for SHUN command.
 ///
@@ -27,14 +26,14 @@ impl PostRegHandler for ShunHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
 
         // Get nick and check capability
         let nick = ctx.nick();
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
             let reply = Response::err_noprivileges(nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("SHUN", "ERR_NOPRIVILEGES");
             return Ok(());
@@ -45,7 +44,7 @@ impl PostRegHandler for ShunHandler {
             Some(m) if !m.is_empty() => m,
             _ => {
                 let reply = Response::err_needmoreparams(nick, "SHUN")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("SHUN", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -110,14 +109,14 @@ impl PostRegHandler for UnshunHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
 
         // Get nick and check capability
         let nick = ctx.nick();
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
             let reply = Response::err_noprivileges(nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("UNSHUN", "ERR_NOPRIVILEGES");
             return Ok(());
@@ -128,7 +127,7 @@ impl PostRegHandler for UnshunHandler {
             Some(m) if !m.is_empty() => m,
             _ => {
                 let reply = Response::err_needmoreparams(nick, "UNSHUN")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("UNSHUN", "ERR_NEEDMOREPARAMS");
                 return Ok(());

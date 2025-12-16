@@ -25,7 +25,7 @@ impl PostRegHandler for MotdHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = ctx.nick();
 
         // RPL_MOTDSTART (375): :- <server> Message of the day -
@@ -74,7 +74,7 @@ impl PostRegHandler for VersionHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = ctx.nick();
 
         // RPL_VERSION (351): <version>.<debuglevel> <server> :<comments>
@@ -88,7 +88,7 @@ impl PostRegHandler for VersionHandler {
             vec![
                 nick.to_string(),
                 version_str,
-                server_name.clone(),
+                server_name.to_string(),
                 "slircd-ng IRC daemon".to_string(),
             ],
         )
@@ -114,7 +114,7 @@ impl PostRegHandler for TimeHandler {
     ) -> HandlerResult {
         // Compile-time guarantee: nick is always present for Registered connections
         let nick = ctx.nick(); // Returns &str, not Option!
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
 
         // RPL_TIME (391): <server> :<string showing server's local time>
         let now = chrono::Local::now();
@@ -122,7 +122,7 @@ impl PostRegHandler for TimeHandler {
 
         ctx.send_reply(
             Response::RPL_TIME,
-            vec![nick.to_string(), server_name.clone(), time_string],
+            vec![nick.to_string(), server_name.to_string(), time_string],
         )
         .await?;
 
@@ -146,14 +146,14 @@ impl PostRegHandler for AdminHandler {
     ) -> HandlerResult {
         // Compile-time guarantee: nick is always present for Registered connections
         let nick = ctx.nick(); // Returns &str, not Option!
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
 
         // RPL_ADMINME (256): <server> :Administrative info
         ctx.send_reply(
             Response::RPL_ADMINME,
             vec![
                 nick.to_string(),
-                server_name.clone(),
+                server_name.to_string(),
                 "Administrative info".to_string(),
             ],
         )
@@ -225,7 +225,7 @@ impl PostRegHandler for InfoHandler {
     ) -> HandlerResult {
         // Compile-time guarantee: nick is always present for Registered connections
         let nick = ctx.nick(); // Returns &str, not Option!
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
 
         // If a target is specified, check if it matches this server
         if let Some(target) = msg.arg(0) {
@@ -264,7 +264,7 @@ impl PostRegHandler for InfoHandler {
             "Zero-copy message parsing via slirc-proto".to_string(),
             "DashMap concurrent state management".to_string(),
             "".to_string(),
-            format!("Server: {}", ctx.matrix.server_info.name),
+            format!("Server: {}", ctx.server_name()),
             format!("Network: {}", ctx.matrix.server_info.network),
         ];
 

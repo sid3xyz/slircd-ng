@@ -3,7 +3,6 @@ use super::super::{Context,
     user_mask_from_state,
 };
 use crate::state::RegisteredState;
-use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
@@ -28,14 +27,12 @@ impl PostRegHandler for WallopsHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
-
         let wallops_text = match msg.arg(0) {
             Some(t) if !t.is_empty() => t,
             _ => {
                 let nick = get_nick_or_star(ctx).await;
                 let reply = Response::err_needmoreparams(&nick, "WALLOPS")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("WALLOPS", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -50,12 +47,12 @@ impl PostRegHandler for WallopsHandler {
         };
 
         // Request GlobalNotice capability from authority (Innovation 4)
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         let _wallops_cap = match authority.request_wallops_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
                 let reply = Response::err_noprivileges(&sender_nick)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("WALLOPS", "ERR_NOPRIVILEGES");
                 return Ok(());

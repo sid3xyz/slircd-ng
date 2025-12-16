@@ -55,7 +55,7 @@ pub async fn validate_message_send(
         match strategy {
             ErrorStrategy::SendError => {
                 let reply = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::ERR_TOOMANYTARGETS,
                     vec![
                         nick.to_string(),
@@ -90,7 +90,7 @@ pub async fn validate_message_send(
         match strategy {
             ErrorStrategy::SendError => {
                 let reply = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::ERR_TOOMANYTARGETS,
                     vec![
                         nick.to_string(),
@@ -127,7 +127,7 @@ pub async fn validate_message_send(
         match strategy {
             ErrorStrategy::SendError => {
                 let reply = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::ERR_TOOMANYTARGETS,
                     vec![
                         nick.to_string(),
@@ -149,7 +149,7 @@ pub async fn validate_message_send(
         match strategy {
             ErrorStrategy::SendError => {
                 let reply = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::ERR_TOOMANYTARGETS,
                     vec![
                         nick.to_string(),

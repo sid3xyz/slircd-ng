@@ -3,7 +3,7 @@
 use super::super::{Context, HandlerResult, UniversalHandler, with_label};
 use crate::state::SessionState;
 use async_trait::async_trait;
-use slirc_proto::{Message, MessageRef, Response, prefix::Prefix};
+use slirc_proto::{Message, MessageRef, Response};
 
 pub struct PingHandler;
 
@@ -19,18 +19,18 @@ impl<S: SessionState> UniversalHandler<S> for PingHandler {
                 // No token provided - return ERR_NEEDMOREPARAMS (461)
                 let nick = ctx.state.nick_or_star();
                 let reply = Response::err_needmoreparams(nick, "PING")
-                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    .with_prefix(ctx.server_prefix());
                 let reply = with_label(reply, ctx.label.as_deref());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("PING", "ERR_NEEDMOREPARAMS");
                 return Ok(());
             }
         };
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
 
         // PONG must have server prefix for clients to properly match responses
         let pong = Message::pong_with_token(server_name, token)
-            .with_prefix(Prefix::ServerName(server_name.clone()));
+            .with_prefix(ctx.server_prefix());
         // Attach label for labeled-response capability
         let pong = with_label(pong, ctx.label.as_deref());
         ctx.sender.send(pong).await?;
@@ -46,7 +46,7 @@ impl<S: SessionState> UniversalHandler<S> for PongHandler {
     async fn handle(&self, ctx: &mut Context<'_, S>, _msg: &MessageRef<'_>) -> HandlerResult {
         // PONG normally produces no output, but with labeled-response we send ACK
         if let Some(label) = &ctx.label {
-            let ack = super::super::labeled_ack(&ctx.matrix.server_info.name, label);
+            let ack = super::super::labeled_ack(ctx.server_name(), label);
             ctx.sender.send(ack).await?;
         }
 

@@ -123,7 +123,7 @@ impl PostRegHandler for NamesHandler {
                 };
 
                 let names_reply = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::RPL_NAMREPLY,
                     vec![
                         nick.to_string(),
@@ -139,7 +139,7 @@ impl PostRegHandler for NamesHandler {
             // Notify if results were truncated
             if truncated {
                 let notice = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::RPL_TRYAGAIN,
                     vec![
                         nick.to_string(),
@@ -151,7 +151,7 @@ impl PostRegHandler for NamesHandler {
             }
 
             let reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::RPL_ENDOFNAMES,
                 vec![
                     nick.to_string(),
@@ -190,7 +190,7 @@ impl PostRegHandler for NamesHandler {
                 && !channel_info.is_member
             {
                 let end_names = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::RPL_ENDOFNAMES,
                     vec![
                         nick.to_string(),
@@ -238,7 +238,7 @@ impl PostRegHandler for NamesHandler {
             };
 
             let names_reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::RPL_NAMREPLY,
                 vec![
                     nick.to_string(),
@@ -252,7 +252,7 @@ impl PostRegHandler for NamesHandler {
             // Only send RPL_ENDOFNAMES after the last channel
             if idx == channels.len() - 1 {
                 let end_names = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::RPL_ENDOFNAMES,
                     vec![
                         nick.to_string(),
@@ -266,7 +266,7 @@ impl PostRegHandler for NamesHandler {
             // Channel doesn't exist - only send RPL_ENDOFNAMES if it's the last channel
             if idx == channels.len() - 1 {
                 let end_names = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::RPL_ENDOFNAMES,
                     vec![
                         nick.to_string(),

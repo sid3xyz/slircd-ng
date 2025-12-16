@@ -19,7 +19,7 @@ pub async fn handle_user_mode(
     // Can only query/change your own modes
     if !irc_eq(target, nick) {
         let reply = server_reply(
-            &ctx.matrix.server_info.name,
+            ctx.server_name(),
             Response::ERR_USERSDONTMATCH,
             vec![
                 nick.to_string(),
@@ -41,7 +41,7 @@ pub async fn handle_user_mode(
         let user = user.read().await;
         let mode_string = user.modes.as_mode_string();
         let reply = server_reply(
-            &ctx.matrix.server_info.name,
+            ctx.server_name(),
             Response::RPL_UMODEIS,
             vec![nick.to_string(), mode_string],
         );
@@ -72,7 +72,7 @@ pub async fn handle_user_mode(
         // Report any rejected modes (like +o which only server can set)
         for mode in rejected {
             let reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::ERR_UMODEUNKNOWNFLAG,
                 vec![nick.to_string(), format!("Unknown mode flag: {}", mode)],
             );

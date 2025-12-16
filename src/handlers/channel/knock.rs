@@ -6,7 +6,7 @@ use super::super::{Context, HandlerResult, PostRegHandler, server_reply};
 use crate::state::RegisteredState;
 use crate::state::actor::{ChannelEvent, ChannelError};
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
+use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tokio::sync::oneshot;
 
 /// Handler for KNOCK command.
@@ -30,7 +30,7 @@ impl PostRegHandler for KnockHandler {
             Some(c) if !c.is_empty() => c,
             _ => {
                 // ERR_NEEDMOREPARAMS (461)
-                let server_name = &ctx.matrix.server_info.name;
+                let server_name = ctx.server_name();
                 let nick = {
                     if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
                         let user = user_arc.read().await;
@@ -54,7 +54,7 @@ impl PostRegHandler for KnockHandler {
             }
         };
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let channel_lower = irc_to_lower(channel_name);
 
         // Get user info
@@ -72,7 +72,7 @@ impl PostRegHandler for KnockHandler {
             Some(c) => c.clone(),
             None => {
                 let reply = Response::err_nosuchchannel(&nick, channel_name)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("KNOCK", "ERR_NOSUCHCHANNEL");
                 return Ok(());

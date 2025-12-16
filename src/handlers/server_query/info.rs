@@ -8,7 +8,7 @@ use super::super::{
 };
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, Prefix};
+use slirc_proto::{MessageRef, Response};
 
 /// Handler for MAP command.
 ///
@@ -34,7 +34,7 @@ impl PostRegHandler for MapHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = &ctx.state.nick;
 
         let user_count = ctx.matrix.users.len();
@@ -76,7 +76,7 @@ impl PostRegHandler for RulesHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = &ctx.state.nick;
 
         // RPL_RULESTART (232): :- <server> Server Rules -
@@ -132,7 +132,6 @@ impl PostRegHandler for UseripHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
         let nick = &ctx.state.nick;
 
         // Check for oper privileges
@@ -142,7 +141,7 @@ impl PostRegHandler for UseripHandler {
 
         if !is_oper {
             let reply = Response::err_noprivileges(nick)
-                .with_prefix(Prefix::ServerName(server_name.clone()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("USERIP", "ERR_NOPRIVILEGES");
             return Ok(());
@@ -151,7 +150,7 @@ impl PostRegHandler for UseripHandler {
         // Need at least one nickname
         if msg.arg(0).is_none() {
             let reply = Response::err_needmoreparams(nick, "USERIP")
-                .with_prefix(Prefix::ServerName(server_name.clone()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("USERIP", "ERR_NEEDMOREPARAMS");
             return Ok(());
@@ -210,7 +209,7 @@ impl PostRegHandler for LinksHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = &ctx.state.nick;
 
         let services_name = server_name
@@ -223,8 +222,8 @@ impl PostRegHandler for LinksHandler {
             Response::RPL_LINKS,
             vec![
                 nick.clone(),
-                server_name.clone(),
-                server_name.clone(),
+                server_name.to_string(),
+                server_name.to_string(),
                 format!("0 {}", ctx.matrix.server_info.description),
             ],
         )
@@ -235,7 +234,7 @@ impl PostRegHandler for LinksHandler {
             vec![
                 nick.clone(),
                 services_name,
-                server_name.clone(),
+                server_name.to_string(),
                 "1 services".to_string(),
             ],
         )

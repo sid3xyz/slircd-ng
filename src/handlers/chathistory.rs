@@ -474,14 +474,13 @@ impl PostRegHandler for ChatHistoryHandler {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         let nick = ctx.nick().to_string();
-        let server_name = &ctx.matrix.server_info.name;
 
         // CHATHISTORY <subcommand> <target> [params...]
         let subcommand_str = match msg.arg(0) {
             Some(s) => s,
             None => {
                 let reply = Response::err_needmoreparams(&nick, "CHATHISTORY")
-                    .with_prefix(Prefix::ServerName(server_name.clone()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHATHISTORY", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -494,7 +493,7 @@ impl PostRegHandler for ChatHistoryHandler {
                 // Send FAIL response for invalid subcommand
                 let fail = Message {
                     tags: None,
-                    prefix: Some(Prefix::ServerName(server_name.clone())),
+                    prefix: Some(ctx.server_prefix()),
                     command: Command::FAIL(
                         "CHATHISTORY".to_string(),
                         "INVALID_PARAMS".to_string(),
@@ -513,7 +512,7 @@ impl PostRegHandler for ChatHistoryHandler {
                 Some(t) => t.to_string(),
                 None => {
                     let reply = Response::err_needmoreparams(&nick, "CHATHISTORY")
-                        .with_prefix(Prefix::ServerName(server_name.clone()));
+                        .with_prefix(ctx.server_prefix());
                     ctx.sender.send(reply).await?;
                     crate::metrics::record_command_error("CHATHISTORY", "ERR_NEEDMOREPARAMS");
                     return Ok(());
@@ -537,7 +536,7 @@ impl PostRegHandler for ChatHistoryHandler {
                     // User not in channel - send FAIL
                     let fail = Message {
                         tags: None,
-                        prefix: Some(Prefix::ServerName(server_name.clone())),
+                        prefix: Some(ctx.server_prefix()),
                         command: Command::FAIL(
                             "CHATHISTORY".to_string(),
                             "INVALID_TARGET".to_string(),
@@ -574,7 +573,7 @@ impl PostRegHandler for ChatHistoryHandler {
                 warn!(error = %e, "CHATHISTORY query failed");
                 let fail = Message {
                     tags: None,
-                    prefix: Some(Prefix::ServerName(server_name.clone())),
+                    prefix: Some(ctx.server_prefix()),
                     command: Command::FAIL(
                         "CHATHISTORY".to_string(),
                         "MESSAGE_ERROR".to_string(),
@@ -601,7 +600,6 @@ async fn send_history_batch(
     messages: Vec<StoredMessage>,
     batch_type: &str,
 ) -> Result<(), crate::handlers::HandlerError> {
-    let server_name = &ctx.matrix.server_info.name;
     let batch_id = format!("chathistory-{}", Uuid::new_v4().simple());
 
     // Check if client has event-playback capability (Innovation 5)
@@ -616,7 +614,7 @@ async fn send_history_batch(
 
     let batch_start = Message {
         tags: None,
-        prefix: Some(Prefix::ServerName(server_name.clone())),
+        prefix: Some(ctx.server_prefix()),
         command: Command::BATCH(
             format!("+{}", batch_id),
             Some(BatchSubCommand::CUSTOM(batch_type.to_string())),
@@ -701,7 +699,7 @@ async fn send_history_batch(
     // End BATCH
     let batch_end = Message {
         tags: None,
-        prefix: Some(Prefix::ServerName(server_name.clone())),
+        prefix: Some(ctx.server_prefix()),
         command: Command::BATCH(format!("-{}", batch_id), None, None),
     };
     ctx.sender.send(batch_end).await?;

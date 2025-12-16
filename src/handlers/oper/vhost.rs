@@ -4,7 +4,6 @@ use super::super::{Context,
 };
 use crate::state::RegisteredState;
 use super::is_valid_hostname;
-use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
@@ -27,10 +26,10 @@ impl PostRegHandler for VhostHandler {
         let oper_nick = ctx.nick();
 
         // Request oper capability from authority (Innovation 4)
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         if authority.request_vhost_cap(ctx.uid).await.is_none() {
             let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("VHOST", "ERR_NOPRIVILEGES");
             return Ok(());
@@ -40,7 +39,7 @@ impl PostRegHandler for VhostHandler {
             Some(n) if !n.is_empty() => n,
             _ => {
                 let reply = Response::err_needmoreparams(oper_nick, "VHOST")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("VHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -51,7 +50,7 @@ impl PostRegHandler for VhostHandler {
             Some(h) if !h.is_empty() => h,
             _ => {
                 let reply = Response::err_needmoreparams(oper_nick, "VHOST")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("VHOST", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -78,7 +77,7 @@ impl PostRegHandler for VhostHandler {
             Some(uid) => uid,
             None => {
                 let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("VHOST", "ERR_NOSUCHNICK");
                 return Ok(());

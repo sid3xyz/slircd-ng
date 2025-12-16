@@ -58,7 +58,7 @@ impl PostRegHandler for JoinHandler {
         if !ctx.matrix.rate_limiter.check_join_rate(&uid_string) {
             let nick = ctx.state.nick.clone();
             let reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::ERR_TOOMANYCHANNELS,
                 vec![
                     nick,
@@ -98,7 +98,7 @@ impl PostRegHandler for JoinHandler {
 
             if !channel_name.is_channel_name() {
                 let reply = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::ERR_NOSUCHCHANNEL,
                     vec![
                         ctx.state.nick.clone(),

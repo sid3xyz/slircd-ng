@@ -26,7 +26,7 @@ impl PostRegHandler for AwayHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
@@ -260,7 +260,7 @@ impl PostRegHandler for SilenceHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = &ctx.state.nick;
 
         // SILENCE [+/-mask]

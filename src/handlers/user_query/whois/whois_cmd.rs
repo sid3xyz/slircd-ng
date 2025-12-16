@@ -3,7 +3,7 @@
 use crate::handlers::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, Prefix, irc_to_lower};
+use slirc_proto::{MessageRef, Response, irc_to_lower};
 use tracing::debug;
 
 /// Handler for WHOIS command.
@@ -33,7 +33,7 @@ impl PostRegHandler for WhoisHandler {
 
         if target.is_empty() {
             let reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::ERR_NONICKNAMEGIVEN,
                 vec![
                     ctx.state.nick.clone(),
@@ -44,7 +44,7 @@ impl PostRegHandler for WhoisHandler {
             return Ok(());
         }
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let nick = &ctx.state.nick; // Guaranteed present in RegisteredState
         let target_lower = irc_to_lower(target);
 
@@ -101,7 +101,7 @@ impl PostRegHandler for WhoisHandler {
                     vec![
                         nick.clone(),
                         target_nick.clone(),
-                        server_name.clone(),
+                        server_name.to_string(),
                         ctx.matrix.server_info.description.clone(),
                     ],
                 );
@@ -283,11 +283,11 @@ impl PostRegHandler for WhoisHandler {
 
 /// Send ERR_NOSUCHNICK for a target, followed by RPL_ENDOFWHOIS.
 async fn send_no_such_nick(ctx: &mut Context<'_, crate::state::RegisteredState>, target: &str) -> HandlerResult {
-    let server_name = &ctx.matrix.server_info.name;
+    let server_name = ctx.server_name();
     let nick = &ctx.state.nick;
 
     let reply = Response::err_nosuchnick(nick, target)
-        .with_prefix(Prefix::ServerName(server_name.clone()));
+        .with_prefix(ctx.server_prefix());
     ctx.sender.send(reply).await?;
     crate::metrics::record_command_error("WHOIS", "ERR_NOSUCHNICK");
 

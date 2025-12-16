@@ -2,9 +2,8 @@ use super::super::{Context,
     HandlerResult, PostRegHandler,
 };
 use crate::state::RegisteredState;
-use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response};
+use slirc_proto::{MessageRef, Response};
 
 /// Handler for GLOBOPS command. Uses capability-based authorization.
 ///
@@ -20,14 +19,13 @@ impl PostRegHandler for GlobOpsHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = ctx.server_name();
         let sender_nick = ctx.nick();
 
         let globops_text = match msg.arg(0) {
             Some(t) if !t.is_empty() => t,
             _ => {
                 let reply = Response::err_needmoreparams(sender_nick, "GLOBOPS")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("GLOBOPS", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -35,10 +33,10 @@ impl PostRegHandler for GlobOpsHandler {
         };
 
         // Request GlobalNotice capability from authority (reusing this for now)
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         if authority.request_globops_cap(ctx.uid).await.is_none() {
             let reply = Response::err_noprivileges(sender_nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("GLOBOPS", "ERR_NOPRIVILEGES");
             return Ok(());

@@ -112,7 +112,7 @@ impl<'a> WelcomeBurstWriter<'a> {
             match &self.state.pass_received {
                 None => {
                     let reply = Response::err_passwdmismatch(nick)
-                        .with_prefix(Prefix::ServerName(server_name.clone()));
+                        .with_prefix(Prefix::ServerName(server_name.to_string()));
                     self.write(reply).await?;
                     let error = Message::from(Command::ERROR(
                         "Closing Link: Access denied (password required)".to_string(),
@@ -122,7 +122,7 @@ impl<'a> WelcomeBurstWriter<'a> {
                 }
                 Some(provided) if provided != required_password => {
                     let reply = Response::err_passwdmismatch(nick)
-                        .with_prefix(Prefix::ServerName(server_name.clone()));
+                        .with_prefix(Prefix::ServerName(server_name.to_string()));
                     self.write(reply).await?;
                     let error = Message::from(Command::ERROR(
                         "Closing Link: Access denied (bad password)".to_string(),
@@ -138,7 +138,7 @@ impl<'a> WelcomeBurstWriter<'a> {
         if let Some(ban_result) = self.matrix.ban_cache.check_user_host(user, &host) {
             let ban_reason = format!("{}: {}", ban_result.ban_type, ban_result.reason);
             let reply = Response::err_yourebannedcreep(nick)
-                .with_prefix(Prefix::ServerName(server_name.clone()));
+                .with_prefix(Prefix::ServerName(server_name.to_string()));
             self.write(reply).await?;
             let error = Message::from(Command::ERROR(format!(
                 "Closing Link: {} ({})",
@@ -273,7 +273,7 @@ impl<'a> WelcomeBurstWriter<'a> {
             Response::RPL_MYINFO,
             vec![
                 nick.clone(),
-                server_name.clone(),
+                server_name.to_string(),
                 "slircd-ng-0.1.0".to_string(),
                 "iowrZ".to_string(),
                 "beIiklmnopqrstv".to_string(),

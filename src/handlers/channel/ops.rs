@@ -83,7 +83,7 @@ pub async fn force_join_channel<S>(
                 user.nick.clone(),
                 user.user.clone(),
                 user.realname.clone(),
-                ctx.matrix.server_info.name.clone(),
+                ctx.server_name().to_string(),
                 user.account.clone(),
             );
             let sender = ctx.matrix.senders.get(target.uid).map(|s| s.clone());
@@ -163,7 +163,7 @@ pub async fn force_join_channel<S>(
         // Send topic if set
         if let Some(topic) = join_data.topic {
             let topic_reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::RPL_TOPIC,
                 vec![
                     target.nick.to_string(),
@@ -199,7 +199,7 @@ pub async fn force_join_channel<S>(
             }
 
             let names_reply = server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::RPL_NAMREPLY,
                 vec![
                     target.nick.to_string(),
@@ -213,7 +213,7 @@ pub async fn force_join_channel<S>(
 
         let end_names = with_label(
             server_reply(
-                &ctx.matrix.server_info.name,
+                ctx.server_name(),
                 Response::RPL_ENDOFNAMES,
                 vec![
                     target.nick.to_string(),

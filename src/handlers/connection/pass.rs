@@ -3,7 +3,7 @@
 use super::super::{Context, HandlerResult, PreRegHandler};
 use crate::state::UnregisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response};
+use slirc_proto::{MessageRef, Response};
 use tracing::debug;
 
 /// Handler for PASS command.
@@ -26,7 +26,7 @@ impl PreRegHandler for PassHandler {
         // PASS must come before NICK/USER
         if ctx.state.nick.is_some() || ctx.state.user.is_some() {
             let reply = Response::err_alreadyregistred("*")
-                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             return Ok(());
         }
@@ -36,7 +36,7 @@ impl PreRegHandler for PassHandler {
             Some(p) if !p.is_empty() => p,
             _ => {
                 let reply = Response::err_needmoreparams("*", "PASS")
-                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 return Ok(());
             }

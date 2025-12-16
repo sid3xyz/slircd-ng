@@ -77,7 +77,7 @@ pub(super) async fn leave_channel_internal<S>(
         Some(c) => c.clone(),
         None => {
             let reply = Response::err_nosuchchannel(nick, channel_lower)
-                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("PART", "ERR_NOSUCHCHANNEL");
             return Ok(());
@@ -119,10 +119,10 @@ pub(super) async fn leave_channel_internal<S>(
         Ok(Err(e)) => {
             let reply = match e {
                 ChannelError::NotOnChannel => {
-                    Response::err_notonchannel(&ctx.matrix.server_info.name, channel_lower)
+                    Response::err_notonchannel(ctx.server_name(), channel_lower)
                 }
                 _ => server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::ERR_NOTONCHANNEL,
                     vec![
                         nick.to_string(),

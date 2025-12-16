@@ -17,7 +17,7 @@
 use super::context::{Context, HandlerResult};
 use super::traits::{DynUniversalHandler, PostRegHandler, PreRegHandler};
 use crate::state::{RegisteredState, UnregisteredState};
-use slirc_proto::{Prefix, Response};
+use slirc_proto::{Response};
 use crate::handlers::{
     account::RegisterHandler,
     admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler},
@@ -305,11 +305,10 @@ impl Registry {
 
         // Copy values needed for error handling before passing ctx as mutable
         let uid = ctx.uid.to_string();
-        let server_name = ctx.matrix.server_info.name.clone();
         let nick = ctx.state.nick.clone();
 
         // Record errors for metrics
-        self.handle_dispatch_result(&uid, &server_name, nick.as_deref(), &cmd_name, result, ctx).await
+        self.handle_dispatch_result(&uid, nick.as_deref(), &cmd_name, result, ctx).await
     }
 
     /// Dispatch a message to a post-registration handler.
@@ -375,18 +374,16 @@ impl Registry {
 
         // Copy values needed for error handling before passing ctx as mutable
         let uid = ctx.uid.to_string();
-        let server_name = ctx.matrix.server_info.name.clone();
         let nick = ctx.state.nick.clone();
 
         // Record errors for metrics
-        self.handle_dispatch_result(&uid, &server_name, Some(&nick), &cmd_name, result, ctx).await
+        self.handle_dispatch_result(&uid, Some(&nick), &cmd_name, result, ctx).await
     }
 
     /// Common result handling for both dispatch methods.
     async fn handle_dispatch_result<S>(
         &self,
         uid: &str,
-        server_name: &str,
         nick: Option<&str>,
         cmd_name: &str,
         result: HandlerResult,
@@ -401,7 +398,7 @@ impl Registry {
                 // Unknown command
                 let nick_str = nick.unwrap_or("*");
                 let reply = Response::err_unknowncommand(nick_str, cmd_name)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 let reply = with_label(reply, ctx.label.as_deref());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error(cmd_name, "unknown_command");

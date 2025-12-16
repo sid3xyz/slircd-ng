@@ -54,7 +54,7 @@ pub(super) async fn join_channel(
         nick.clone(),
         user_name.clone(),
         realname.clone(),
-        ctx.matrix.server_info.name.clone(),
+        ctx.server_name().to_string(),
         account.clone(),
     );
 

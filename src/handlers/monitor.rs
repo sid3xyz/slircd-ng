@@ -31,7 +31,7 @@ impl PostRegHandler for MonitorHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name().to_string();
         let nick = ctx.state.nick.clone();
 
         // MONITOR <+/-/C/L/S> [targets]
@@ -44,11 +44,11 @@ impl PostRegHandler for MonitorHandler {
         };
 
         match subcommand {
-            "+" => handle_add(ctx, msg, &nick, server_name).await,
+            "+" => handle_add(ctx, msg, &nick, &server_name).await,
             "-" => handle_remove(ctx, msg, &nick).await,
             "C" | "c" => handle_clear(ctx),
-            "L" | "l" => handle_list(ctx, &nick, server_name).await,
-            "S" | "s" => handle_status(ctx, &nick, server_name).await,
+            "L" | "l" => handle_list(ctx, &nick, &server_name).await,
+            "S" | "s" => handle_status(ctx, &nick, &server_name).await,
             _ => {
                 debug!(subcommand = %subcommand, "Unknown MONITOR subcommand");
                 Ok(())

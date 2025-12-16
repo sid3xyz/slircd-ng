@@ -60,7 +60,7 @@ impl<S: SessionState> UniversalHandler<S> for CapHandler {
             Err(_) => {
                 // Send ERR_INVALIDCAPCMD (410) for unknown subcommand
                 let reply = Response::err_invalidcapcmd(&nick, subcommand_str)
-                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 return Ok(());
             }
@@ -95,7 +95,7 @@ async fn handle_ls<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, versio
         ctx.state.capabilities_mut().insert("cap-notify".to_string());
     }
 
-    let server_name = &ctx.matrix.server_info.name;
+    let server_name = ctx.server_name();
 
     // Build capability tokens (include EXTERNAL if TLS with cert)
     let caps = build_cap_list_tokens(
@@ -115,7 +115,7 @@ async fn handle_ls<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, versio
 
         let reply = Message {
             tags: None,
-            prefix: Some(Prefix::ServerName(server_name.clone())),
+            prefix: Some(ctx.server_prefix()),
             command: Command::CAP(
                 Some(nick.to_string()),
                 CapSubCommand::LS,
@@ -143,7 +143,7 @@ async fn handle_list<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str) -> H
 
     let reply = Message {
         tags: None,
-        prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
+        prefix: Some(ctx.server_prefix()),
         command: Command::CAP(
             Some(nick.to_string()),
             CapSubCommand::LIST,
@@ -194,7 +194,7 @@ async fn handle_req<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, caps_
     if !rejected.is_empty() {
         let reply = Message {
             tags: None,
-            prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
+            prefix: Some(ctx.server_prefix()),
             command: Command::CAP(
                 Some(nick.to_string()),
                 CapSubCommand::NAK,
@@ -208,7 +208,7 @@ async fn handle_req<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, caps_
         // All accepted
         let reply = Message {
             tags: None,
-            prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
+            prefix: Some(ctx.server_prefix()),
             command: Command::CAP(
                 Some(nick.to_string()),
                 CapSubCommand::ACK,
@@ -409,7 +409,7 @@ impl PreRegHandler for AuthenticateHandler {
                     // Send empty challenge (AUTHENTICATE +)
                     let reply = Message {
                         tags: None,
-                        prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
+                        prefix: Some(ctx.server_prefix()),
                         command: Command::AUTHENTICATE("+".to_string()),
                     };
                     ctx.sender.send(reply).await?;
@@ -432,7 +432,7 @@ impl PreRegHandler for AuthenticateHandler {
                     ctx.state.sasl_state = SaslState::WaitingForExternal;
                     let reply = Message {
                         tags: None,
-                        prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
+                        prefix: Some(ctx.server_prefix()),
                         command: Command::AUTHENTICATE("+".to_string()),
                     };
                     ctx.sender.send(reply).await?;
@@ -646,12 +646,12 @@ async fn send_sasl_success(
 
     // RPL_LOGGEDIN (900)
     let reply = Response::rpl_loggedin(nick, &mask, account)
-        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+        .with_prefix(ctx.server_prefix());
     ctx.sender.send(reply).await?;
 
     // RPL_SASLSUCCESS (903)
     let reply = Response::rpl_saslsuccess(nick)
-        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+        .with_prefix(ctx.server_prefix());
     ctx.sender.send(reply).await?;
 
     Ok(())
@@ -661,7 +661,7 @@ async fn send_sasl_success(
 async fn send_sasl_fail(ctx: &mut Context<'_, UnregisteredState>, nick: &str, _reason: &str) -> HandlerResult {
     // ERR_SASLFAIL (904)
     let reply = Response::err_saslfail(nick)
-        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+        .with_prefix(ctx.server_prefix());
     ctx.sender.send(reply).await?;
 
     Ok(())

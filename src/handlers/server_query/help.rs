@@ -6,7 +6,7 @@
 use super::super::{Context, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response};
+use slirc_proto::{MessageRef, Response};
 
 /// Static help text for commands.
 const HELP_TOPICS: &[(&str, &[&str])] = &[
@@ -253,31 +253,31 @@ impl PostRegHandler for HelpHandler {
                 if let Some((cmd, lines)) = HELP_TOPICS.iter().find(|(c, _)| *c == topic_upper) {
                     // RPL_HELPSTART (704)
                     let reply = Response::rpl_helpstart(nick, cmd)
-                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                        .with_prefix(ctx.server_prefix());
                     ctx.sender.send(reply).await?;
 
                     // RPL_HELPTXT (705) for additional lines
                     for line in &lines[1..] {
                         let reply = Response::rpl_helptxt(nick, cmd, line)
-                            .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                            .with_prefix(ctx.server_prefix());
                         ctx.sender.send(reply).await?;
                     }
 
                     // RPL_ENDOFHELP (706)
                     let reply = Response::rpl_endofhelp(nick, cmd)
-                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                        .with_prefix(ctx.server_prefix());
                     ctx.sender.send(reply).await?;
                 } else {
                     // ERR_HELPNOTFOUND (524)
                     let reply = Response::err_helpnotfound(nick, topic)
-                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                        .with_prefix(ctx.server_prefix());
                     ctx.sender.send(reply).await?;
                 }
             }
             None => {
                 // List all commands
                 let reply = Response::rpl_helpstart(nick, "index")
-                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
 
                 // Group commands into lines of ~10 each
@@ -285,12 +285,12 @@ impl PostRegHandler for HelpHandler {
                 for chunk in commands.chunks(10) {
                     let line = chunk.join(" ");
                     let reply = Response::rpl_helptxt(nick, "index", &line)
-                        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                        .with_prefix(ctx.server_prefix());
                     ctx.sender.send(reply).await?;
                 }
 
                 let reply = Response::rpl_helptxt(nick, "index", " ")
-                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
 
                 let reply = Response::rpl_helptxt(
@@ -298,11 +298,11 @@ impl PostRegHandler for HelpHandler {
                     "index",
                     "Use /HELP <command> for help on a specific command.",
                 )
-                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
 
                 let reply = Response::rpl_endofhelp(nick, "index")
-                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
             }
         }

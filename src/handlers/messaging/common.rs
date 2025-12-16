@@ -7,7 +7,7 @@ use super::super::{Context, HandlerResult, server_reply};
 use crate::security::UserContext;
 use crate::security::spam::SpamVerdict;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
-use slirc_proto::{Command, Message, Prefix, Response};
+use slirc_proto::{Command, Message, Response};
 use tracing::debug;
 
 // ============================================================================
@@ -152,7 +152,7 @@ pub async fn route_to_channel_with_snapshot(
     };
 
     // Build UserContext from snapshot (no user lookup needed)
-    let user_context = snapshot.to_user_context(&ctx.matrix.server_info.name, ctx.remote_addr.ip());
+    let user_context = snapshot.to_user_context(ctx.server_name(), ctx.remote_addr.ip());
 
     // Extract text and tags from message
     // TAGMSG has no text body, just tags
@@ -245,7 +245,7 @@ pub async fn route_to_user_with_snapshot(
 
             if let Some(away_msg) = away_msg {
                 let reply = server_reply(
-                    &ctx.matrix.server_info.name,
+                    ctx.server_name(),
                     Response::RPL_AWAY,
                     vec![
                         snapshot.nick.clone(),
@@ -428,7 +428,7 @@ pub async fn send_cannot_send<S>(
     reason: &str,
 ) -> HandlerResult {
     let reply = server_reply(
-        &ctx.matrix.server_info.name,
+        ctx.server_name(),
         Response::ERR_CANNOTSENDTOCHAN,
         vec![nick.to_string(), target.to_string(), reason.to_string()],
     );
@@ -439,7 +439,7 @@ pub async fn send_cannot_send<S>(
 /// Send ERR_NOSUCHCHANNEL.
 pub async fn send_no_such_channel<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
     let reply = Response::err_nosuchchannel(nick, target)
-        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+        .with_prefix(ctx.server_prefix());
     ctx.sender.send(reply).await?;
     crate::metrics::record_command_error("PRIVMSG", "ERR_NOSUCHCHANNEL");
     Ok(())
@@ -448,7 +448,7 @@ pub async fn send_no_such_channel<S>(ctx: &Context<'_, S>, nick: &str, target: &
 /// Send ERR_NOSUCHNICK.
 pub async fn send_no_such_nick<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
     let reply = Response::err_nosuchnick(nick, target)
-        .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+        .with_prefix(ctx.server_prefix());
     ctx.sender.send(reply).await?;
     crate::metrics::record_command_error("PRIVMSG", "ERR_NOSUCHNICK");
     Ok(())

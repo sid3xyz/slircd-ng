@@ -43,7 +43,6 @@ impl PostRegHandler for BatchHandler {
         }
 
         let nick = ctx.nick().to_string();
-        let server_name = ctx.matrix.server_info.name.clone();
 
         if let Some(stripped) = ref_tag.strip_prefix('+') {
             // Start a new batch
@@ -55,7 +54,6 @@ impl PostRegHandler for BatchHandler {
                 if !ctx.state.capabilities.contains("draft/multiline") {
                     send_fail(
                         ctx,
-                        &server_name,
                         "MULTILINE_INVALID",
                         "Capability not negotiated",
                     )
@@ -66,7 +64,6 @@ impl PostRegHandler for BatchHandler {
                 if target.is_empty() {
                     send_fail(
                         ctx,
-                        &server_name,
                         "MULTILINE_INVALID",
                         "No target specified",
                     )
@@ -116,7 +113,6 @@ impl PostRegHandler for BatchHandler {
                 if active_ref != stripped {
                     send_fail(
                         ctx,
-                        &server_name,
                         "MULTILINE_INVALID",
                         "Batch reference mismatch",
                     )
@@ -133,7 +129,7 @@ impl PostRegHandler for BatchHandler {
                 ctx.state.active_batch_ref = None;
 
                 if batch.batch_type == "draft/multiline" {
-                    process_multiline_batch(ctx, &batch, &nick, &server_name).await?;
+                    process_multiline_batch(ctx, &batch, &nick).await?;
                 }
             }
         }
@@ -147,11 +143,10 @@ async fn process_multiline_batch(
     ctx: &mut Context<'_, RegisteredState>,
     batch: &BatchState,
     nick: &str,
-    server_name: &str,
 ) -> HandlerResult {
     // Validate batch isn't empty or all blank
     if let Err(msg) = validation::validate_batch_not_empty(batch) {
-        send_fail(ctx, server_name, "MULTILINE_INVALID", msg).await?;
+        send_fail(ctx, "MULTILINE_INVALID", msg).await?;
         return Ok(());
     }
 
@@ -222,7 +217,7 @@ async fn deliver_multiline_to_channel(
     let Some(channel_tx) = channel_tx else {
         // Channel doesn't exist - send error
         let reply = Response::err_nosuchchannel(&ctx.state.nick, &batch.target)
-            .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+            .with_prefix(ctx.server_prefix());
         ctx.sender.send(reply).await?;
         crate::metrics::record_command_error("BATCH", "ERR_NOSUCHCHANNEL");
         return Ok(());
@@ -372,7 +367,7 @@ async fn deliver_multiline_to_user(
     let Some(target_uid) = target_uid else {
         // User not found
         let reply = Response::err_nosuchnick(&ctx.state.nick, target_nick)
-            .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+            .with_prefix(ctx.server_prefix());
         ctx.sender.send(reply).await?;
         crate::metrics::record_command_error("BATCH", "ERR_NOSUCHNICK");
         return Ok(());
@@ -608,13 +603,12 @@ async fn send_multiline_fallback(
 /// Send a FAIL message for batch errors.
 async fn send_fail<S>(
     ctx: &mut Context<'_, S>,
-    server_name: &str,
     code: &str,
     message: &str,
 ) -> HandlerResult {
     let reply = Message {
         tags: None,
-        prefix: Some(Prefix::ServerName(server_name.to_string())),
+        prefix: Some(ctx.server_prefix()),
         command: Command::Raw(
             "FAIL".to_string(),
             vec![

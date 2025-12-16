@@ -22,14 +22,14 @@ impl PostRegHandler for OperHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name().to_string();
 
         // OPER <name> <password>
         let name = match msg.arg(0) {
             Some(n) if !n.is_empty() => n,
             _ => {
                 let reply = Response::err_needmoreparams(ctx.nick(), "OPER")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("OPER", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -39,7 +39,7 @@ impl PostRegHandler for OperHandler {
             Some(p) if !p.is_empty() => p,
             _ => {
                 let reply = Response::err_needmoreparams(ctx.nick(), "OPER")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("OPER", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -61,7 +61,7 @@ impl PostRegHandler for OperHandler {
             if elapsed < LOCKOUT_DELAY_MS {
                 let remaining_sec = (LOCKOUT_DELAY_MS - elapsed) / 1000;
                 let reply = server_reply(
-                    server_name,
+                    &server_name,
                     Response::ERR_PASSWDMISMATCH,
                     vec![
                         nick.clone(),
@@ -105,7 +105,7 @@ impl PostRegHandler for OperHandler {
                 "OPER failed: unknown oper name"
             );
             let reply = server_reply(
-                server_name,
+                &server_name,
                 Response::ERR_PASSWDMISMATCH,
                 vec![nick, "Password incorrect".to_string()],
             );
@@ -122,7 +122,7 @@ impl PostRegHandler for OperHandler {
                 "OPER failed: incorrect password"
             );
             let reply = server_reply(
-                server_name,
+                &server_name,
                 Response::ERR_PASSWDMISMATCH,
                 vec![nick, "Password incorrect".to_string()],
             );
@@ -153,7 +153,7 @@ impl PostRegHandler for OperHandler {
                     "OPER failed: hostmask mismatch"
                 );
                 let reply = server_reply(
-                    server_name,
+                    &server_name,
                     Response::ERR_NOOPERHOST,
                     vec![nick, "No O-lines for your host".to_string()],
                 );
@@ -187,7 +187,7 @@ impl PostRegHandler for OperHandler {
         ctx.matrix.send_snomask('o', &format!("OPER: {} ({}) is now an IRC operator", nick, name)).await;
 
         let reply = server_reply(
-            server_name,
+            &server_name,
             Response::RPL_YOUREOPER,
             vec![nick.clone(), "You are now an IRC operator".to_string()],
         );

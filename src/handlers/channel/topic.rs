@@ -28,11 +28,10 @@ use super::super::{Context,
     is_user_in_channel, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
-use crate::caps::CapabilityAuthority;
 use crate::state::actor::ChannelEvent;
 use crate::history::{StoredMessage, MessageEnvelope};
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
+use slirc_proto::{MessageRef, Response, irc_to_lower};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 use tracing::{debug, info, warn};
@@ -60,7 +59,7 @@ impl PostRegHandler for TopicHandler {
             Some(c) => c.clone(),
             None => {
                 let reply = Response::err_nosuchchannel(nick, channel_name)
-                    .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("TOPIC", "ERR_NOSUCHCHANNEL");
                 return Ok(());
@@ -70,7 +69,7 @@ impl PostRegHandler for TopicHandler {
         // Check if user is in channel
         if !is_user_in_channel(ctx, ctx.uid, &channel_lower).await {
             let reply = Response::err_notonchannel(nick, channel_name)
-                .with_prefix(Prefix::ServerName(ctx.matrix.server_info.name.clone()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("TOPIC", "ERR_NOTONCHANNEL");
             return Ok(());
@@ -93,14 +92,14 @@ impl PostRegHandler for TopicHandler {
                     match info.topic {
                         Some(topic) => {
                             let reply = server_reply(
-                                &ctx.matrix.server_info.name,
+                                ctx.server_name(),
                                 Response::RPL_TOPIC,
                                 vec![nick.to_string(), info.name.clone(), topic.text.clone()],
                             );
                             ctx.sender.send(reply).await?;
 
                             let who_reply = server_reply(
-                                &ctx.matrix.server_info.name,
+                                ctx.server_name(),
                                 Response::RPL_TOPICWHOTIME,
                                 vec![
                                     nick.to_string(),
@@ -113,7 +112,7 @@ impl PostRegHandler for TopicHandler {
                         }
                         None => {
                             let reply = server_reply(
-                                &ctx.matrix.server_info.name,
+                                ctx.server_name(),
                                 Response::RPL_NOTOPIC,
                                 vec![nick.to_string(), info.name, "No topic is set".to_string()],
                             );
@@ -143,7 +142,7 @@ impl PostRegHandler for TopicHandler {
                     .as_nanos() as i64;
 
                 // Request TOPIC capability from authority (Innovation 4)
-                let authority = CapabilityAuthority::new(ctx.matrix.clone());
+                let authority = ctx.authority();
                 let has_topic_cap = authority
                     .request_topic_cap(ctx.uid, channel_name)
                     .await
@@ -208,7 +207,7 @@ impl PostRegHandler for TopicHandler {
                     }
                     Ok(Err(e)) => {
                         let reply = e.to_irc_reply(
-                            &ctx.matrix.server_info.name,
+                            ctx.server_name(),
                             &nick,
                             channel_name,
                         );

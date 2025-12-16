@@ -30,7 +30,7 @@ fn fail_response(server_name: &str, code: &str, context: &str, description: &str
 #[async_trait]
 impl<S: SessionState> UniversalHandler<S> for RegisterHandler {
     async fn handle(&self, ctx: &mut Context<'_, S>, msg: &MessageRef<'_>) -> HandlerResult {
-        let server_name = &ctx.matrix.server_info.name;
+        let server_name = ctx.server_name();
         let acct_cfg = &ctx.matrix.config.account_registration;
 
         // Get current nick or "*"

@@ -3,7 +3,6 @@ use super::super::{Context,
     resolve_nick_to_uid, server_notice,
 };
 use crate::state::RegisteredState;
-use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
@@ -26,10 +25,10 @@ impl PostRegHandler for ChgIdentHandler {
         let oper_nick = ctx.nick();
 
         // Request oper capability from authority
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         if authority.request_chgident_cap(ctx.uid).await.is_none() {
             let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("CHGIDENT", "ERR_NOPRIVILEGES");
             return Ok(());
@@ -39,7 +38,7 @@ impl PostRegHandler for ChgIdentHandler {
             Some(n) if !n.is_empty() => n,
             _ => {
                 let reply = Response::err_needmoreparams(oper_nick, "CHGIDENT")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGIDENT", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -50,7 +49,7 @@ impl PostRegHandler for ChgIdentHandler {
             Some(u) if !u.is_empty() => u,
             _ => {
                 let reply = Response::err_needmoreparams(oper_nick, "CHGIDENT")
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGIDENT", "ERR_NEEDMOREPARAMS");
                 return Ok(());
@@ -61,7 +60,7 @@ impl PostRegHandler for ChgIdentHandler {
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("CHGIDENT", "ERR_NOSUCHNICK");
             return Ok(());
@@ -70,7 +69,7 @@ impl PostRegHandler for ChgIdentHandler {
         let (old_nick, old_user, old_host, channels) = {
             let Some(user_ref) = ctx.matrix.users.get(&target_uid) else {
                 let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("CHGIDENT", "ERR_NOSUCHNICK");
                 return Ok(());

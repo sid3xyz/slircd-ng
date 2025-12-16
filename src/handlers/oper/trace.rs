@@ -3,9 +3,8 @@ use super::super::{Context,
     resolve_nick_to_uid, server_reply,
 };
 use crate::state::RegisteredState;
-use crate::caps::CapabilityAuthority;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response};
+use slirc_proto::{MessageRef, Response};
 
 /// Handler for TRACE command. Uses capability-based authorization (Innovation 4).
 ///
@@ -27,10 +26,10 @@ impl PostRegHandler for TraceHandler {
 
         // Request oper capability from authority (Innovation 4)
         // TRACE requires oper privileges (uses KillCap as a general oper check)
-        let authority = CapabilityAuthority::new(ctx.matrix.clone());
+        let authority = ctx.authority();
         if authority.request_kill_cap(ctx.uid).await.is_none() {
             let reply = Response::err_noprivileges(oper_nick)
-                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                .with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             crate::metrics::record_command_error("TRACE", "ERR_NOPRIVILEGES");
             return Ok(());
@@ -64,7 +63,7 @@ impl PostRegHandler for TraceHandler {
                 }
             } else {
                 let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                    .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("TRACE", "ERR_NOSUCHNICK");
                 return Ok(());
