@@ -154,6 +154,8 @@ pub struct ServerInfo {
     pub created: i64,
     /// MOTD lines loaded from config file.
     pub motd_lines: Vec<String>,
+    /// Idle timeout configuration for ping/pong keepalive.
+    pub idle_timeouts: crate::config::IdleTimeoutsConfig,
 }
 
 impl Matrix {
@@ -228,6 +230,7 @@ impl Matrix {
                 description: config.server.description.clone(),
                 created: now,
                 motd_lines: config.motd.load_lines(),
+                idle_timeouts: config.server.idle_timeouts.clone(),
             },
             uid_gen: UidGenerator::new(config.server.sid.clone()),
             config: MatrixConfig {

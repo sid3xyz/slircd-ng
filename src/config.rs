@@ -290,6 +290,57 @@ pub struct ServerConfig {
     /// Admin email address (RPL_ADMINEMAIL).
     #[serde(default)]
     pub admin_email: Option<String>,
+    /// Idle timeout configuration for ping/pong keepalive.
+    #[serde(default)]
+    pub idle_timeouts: IdleTimeoutsConfig,
+}
+
+/// Idle timeout configuration for client connection keepalive.
+///
+/// IRC servers send periodic PING messages to detect dead connections.
+/// If the client doesn't respond with PONG within the timeout, they are
+/// disconnected with "Ping timeout".
+///
+/// Based on Ergo's three-phase model:
+/// - `ping`: Seconds of idle before sending PING (default: 90)
+/// - `timeout`: Seconds to wait for PONG after PING (default: 120)
+/// - `registration`: Seconds allowed for initial registration (default: 60)
+#[derive(Debug, Clone, Deserialize)]
+pub struct IdleTimeoutsConfig {
+    /// Seconds of idle before sending PING to client (default: 90).
+    #[serde(default = "default_ping_interval")]
+    pub ping: u64,
+
+    /// Seconds to wait for PONG after sending PING before disconnect (default: 120).
+    /// Total idle time before disconnect = ping + timeout.
+    #[serde(default = "default_ping_timeout")]
+    pub timeout: u64,
+
+    /// Seconds allowed for registration handshake (NICK/USER/CAP) before disconnect (default: 60).
+    #[serde(default = "default_registration_timeout")]
+    pub registration: u64,
+}
+
+impl Default for IdleTimeoutsConfig {
+    fn default() -> Self {
+        Self {
+            ping: default_ping_interval(),
+            timeout: default_ping_timeout(),
+            registration: default_registration_timeout(),
+        }
+    }
+}
+
+fn default_ping_interval() -> u64 {
+    90
+}
+
+fn default_ping_timeout() -> u64 {
+    120
+}
+
+fn default_registration_timeout() -> u64 {
+    60
 }
 
 /// Network listener configuration.

@@ -12,10 +12,15 @@ use slirc_proto::transport::ZeroCopyTransportEnum;
 use slirc_proto::{Command, Message, Prefix, Response, generate_batch_ref, irc_to_lower};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, info, warn};
 
 const MAX_FLOOD_VIOLATIONS: u8 = 3;
+
+/// Interval between ping timeout checks (seconds).
+/// We don't need to check every second; 15s is responsive enough.
+const PING_CHECK_INTERVAL_SECS: u64 = 15;
 
 /// Run Phase 1: Handshake loop (pre-registration).
 ///
@@ -32,9 +37,36 @@ pub async fn run_handshake_loop(
     handshake_tx: &mpsc::Sender<Message>,
     handshake_rx: &mut mpsc::Receiver<Message>,
 ) -> Result<(), HandshakeExit> {
+    // Registration timeout from config
+    let registration_timeout = Duration::from_secs(matrix.server_info.idle_timeouts.registration);
+    let handshake_start = Instant::now();
+    
     loop {
-        match transport.next().await {
-            Some(Ok(msg_ref)) => {
+        // Check if registration has timed out
+        let elapsed = Instant::now().duration_since(handshake_start);
+        if elapsed >= registration_timeout {
+            warn!(uid = %uid, elapsed_secs = elapsed.as_secs(), "Registration timeout");
+            let error_msg = Message {
+                tags: None,
+                prefix: None,
+                command: Command::ERROR(format!(
+                    "Closing Link: {} (Registration timeout: {} seconds)",
+                    addr.ip(),
+                    elapsed.as_secs()
+                )),
+            };
+            let _ = transport.write_message(&error_msg).await;
+            return Err(HandshakeExit::ProtocolError(unreg_state.nick.clone()));
+        }
+        
+        // Calculate remaining time until timeout
+        let remaining = registration_timeout.saturating_sub(elapsed);
+        
+        // Wait for next message with timeout
+        let result = tokio::time::timeout(remaining, transport.next()).await;
+        
+        match result {
+            Ok(Some(Ok(msg_ref))) => {
                 debug!(raw = %msg_ref.raw.trim(), "Received message");
 
                 let label = if unreg_state.capabilities.contains("labeled-response") {
@@ -120,7 +152,7 @@ pub async fn run_handshake_loop(
                     return Ok(());
                 }
             }
-            Some(Err(e)) => {
+            Ok(Some(Err(e))) => {
                 match classify_read_error(&e) {
                     ReadErrorAction::InputTooLong => {
                         warn!("Input line too long during handshake");
@@ -151,9 +183,13 @@ pub async fn run_handshake_loop(
                 }
                 return Err(HandshakeExit::ProtocolError(unreg_state.nick.clone()));
             }
-            None => {
+            Ok(None) => {
                 info!("Client disconnected during handshake");
                 return Err(HandshakeExit::Disconnected(unreg_state.nick.clone()));
+            }
+            Err(_) => {
+                // Timeout elapsed - loop will check at top and disconnect
+                continue;
             }
         }
     }
@@ -175,6 +211,13 @@ pub async fn run_event_loop(
     let mut flood_violations = 0u8;
     let mut quit_message: Option<String> = None;
 
+    // Ping timeout configuration
+    let ping_interval = Duration::from_secs(matrix.server_info.idle_timeouts.ping);
+    let ping_timeout = Duration::from_secs(matrix.server_info.idle_timeouts.timeout);
+    let mut ping_check_timer = tokio::time::interval(Duration::from_secs(PING_CHECK_INTERVAL_SECS));
+    // First tick fires immediately, we don't want that
+    ping_check_timer.tick().await;
+
     info!("Entering unified event loop");
 
     loop {
@@ -187,6 +230,11 @@ pub async fn run_event_loop(
             result = transport.next() => {
                 match result {
                     Some(Ok(msg_ref)) => {
+                        // Reset ping state on any received message
+                        reg_state.last_activity = Instant::now();
+                        reg_state.ping_pending = false;
+                        reg_state.ping_sent_at = None;
+                        
                         // Flood protection
                         if !matrix.rate_limiter.check_message_rate(&uid.to_string()) {
                             flood_violations += 1;
@@ -395,6 +443,49 @@ pub async fn run_event_loop(
                 if is_error_disconnect && !matrix.users.contains_key(uid) {
                     info!("Received disconnect signal - user removed from Matrix");
                     break;
+                }
+            }
+            
+            _ = ping_check_timer.tick() => {
+                let now = Instant::now();
+                let idle_time = now.duration_since(reg_state.last_activity);
+                
+                if reg_state.ping_pending {
+                    // We sent a PING and are waiting for PONG
+                    if let Some(sent_at) = reg_state.ping_sent_at {
+                        let wait_time = now.duration_since(sent_at);
+                        if wait_time >= ping_timeout {
+                            // Ping timeout - disconnect
+                            let total_idle = idle_time.as_secs();
+                            warn!(
+                                uid = %uid,
+                                nick = %reg_state.nick,
+                                idle_secs = total_idle,
+                                "Ping timeout - disconnecting"
+                            );
+                            quit_message = Some(format!("Ping timeout: {} seconds", total_idle));
+                            let error_msg = Message::from(Command::ERROR(
+                                format!("Closing Link: {} (Ping timeout: {} seconds)", addr.ip(), total_idle)
+                            ));
+                            let _ = transport.write_message(&error_msg).await;
+                            break;
+                        }
+                    }
+                } else if idle_time >= ping_interval {
+                    // Client has been idle, send a PING
+                    debug!(
+                        uid = %uid,
+                        nick = %reg_state.nick,
+                        idle_secs = idle_time.as_secs(),
+                        "Sending PING to idle client"
+                    );
+                    let ping = Message::ping(&matrix.server_info.name);
+                    if let Err(e) = transport.write_message(&ping).await {
+                        warn!(error = ?e, "Failed to send PING");
+                        break;
+                    }
+                    reg_state.ping_pending = true;
+                    reg_state.ping_sent_at = Some(now);
                 }
             }
         }

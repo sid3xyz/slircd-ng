@@ -204,6 +204,10 @@ impl UnregisteredState {
                     last_oper_attempt: None,
                     active_batch: None,
                     active_batch_ref: None,
+                    // Ping timeout tracking starts fresh
+                    last_activity: Instant::now(),
+                    ping_pending: false,
+                    ping_sent_at: None,
                 })
             }
             _ => Err(self),
@@ -252,6 +256,12 @@ pub struct RegisteredState {
     pub active_batch_ref: Option<String>,
     /// CAP protocol version (preserved from registration).
     pub cap_version: u32,
+    /// Last time we received any message from this client (for ping timeout).
+    pub last_activity: Instant,
+    /// Whether we've sent a PING and are waiting for PONG.
+    pub ping_pending: bool,
+    /// When we sent the pending PING (for timeout calculation).
+    pub ping_sent_at: Option<Instant>,
 }
 
 impl RegisteredState {
@@ -372,6 +382,9 @@ mod tests {
             active_batch: None,
             active_batch_ref: None,
             cap_version: 302,
+            last_activity: Instant::now(),
+            ping_pending: false,
+            ping_sent_at: None,
         };
 
         assert!(state.has_cap("echo-message"));

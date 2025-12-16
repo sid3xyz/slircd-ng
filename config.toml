@@ -12,6 +12,17 @@ description = "Straylight IRC Daemon - Next Generation"
 # Prometheus metrics HTTP port
 metrics_port = 9090
 
+# Idle timeout configuration for detecting dead connections.
+# The server sends PING to idle clients and disconnects them if they don't respond.
+[server.idle_timeouts]
+# Seconds of idle before sending PING to client (default: 90)
+ping = 90
+# Seconds to wait for PONG after PING before disconnect (default: 120)
+# Total idle time before disconnect = ping + timeout
+timeout = 120
+# Seconds allowed for initial registration (NICK/USER) before disconnect (default: 60)
+registration = 60
+
 [listen]
 # Address to bind to
 address = "0.0.0.0:6667"
