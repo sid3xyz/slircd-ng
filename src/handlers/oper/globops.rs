@@ -1,6 +1,7 @@
 use super::super::{Context,
     HandlerResult, PostRegHandler,
 };
+use crate::require_arg_or_reply;
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -19,18 +20,10 @@ impl PostRegHandler for GlobOpsHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let sender_nick = ctx.nick();
-
-        let globops_text = match msg.arg(0) {
-            Some(t) if !t.is_empty() => t,
-            _ => {
-                let reply = Response::err_needmoreparams(sender_nick, "GLOBOPS")
-                    .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("GLOBOPS", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
+        let Some(globops_text) = require_arg_or_reply!(ctx, msg, 0, "GLOBOPS") else {
+            return Ok(());
         };
+        let sender_nick = ctx.nick();
 
         // Request GlobalNotice capability from authority (reusing this for now)
         let authority = ctx.authority();

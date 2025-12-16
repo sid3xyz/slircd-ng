@@ -31,6 +31,31 @@ macro_rules! require_arg {
     };
 }
 
+/// Extract a required argument from a message with full error handling.
+///
+/// Sends ERR_NEEDMOREPARAMS to the client, records metrics, and returns Ok(None)
+/// if the argument is missing. Returns Ok(Some(arg)) on success.
+///
+/// # Usage
+/// ```ignore
+/// let Some(target) = require_arg_or_reply!(ctx, msg, 0, "PRIVMSG") else { return Ok(()); };
+/// ```
+#[macro_export]
+macro_rules! require_arg_or_reply {
+    ($ctx:expr, $msg:expr, $idx:expr, $cmd:expr) => {{
+        match $msg.arg($idx) {
+            Some(s) if !s.is_empty() => Some(s),
+            _ => {
+                let reply = slirc_proto::Response::err_needmoreparams($ctx.nick(), $cmd)
+                    .with_prefix($ctx.server_prefix());
+                let _ = $ctx.sender.send(reply).await;
+                $crate::metrics::record_command_error($cmd, "ERR_NEEDMOREPARAMS");
+                None
+            }
+        }
+    }};
+}
+
 // ============================================================================
 // Common reply helpers
 // ============================================================================
