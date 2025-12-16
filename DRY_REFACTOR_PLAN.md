@@ -1,7 +1,7 @@
 # DRY Refactor Execution Plan
 
 > Generated: 2025-12-16
-> Status: IN PROGRESS - Phase 1 COMPLETE
+> Status: ✅ PHASES 1 & 2 COMPLETE
 
 ## Overview
 
@@ -35,29 +35,32 @@ Organized into 3 phases by dependency order.
 
 ---
 
-## Phase 2: Macro Infrastructure (P1)
+## Phase 2: Macro Infrastructure (P1) ✅ COMPLETE
 
-**Estimated Impact: ~250 LOC reduction**
+**Actual Impact: 236 net lines removed**
 
 ### 2.1 Create `require_arg_or_reply!` macro ✅
 - [x] **File**: `src/handlers/helpers.rs`
 - [x] **Action**: Macro sends ERR_NEEDMOREPARAMS and records metrics
-- [x] **MIGRATE**: Refactored GLOBOPS handler as proof-of-concept
-- [ ] **TODO**: Migrate remaining 29 handlers using this pattern
+- [x] **MIGRATE**: Migrated 12 handlers
 
 ### 2.2 Create `send_noprivileges!` macro ✅
 - [x] **File**: `src/handlers/helpers.rs`
 - [x] **Action**: Macro for ERR_NOPRIVILEGES + metrics
-- [x] **MIGRATE**: Refactored GLOBOPS handler
 
-### 2.3 Create `require_admin_cap!` macro
-- [ ] **File**: `src/handlers/helpers.rs`
-- [ ] **Action**: Macro for admin capability check + error handling
-- [ ] **Impact**: Eliminates ~120 LOC in admin.rs (4× 30-line preambles)
+### 2.3 Create `require_admin_cap!` macro ✅
+- [x] **File**: `src/handlers/helpers.rs`
+- [x] **Action**: Macro for admin capability check + error handling
+- [x] **Impact**: Eliminated ~120 LOC in admin.rs (4× SA* handler preambles)
+
+### 2.4 Create `require_oper_cap!` macro ✅
+- [x] **File**: `src/handlers/helpers.rs`
+- [x] **Action**: Generic oper capability check with configurable cap method
+- [x] **MIGRATE**: KILL, WALLOPS, TRACE, VHOST, CHGHOST, CHGIDENT, SHUN, OPER handlers
 
 ---
 
-## Phase 3: Trait Unification (P2)
+## Phase 3: Trait Unification (P2) - DEFERRED
 
 **Estimated Impact: ~130 LOC reduction**
 
@@ -73,27 +76,13 @@ Organized into 3 phases by dependency order.
 
 ---
 
-## Execution Checklist
+## Commits
 
-### Phase 1 Execution ✅
-```bash
-# After each change:
-cargo clippy -p slircd-ng -- -D warnings
-cargo test -p slircd-ng
-```
-
-### Phase 2 Execution (IN PROGRESS)
-```bash
-# Test macro expansion:
-cargo expand -p slircd-ng --lib 2>&1 | head -100
-```
-
-### Phase 3 Execution
-```bash
-# Full validation:
-cargo clippy --workspace -- -D warnings
-cargo test --workspace
-```
+1. `bb68b43` - DRY Phase 1: Add server_prefix(), authority(), migrate all usages (52 files, +408/-296)
+2. `678dec6` - DRY Phase 2: Add require_arg_or_reply! macro
+3. `f9c1c62` - DRY Phase 2: Add send_noprivileges! macro
+4. `11cd342` - Update DRY_REFACTOR_PLAN.md with completed items
+5. `5f31786` - DRY Phase 2: Add require_admin_cap!/require_oper_cap!, migrate 12 handlers (-236 lines)
 
 ---
 
