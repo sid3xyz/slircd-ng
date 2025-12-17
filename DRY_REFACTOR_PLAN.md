@@ -19,8 +19,8 @@ Organized into 3 phases by dependency order.
 ### 1.1 Add `server_prefix()` to Context
 - [x] **File**: `src/handlers/core/context.rs`
 - [x] **Action**: Add method returning `Prefix::ServerName(self.server_name().to_string())`
-- [x] **MIGRATE**: Replace ALL 100+ `.with_prefix(Prefix::ServerName(...))` patterns
-- [x] **VERIFY**: `rg "Prefix::ServerName" src/handlers/` returns only context.rs implementation
+- [x] **MIGRATE**: Replace direct `.with_prefix(Prefix::ServerName(...))` patterns in handlers
+- [x] **Note**: Helper functions in helpers.rs (server_reply, server_notice, labeled_ack) retain `Prefix::ServerName` as they take server_name as parameter for use outside Context
 
 ### 1.2 Add `authority()` to Context
 - [x] **File**: `src/handlers/core/context.rs`
