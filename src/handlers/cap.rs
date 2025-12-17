@@ -2,6 +2,12 @@
 //!
 //! Implements CAP LS, LIST, REQ, ACK, NAK, END subcommands.
 //! Reference: <https://ircv3.net/specs/extensions/capability-negotiation>
+//!
+//! # Security: Credential Handling
+//!
+//! SASL credentials are handled with care:
+//! - Password data uses `SecureString` which is zeroized on drop
+//! - SASL buffers are cleared after processing
 
 use super::{Context, HandlerResult, PreRegHandler, UniversalHandler};
 use crate::config::AccountRegistrationConfig;
@@ -9,6 +15,33 @@ use crate::state::{SessionState, UnregisteredState};
 use async_trait::async_trait;
 use slirc_proto::{CapSubCommand, Command, Message, MessageRef, Prefix, Response, Capability};
 use tracing::{debug, info, warn};
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+/// A secure string that is zeroized when dropped.
+///
+/// Used for passwords and other sensitive credential data to ensure
+/// they don't linger in memory after use.
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+pub struct SecureString(String);
+
+impl SecureString {
+    /// Create a new secure string.
+    pub fn new(s: String) -> Self {
+        Self(s)
+    }
+
+    /// Get the inner string (for passing to authentication functions).
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for SecureString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Never print actual content
+        f.debug_struct("SecureString").field("len", &self.0.len()).finish()
+    }
+}
 
 /// Capabilities we support (subset of slirc_proto::CAPABILITIES).
 const SUPPORTED_CAPS: &[Capability] = &[
@@ -538,19 +571,25 @@ impl PreRegHandler for AuthenticateHandler {
                     }
 
                     // We have the complete payload, process it
-                    let full_data = std::mem::take(&mut ctx.state.sasl_buffer);
+                    // Use mem::take to get ownership and clear the buffer
+                    let mut full_data = std::mem::take(&mut ctx.state.sasl_buffer);
                     debug!(nick = %nick, total_len = full_data.len(), "SASL: processing complete payload");
 
                     // Try to decode and validate
-                    match validate_sasl_plain(&full_data) {
+                    let result = validate_sasl_plain(&full_data);
+                    // Zeroize the buffer after decoding (it may contain base64-encoded credentials)
+                    full_data.zeroize();
+
+                    match result {
                         Ok((authzid, authcid, password)) => {
                             // Validate against database
+                            // password is SecureString and will be zeroized on drop
                             let account_name = if authzid.is_empty() {
                                 &authcid
                             } else {
                                 &authzid
                             };
-                            match ctx.db.accounts().identify(account_name, &password).await {
+                            match ctx.db.accounts().identify(account_name, password.as_str()).await {
                                 Ok(account) => {
                                     info!(
                                         nick = %nick,
@@ -607,18 +646,28 @@ pub enum SaslState {
 
 /// Decode and validate SASL PLAIN credentials.
 /// Format: base64(authzid \0 authcid \0 password)
-fn validate_sasl_plain(data: &str) -> Result<(String, String, String), &'static str> {
+///
+/// Returns (authzid, authcid, password) where password is wrapped in SecureString
+/// to ensure it is zeroized when dropped.
+fn validate_sasl_plain(data: &str) -> Result<(String, String, SecureString), &'static str> {
     // Use slirc_proto's decode_base64 helper
-    let decoded = slirc_proto::sasl::decode_base64(data).map_err(|_| "Invalid base64")?;
+    let mut decoded = slirc_proto::sasl::decode_base64(data).map_err(|_| "Invalid base64")?;
 
     let parts: Vec<&[u8]> = decoded.split(|&b| b == 0).collect();
     if parts.len() != 3 {
+        // Zeroize the decoded buffer before returning error
+        decoded.zeroize();
         return Err("Invalid SASL PLAIN format");
     }
 
     let authzid = String::from_utf8(parts[0].to_vec()).map_err(|_| "Invalid UTF-8")?;
     let authcid = String::from_utf8(parts[1].to_vec()).map_err(|_| "Invalid UTF-8")?;
-    let password = String::from_utf8(parts[2].to_vec()).map_err(|_| "Invalid UTF-8")?;
+    let password = SecureString::new(
+        String::from_utf8(parts[2].to_vec()).map_err(|_| "Invalid UTF-8")?
+    );
+
+    // Zeroize the decoded buffer now that we've extracted what we need
+    decoded.zeroize();
 
     if authcid.is_empty() {
         return Err("Empty authcid");

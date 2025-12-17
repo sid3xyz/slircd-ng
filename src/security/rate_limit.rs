@@ -10,6 +10,12 @@
 //! Uses the `governor` crate's token bucket algorithm with configurable
 //! rates and bursts. Each limiter type has its own storage to prevent
 //! interference.
+//!
+//! # LRU Eviction
+//!
+//! When entries exceed MAX_ENTRIES, uses LRU (Least Recently Used) eviction
+//! to remove the oldest entries rather than clearing all entries. This
+//! preserves rate limiting state for active clients.
 
 use crate::config::RateLimitConfig;
 use dashmap::DashMap;
@@ -17,6 +23,8 @@ use governor::{Quota, RateLimiter as GovRateLimiter};
 use std::net::IpAddr;
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 
 /// Type alias for governor's direct rate limiter.
@@ -25,6 +33,46 @@ type DirectRateLimiter = governor::DefaultDirectRateLimiter;
 /// User identifier (UID string).
 type Uid = String;
 
+/// Maximum number of entries before LRU eviction triggers.
+const MAX_ENTRIES: usize = 10_000;
+
+/// Number of entries to evict when LRU cleanup runs.
+/// Evicting 20% at a time avoids frequent cleanup cycles.
+const EVICTION_COUNT: usize = 2_000;
+
+/// Rate limiter entry with last-access timestamp for LRU eviction.
+#[derive(Debug)]
+struct TimedLimiter {
+    limiter: DirectRateLimiter,
+    last_access: AtomicU64, // Unix timestamp in seconds
+}
+
+impl TimedLimiter {
+    fn new(limiter: DirectRateLimiter) -> Self {
+        Self {
+            limiter,
+            last_access: AtomicU64::new(current_timestamp()),
+        }
+    }
+
+    fn touch(&self) {
+        self.last_access.store(current_timestamp(), Ordering::Relaxed);
+    }
+
+    fn check(&self) -> bool {
+        self.touch();
+        self.limiter.check().is_ok()
+    }
+}
+
+/// Get current Unix timestamp in seconds.
+fn current_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 /// Thread-safe rate limit manager using governor.
 ///
 /// Provides separate limiters for messages, connections, and joins,
@@ -32,13 +80,13 @@ type Uid = String;
 #[derive(Debug)]
 pub struct RateLimitManager {
     /// Per-client message rate limiters (keyed by UID).
-    message_limiters: DashMap<Uid, DirectRateLimiter>,
+    message_limiters: DashMap<Uid, TimedLimiter>,
     /// Per-IP connection rate limiters.
-    connection_limiters: DashMap<IpAddr, DirectRateLimiter>,
+    connection_limiters: DashMap<IpAddr, TimedLimiter>,
     /// Per-client channel join rate limiters.
-    join_limiters: DashMap<Uid, DirectRateLimiter>,
+    join_limiters: DashMap<Uid, TimedLimiter>,
     /// Per-client CTCP rate limiters.
-    ctcp_limiters: DashMap<Uid, DirectRateLimiter>,
+    ctcp_limiters: DashMap<Uid, TimedLimiter>,
     /// Active connection counters per IP.
     active_connections: DashMap<IpAddr, u32>,
     /// Configuration values.
@@ -71,13 +119,13 @@ impl RateLimitManager {
     ///
     /// Returns `true` if allowed, `false` if rate limited.
     pub fn check_message_rate(&self, uid: &Uid) -> bool {
-        let limiter = self.message_limiters.entry(uid.clone()).or_insert_with(|| {
+        let entry = self.message_limiters.entry(uid.clone()).or_insert_with(|| {
             let rate = NonZeroU32::new(self.config.message_rate_per_second)
                 .unwrap_or(NonZeroU32::new(2).unwrap());
-            GovRateLimiter::direct(Quota::per_second(rate))
+            TimedLimiter::new(GovRateLimiter::direct(Quota::per_second(rate)))
         });
 
-        let allowed = limiter.check().is_ok();
+        let allowed = entry.check();
         if !allowed {
             debug!(uid = %uid, "message rate limit exceeded");
         }
@@ -94,16 +142,16 @@ impl RateLimitManager {
             return true;
         }
 
-        let limiter = self.connection_limiters.entry(ip).or_insert_with(|| {
+        let entry = self.connection_limiters.entry(ip).or_insert_with(|| {
             let burst = NonZeroU32::new(self.config.connection_burst_per_ip)
                 .unwrap_or(NonZeroU32::new(3).unwrap());
             // 1 connection per 10 seconds with burst
-            GovRateLimiter::direct(
+            TimedLimiter::new(GovRateLimiter::direct(
                 Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(burst),
-            )
+            ))
         });
 
-        let allowed = limiter.check().is_ok();
+        let allowed = entry.check();
         if !allowed {
             debug!(ip = %ip, "connection rate limit exceeded");
         }
@@ -114,16 +162,16 @@ impl RateLimitManager {
     ///
     /// Returns `true` if allowed, `false` if rate limited.
     pub fn check_join_rate(&self, uid: &Uid) -> bool {
-        let limiter = self.join_limiters.entry(uid.clone()).or_insert_with(|| {
+        let entry = self.join_limiters.entry(uid.clone()).or_insert_with(|| {
             let burst = NonZeroU32::new(self.config.join_burst_per_client)
                 .unwrap_or(NonZeroU32::new(5).unwrap());
             // 1 join per second with burst
-            GovRateLimiter::direct(
+            TimedLimiter::new(GovRateLimiter::direct(
                 Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(burst),
-            )
+            ))
         });
 
-        let allowed = limiter.check().is_ok();
+        let allowed = entry.check();
         if !allowed {
             debug!(uid = %uid, "join rate limit exceeded");
         }
@@ -132,19 +180,19 @@ impl RateLimitManager {
 
     /// Check if a client can send a CTCP message.
     pub fn check_ctcp_rate(&self, uid: &Uid) -> bool {
-        let limiter = self.ctcp_limiters.entry(uid.clone()).or_insert_with(|| {
+        let entry = self.ctcp_limiters.entry(uid.clone()).or_insert_with(|| {
             let burst = NonZeroU32::new(self.config.ctcp_burst_per_client)
                 .unwrap_or(NonZeroU32::new(2).unwrap());
-            GovRateLimiter::direct(
+            TimedLimiter::new(GovRateLimiter::direct(
                 Quota::per_second(
                     NonZeroU32::new(self.config.ctcp_rate_per_second)
                         .unwrap_or(NonZeroU32::new(1).unwrap()),
                 )
                 .allow_burst(burst),
-            )
+            ))
         });
 
-        let allowed = limiter.check().is_ok();
+        let allowed = entry.check();
         if !allowed {
             debug!(uid = %uid, "ctcp rate limit exceeded");
         }
@@ -219,51 +267,91 @@ impl RateLimitManager {
     pub fn remove_client(&self, uid: &Uid) {
         self.message_limiters.remove(uid);
         self.join_limiters.remove(uid);
+        self.ctcp_limiters.remove(uid);
     }
 
-    /// Cleanup old entries to prevent memory growth.
+    /// Cleanup old entries to prevent memory growth using LRU eviction.
     ///
     /// Called every 5 minutes by background task in main.rs.
-    /// Primarily cleans connection_limiters (keyed by IP, not removed on disconnect).
+    /// Uses Least Recently Used (LRU) eviction to remove the oldest entries
+    /// rather than clearing all entries. This preserves rate limiting state
+    /// for active clients while bounding memory usage.
     pub fn cleanup(&self) {
-        // Simple strategy: if we have too many entries, clear them all
-        // In production, you'd want to track last-access time
-        const MAX_ENTRIES: usize = 10_000;
+        self.evict_lru_uid_entries(&self.message_limiters, "message");
+        self.evict_lru_ip_entries(&self.connection_limiters, "connection");
+        self.evict_lru_uid_entries(&self.join_limiters, "join");
+        self.evict_lru_uid_entries(&self.ctcp_limiters, "ctcp");
 
-        if self.message_limiters.len() > MAX_ENTRIES {
-            self.message_limiters.clear();
-            debug!(
-                "cleared message rate limiters (exceeded {} entries)",
-                MAX_ENTRIES
-            );
-        }
-        if self.connection_limiters.len() > MAX_ENTRIES {
-            self.connection_limiters.clear();
-            debug!(
-                "cleared connection rate limiters (exceeded {} entries)",
-                MAX_ENTRIES
-            );
-        }
-        if self.join_limiters.len() > MAX_ENTRIES {
-            self.join_limiters.clear();
-            debug!(
-                "cleared join rate limiters (exceeded {} entries)",
-                MAX_ENTRIES
-            );
-        }
-
-        if self.ctcp_limiters.len() > MAX_ENTRIES {
-            self.ctcp_limiters.clear();
-            debug!(
-                "cleared ctcp rate limiters (exceeded {} entries)",
-                MAX_ENTRIES
-            );
-        }
-
+        // Active connections use simple count, not limiters - just log if large
         if self.active_connections.len() > MAX_ENTRIES {
-            self.active_connections.clear();
-            debug!("cleared active connection counters (exceeded {MAX_ENTRIES} entries)");
+            debug!(
+                count = self.active_connections.len(),
+                "active_connections exceeds MAX_ENTRIES but cannot evict (active state)"
+            );
         }
+    }
+
+    /// Evict least recently used entries from a UID-keyed DashMap.
+    fn evict_lru_uid_entries(&self, map: &DashMap<Uid, TimedLimiter>, name: &str) {
+        if map.len() <= MAX_ENTRIES {
+            return;
+        }
+
+        // Collect entries with their last access times
+        // We can't hold refs while removing, so collect keys and timestamps first
+        let mut entries: Vec<(Uid, u64)> = map
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().last_access.load(Ordering::Relaxed)))
+            .collect();
+
+        // Sort by last access time (oldest first)
+        entries.sort_by_key(|(_k, ts)| *ts);
+
+        // Remove the oldest EVICTION_COUNT entries
+        let to_evict = entries.into_iter().take(EVICTION_COUNT);
+        let mut evicted = 0;
+        for (key, _) in to_evict {
+            map.remove(&key);
+            evicted += 1;
+        }
+
+        debug!(
+            limiter_type = name,
+            evicted = evicted,
+            remaining = map.len(),
+            "LRU eviction completed"
+        );
+    }
+
+    /// Evict least recently used entries from an IP-keyed DashMap.
+    fn evict_lru_ip_entries(&self, map: &DashMap<IpAddr, TimedLimiter>, name: &str) {
+        if map.len() <= MAX_ENTRIES {
+            return;
+        }
+
+        // Collect entries with their last access times
+        let mut entries: Vec<(IpAddr, u64)> = map
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().last_access.load(Ordering::Relaxed)))
+            .collect();
+
+        // Sort by last access time (oldest first)
+        entries.sort_by_key(|(_k, ts)| *ts);
+
+        // Remove the oldest EVICTION_COUNT entries
+        let to_evict = entries.into_iter().take(EVICTION_COUNT);
+        let mut evicted = 0;
+        for (key, _) in to_evict {
+            map.remove(&key);
+            evicted += 1;
+        }
+
+        debug!(
+            limiter_type = name,
+            evicted = evicted,
+            remaining = map.len(),
+            "LRU eviction completed"
+        );
     }
 
     /// Update rate limit configuration (for REHASH support).

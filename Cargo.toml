@@ -49,6 +49,7 @@ rustls-pemfile = "2.1"
 # Crypto (password hashing)
 argon2 = "0.5"
 rand = "0.8"
+zeroize = { version = "1.7", features = ["derive"] }
 
 # Security (cloaking, rate limiting)
 hmac = "0.12"

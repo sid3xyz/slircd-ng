@@ -2,9 +2,20 @@
 //!
 //! Supports both direct forwarding to connection sender and capturing
 //! for labeled-response batching.
+//!
+//! # SendQ Overflow Protection
+//!
+//! When the outgoing message queue is full (slow consumer), messages are
+//! dropped and the error is propagated to trigger client disconnection.
+//! This prevents memory exhaustion from clients that don't read their data.
 
 use slirc_proto::Message;
 use tokio::sync::{Mutex, mpsc};
+use std::time::Duration;
+
+/// Timeout for attempting to send to a slow consumer before giving up.
+/// 5 seconds is generous - a healthy client should never hit this.
+const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Middleware for routing handler responses.
 /// Direct forwards to the connection sender; Capturing buffers for labeled-response batching.
@@ -16,13 +27,49 @@ pub enum ResponseMiddleware<'a> {
 
 impl<'a> ResponseMiddleware<'a> {
     /// Send or buffer a message depending on middleware mode.
+    ///
+    /// For Direct mode, uses a timeout to detect slow consumers. If the
+    /// send times out, the message is dropped and an error is returned
+    /// to signal that the client should be disconnected.
     pub async fn send(&self, msg: Message) -> Result<(), mpsc::error::SendError<Message>> {
         match self {
-            Self::Direct(tx) => tx.send(msg).await,
+            Self::Direct(tx) => {
+                // Use timeout to detect slow consumers and avoid blocking indefinitely
+                match tokio::time::timeout(SEND_TIMEOUT, tx.send(msg.clone())).await {
+                    Ok(result) => result,
+                    Err(_timeout) => {
+                        // Slow consumer - SendQ overflow
+                        tracing::warn!("SendQ overflow: client not reading (timeout after {:?})", SEND_TIMEOUT);
+                        Err(mpsc::error::SendError(msg))
+                    }
+                }
+            }
             Self::Capturing(buf) => {
                 let mut guard = buf.lock().await;
                 guard.push(msg);
                 Ok(())
+            }
+        }
+    }
+
+    /// Try to send a message without blocking.
+    ///
+    /// Returns immediately if the queue is full. Useful for optional
+    /// notifications where dropping is acceptable.
+    #[allow(dead_code)]
+    #[allow(clippy::result_large_err)]
+    pub fn try_send(&self, msg: Message) -> Result<(), mpsc::error::TrySendError<Message>> {
+        match self {
+            Self::Direct(tx) => tx.try_send(msg),
+            Self::Capturing(buf) => {
+                // For capturing mode, we can't fail - just buffer
+                if let Ok(mut guard) = buf.try_lock() {
+                    guard.push(msg);
+                    Ok(())
+                } else {
+                    // Mutex contention - extremely rare, treat as full
+                    Err(mpsc::error::TrySendError::Full(msg))
+                }
             }
         }
     }

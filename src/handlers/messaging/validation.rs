@@ -1,9 +1,13 @@
 //! Message validation shared between PRIVMSG and NOTICE.
 //!
-//! Both message commands share identical validation logic (shun checks, rate limiting,
-//! spam detection), differing only in error handling strategy:
+//! Both message commands share identical validation logic (shun checks, spam detection),
+//! differing only in error handling strategy:
 //! - PRIVMSG sends error replies to user
 //! - NOTICE silently drops (per RFC 2812)
+//!
+//! Note: Rate limiting is handled at the connection level in lifecycle.rs,
+//! NOT here. This prevents double-checking which would consume tokens twice
+//! and create bypass opportunities.
 
 use crate::handlers::{Context, HandlerError, server_reply};
 use crate::state::RegisteredState;
@@ -29,7 +33,11 @@ pub enum ValidationResult {
     Blocked,
 }
 
-/// Validate a message send operation (shun, rate limits, spam detection).
+/// Validate a message send operation (shun, spam detection).
+///
+/// NOTE: Rate limiting is NOT checked here - it's handled at the connection
+/// level in lifecycle.rs with proper strike tracking and disconnect logic.
+/// Checking here would double-consume rate limit tokens.
 ///
 /// Returns:
 /// - `Ok(ValidationResult::Ok)` if message passes all checks
@@ -50,27 +58,8 @@ pub async fn validate_message_send(
     let uid_string = ctx.uid.to_string();
     let nick = &ctx.state.nick; // Guaranteed present in RegisteredState
 
-    // Check message rate limit
-    if !ctx.matrix.rate_limiter.check_message_rate(&uid_string) {
-        match strategy {
-            ErrorStrategy::SendError => {
-                let reply = server_reply(
-                    ctx.server_name(),
-                    Response::ERR_TOOMANYTARGETS,
-                    vec![
-                        nick.to_string(),
-                        "*".to_string(),
-                        "You are sending messages too quickly. Please wait.".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
-            }
-            ErrorStrategy::SilentDrop => {
-                // NOTICE errors silently dropped
-            }
-        }
-        return Ok(ValidationResult::Blocked);
-    }
+    // NOTE: Rate limiting is handled at connection level (lifecycle.rs)
+    // with proper strike tracking. Do NOT check here to avoid double-penalty.
 
     // Check for repetition spam
     if let Some(detector) = &ctx.matrix.spam_detector

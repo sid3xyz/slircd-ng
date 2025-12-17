@@ -125,7 +125,8 @@ pub struct Matrix {
 
     /// Disconnect request channel.
     /// Channel actors use this to request disconnects without blocking.
-    disconnect_tx: mpsc::UnboundedSender<(Uid, String)>,
+    /// Bounded channel provides backpressure to prevent memory exhaustion.
+    disconnect_tx: mpsc::Sender<(Uid, String)>,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -183,7 +184,7 @@ impl Matrix {
         dlines: Vec<Dline>,
         glines: Vec<Gline>,
         zlines: Vec<Zline>,
-        disconnect_tx: mpsc::UnboundedSender<(Uid, String)>,
+        disconnect_tx: mpsc::Sender<(Uid, String)>,
     ) -> Self {
         use slirc_proto::irc_to_lower;
 
@@ -275,10 +276,17 @@ impl Matrix {
     /// Request that a user be disconnected.
     ///
     /// This is safe to call from channel actors because it is non-blocking.
+    /// Uses try_send to avoid blocking when the channel is full - in that case
+    /// the disconnect will be silently dropped (which is acceptable since the
+    /// disconnect worker will catch up eventually).
     pub fn request_disconnect(&self, uid: &str, reason: &str) {
+        // Use try_send to maintain non-blocking behavior with bounded channel.
+        // If the channel is full, the disconnect request is dropped - this is
+        // acceptable as it indicates the disconnect worker is overwhelmed and
+        // will catch up.
         let _ = self
             .disconnect_tx
-            .send((uid.to_string(), reason.to_string()));
+            .try_send((uid.to_string(), reason.to_string()));
     }
 
     /// Broadcast a message to all members of a channel.

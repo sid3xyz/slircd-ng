@@ -138,7 +138,11 @@ async fn main() -> anyhow::Result<()> {
     let data_dir = std::path::Path::new(db_path).parent();
 
     // Disconnect worker: channel actors can request disconnects without blocking.
-    let (disconnect_tx, mut disconnect_rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
+    // Use bounded channel with backpressure to prevent memory exhaustion from
+    // disconnect storms. 1024 slots should handle burst disconnects while
+    // preventing unbounded memory growth.
+    const DISCONNECT_CHANNEL_SIZE: usize = 1024;
+    let (disconnect_tx, mut disconnect_rx) = tokio::sync::mpsc::channel::<(String, String)>(DISCONNECT_CHANNEL_SIZE);
     let matrix = Arc::new(Matrix::new(
         &config,
         data_dir,
