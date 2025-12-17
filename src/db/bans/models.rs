@@ -11,10 +11,8 @@ pub struct Kline {
     /// Reason for the ban.
     pub reason: Option<String>,
     /// Operator who set the ban.
-    #[allow(dead_code)] // Used by admin STATS command
     pub set_by: String,
     /// Unix timestamp when the ban was set.
-    #[allow(dead_code)] // Used by admin STATS command
     pub set_at: i64,
     /// Optional expiration timestamp.
     pub expires_at: Option<i64>,
@@ -28,10 +26,8 @@ pub struct Dline {
     /// Reason for the ban.
     pub reason: Option<String>,
     /// Operator who set the ban.
-    #[allow(dead_code)] // Used by admin STATS command
     pub set_by: String,
     /// Unix timestamp when the ban was set.
-    #[allow(dead_code)] // Used by admin STATS command
     pub set_at: i64,
     /// Optional expiration timestamp.
     pub expires_at: Option<i64>,
@@ -45,10 +41,8 @@ pub struct Gline {
     /// Reason for the ban.
     pub reason: Option<String>,
     /// Operator who set the ban.
-    #[allow(dead_code)] // Used by admin STATS command
     pub set_by: String,
     /// Unix timestamp when the ban was set.
-    #[allow(dead_code)] // Used by admin STATS command
     pub set_at: i64,
     /// Optional expiration timestamp.
     pub expires_at: Option<i64>,
@@ -62,10 +56,8 @@ pub struct Zline {
     /// Reason for the ban.
     pub reason: Option<String>,
     /// Operator who set the ban.
-    #[allow(dead_code)] // Used by admin STATS command
     pub set_by: String,
     /// Unix timestamp when the ban was set.
-    #[allow(dead_code)] // Used by admin STATS command
     pub set_at: i64,
     /// Optional expiration timestamp.
     pub expires_at: Option<i64>,
@@ -73,7 +65,6 @@ pub struct Zline {
 
 /// An R-line (realname/GECOS ban).
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Available for admin commands
 pub struct Rline {
     pub mask: String,
     pub reason: Option<String>,
@@ -84,7 +75,6 @@ pub struct Rline {
 
 /// A shun (silent ban - user stays connected but commands are ignored).
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Fields used by admin for stats/inspection
 pub struct Shun {
     pub mask: String,
     pub reason: Option<String>,
@@ -94,7 +84,6 @@ pub struct Shun {
 }
 
 /// Basic CIDR matching for IP addresses.
-#[allow(dead_code)] // Used by matches_dline
 pub(super) fn cidr_match(cidr: &str, ip: &str) -> bool {
     // Parse CIDR notation (e.g., "192.168.1.0/24")
     let parts: Vec<&str> = cidr.split('/').collect();

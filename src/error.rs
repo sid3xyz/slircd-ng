@@ -242,7 +242,6 @@ impl ChannelError {
     }
 
     /// Convert to an IRC error reply message.
-    #[allow(dead_code)] // Available for handler use
     pub fn to_irc_reply(&self, server_name: &str, nick: &str, channel: &str) -> Message {
         let (response, args) = match self {
             Self::NotOnChannel => (

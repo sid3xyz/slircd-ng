@@ -22,7 +22,6 @@ pub async fn remove_rline(pool: &SqlitePool, mask: &str) -> Result<bool, DbError
 }
 
 /// Get all active R-lines (not expired).
-#[allow(dead_code)] // Used by admin STATS command
 pub async fn get_active_rlines(pool: &SqlitePool) -> Result<Vec<Rline>, DbError> {
     get_active_bans::<Rline>(pool).await
 }

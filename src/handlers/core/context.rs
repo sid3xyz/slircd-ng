@@ -161,7 +161,6 @@ impl<'a> Context<'a, RegisteredState> {
 
     /// Get both nick and user.
     #[inline]
-    #[allow(dead_code)]
     pub fn nick_user(&self) -> (&str, &str) {
         (&self.state.nick, &self.state.user)
     }
