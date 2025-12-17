@@ -5,7 +5,6 @@
 
 use super::super::{Context, HandlerResult, server_reply};
 use crate::security::UserContext;
-use crate::security::spam::SpamVerdict;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use slirc_proto::{Command, Message, Response};
 use tracing::debug;
@@ -120,8 +119,6 @@ pub use crate::state::actor::ChannelRouteResult;
 pub struct RouteOptions {
     /// Whether to send RPL_AWAY for user targets (only PRIVMSG).
     pub send_away_reply: bool,
-    /// Whether this is a NOTICE (for +T check).
-    pub is_notice: bool,
     /// Whether to block CTCP (+C mode, except ACTION).
     #[allow(dead_code)] // Reserved for future use
     pub block_ctcp: bool,
@@ -213,26 +210,8 @@ pub async fn route_to_user_with_snapshot(
         return false;
     };
 
-    // Spam detection for direct messages (skip TAGMSG).
-    if let Some(detector) = &ctx.matrix.spam_detector
-        && let Some(text) = match &msg.command {
-            Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
-            _ => None,
-        }
-    {
-        // Use pre-fetched trust level from snapshot
-        let is_trusted = snapshot.is_oper || snapshot.account.is_some();
-
-        if !is_trusted && let SpamVerdict::Spam { pattern, .. } = detector.check_message(ctx.uid, &snapshot.ip, text, true).await {
-            if !opts.is_notice {
-                let _ =
-                    send_cannot_send(ctx, &snapshot.nick, target_lower, "Message rejected as spam")
-                        .await;
-            }
-            debug!(pattern = %pattern, "Direct message blocked as spam");
-            return false;
-        }
-    }
+    // NOTE: Spam detection is handled by validate_message_send() in validation.rs
+    // before routing. No duplicate check needed here.
 
     // Check away status and notify sender if requested
     if opts.send_away_reply {

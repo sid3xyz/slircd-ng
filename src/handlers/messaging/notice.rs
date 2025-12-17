@@ -106,7 +106,6 @@ impl PostRegHandler for NoticeHandler {
         // NOTICE: silently drop on errors, check moderated, no away reply
         let opts = RouteOptions {
             send_away_reply: false,
-            is_notice: true,
             block_ctcp: true,
             status_prefix: None,
         };

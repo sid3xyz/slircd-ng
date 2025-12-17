@@ -128,7 +128,6 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         // TAGMSG: send errors, but don't check +m (only +n), no away reply
         let opts = RouteOptions {
             send_away_reply: false,
-            is_notice: false,
             block_ctcp: false,
             status_prefix: None,
         };

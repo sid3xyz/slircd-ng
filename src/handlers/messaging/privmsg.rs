@@ -140,7 +140,6 @@ impl PostRegHandler for PrivmsgHandler {
 
             let opts = RouteOptions {
                 send_away_reply: true,
-                is_notice: false,
                 block_ctcp: true,
                 status_prefix: None,
             };
@@ -349,7 +348,6 @@ pub(super) async fn route_statusmsg(
 ) -> HandlerResult {
     let opts = RouteOptions {
         send_away_reply: false,
-        is_notice: false,
         block_ctcp: false,
         status_prefix: Some(prefix_char),
     };
