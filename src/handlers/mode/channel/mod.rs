@@ -8,11 +8,95 @@ mod mlock;
 
 use crate::handlers::{Context, HandlerError, HandlerResult, server_reply, with_label};
 use crate::state::RegisteredState;
-use crate::state::actor::ChannelError;
+use crate::state::actor::{ChannelError, ChannelInfo};
 use slirc_proto::{ChannelMode, Mode, Response, irc_to_lower};
 
 use lists::{get_list_mode_query, send_list_mode};
 use mlock::apply_mlock_filter;
+
+/// Validation result for a mode requiring an argument.
+enum ModeValidation {
+    /// Mode is valid, keep it
+    Valid,
+    /// Mode is invalid, skip it (error already sent)
+    Invalid,
+    /// Mode has no argument, skip silently
+    NoArg,
+}
+
+/// Validate a status mode (op/voice/halfop/admin/founder).
+///
+/// Checks that the target nick exists and is in the channel.
+async fn validate_status_mode(
+    ctx: &mut Context<'_, RegisteredState>,
+    mode: &Mode<ChannelMode>,
+    info: &ChannelInfo,
+    nick: &str,
+    canonical_name: &str,
+) -> Result<ModeValidation, HandlerError> {
+    let Some(target_nick) = mode.arg() else {
+        return Ok(ModeValidation::NoArg);
+    };
+
+    let target_lower = irc_to_lower(target_nick);
+    let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) else {
+        let reply = Response::err_nosuchnick(nick, target_nick).with_prefix(ctx.server_prefix());
+        ctx.send_error("MODE", "ERR_NOSUCHNICK", reply).await?;
+        return Ok(ModeValidation::Invalid);
+    };
+
+    if !info.members.contains(target_uid.value()) {
+        let reply = server_reply(
+            ctx.server_name(),
+            Response::ERR_USERNOTINCHANNEL,
+            vec![
+                nick.to_string(),
+                target_nick.to_string(),
+                canonical_name.to_string(),
+                "They aren't on that channel".to_string(),
+            ],
+        );
+        ctx.sender.send(reply).await?;
+        return Ok(ModeValidation::Invalid);
+    }
+
+    Ok(ModeValidation::Valid)
+}
+
+/// Validate a channel key mode.
+async fn validate_key_mode(
+    ctx: &mut Context<'_, RegisteredState>,
+    mode: &Mode<ChannelMode>,
+    nick: &str,
+    canonical_name: &str,
+) -> Result<ModeValidation, HandlerError> {
+    if !mode.is_plus() {
+        // Removing key is always valid
+        return Ok(ModeValidation::Valid);
+    }
+
+    let Some(key) = mode.arg() else {
+        return Ok(ModeValidation::NoArg);
+    };
+
+    // Validate: no spaces, not empty, max 23 chars
+    if key.is_empty() || key.contains(' ') || key.len() > 23 {
+        let reply = server_reply(
+            ctx.server_name(),
+            Response::ERR_INVALIDKEY,
+            vec![
+                nick.to_string(),
+                canonical_name.to_string(),
+                key.to_string(),
+                "Invalid channel key".to_string(),
+            ],
+        );
+        ctx.sender.send(reply).await?;
+        return Ok(ModeValidation::Invalid);
+    }
+
+    Ok(ModeValidation::Valid)
+}
 
 /// Handle channel mode query/change.
 pub async fn handle_channel_mode(
@@ -20,7 +104,7 @@ pub async fn handle_channel_mode(
     channel_name: &str,
     modes: &[Mode<ChannelMode>],
 ) -> HandlerResult {
-    let nick = ctx.nick();
+    let nick = ctx.nick().to_string();
     let _user_name = ctx.user();
     let channel_lower = irc_to_lower(channel_name);
 
@@ -28,7 +112,7 @@ pub async fn handle_channel_mode(
     let channel = match ctx.matrix.channels.get(&channel_lower) {
         Some(c) => c.clone(),
         None => {
-            let reply = Response::err_nosuchchannel(nick, channel_name)
+            let reply = Response::err_nosuchchannel(&nick, channel_name)
                 .with_prefix(ctx.server_prefix());
             ctx.send_error("MODE", "ERR_NOSUCHCHANNEL", reply).await?;
             return Ok(());
@@ -115,7 +199,7 @@ pub async fn handle_channel_mode(
             ctx.sender
                 .send(ChannelError::ChanOpPrivsNeeded.to_irc_reply(
                     ctx.server_name(),
-                    nick,
+                    &nick,
                     &canonical_name,
                 ))
                 .await?;
@@ -126,76 +210,25 @@ pub async fn handle_channel_mode(
         // Filter out invalid modes and send appropriate error messages
         let mut valid_modes = Vec::new();
         for mode in modes {
-            match mode.mode() {
+            let validation = match mode.mode() {
                 // Status modes (prefix modes) - validate target exists and is in channel
                 ChannelMode::Oper
                 | ChannelMode::Voice
                 | ChannelMode::Halfop
                 | ChannelMode::Admin
                 | ChannelMode::Founder => {
-                    if let Some(target_nick) = mode.arg() {
-                        let target_lower = irc_to_lower(target_nick);
-                        match ctx.matrix.nicks.get(&target_lower) {
-                            Some(target_uid) => {
-                                // Check if target is in the channel
-                                if info.members.contains(target_uid.value()) {
-                                    valid_modes.push(mode.clone());
-                                } else {
-                                    // ERR_USERNOTINCHANNEL (441)
-                                    let reply = server_reply(
-                                        ctx.server_name(),
-                                        Response::ERR_USERNOTINCHANNEL,
-                                        vec![
-                                            nick.to_string(),
-                                            target_nick.to_string(),
-                                            canonical_name.clone(),
-                                            "They aren't on that channel".to_string(),
-                                        ],
-                                    );
-                                    ctx.sender.send(reply).await?;
-                                }
-                            }
-                            None => {
-                                // ERR_NOSUCHNICK (401)
-                                let reply = Response::err_nosuchnick(nick, target_nick)
-                                    .with_prefix(ctx.server_prefix());
-                                ctx.send_error("MODE", "ERR_NOSUCHNICK", reply).await?;
-                            }
-                        }
-                    } else {
-                        // Status mode without argument - invalid, skip silently
-                    }
+                    validate_status_mode(ctx, mode, &info, &nick, &canonical_name).await?
                 }
                 // Channel key validation
                 ChannelMode::Key => {
-                    if mode.is_plus() {
-                        if let Some(key) = mode.arg() {
-                            // Validate: no spaces, not empty, max 23 chars
-                            if key.is_empty() || key.contains(' ') || key.len() > 23 {
-                                let reply = server_reply(
-                                    ctx.server_name(),
-                                    Response::ERR_INVALIDKEY,
-                                    vec![
-                                        nick.to_string(),
-                                        canonical_name.clone(),
-                                        key.to_string(),
-                                        "Invalid channel key".to_string(),
-                                    ],
-                                );
-                                ctx.sender.send(reply).await?;
-                            } else {
-                                valid_modes.push(mode.clone());
-                            }
-                        }
-                    } else {
-                        // Removing key - always valid
-                        valid_modes.push(mode.clone());
-                    }
+                    validate_key_mode(ctx, mode, &nick, &canonical_name).await?
                 }
                 // All other modes pass through
-                _ => {
-                    valid_modes.push(mode.clone());
-                }
+                _ => ModeValidation::Valid,
+            };
+
+            if matches!(validation, ModeValidation::Valid) {
+                valid_modes.push(mode.clone());
             }
         }
 

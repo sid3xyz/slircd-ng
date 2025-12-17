@@ -274,53 +274,40 @@ impl PostRegHandler for StatsHandler {
             'i' | 'I' => {
                 // IP deny list statistics (in-memory bitmap)
                 // Collect data synchronously to avoid holding lock across await
-                let ban_data: Option<(usize, Vec<(String, String, String, String)>)> =
-                    if let Ok(deny_list) = ctx.matrix.ip_deny_list.read() {
-                        let count = deny_list.len();
-                        let entries: Vec<_> = deny_list
-                            .iter()
-                            .take(51) // Take 51 to detect if we need truncation message
-                            .map(|(key, meta)| {
-                                let expires = meta.expiry
-                                    .map(|e| format!("expires {}", e))
-                                    .unwrap_or_else(|| "permanent".to_string());
-                                (key.clone(), expires, meta.added_by.clone(), meta.reason.clone())
-                            })
-                            .collect();
-                        Some((count, entries))
-                    } else {
-                        None
-                    };
+                let ban_data = ctx.matrix.ip_deny_list.read().ok().map(|deny_list| {
+                    let count = deny_list.len();
+                    let entries: Vec<_> = deny_list
+                        .iter()
+                        .take(51)
+                        .map(|(key, meta)| {
+                            let expires = meta.expiry
+                                .map(|e| format!("expires {}", e))
+                                .unwrap_or_else(|| "permanent".to_string());
+                            (key.clone(), expires, meta.added_by.clone(), meta.reason.clone())
+                        })
+                        .collect();
+                    (count, entries)
+                });
 
                 if let Some((count, entries)) = ban_data {
                     ctx.send_reply(
                         Response::RPL_STATSDLINE,
-                        vec![
-                            nick.to_string(),
-                            format!("IP deny list: {} active bans", count),
-                        ],
+                        vec![nick.to_string(), format!("IP deny list: {} active bans", count)],
                     )
                     .await?;
 
-                    // List individual bans (limit to first 50 for safety)
                     for (i, (key, expires, added_by, reason)) in entries.iter().enumerate() {
                         if i >= 50 {
                             ctx.send_reply(
                                 Response::RPL_STATSDLINE,
-                                vec![
-                                    nick.to_string(),
-                                    format!("... and {} more (truncated)", count - 50),
-                                ],
+                                vec![nick.to_string(), format!("... and {} more (truncated)", count - 50)],
                             )
                             .await?;
                             break;
                         }
                         ctx.send_reply(
                             Response::RPL_STATSDLINE,
-                            vec![
-                                nick.to_string(),
-                                format!("I {} {} [{}] :{}", key, expires, added_by, reason),
-                            ],
+                            vec![nick.to_string(), format!("I {} {} [{}] :{}", key, expires, added_by, reason)],
                         )
                         .await?;
                     }

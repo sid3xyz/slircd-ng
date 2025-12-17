@@ -22,6 +22,115 @@ const MAX_FLOOD_VIOLATIONS: u8 = 3;
 /// We don't need to check every second; 15s is responsive enough.
 const PING_CHECK_INTERVAL_SECS: u64 = 15;
 
+/// Result of flood rate check.
+enum FloodCheckResult {
+    /// Message allowed, continue processing
+    Ok,
+    /// Rate limit hit, warning sent, skip this message
+    RateLimited,
+    /// Max violations reached, disconnect
+    Disconnect,
+}
+
+// === Message builders (reduce nesting depth) ===
+
+/// Build a flood warning notice.
+fn flood_warning_notice(server_name: &str, violations: u8, max: u8) -> Message {
+    Message::from(Command::NOTICE(
+        "*".to_string(),
+        format!(
+            "*** Warning: Flooding detected ({}/{} strikes). Slow down or you will be disconnected.",
+            violations, max
+        ),
+    ))
+    .with_prefix(Prefix::ServerName(server_name.to_string()))
+}
+
+/// Build an ERROR message for excess flood.
+fn excess_flood_error() -> Message {
+    Message::from(Command::ERROR("Excess Flood (Strike limit reached)".into()))
+}
+
+/// Build a QUIT closing link message.
+fn closing_link_error(addr: &SocketAddr, quit_msg: Option<&str>) -> Message {
+    let text = match quit_msg {
+        Some(msg) => format!("Closing Link: {} (Quit: {})", addr.ip(), msg),
+        None => format!("Closing Link: {} (Client Quit)", addr.ip()),
+    };
+    Message { tags: None, prefix: None, command: Command::ERROR(text) }
+}
+
+/// Build an input too long error response.
+fn input_too_long_response(server_name: &str, nick: &str) -> Message {
+    Message {
+        tags: None,
+        prefix: Some(Prefix::ServerName(server_name.to_string())),
+        command: Command::Response(
+            Response::ERR_INPUTTOOLONG,
+            vec![nick.to_string(), "Input line too long".to_string()],
+        ),
+    }
+}
+
+/// Build a BATCH start message for labeled-response.
+fn batch_start_msg(server_name: &str, batch_ref: &str) -> Message {
+    Message {
+        tags: None,
+        prefix: Some(Prefix::ServerName(server_name.to_string())),
+        command: Command::BATCH(
+            format!("+{}", batch_ref),
+            Some(slirc_proto::BatchSubCommand::CUSTOM("labeled-response".to_string())),
+            None,
+        ),
+    }
+}
+
+/// Build a BATCH end message.
+fn batch_end_msg(server_name: &str, batch_ref: &str) -> Message {
+    Message {
+        tags: None,
+        prefix: Some(Prefix::ServerName(server_name.to_string())),
+        command: Command::BATCH(format!("-{}", batch_ref), None, None),
+    }
+}
+
+/// Handle labeled-response protocol (IRCv3 spec).
+async fn send_labeled_response(
+    transport: &mut ZeroCopyTransportEnum,
+    server_name: &str,
+    label: &str,
+    messages: &mut Vec<Message>,
+    suppress_ack: bool,
+) {
+    let count = messages.len();
+    if count == 0 {
+        if !suppress_ack {
+            let ack = labeled_ack(server_name, label);
+            let _ = transport.write_message(&ack).await;
+        }
+    } else if count == 1 {
+        // Safe: count == 1 guarantees exactly one message
+        if let Some(msg) = messages.drain(..).next() {
+            let tagged = with_label(msg, Some(label));
+            let _ = transport.write_message(&tagged).await;
+        }
+    } else {
+        // Multiple responses - wrap in BATCH
+        let batch_ref = generate_batch_ref();
+        let batch_start = batch_start_msg(server_name, &batch_ref)
+            .with_tag("label", Some(label));
+        let _ = transport.write_message(&batch_start).await;
+
+        for msg in messages.drain(..) {
+            let batched = msg.with_tag("batch", Some(&batch_ref));
+            let _ = transport.write_message(&batched).await;
+        }
+
+        let batch_end = batch_end_msg(server_name, &batch_ref);
+        let _ = transport.write_message(&batch_end).await;
+    }
+}
+
 /// Shared connection resources used across lifecycle phases.
 ///
 /// Groups parameters that are common to both handshake and event loop,
@@ -252,33 +361,38 @@ pub async fn run_event_loop(
                         reg_state.ping_pending = false;
                         reg_state.ping_sent_at = None;
 
-                        // Flood protection
-                        if !matrix.rate_limiter.check_message_rate(&uid.to_string()) {
+                        // Flood protection - check rate limit
+                        let flood_result = if matrix.rate_limiter.check_message_rate(&uid.to_string()) {
+                            flood_violations = 0;
+                            FloodCheckResult::Ok
+                        } else {
                             flood_violations += 1;
                             crate::metrics::RATE_LIMITED.inc();
                             warn!(uid = %uid, violations = flood_violations, "Rate limit exceeded");
 
                             if flood_violations >= MAX_FLOOD_VIOLATIONS {
-                                warn!(uid = %uid, "Maximum flood violations reached - disconnecting");
-                                let error_msg = Message::from(Command::ERROR("Excess Flood (Strike limit reached)".into()));
-                                let _ = transport.write_message(&error_msg).await;
-                                break;
+                                FloodCheckResult::Disconnect
                             } else {
-                                let notice = Message::from(Command::NOTICE(
-                                    "*".to_string(),
-                                    format!("*** Warning: Flooding detected ({}/{} strikes). Slow down or you will be disconnected.",
-                                            flood_violations, MAX_FLOOD_VIOLATIONS)
-                                )).with_prefix(Prefix::ServerName(matrix.server_info.name.clone()));
-                                let _ = transport.write_message(&notice).await;
+                                FloodCheckResult::RateLimited
+                            }
+                        };
 
-                                // Drop the message immediately instead of sleeping.
-                                // Sleeping blocks this connection task and is a DoS vector.
-                                // The warning message already informs the user; continued
-                                // violations will hit MAX_FLOOD_VIOLATIONS and disconnect.
+                        match flood_result {
+                            FloodCheckResult::Ok => {}
+                            FloodCheckResult::RateLimited => {
+                                let notice = flood_warning_notice(
+                                    &matrix.server_info.name,
+                                    flood_violations,
+                                    MAX_FLOOD_VIOLATIONS,
+                                );
+                                let _ = transport.write_message(&notice).await;
                                 continue;
                             }
-                        } else {
-                            flood_violations = 0;
+                            FloodCheckResult::Disconnect => {
+                                warn!(uid = %uid, "Maximum flood violations reached - disconnecting");
+                                let _ = transport.write_message(&excess_flood_error()).await;
+                                break;
+                            }
                         }
 
                         debug!(raw = ?msg_ref, "Received message (zero-copy)");
@@ -343,15 +457,7 @@ pub async fn run_event_loop(
 
                             if let crate::handlers::HandlerError::Quit(quit_msg) = e {
                                 quit_message = quit_msg.clone();
-                                let error_text = match quit_msg {
-                                    Some(msg) => format!("Closing Link: {} (Quit: {})", addr.ip(), msg),
-                                    None => format!("Closing Link: {} (Client Quit)", addr.ip()),
-                                };
-                                let error_reply = Message {
-                                    tags: None,
-                                    prefix: None,
-                                    command: Command::ERROR(error_text),
-                                };
+                                let error_reply = closing_link_error(&addr, quit_msg.as_deref());
                                 let _ = transport.write_message(&error_reply).await;
                                 break;
                             }
@@ -368,65 +474,23 @@ pub async fn run_event_loop(
                             && let Some(buf) = capture_buffer
                         {
                             let mut messages = buf.lock().await;
-                            let msg_count = messages.len();
-
-                            if msg_count == 0 {
-                                // No responses - send ACK unless suppressed
-                                if !suppress_ack {
-                                    let ack = labeled_ack(&matrix.server_info.name, &label_str);
-                                    let _ = transport.write_message(&ack).await;
-                                }
-                            } else if msg_count == 1 {
-                                // Single response - just add label tag
-                                // Safe: msg_count == 1 guarantees exactly one message
-                                if let Some(msg) = messages.drain(..).next() {
-                                    let tagged = with_label(msg, Some(&label_str));
-                                    let _ = transport.write_message(&tagged).await;
-                                }
-                            } else {
-                                // Multiple responses - wrap in BATCH
-                                let batch_ref = generate_batch_ref();
-
-                                // BATCH +ref labeled-response with label tag
-                                let batch_start = Message {
-                                    tags: None,
-                                    prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
-                                    command: Command::BATCH(
-                                        format!("+{}", batch_ref),
-                                        Some(slirc_proto::BatchSubCommand::CUSTOM("labeled-response".to_string())),
-                                        None,
-                                    ),
-                                }.with_tag("label", Some(&label_str));
-                                let _ = transport.write_message(&batch_start).await;
-
-                                // Send all messages with batch tag
-                                for msg in messages.drain(..) {
-                                    let batched = msg.with_tag("batch", Some(&batch_ref));
-                                    let _ = transport.write_message(&batched).await;
-                                }
-
-                                // BATCH -ref
-                                let batch_end = Message {
-                                    tags: None,
-                                    prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
-                                    command: Command::BATCH(format!("-{}", batch_ref), None, None),
-                                };
-                                let _ = transport.write_message(&batch_end).await;
-                            }
+                            send_labeled_response(
+                                transport,
+                                &matrix.server_info.name,
+                                &label_str,
+                                &mut messages,
+                                suppress_ack,
+                            ).await;
                         }
                     }
                     Some(Err(e)) => {
                         match classify_read_error(&e) {
                             ReadErrorAction::InputTooLong => {
                                 warn!("Input line too long");
-                                let reply = Message {
-                                    tags: None,
-                                    prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
-                                    command: Command::Response(
-                                        Response::ERR_INPUTTOOLONG,
-                                        vec![reg_state.nick.clone(), "Input line too long".to_string()],
-                                    ),
-                                };
+                                let reply = input_too_long_response(
+                                    &matrix.server_info.name,
+                                    &reg_state.nick,
+                                );
                                 let _ = transport.write_message(&reply).await;
                                 continue;
                             }

@@ -86,36 +86,38 @@ impl PostRegHandler for TopicHandler {
                     return Ok(());
                 }
 
-                if let Ok(info) = reply_rx.await {
-                    match info.topic {
-                        Some(topic) => {
-                            let reply = server_reply(
-                                ctx.server_name(),
-                                Response::RPL_TOPIC,
-                                vec![nick.to_string(), info.name.clone(), topic.text.clone()],
-                            );
-                            ctx.sender.send(reply).await?;
+                let Ok(info) = reply_rx.await else {
+                    return Ok(());
+                };
 
-                            let who_reply = server_reply(
-                                ctx.server_name(),
-                                Response::RPL_TOPICWHOTIME,
-                                vec![
-                                    nick.to_string(),
-                                    info.name,
-                                    topic.set_by.clone(),
-                                    topic.set_at.to_string(),
-                                ],
-                            );
-                            ctx.sender.send(who_reply).await?;
-                        }
-                        None => {
-                            let reply = server_reply(
-                                ctx.server_name(),
-                                Response::RPL_NOTOPIC,
-                                vec![nick.to_string(), info.name, "No topic is set".to_string()],
-                            );
-                            ctx.sender.send(reply).await?;
-                        }
+                match info.topic {
+                    Some(topic) => {
+                        let reply = server_reply(
+                            ctx.server_name(),
+                            Response::RPL_TOPIC,
+                            vec![nick.to_string(), info.name.clone(), topic.text.clone()],
+                        );
+                        ctx.sender.send(reply).await?;
+
+                        let who_reply = server_reply(
+                            ctx.server_name(),
+                            Response::RPL_TOPICWHOTIME,
+                            vec![
+                                nick.to_string(),
+                                info.name,
+                                topic.set_by.clone(),
+                                topic.set_at.to_string(),
+                            ],
+                        );
+                        ctx.sender.send(who_reply).await?;
+                    }
+                    None => {
+                        let reply = server_reply(
+                            ctx.server_name(),
+                            Response::RPL_NOTOPIC,
+                            vec![nick.to_string(), info.name, "No topic is set".to_string()],
+                        );
+                        ctx.sender.send(reply).await?;
                     }
                 }
             }

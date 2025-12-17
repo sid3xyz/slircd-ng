@@ -26,36 +26,42 @@ lazy_static! {
     // ========================================================================
 
     /// Total IRC messages successfully sent to clients.
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref MESSAGES_SENT: IntCounter = IntCounter::new(
         "irc_messages_sent_total",
         "Total messages sent"
     ).expect("MESSAGES_SENT metric creation failed");
 
     /// Total messages blocked by spam detection.
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref SPAM_BLOCKED: IntCounter = IntCounter::new(
         "irc_spam_blocked_total",
         "Messages blocked as spam"
     ).expect("SPAM_BLOCKED metric creation failed");
 
     /// Total ban enforcement events (channel bans blocking JOIN).
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref BANS_TRIGGERED: IntCounter = IntCounter::new(
         "irc_bans_triggered_total",
         "Ban enforcement events"
     ).expect("BANS_TRIGGERED metric creation failed");
 
     /// Total X-line enforcement events (K/G/Z/R/S-lines blocking connections).
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref XLINES_ENFORCED: IntCounter = IntCounter::new(
         "irc_xlines_enforced_total",
         "X-line enforcement events"
     ).expect("XLINES_ENFORCED metric creation failed");
 
     /// Total rate limit hits (flood protection).
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref RATE_LIMITED: IntCounter = IntCounter::new(
         "irc_rate_limited_total",
         "Rate limit hits"
     ).expect("RATE_LIMITED metric creation failed");
 
     /// Total +r (registered-only) enforcement events (JOIN/speak denied).
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref REGISTERED_ONLY_BLOCKED: IntCounter = IntCounter::new(
         "irc_registered_only_blocked_total",
         "Registered-only (+r) enforcement events"
@@ -66,12 +72,14 @@ lazy_static! {
     // ========================================================================
 
     /// Currently connected users.
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref CONNECTED_USERS: IntGauge = IntGauge::new(
         "irc_connected_users",
         "Currently connected users"
     ).expect("CONNECTED_USERS metric creation failed");
 
     /// Active channels (both registered and temporary).
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref ACTIVE_CHANNELS: IntGauge = IntGauge::new(
         "irc_active_channels",
         "Active channels"
@@ -82,6 +90,7 @@ lazy_static! {
     // ========================================================================
 
     /// Commands processed by type (PRIVMSG, JOIN, PART, etc.).
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref COMMAND_COUNTER: IntCounterVec = IntCounterVec::new(
         Opts::new("irc_command_total", "IRC commands processed by type"),
         &["command"]
@@ -89,6 +98,7 @@ lazy_static! {
 
     /// Command processing latency by command type.
     /// Buckets optimized for IRC: 50µs to 500ms.
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref COMMAND_LATENCY: HistogramVec = HistogramVec::new(
         HistogramOpts::new("irc_command_duration_seconds", "IRC command latency by type")
             .buckets(vec![0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]),
@@ -97,6 +107,7 @@ lazy_static! {
 
     /// Channel member counts (gauge).
     /// Updated on JOIN/PART/KICK/QUIT.
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref CHANNEL_MEMBERS: IntGaugeVec = IntGaugeVec::new(
         Opts::new("irc_channel_members", "Members per IRC channel"),
         &["channel"]
@@ -104,18 +115,21 @@ lazy_static! {
 
     /// Message fan-out histogram: how many recipients per channel message.
     /// Buckets: 1, 5, 10, 25, 50, 100, 250, 500, 1000+.
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref MESSAGE_FANOUT: Histogram = Histogram::with_opts(
         HistogramOpts::new("irc_message_fanout", "Recipients per channel message")
             .buckets(vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0])
     ).expect("MESSAGE_FANOUT metric creation failed");
 
     /// Command errors by type and error kind.
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref COMMAND_ERRORS: IntCounterVec = IntCounterVec::new(
         Opts::new("irc_command_errors_total", "IRC command errors by type"),
         &["command", "error"]
     ).expect("COMMAND_ERRORS metric creation failed");
 
     /// Channel mode changes (counter).
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref CHANNEL_MODE_CHANGES: IntCounterVec = IntCounterVec::new(
         Opts::new("irc_channel_mode_changes_total", "Channel mode changes"),
         &["mode"]

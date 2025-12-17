@@ -9,6 +9,17 @@ use std::collections::HashMap;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
+/// Parse and validate a channel limit argument.
+/// Returns `Some(limit)` if valid (1..=10000), `None` otherwise.
+fn parse_channel_limit(arg: Option<&str>) -> Option<usize> {
+    let limit = arg?.parse::<usize>().ok()?;
+    // Reject zero or absurdly high values (max 10000 members per channel)
+    if limit == 0 || limit > 10000 {
+        return None;
+    }
+    Some(limit)
+}
+
 impl ChannelActor {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn handle_apply_modes(
@@ -109,21 +120,12 @@ impl ChannelActor {
 
                 ProtoChannelMode::Limit => {
                     if adding {
-                        // Parse and validate limit: must be positive and reasonable
-                        if let Some(limit) = arg.and_then(|a| a.parse::<usize>().ok()) {
-                            // Reject unreasonable limits (0 or absurdly high values)
-                            // Maximum of 10000 members per channel is generous
-                            if limit == 0 || limit > 10000 {
-                                false
-                            } else {
-                                self.replace_param_mode(
-                                    |mode| matches!(mode, ChannelMode::Limit(_)),
-                                    Some(ChannelMode::Limit(limit)),
-                                )
-                            }
-                        } else {
-                            false
-                        }
+                        parse_channel_limit(arg).is_some_and(|limit| {
+                            self.replace_param_mode(
+                                |mode| matches!(mode, ChannelMode::Limit(_)),
+                                Some(ChannelMode::Limit(limit)),
+                            )
+                        })
                     } else {
                         self.replace_param_mode(|mode| matches!(mode, ChannelMode::Limit(_)), None)
                     }

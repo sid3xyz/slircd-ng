@@ -2,9 +2,56 @@
 
 use crate::handlers::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
 use crate::state::RegisteredState;
+use crate::state::actor::{ChannelEvent, ChannelInfo};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
+use tokio::sync::mpsc::Sender;
 use tracing::debug;
+
+/// Get channel info and member modes for a user in a channel.
+///
+/// Returns None if the channel should be hidden (secret and requester not member).
+async fn get_channel_display_info(
+    channel_sender: &Sender<ChannelEvent>,
+    requester_uid: &str,
+    target_uid: &str,
+    channel_name: &str,
+) -> Option<String> {
+    // Get channel info
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    channel_sender
+        .send(ChannelEvent::GetInfo {
+            requester_uid: Some(requester_uid.to_string()),
+            reply_tx: tx,
+        })
+        .await
+        .ok()?;
+
+    let info: ChannelInfo = rx.await.ok()?;
+
+    // Skip secret channels unless requester is a member
+    if info.modes.contains(&crate::state::actor::ChannelMode::Secret) && !info.is_member {
+        return None;
+    }
+
+    // Get member modes for prefix
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    channel_sender
+        .send(ChannelEvent::GetMemberModes {
+            uid: target_uid.to_string(),
+            reply_tx: tx,
+        })
+        .await
+        .ok()?;
+
+    let prefix = match rx.await {
+        Ok(Some(modes)) if modes.op => "@",
+        Ok(Some(modes)) if modes.voice => "+",
+        _ => "",
+    };
+
+    Some(format!("{}{}", prefix, channel_name))
+}
 
 /// Handler for WHOIS command.
 ///
@@ -130,50 +177,18 @@ impl PostRegHandler for WhoisHandler {
                 if show_channels && !target_channels.is_empty() {
                     let mut channel_list = Vec::new();
                     for channel_name in &target_channels {
-                        let channel_sender = ctx.matrix.channels.get(channel_name).map(|c| c.clone());
-                        if let Some(channel_sender) = channel_sender {
-                            let (tx, rx) = tokio::sync::oneshot::channel();
-                            let _ = channel_sender
-                                .send(crate::state::actor::ChannelEvent::GetInfo {
-                                    requester_uid: Some(ctx.uid.to_string()),
-                                    reply_tx: tx,
-                                })
-                                .await;
-
-                            let channel_info = match rx.await {
-                                Ok(info) => info,
-                                Err(_) => continue,
-                            };
-
-                            // Skip secret channels unless requester is a member
-                            if channel_info
-                                .modes
-                                .contains(&crate::state::actor::ChannelMode::Secret)
-                                && !channel_info.is_member
-                            {
-                                continue;
-                            }
-
-                            let (tx, rx) = tokio::sync::oneshot::channel();
-                            let _ = channel_sender
-                                .send(crate::state::actor::ChannelEvent::GetMemberModes {
-                                    uid: target_uid_owned.clone(),
-                                    reply_tx: tx,
-                                })
-                                .await;
-
-                            let prefix = if let Ok(Some(modes)) = rx.await {
-                                if modes.op {
-                                    "@"
-                                } else if modes.voice {
-                                    "+"
-                                } else {
-                                    ""
-                                }
-                            } else {
-                                ""
-                            };
-                            channel_list.push(format!("{}{}", prefix, channel_name));
+                        let Some(channel_sender) = ctx.matrix.channels.get(channel_name) else {
+                            continue;
+                        };
+                        if let Some(display) = get_channel_display_info(
+                            channel_sender.value(),
+                            ctx.uid,
+                            &target_uid_owned,
+                            channel_name,
+                        )
+                        .await
+                        {
+                            channel_list.push(display);
                         }
                     }
 

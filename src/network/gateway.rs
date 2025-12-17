@@ -11,9 +11,9 @@ use crate::network::Connection;
 use crate::state::Matrix;
 use rustls_pemfile::{certs, pkcs8_private_keys};
 use std::io::{BufReader, Cursor};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
@@ -43,6 +43,161 @@ fn validate_connection(addr: &SocketAddr, matrix: &Matrix, listener_type: &str) 
 
     info!(%addr, "{} connection accepted", listener_type);
     Some(matrix.uid_gen.next())
+}
+
+/// Check DNSBL and return false if connection should be rejected.
+async fn check_dnsbl(matrix: &Matrix, ip: IpAddr, addr: SocketAddr) -> bool {
+    if let Some(ref spam) = matrix.spam_detector
+        && spam.check_ip_dnsbl(ip).await
+    {
+        warn!(%addr, "Connection rejected by DNSBL");
+        return false;
+    }
+    true
+}
+
+/// Handle TLS connection after acceptance.
+async fn handle_tls_connection(
+    uid: String,
+    stream: TcpStream,
+    addr: SocketAddr,
+    acceptor: TlsAcceptor,
+    matrix: Arc<Matrix>,
+    registry: Arc<Registry>,
+    db: Database,
+) {
+    let ip = addr.ip();
+
+    if !check_dnsbl(&matrix, ip, addr).await {
+        matrix.rate_limiter.on_connection_end(ip);
+        return;
+    }
+
+    match acceptor.accept(stream).await {
+        Ok(tls_stream) => {
+            let connection =
+                Connection::new_tls(uid.clone(), tls_stream, addr, matrix.clone(), registry, db);
+            if let Err(e) = connection.run().await {
+                error!(%uid, %addr, error = %e, "TLS connection error");
+            }
+            matrix.rate_limiter.on_connection_end(ip);
+            info!(%uid, %addr, "TLS connection closed");
+        }
+        Err(e) => {
+            warn!(%addr, error = %e, "TLS handshake failed");
+            matrix.rate_limiter.on_connection_end(ip);
+        }
+    }
+}
+
+/// Handle WebSocket connection after acceptance.
+async fn handle_websocket_connection(
+    uid: String,
+    stream: TcpStream,
+    addr: SocketAddr,
+    allowed: Vec<String>,
+    matrix: Arc<Matrix>,
+    registry: Arc<Registry>,
+    db: Database,
+) {
+    let ip = addr.ip();
+
+    if !check_dnsbl(&matrix, ip, addr).await {
+        matrix.rate_limiter.on_connection_end(ip);
+        return;
+    }
+
+    // CORS validation callback for WebSocket handshake
+    let cors_callback = |req: &http::Request<()>, response: http::Response<()>| {
+        validate_websocket_cors(req, response, &allowed, addr)
+    };
+
+    match accept_hdr_async(stream, cors_callback).await {
+        Ok(ws_stream) => {
+            info!(%addr, "WebSocket handshake successful");
+            let connection = Connection::new_websocket(
+                uid.clone(),
+                ws_stream,
+                addr,
+                matrix.clone(),
+                registry,
+                db,
+            );
+            if let Err(e) = connection.run().await {
+                error!(%uid, %addr, error = %e, "WebSocket connection error");
+            }
+            matrix.rate_limiter.on_connection_end(ip);
+            info!(%uid, %addr, "WebSocket connection closed");
+        }
+        Err(e) => {
+            warn!(%addr, error = %e, "WebSocket handshake failed");
+            matrix.rate_limiter.on_connection_end(ip);
+        }
+    }
+}
+
+/// Validate WebSocket CORS origin.
+#[allow(clippy::result_large_err)]
+fn validate_websocket_cors(
+    req: &http::Request<()>,
+    response: http::Response<()>,
+    allowed: &[String],
+    addr: SocketAddr,
+) -> Result<http::Response<()>, http::Response<Option<String>>> {
+    // If allow_origins is empty, DENY by default (secure)
+    if allowed.is_empty() {
+        warn!("WebSocket CORS: No origins configured, rejecting all");
+        let response = http::Response::builder()
+            .status(http::StatusCode::FORBIDDEN)
+            .body(Some("No WebSocket origins configured".to_string()))
+            .unwrap_or_else(|_| http::Response::new(Some("Internal Server Error".to_string())));
+        return Err(response);
+    }
+
+    // Check for wildcard "*" - allows all origins
+    if allowed.iter().any(|a| a == "*") {
+        return Ok(response);
+    }
+
+    // Check Origin header against allowed origins
+    if let Some(origin) = req.headers().get("Origin").and_then(|o| o.to_str().ok()) {
+        if allowed.iter().any(|a| a == origin) {
+            return Ok(response);
+        }
+        warn!(%addr, origin = %origin, "WebSocket CORS rejected");
+    }
+
+    // Reject with 403 Forbidden
+    let response = http::Response::builder()
+        .status(http::StatusCode::FORBIDDEN)
+        .body(Some("CORS origin not allowed".to_string()))
+        .unwrap_or_else(|_| http::Response::new(Some("Internal Server Error".to_string())));
+    Err(response)
+}
+
+/// Handle plaintext connection after acceptance.
+async fn handle_plaintext_connection(
+    uid: String,
+    stream: TcpStream,
+    addr: SocketAddr,
+    matrix: Arc<Matrix>,
+    registry: Arc<Registry>,
+    db: Database,
+) {
+    let ip = addr.ip();
+
+    if !check_dnsbl(&matrix, ip, addr).await {
+        matrix.rate_limiter.on_connection_end(ip);
+        return;
+    }
+
+    let connection =
+        Connection::new_plaintext(uid.clone(), stream, addr, matrix.clone(), registry, db);
+    if let Err(e) = connection.run().await {
+        error!(%uid, %addr, error = %e, "Plaintext connection error");
+    }
+    matrix.rate_limiter.on_connection_end(ip);
+    info!(%uid, %addr, "Plaintext connection closed");
 }
 
 /// The Gateway accepts incoming TCP/TLS connections and spawns handlers.
@@ -160,65 +315,28 @@ impl Gateway {
                 loop {
                     tokio::select! {
                         result = tls_listener.accept() => {
-                            match result {
-                                Ok((stream, addr)) => {
-                                    let Some(uid) = validate_connection(&addr, &matrix_tls, "TLS") else {
-                                        drop(stream);
-                                        continue;
-                                    };
+                            let Ok((stream, addr)) = result.inspect_err(|e| {
+                                error!(error = %e, "Failed to accept TLS connection");
+                            }) else { continue };
 
-                                    if !matrix_tls.rate_limiter.on_connection_start(addr.ip()) {
-                                        warn!(%addr, "Connection rejected: max connections per IP exceeded");
-                                        drop(stream);
-                                        continue;
-                                    }
+                            let Some(uid) = validate_connection(&addr, &matrix_tls, "TLS") else {
+                                continue;
+                            };
 
-                                    let matrix_conn = Arc::clone(&matrix_tls);
-                                    let matrix_rl = Arc::clone(&matrix_tls);
-                                    let registry = Arc::clone(&registry_tls);
-                                    let db = db_tls.clone();
-                                    let acceptor = tls_acceptor.clone();
-                                    let ip = addr.ip();
-
-                                    tokio::spawn(async move {
-                                        // DNSBL Check - extracted to avoid nested if
-                                        if let Some(ref spam) = matrix_conn.spam_detector {
-                                            let blocked = spam.check_ip_dnsbl(ip).await;
-                                            if blocked {
-                                                warn!(%addr, "Connection rejected by DNSBL");
-                                                matrix_rl.rate_limiter.on_connection_end(ip);
-                                                return;
-                                            }
-                                        }
-
-                                        // Perform TLS handshake
-                                        match acceptor.accept(stream).await {
-                                            Ok(tls_stream) => {
-                                                let connection = Connection::new_tls(
-                                                    uid.clone(),
-                                                    tls_stream,
-                                                    addr,
-                                                    matrix_conn,
-                                                    registry,
-                                                    db,
-                                                );
-                                                if let Err(e) = connection.run().await {
-                                                    error!(%uid, %addr, error = %e, "TLS connection error");
-                                                }
-                                                matrix_rl.rate_limiter.on_connection_end(ip);
-                                                info!(%uid, %addr, "TLS connection closed");
-                                            }
-                                            Err(e) => {
-                                                warn!(%addr, error = %e, "TLS handshake failed");
-                                                matrix_rl.rate_limiter.on_connection_end(ip);
-                                            }
-                                        }
-                                    });
-                                }
-                                Err(e) => {
-                                    error!(error = %e, "Failed to accept TLS connection");
-                                }
+                            if !matrix_tls.rate_limiter.on_connection_start(addr.ip()) {
+                                warn!(%addr, "Connection rejected: max connections per IP exceeded");
+                                continue;
                             }
+
+                            tokio::spawn(handle_tls_connection(
+                                uid,
+                                stream,
+                                addr,
+                                tls_acceptor.clone(),
+                                Arc::clone(&matrix_tls),
+                                Arc::clone(&registry_tls),
+                                db_tls.clone(),
+                            ));
                         }
                         _ = shutdown_rx_tls.recv() => {
                             info!("Shutdown signal received - stopping TLS listener");
@@ -241,106 +359,28 @@ impl Gateway {
                 loop {
                     tokio::select! {
                         result = ws_listener.accept() => {
-                            match result {
-                                Ok((stream, addr)) => {
-                                    let Some(uid) = validate_connection(&addr, &matrix_ws, "WebSocket") else {
-                                        drop(stream);
-                                        continue;
-                                    };
+                            let Ok((stream, addr)) = result.inspect_err(|e| {
+                                error!(error = %e, "Failed to accept WebSocket connection");
+                            }) else { continue };
 
-                                    if !matrix_ws.rate_limiter.on_connection_start(addr.ip()) {
-                                        warn!(%addr, "Connection rejected: max connections per IP exceeded");
-                                        drop(stream);
-                                        continue;
-                                    }
+                            let Some(uid) = validate_connection(&addr, &matrix_ws, "WebSocket") else {
+                                continue;
+                            };
 
-                                    let matrix_conn = Arc::clone(&matrix_ws);
-                                    let matrix_rl = Arc::clone(&matrix_ws);
-                                    let registry = Arc::clone(&registry_ws);
-                                    let db = db_ws.clone();
-                                    let allowed = allow_origins.clone();
-                                    let ip = addr.ip();
-
-                                    tokio::spawn(async move {
-                                        // DNSBL Check - extracted to avoid nested if
-                                        if let Some(ref spam) = matrix_conn.spam_detector {
-                                            let blocked = spam.check_ip_dnsbl(ip).await;
-                                            if blocked {
-                                                warn!(%addr, "Connection rejected by DNSBL");
-                                                matrix_rl.rate_limiter.on_connection_end(ip);
-                                                return;
-                                            }
-                                        }
-
-                                        // CORS validation callback for WebSocket handshake
-                                        let cors_callback = |req: &http::Request<()>, response: http::Response<()>| {
-                                            // If allow_origins is empty, DENY by default (secure)
-                                            // Explicit "*" in config is required to allow all origins
-                                            if allowed.is_empty() {
-                                                warn!("WebSocket CORS: No origins configured, rejecting all");
-                                                let response = http::Response::builder()
-                                                    .status(http::StatusCode::FORBIDDEN)
-                                                    .body(Some("No WebSocket origins configured".to_string()))
-                                                    .unwrap_or_else(|_| {
-                                                        http::Response::new(Some("Internal Server Error".to_string()))
-                                                    });
-                                                return Err(response);
-                                            }
-
-                                            // Check for wildcard "*" - allows all origins
-                                            if allowed.iter().any(|a| a == "*") {
-                                                return Ok(response);
-                                            }
-
-                                            // Check Origin header against allowed origins
-                                            if let Some(origin) = req.headers().get("Origin")
-                                                .and_then(|o| o.to_str().ok())
-                                            {
-                                                if allowed.iter().any(|a| a == origin) {
-                                                    return Ok(response);
-                                                }
-                                                warn!(%addr, origin = %origin, "WebSocket CORS rejected");
-                                            }
-
-                                            // Reject with 403 Forbidden
-                                            let response = http::Response::builder()
-                                                .status(http::StatusCode::FORBIDDEN)
-                                                .body(Some("CORS origin not allowed".to_string()))
-                                                .unwrap_or_else(|_| {
-                                                    http::Response::new(Some("Internal Server Error".to_string()))
-                                                });
-                                            Err(response)
-                                        };
-
-                                        // Perform WebSocket handshake with CORS validation
-                                        match accept_hdr_async(stream, cors_callback).await {
-                                            Ok(ws_stream) => {
-                                                info!(%addr, "WebSocket handshake successful");
-                                                let connection = Connection::new_websocket(
-                                                    uid.clone(),
-                                                    ws_stream,
-                                                    addr,
-                                                    matrix_conn,
-                                                    registry,
-                                                    db,
-                                                );
-                                                if let Err(e) = connection.run().await {
-                                                    error!(%uid, %addr, error = %e, "WebSocket connection error");
-                                                }
-                                                matrix_rl.rate_limiter.on_connection_end(ip);
-                                                info!(%uid, %addr, "WebSocket connection closed");
-                                            }
-                                            Err(e) => {
-                                                warn!(%addr, error = %e, "WebSocket handshake failed");
-                                                matrix_rl.rate_limiter.on_connection_end(ip);
-                                            }
-                                        }
-                                    });
-                                }
-                                Err(e) => {
-                                    error!(error = %e, "Failed to accept WebSocket connection");
-                                }
+                            if !matrix_ws.rate_limiter.on_connection_start(addr.ip()) {
+                                warn!(%addr, "Connection rejected: max connections per IP exceeded");
+                                continue;
                             }
+
+                            tokio::spawn(handle_websocket_connection(
+                                uid,
+                                stream,
+                                addr,
+                                allow_origins.clone(),
+                                Arc::clone(&matrix_ws),
+                                Arc::clone(&registry_ws),
+                                db_ws.clone(),
+                            ));
                         }
                         _ = shutdown_rx_ws.recv() => {
                             info!("Shutdown signal received - stopping WebSocket listener");
@@ -356,55 +396,30 @@ impl Gateway {
             tokio::select! {
                 // Handle incoming connections
                 result = self.plaintext_listener.accept() => {
-                    match result {
-                        Ok((stream, addr)) => {
-                            let Some(uid) = validate_connection(&addr, &matrix, "Plaintext") else {
-                                drop(stream);
-                                continue;
-                            };
-
-                            if !matrix.rate_limiter.on_connection_start(addr.ip()) {
-                                warn!(%addr, "Connection rejected: max connections per IP exceeded");
-                                drop(stream);
-                                continue;
-                            }
-
-                            let matrix_conn = Arc::clone(&matrix);
-                            let matrix_rl = Arc::clone(&matrix);
-                            let registry = Arc::clone(&registry);
-                            let db = self.db.clone();
-                            let ip = addr.ip();
-
-                            tokio::spawn(async move {
-                                // DNSBL Check - extracted to avoid nested if
-                                if let Some(ref spam) = matrix_conn.spam_detector {
-                                    let blocked = spam.check_ip_dnsbl(ip).await;
-                                    if blocked {
-                                        warn!(%addr, "Connection rejected by DNSBL");
-                                        matrix_rl.rate_limiter.on_connection_end(ip);
-                                        return;
-                                    }
-                                }
-
-                                let connection = Connection::new_plaintext(
-                                    uid.clone(),
-                                    stream,
-                                    addr,
-                                    matrix_conn,
-                                    registry,
-                                    db,
-                                );
-                                if let Err(e) = connection.run().await {
-                                    error!(%uid, %addr, error = %e, "Plaintext connection error");
-                                }
-                                matrix_rl.rate_limiter.on_connection_end(ip);
-                                info!(%uid, %addr, "Plaintext connection closed");
-                            });
-                        }
-                        Err(e) => {
+                    let Ok((stream, addr)) = result else {
+                        if let Err(e) = result {
                             error!(error = %e, "Failed to accept plaintext connection");
                         }
+                        continue;
+                    };
+
+                    let Some(uid) = validate_connection(&addr, &matrix, "Plaintext") else {
+                        continue;
+                    };
+
+                    if !matrix.rate_limiter.on_connection_start(addr.ip()) {
+                        warn!(%addr, "Connection rejected: max connections per IP exceeded");
+                        continue;
                     }
+
+                    tokio::spawn(handle_plaintext_connection(
+                        uid,
+                        stream,
+                        addr,
+                        Arc::clone(&matrix),
+                        Arc::clone(&registry),
+                        self.db.clone(),
+                    ));
                 }
                 // Handle shutdown signal
                 _ = shutdown_rx.recv() => {

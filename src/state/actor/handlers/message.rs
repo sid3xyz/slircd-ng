@@ -8,8 +8,56 @@ use crate::security::UserContext;
 use slirc_proto::message::Tag;
 use slirc_proto::{Command, Message};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
+
+/// Build tags for echo-message response based on sender capabilities.
+fn build_echo_tags(
+    tags: &Option<Vec<Tag>>,
+    timestamp: &str,
+    msgid: &str,
+    has_message_tags: bool,
+    has_server_time: bool,
+) -> Option<Vec<Tag>> {
+    let mut echo_tags: Vec<Tag> = Vec::new();
+
+    // Add server-time if sender has the capability
+    if has_server_time {
+        echo_tags.push(Tag(Cow::Owned("time".to_string()), Some(timestamp.to_string())));
+    }
+
+    // If sender has message-tags, include client-only tags and msgid
+    if has_message_tags {
+        // Preserve client-only tags from original message
+        if let Some(orig_tags) = tags {
+            for tag in orig_tags {
+                if tag.0.starts_with('+') {
+                    echo_tags.push(tag.clone());
+                }
+            }
+        }
+        // Add msgid
+        echo_tags.push(Tag(Cow::Owned("msgid".to_string()), Some(msgid.to_string())));
+    }
+
+    // Always preserve the label tag if present (for labeled-response)
+    if let Some(orig_tags) = tags {
+        for tag in orig_tags {
+            if tag.0.as_ref() == "label" {
+                echo_tags.push(tag.clone());
+                break;
+            }
+        }
+    }
+
+    if echo_tags.is_empty() { None } else { Some(echo_tags) }
+}
+
+/// Check if user has required caps.
+fn has_caps(caps: Option<&HashSet<String>>, required: &str) -> bool {
+    caps.map(|c| c.contains(required)).unwrap_or(false)
+}
 
 impl ChannelActor {
     #[allow(clippy::too_many_arguments)]
@@ -144,72 +192,30 @@ impl ChannelActor {
 
         // Check if sender has echo-message capability for self-echo
         let sender_caps = self.user_caps.get(&sender_uid);
-        let sender_has_echo = sender_caps
-            .map(|caps| caps.contains("echo-message"))
-            .unwrap_or(false);
+        let sender_has_echo = has_caps(sender_caps, "echo-message");
 
         for (uid, sender) in &self.senders {
             let user_caps = self.user_caps.get(uid);
 
             if uid == &sender_uid {
                 // Echo back to sender if they have echo-message capability
-                if sender_has_echo {
-                    // Check sender's caps for tag handling
-                    let sender_has_message_tags = user_caps
-                        .map(|caps| caps.contains("message-tags"))
-                        .unwrap_or(false);
-                    let sender_has_server_time = user_caps
-                        .map(|caps| caps.contains("server-time"))
-                        .unwrap_or(false);
-
-                    // Start with fresh tags based on sender's capabilities
-                    let mut echo_tags: Vec<Tag> = Vec::new();
-
-                    // Add server-time if sender has the capability
-                    if sender_has_server_time {
-                        echo_tags.push(Tag(Cow::Borrowed("time"), Some(timestamp.clone())));
-                    }
-
-                    // If sender has message-tags, include client-only tags and msgid
-                    if sender_has_message_tags {
-                        // Preserve client-only tags from original message
-                        if let Some(ref orig_tags) = tags {
-                            for tag in orig_tags {
-                                if tag.0.starts_with('+') {
-                                    echo_tags.push(tag.clone());
-                                }
-                            }
-                        }
-                        // Add msgid
-                        echo_tags.push(Tag(Cow::Borrowed("msgid"), Some(msgid.clone())));
-                    }
-
-                    // Always preserve the label tag if present (for labeled-response)
-                    if let Some(ref orig_tags) = tags {
-                        for tag in orig_tags {
-                            if tag.0.as_ref() == "label" {
-                                echo_tags.push(tag.clone());
-                                break;
-                            }
-                        }
-                    }
-
-                    // Build echo message with computed tags
-                    let mut echo_msg = base_msg.clone();
-                    echo_msg.tags = if echo_tags.is_empty() {
-                        None
-                    } else {
-                        Some(echo_tags)
-                    };
-
-                    if let Err(err) = sender.try_send(echo_msg) {
-                        match err {
-                            TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
-                            TrySendError::Closed(_) => {}
-                        }
-                    }
-                    recipients_sent += 1;
+                if !sender_has_echo {
+                    continue;
                 }
+
+                let has_message_tags = has_caps(user_caps, "message-tags");
+                let has_server_time = has_caps(user_caps, "server-time");
+
+                let mut echo_msg = base_msg.clone();
+                echo_msg.tags = build_echo_tags(&tags, &timestamp, &msgid, has_message_tags, has_server_time);
+
+                if let Err(err) = sender.try_send(echo_msg) {
+                    match err {
+                        TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
+                        TrySendError::Closed(_) => {}
+                    }
+                }
+                recipients_sent += 1;
                 continue;
             }
 
