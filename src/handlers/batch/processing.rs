@@ -63,7 +63,7 @@ pub fn process_batch_message<S: SessionState>(
 
     // Set command type if not already set
     if batch.command_type.is_none() {
-        batch.command_type = Some(cmd_name.clone());
+        batch.command_type = Some(cmd_name);
     }
 
     // Verify target matches

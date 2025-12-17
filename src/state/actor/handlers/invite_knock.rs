@@ -32,8 +32,8 @@ impl ChannelActor {
         // Broadcast invite-notify
         let invite_msg = Message {
             tags: None,
-            prefix: Some(sender_prefix.clone()),
-            command: Command::INVITE(target_nick.clone(), self.name.clone()),
+            prefix: Some(sender_prefix),
+            command: Command::INVITE(target_nick, self.name.clone()),
         };
 
         for (uid, _) in &self.members {
@@ -78,7 +78,7 @@ impl ChannelActor {
         };
 
         if self.members.contains_key(&sender_uid) {
-            let _ = reply_tx.send(Err(ChannelError::UserOnChannel(nick.clone())));
+            let _ = reply_tx.send(Err(ChannelError::UserOnChannel(nick)));
             return;
         }
 

@@ -121,12 +121,10 @@ impl ChannelActor {
                 user_context.username.clone(),
                 user_context.hostname.clone(),
             )),
-            command: if is_tagmsg {
-                Command::TAGMSG(target.clone())
-            } else if is_notice {
-                Command::NOTICE(target.clone(), text.clone())
-            } else {
-                Command::PRIVMSG(target.clone(), text.clone())
+            command: match (is_tagmsg, is_notice) {
+                (true, _) => Command::TAGMSG(target),
+                (false, true) => Command::NOTICE(target, text),
+                (false, false) => Command::PRIVMSG(target, text),
             },
         };
 

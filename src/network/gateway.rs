@@ -225,7 +225,7 @@ impl Gateway {
             let matrix_ws = Arc::clone(&matrix);
             let registry_ws = Arc::clone(&registry);
             let db_ws = db.clone();
-            let allow_origins = ws_config.allow_origins.clone();
+            let allow_origins = ws_config.allow_origins;
             let mut shutdown_rx_ws = matrix.shutdown_tx.subscribe();
 
             tokio::spawn(async move {
