@@ -111,6 +111,8 @@ pub trait ServiceBase {
     /// Handle database errors with consistent user-friendly messages.
     ///
     /// Logs the error and returns appropriate error reply to user.
+    /// Note: Entity names in responses are safe because users already know
+    /// what they requested. Internal errors (Sqlx, etc.) are sanitized.
     #[allow(dead_code)]
     fn handle_db_error(&self, uid: &str, error: DbError, operation: &str) -> ServiceResult {
         match error {
@@ -133,6 +135,11 @@ pub trait ServiceBase {
                 self.error_reply(uid, &format!("Channel \x02{}\x02 not found.", name))
             }
             DbError::InvalidPassword => self.error_reply(uid, "Invalid password."),
+            DbError::ConnectionTimeout => {
+                warn!(service = %self.service_name(), operation = %operation, "Database connection timeout");
+                self.error_reply(uid, "Service temporarily unavailable. Please try again later.")
+            }
+            // All other errors (Sqlx, Migration, etc.) - log internally but don't expose details
             _ => {
                 warn!(
                     service = %self.service_name(),
@@ -141,9 +148,10 @@ pub trait ServiceBase {
                     "{} operation failed",
                     self.service_name()
                 );
+                // Generic message - never expose internal DB errors to users
                 self.error_reply(
                     uid,
-                    &format!("{} failed. Please try again later.", operation),
+                    "An internal error occurred. Please try again later.",
                 )
             }
         }

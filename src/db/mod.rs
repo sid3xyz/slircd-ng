@@ -17,6 +17,7 @@ pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::Path;
+use std::time::Duration;
 use thiserror::Error;
 use tracing::info;
 
@@ -27,6 +28,9 @@ pub enum DbError {
     Sqlx(#[from] sqlx::Error),
     #[error("migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
+    #[error("database connection timeout")]
+    #[allow(dead_code)] // Used for circuit breaker pattern - may be triggered by pool timeouts
+    ConnectionTimeout,
     #[error("account not found: {0}")]
     AccountNotFound(String),
     #[error("nickname not found: {0}")]
@@ -58,6 +62,12 @@ pub struct Database {
 }
 
 impl Database {
+    /// Connection acquire timeout - prevents connection storms from blocking indefinitely.
+    const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// Maximum time a connection can remain idle before being closed.
+    const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
     /// Create a new database connection, running migrations if needed.
     pub async fn new(path: &str) -> Result<Self, DbError> {
         let pool = if path == ":memory:" {
@@ -70,6 +80,9 @@ impl Database {
 
             SqlitePoolOptions::new()
                 .max_connections(5)
+                .acquire_timeout(Self::ACQUIRE_TIMEOUT)
+                .idle_timeout(Some(Self::IDLE_TIMEOUT))
+                .test_before_acquire(true)
                 .connect_with(options)
                 .await?
         } else {
@@ -88,6 +101,9 @@ impl Database {
 
             SqlitePoolOptions::new()
                 .max_connections(5)
+                .acquire_timeout(Self::ACQUIRE_TIMEOUT)
+                .idle_timeout(Some(Self::IDLE_TIMEOUT))
+                .test_before_acquire(true)
                 .connect_with(options)
                 .await?
         };
@@ -187,6 +203,18 @@ impl Database {
             info!("Database migrations applied (004_certfp)");
         }
 
+        // 005_channel_topics.sql: adds topic columns to channels table.
+        if table_exists(pool, "channels").await && !column_exists(pool, "channels", "topic_text").await {
+            Self::run_migration_file(pool, include_str!("../../migrations/005_channel_topics.sql")).await;
+            info!("Database migrations applied (005_channel_topics)");
+        }
+
+        // 006_reputation.sql: reputation tracking table.
+        if !table_exists(pool, "reputation").await {
+            Self::run_migration_file(pool, include_str!("../../migrations/006_reputation.sql")).await;
+            info!("Database migrations applied (006_reputation)");
+        }
+
         // Best-effort informational log.
         if core_ok
             && table_exists(pool, "shuns").await
@@ -195,6 +223,8 @@ impl Database {
             && table_exists(pool, "rlines").await
             && table_exists(pool, "message_history").await
             && column_exists(pool, "accounts", "certfp").await
+            && column_exists(pool, "channels", "topic_text").await
+            && table_exists(pool, "reputation").await
         {
             info!("Database already initialized");
         }

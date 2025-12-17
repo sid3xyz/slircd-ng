@@ -105,11 +105,18 @@ impl ChannelActor {
 
                 ProtoChannelMode::Limit => {
                     if adding {
+                        // Parse and validate limit: must be positive and reasonable
                         if let Some(limit) = arg.and_then(|a| a.parse::<usize>().ok()) {
-                            self.replace_param_mode(
-                                |mode| matches!(mode, ChannelMode::Limit(_)),
-                                Some(ChannelMode::Limit(limit)),
-                            )
+                            // Reject unreasonable limits (0 or absurdly high values)
+                            // Maximum of 10000 members per channel is generous
+                            if limit == 0 || limit > 10000 {
+                                false
+                            } else {
+                                self.replace_param_mode(
+                                    |mode| matches!(mode, ChannelMode::Limit(_)),
+                                    Some(ChannelMode::Limit(limit)),
+                                )
+                            }
                         } else {
                             false
                         }
