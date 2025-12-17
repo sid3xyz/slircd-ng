@@ -27,8 +27,7 @@ impl PostRegHandler for DieHandler {
             None => {
                 let reply = Response::err_noprivileges(&nick)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("DIE", "ERR_NOPRIVILEGES");
+                ctx.send_error("DIE", "ERR_NOPRIVILEGES", reply).await?;
                 return Ok(());
             }
         };
@@ -75,8 +74,7 @@ impl PostRegHandler for RehashHandler {
             None => {
                 let reply = Response::err_noprivileges(&nick)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("REHASH", "ERR_NOPRIVILEGES");
+                ctx.send_error("REHASH", "ERR_NOPRIVILEGES", reply).await?;
                 return Ok(());
             }
         };
@@ -155,8 +153,7 @@ impl PostRegHandler for RestartHandler {
             None => {
                 let reply = Response::err_noprivileges(&nick)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("RESTART", "ERR_NOPRIVILEGES");
+                ctx.send_error("RESTART", "ERR_NOPRIVILEGES", reply).await?;
                 return Ok(());
             }
         };

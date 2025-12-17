@@ -99,8 +99,7 @@ impl PostRegHandler for UnshunHandler {
         let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
             let reply = Response::err_noprivileges(nick)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("UNSHUN", "ERR_NOPRIVILEGES");
+            ctx.send_error("UNSHUN", "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         };
 
@@ -110,8 +109,7 @@ impl PostRegHandler for UnshunHandler {
             _ => {
                 let reply = Response::err_needmoreparams(nick, "UNSHUN")
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("UNSHUN", "ERR_NEEDMOREPARAMS");
+                ctx.send_error("UNSHUN", "ERR_NEEDMOREPARAMS", reply).await?;
                 return Ok(());
             }
         };

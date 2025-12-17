@@ -218,8 +218,7 @@ async fn deliver_multiline_to_channel(
         // Channel doesn't exist - send error
         let reply = Response::err_nosuchchannel(&ctx.state.nick, &batch.target)
             .with_prefix(ctx.server_prefix());
-        ctx.sender.send(reply).await?;
-        crate::metrics::record_command_error("BATCH", "ERR_NOSUCHCHANNEL");
+        ctx.send_error("BATCH", "ERR_NOSUCHCHANNEL", reply).await?;
         return Ok(());
     };
 
@@ -368,8 +367,7 @@ async fn deliver_multiline_to_user(
         // User not found
         let reply = Response::err_nosuchnick(&ctx.state.nick, target_nick)
             .with_prefix(ctx.server_prefix());
-        ctx.sender.send(reply).await?;
-        crate::metrics::record_command_error("BATCH", "ERR_NOSUCHNICK");
+        ctx.send_error("BATCH", "ERR_NOSUCHNICK", reply).await?;
         return Ok(());
     };
 

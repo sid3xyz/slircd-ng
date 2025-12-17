@@ -30,8 +30,7 @@ pub async fn handle_channel_mode(
         None => {
             let reply = Response::err_nosuchchannel(nick, channel_name)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("MODE", "ERR_NOSUCHCHANNEL");
+            ctx.send_error("MODE", "ERR_NOSUCHCHANNEL", reply).await?;
             return Ok(());
         }
     };
@@ -160,8 +159,7 @@ pub async fn handle_channel_mode(
                                 // ERR_NOSUCHNICK (401)
                                 let reply = Response::err_nosuchnick(nick, target_nick)
                                     .with_prefix(ctx.server_prefix());
-                                ctx.sender.send(reply).await?;
-                                crate::metrics::record_command_error("MODE", "ERR_NOSUCHNICK");
+                                ctx.send_error("MODE", "ERR_NOSUCHNICK", reply).await?;
                             }
                         }
                     } else {

@@ -61,8 +61,7 @@ impl PostRegHandler for InviteHandler {
             None => {
                 let reply = Response::err_nosuchnick(nick, target_nick)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("INVITE", "ERR_NOSUCHNICK");
+                ctx.send_error("INVITE", "ERR_NOSUCHNICK", reply).await?;
                 return Ok(());
             }
         };
@@ -82,8 +81,7 @@ impl PostRegHandler for InviteHandler {
             if !user_in_channel {
                 let reply = Response::err_notonchannel(nick, channel_name)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("INVITE", "ERR_NOTONCHANNEL");
+                ctx.send_error("INVITE", "ERR_NOTONCHANNEL", reply).await?;
                 return Ok(());
             }
 

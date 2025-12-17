@@ -78,8 +78,7 @@ pub(super) async fn leave_channel_internal<S>(
         None => {
             let reply = Response::err_nosuchchannel(nick, channel_lower)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("PART", "ERR_NOSUCHCHANNEL");
+            ctx.send_error("PART", "ERR_NOSUCHCHANNEL", reply).await?;
             return Ok(());
         }
     };

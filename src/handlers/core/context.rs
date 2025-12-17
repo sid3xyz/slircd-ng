@@ -115,6 +115,27 @@ impl<'a, S> Context<'a, S> {
         self.sender.send(reply).await?;
         Ok(())
     }
+
+    /// Send an error response and record the error metric in one call.
+    ///
+    /// Combines `ctx.sender.send(err)` + `metrics::record_command_error()`.
+    /// Use this for all error responses to ensure metrics are always recorded.
+    ///
+    /// # Example
+    /// ```ignore
+    /// ctx.send_error("PRIVMSG", Response::err_nosuchnick(nick, target)).await?;
+    /// ```
+    #[inline]
+    pub async fn send_error(
+        &self,
+        command: &str,
+        error_name: &str,
+        message: slirc_proto::Message,
+    ) -> Result<(), HandlerError> {
+        self.sender.send(message).await?;
+        crate::metrics::record_command_error(command, error_name);
+        Ok(())
+    }
 }
 
 // ============================================================================

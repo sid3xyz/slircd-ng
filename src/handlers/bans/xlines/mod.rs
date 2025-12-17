@@ -100,8 +100,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
         if !self.config.check_capability(&authority, ctx.uid).await {
             let reply = Response::err_noprivileges(nick)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error(cmd_name, "ERR_NOPRIVILEGES");
+            ctx.send_error(cmd_name, "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         }
 
@@ -112,8 +111,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
             _ => {
                 let reply = Response::err_needmoreparams(nick, cmd_name)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error(cmd_name, "ERR_NEEDMOREPARAMS");
+                ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply).await?;
                 return Ok(());
             }
         };
@@ -184,8 +182,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
         if !self.config.check_capability(&authority, ctx.uid).await {
             let reply = Response::err_noprivileges(nick)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error(cmd_name, "ERR_NOPRIVILEGES");
+            ctx.send_error(cmd_name, "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         }
 
@@ -195,8 +192,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
             _ => {
                 let reply = Response::err_needmoreparams(nick, cmd_name)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error(cmd_name, "ERR_NEEDMOREPARAMS");
+                ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply).await?;
                 return Ok(());
             }
         };

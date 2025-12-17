@@ -481,8 +481,7 @@ impl PostRegHandler for ChatHistoryHandler {
             None => {
                 let reply = Response::err_needmoreparams(&nick, "CHATHISTORY")
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("CHATHISTORY", "ERR_NEEDMOREPARAMS");
+                ctx.send_error("CHATHISTORY", "ERR_NEEDMOREPARAMS", reply).await?;
                 return Ok(());
             }
         };
@@ -513,8 +512,7 @@ impl PostRegHandler for ChatHistoryHandler {
                 None => {
                     let reply = Response::err_needmoreparams(&nick, "CHATHISTORY")
                         .with_prefix(ctx.server_prefix());
-                    ctx.sender.send(reply).await?;
-                    crate::metrics::record_command_error("CHATHISTORY", "ERR_NEEDMOREPARAMS");
+                    ctx.send_error("CHATHISTORY", "ERR_NEEDMOREPARAMS", reply).await?;
                     return Ok(());
                 }
             }

@@ -440,8 +440,7 @@ pub async fn send_cannot_send<S>(
 pub async fn send_no_such_channel<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
     let reply = Response::err_nosuchchannel(nick, target)
         .with_prefix(ctx.server_prefix());
-    ctx.sender.send(reply).await?;
-    crate::metrics::record_command_error("PRIVMSG", "ERR_NOSUCHCHANNEL");
+    ctx.send_error("PRIVMSG", "ERR_NOSUCHCHANNEL", reply).await?;
     Ok(())
 }
 
@@ -449,7 +448,6 @@ pub async fn send_no_such_channel<S>(ctx: &Context<'_, S>, nick: &str, target: &
 pub async fn send_no_such_nick<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
     let reply = Response::err_nosuchnick(nick, target)
         .with_prefix(ctx.server_prefix());
-    ctx.sender.send(reply).await?;
-    crate::metrics::record_command_error("PRIVMSG", "ERR_NOSUCHNICK");
+    ctx.send_error("PRIVMSG", "ERR_NOSUCHNICK", reply).await?;
     Ok(())
 }

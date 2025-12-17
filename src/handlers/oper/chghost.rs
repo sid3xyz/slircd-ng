@@ -35,8 +35,7 @@ impl PostRegHandler for ChghostHandler {
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             let reply = Response::err_nosuchnick(oper_nick, target_nick)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("CHGHOST", "ERR_NOSUCHNICK");
+            ctx.send_error("CHGHOST", "ERR_NOSUCHNICK", reply).await?;
             return Ok(());
         };
 
@@ -44,8 +43,7 @@ impl PostRegHandler for ChghostHandler {
             let Some(user_ref) = ctx.matrix.users.get(&target_uid) else {
                 let reply = Response::err_nosuchnick(oper_nick, target_nick)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("CHGHOST", "ERR_NOSUCHNICK");
+                ctx.send_error("CHGHOST", "ERR_NOSUCHNICK", reply).await?;
                 return Ok(());
             };
 

@@ -142,8 +142,7 @@ impl PostRegHandler for UseripHandler {
         if !is_oper {
             let reply = Response::err_noprivileges(nick)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("USERIP", "ERR_NOPRIVILEGES");
+            ctx.send_error("USERIP", "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         }
 
@@ -151,8 +150,7 @@ impl PostRegHandler for UseripHandler {
         if msg.arg(0).is_none() {
             let reply = Response::err_needmoreparams(nick, "USERIP")
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("USERIP", "ERR_NEEDMOREPARAMS");
+            ctx.send_error("USERIP", "ERR_NEEDMOREPARAMS", reply).await?;
             return Ok(());
         }
 

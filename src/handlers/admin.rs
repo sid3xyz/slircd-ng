@@ -49,8 +49,7 @@ impl PostRegHandler for SajoinHandler {
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             let reply = Response::err_nosuchnick(oper_nick, target_nick)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SAJOIN", "ERR_NOSUCHNICK");
+            ctx.send_error("SAJOIN", "ERR_NOSUCHNICK", reply).await?;
             return Ok(());
         };
 
@@ -58,8 +57,7 @@ impl PostRegHandler for SajoinHandler {
         if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
             let reply = Response::err_nosuchchannel(oper_nick, channel_name)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SAJOIN", "ERR_NOSUCHCHANNEL");
+            ctx.send_error("SAJOIN", "ERR_NOSUCHCHANNEL", reply).await?;
             return Ok(());
         }
 
@@ -134,8 +132,7 @@ impl PostRegHandler for SapartHandler {
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             let reply = Response::err_nosuchnick(oper_nick, target_nick)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SAPART", "ERR_NOSUCHNICK");
+            ctx.send_error("SAPART", "ERR_NOSUCHNICK", reply).await?;
             return Ok(());
         };
 
@@ -160,8 +157,7 @@ impl PostRegHandler for SapartHandler {
         if !was_in_channel {
             let reply = Response::err_nosuchchannel(oper_nick, channel_name)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SAPART", "ERR_NOSUCHCHANNEL");
+            ctx.send_error("SAPART", "ERR_NOSUCHCHANNEL", reply).await?;
             return Ok(());
         }
 
@@ -211,8 +207,7 @@ impl PostRegHandler for SanickHandler {
         let Some(target_uid) = resolve_nick_to_uid(ctx, old_nick) else {
             let reply = Response::err_nosuchnick(oper_nick, old_nick)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("SANICK", "ERR_NOSUCHNICK");
+            ctx.send_error("SANICK", "ERR_NOSUCHNICK", reply).await?;
             return Ok(());
         };
 
@@ -335,8 +330,7 @@ impl PostRegHandler for SamodeHandler {
             None => {
                 let reply = Response::err_nosuchchannel(oper_nick, channel_name)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("SAMODE", "ERR_NOSUCHCHANNEL");
+                ctx.send_error("SAMODE", "ERR_NOSUCHCHANNEL", reply).await?;
                 return Ok(());
             }
         };

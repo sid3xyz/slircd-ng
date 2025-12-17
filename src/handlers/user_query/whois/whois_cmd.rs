@@ -288,8 +288,7 @@ async fn send_no_such_nick(ctx: &mut Context<'_, crate::state::RegisteredState>,
 
     let reply = Response::err_nosuchnick(nick, target)
         .with_prefix(ctx.server_prefix());
-    ctx.sender.send(reply).await?;
-    crate::metrics::record_command_error("WHOIS", "ERR_NOSUCHNICK");
+    ctx.send_error("WHOIS", "ERR_NOSUCHNICK", reply).await?;
 
     // Also send end of whois - attach label for labeled-response
     let reply = with_label(

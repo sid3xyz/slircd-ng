@@ -1,7 +1,7 @@
 # DRY Refactor Execution Plan
 
 > Generated: 2025-12-16
-> Status: ✅ PHASES 1 & 2 COMPLETE
+> Status: ✅ ALL PHASES COMPLETE
 
 ## Overview
 
@@ -60,19 +60,31 @@ Organized into 3 phases by dependency order.
 
 ---
 
-## Phase 3: Trait Unification (P2) - DEFERRED
+## Phase 3: Error Helper Method (P2) ✅ COMPLETE
 
-**Estimated Impact: ~130 LOC reduction**
+**Actual Impact: ~28 sites migrated, ~56 LOC reduction**
 
-### 3.1 Implement `IrcErrorReply` trait
-- [ ] **File**: `src/handlers/core/context.rs` or new `src/handlers/error_reply.rs`
-- [ ] **Action**: Trait combining `ctx.sender.send(err)` + `metrics::record_command_error`
-- [ ] **Impact**: Consolidates 80 error+metrics patterns
+### 3.1 Add `send_error()` to Context ✅
+- [x] **File**: `src/handlers/core/context.rs`
+- [x] **Action**: Method combining `ctx.sender.send(err)` + `metrics::record_command_error`
+- [x] **Signature**: `pub async fn send_error(&self, command: &str, error_name: &str, message: Message)`
 
-### 3.2 Refactor high-frequency error patterns
-- [ ] **Files**: Multiple handlers
-- [ ] **Action**: Migrate `ERR_NOSUCHNICK` (17), `ERR_NOPRIVILEGES` (20), etc.
-- [ ] **Method**: Use new trait methods
+### 3.2 Migrate handler error patterns ✅
+- [x] **Files migrated** (28 call sites):
+  - `admin.rs`: SAJOIN, SAPART, SANICK, SAMODE (6 sites)
+  - `part.rs`, `kill.rs`, `knock.rs`, `vhost.rs`, `trace.rs`, `chghost.rs`, `chgident.rs` (7 sites)
+  - `oper/admin.rs`: DIE, REHASH, RESTART (3 sites)
+  - `server_query/info.rs`: USERIP (2 sites)
+  - `channel/invite.rs`, `channel/kick.rs`, `channel/topic.rs` (5 sites)
+  - `messaging/common.rs`, `bans/shun.rs`, `batch/mod.rs`, `chathistory.rs` (8 sites)
+  - `mode/channel/mod.rs`, `user_query/whois/whois_cmd.rs`, `bans/xlines/mod.rs` (7 sites)
+
+### 3.3 Remaining patterns (intentionally not migrated)
+- `registry.rs` (4): Dispatch-level errors with different semantics
+- `helpers.rs` (2): Macro infrastructure, already DRY
+- `context.rs` (2): The helper implementation itself
+- `ping.rs` (1): Uses `with_label()` wrapper for labeled-response
+- `kick.rs` (1): Conditional send pattern (only sends if error is Some)
 
 ---
 
@@ -83,6 +95,7 @@ Organized into 3 phases by dependency order.
 3. `f9c1c62` - DRY Phase 2: Add send_noprivileges! macro
 4. `11cd342` - Update DRY_REFACTOR_PLAN.md with completed items
 5. `5f31786` - DRY Phase 2: Add require_admin_cap!/require_oper_cap!, migrate 12 handlers (-236 lines)
+6. *(pending)* - DRY Phase 3: Add ctx.send_error(), migrate 28 error sites
 
 ---
 

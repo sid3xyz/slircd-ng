@@ -60,8 +60,7 @@ impl PostRegHandler for TopicHandler {
             None => {
                 let reply = Response::err_nosuchchannel(nick, channel_name)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("TOPIC", "ERR_NOSUCHCHANNEL");
+                ctx.send_error("TOPIC", "ERR_NOSUCHCHANNEL", reply).await?;
                 return Ok(());
             }
         };
@@ -70,8 +69,7 @@ impl PostRegHandler for TopicHandler {
         if !is_user_in_channel(ctx, ctx.uid, &channel_lower).await {
             let reply = Response::err_notonchannel(nick, channel_name)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("TOPIC", "ERR_NOTONCHANNEL");
+            ctx.send_error("TOPIC", "ERR_NOTONCHANNEL", reply).await?;
             return Ok(());
         }
 

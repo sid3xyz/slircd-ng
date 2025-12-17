@@ -45,8 +45,7 @@ impl PostRegHandler for KillHandler {
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             let reply = Response::err_nosuchnick(&killer_nick, target_nick)
                 .with_prefix(ctx.server_prefix());
-            ctx.sender.send(reply).await?;
-            crate::metrics::record_command_error("KILL", "ERR_NOSUCHNICK");
+            ctx.send_error("KILL", "ERR_NOSUCHNICK", reply).await?;
             return Ok(());
         };
 

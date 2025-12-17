@@ -91,8 +91,7 @@ impl PostRegHandler for KickHandler {
                 None => {
                     let reply = Response::err_nosuchnick(&nick, target_nick)
                         .with_prefix(ctx.server_prefix());
-                    ctx.sender.send(reply).await?;
-                    crate::metrics::record_command_error("KICK", "ERR_NOSUCHNICK");
+                    ctx.send_error("KICK", "ERR_NOSUCHNICK", reply).await?;
                     continue;
                 }
             };

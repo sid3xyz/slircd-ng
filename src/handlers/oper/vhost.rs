@@ -52,8 +52,7 @@ impl PostRegHandler for VhostHandler {
             None => {
                 let reply = Response::err_nosuchnick(oper_nick, target_nick)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("VHOST", "ERR_NOSUCHNICK");
+                ctx.send_error("VHOST", "ERR_NOSUCHNICK", reply).await?;
                 return Ok(());
             }
         };

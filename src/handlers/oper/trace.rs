@@ -58,8 +58,7 @@ impl PostRegHandler for TraceHandler {
             } else {
                 let reply = Response::err_nosuchnick(oper_nick, target_nick)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("TRACE", "ERR_NOSUCHNICK");
+                ctx.send_error("TRACE", "ERR_NOSUCHNICK", reply).await?;
                 return Ok(());
             }
         } else {

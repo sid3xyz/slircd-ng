@@ -73,8 +73,7 @@ impl PostRegHandler for KnockHandler {
             None => {
                 let reply = Response::err_nosuchchannel(&nick, channel_name)
                     .with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("KNOCK", "ERR_NOSUCHCHANNEL");
+                ctx.send_error("KNOCK", "ERR_NOSUCHCHANNEL", reply).await?;
                 return Ok(());
             }
         };
