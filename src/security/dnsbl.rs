@@ -7,7 +7,11 @@ use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::TokioResolver;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use std::net::IpAddr;
+use std::time::Duration;
 use tracing::{debug, warn};
+
+/// Timeout for DNSBL queries to prevent hanging on slow DNS servers.
+const DNSBL_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// DNSBL Service for checking IPs against blocklists.
 #[derive(Clone)]
@@ -57,18 +61,24 @@ impl DnsblService {
             let query = format!("{}.{}.", reversed_ip, list);
             debug!("Checking DNSBL: {}", query);
 
-            match self.resolver.lookup_ip(&query).await {
-                Ok(response) => {
+            // Use timeout to prevent hanging on slow DNS servers
+            let lookup = self.resolver.lookup_ip(&query);
+            match tokio::time::timeout(DNSBL_TIMEOUT, lookup).await {
+                Ok(Ok(response)) => {
                     if response.iter().next().is_some() {
                         debug!("IP {} listed in {}", ip, list);
                         return Some(list.clone());
                     }
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     // NXDOMAIN means not listed, other errors are ignored
                     if !e.to_string().contains("NXDomain") {
                         warn!("DNSBL lookup failed for {}: {}", list, e);
                     }
+                }
+                Err(_) => {
+                    // Timeout - log and continue to next list
+                    warn!("DNSBL lookup timed out for {} ({}s)", list, DNSBL_TIMEOUT.as_secs());
                 }
             }
         }

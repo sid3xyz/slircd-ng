@@ -22,21 +22,43 @@ const MAX_FLOOD_VIOLATIONS: u8 = 3;
 /// We don't need to check every second; 15s is responsive enough.
 const PING_CHECK_INTERVAL_SECS: u64 = 15;
 
+/// Shared connection resources used across lifecycle phases.
+///
+/// Groups parameters that are common to both handshake and event loop,
+/// reducing function signature complexity.
+pub struct ConnectionContext<'a> {
+    /// The user's unique identifier.
+    pub uid: &'a str,
+    /// Transport for reading/writing IRC messages.
+    pub transport: &'a mut ZeroCopyTransportEnum,
+    /// Shared server state (users, channels, config).
+    pub matrix: &'a Arc<Matrix>,
+    /// Command handler registry.
+    pub registry: &'a Arc<Registry>,
+    /// Database for persistence (accounts, bans).
+    pub db: &'a Database,
+    /// Client's remote address.
+    pub addr: SocketAddr,
+}
+
+/// Message channels for lifecycle phases.
+pub struct LifecycleChannels<'a> {
+    /// Sender for queueing outgoing messages.
+    pub tx: &'a mpsc::Sender<Message>,
+    /// Receiver for draining outgoing messages.
+    pub rx: &'a mut mpsc::Receiver<Message>,
+}
+
 /// Run Phase 1: Handshake loop (pre-registration).
 ///
 /// Returns RegisteredState on successful registration.
-#[allow(clippy::too_many_arguments)]
 pub async fn run_handshake_loop(
-    uid: &str,
-    transport: &mut ZeroCopyTransportEnum,
-    matrix: &Arc<Matrix>,
-    registry: &Arc<Registry>,
-    db: &Database,
-    addr: SocketAddr,
+    conn: ConnectionContext<'_>,
+    channels: LifecycleChannels<'_>,
     unreg_state: &mut UnregisteredState,
-    handshake_tx: &mpsc::Sender<Message>,
-    handshake_rx: &mut mpsc::Receiver<Message>,
 ) -> Result<(), HandshakeExit> {
+    let ConnectionContext { uid, transport, matrix, registry, db, addr } = conn;
+    let LifecycleChannels { tx: handshake_tx, rx: handshake_rx } = channels;
     // Registration timeout from config
     let registration_timeout = Duration::from_secs(matrix.server_info.idle_timeouts.registration);
     let handshake_start = Instant::now();
@@ -196,18 +218,13 @@ pub async fn run_handshake_loop(
 }
 
 /// Run Phase 2: Unified event loop (post-registration).
-#[allow(clippy::too_many_arguments)]
 pub async fn run_event_loop(
-    uid: &str,
-    transport: &mut ZeroCopyTransportEnum,
-    matrix: &Arc<Matrix>,
-    registry: &Arc<Registry>,
-    db: &Database,
-    addr: SocketAddr,
+    conn: ConnectionContext<'_>,
+    channels: LifecycleChannels<'_>,
     reg_state: &mut RegisteredState,
-    outgoing_tx: &mpsc::Sender<Message>,
-    outgoing_rx: &mut mpsc::Receiver<Message>,
 ) -> Option<String> {
+    let ConnectionContext { uid, transport, matrix, registry, db, addr } = conn;
+    let LifecycleChannels { tx: outgoing_tx, rx: outgoing_rx } = channels;
     let mut flood_violations = 0u8;
     let mut quit_message: Option<String> = None;
 
@@ -254,8 +271,10 @@ pub async fn run_event_loop(
                                 )).with_prefix(Prefix::ServerName(matrix.server_info.name.clone()));
                                 let _ = transport.write_message(&notice).await;
 
-                                let penalty_ms = 500 * (flood_violations as u64);
-                                tokio::time::sleep(tokio::time::Duration::from_millis(penalty_ms)).await;
+                                // Drop the message immediately instead of sleeping.
+                                // Sleeping blocks this connection task and is a DoS vector.
+                                // The warning message already informs the user; continued
+                                // violations will hit MAX_FLOOD_VIOLATIONS and disconnect.
                                 continue;
                             }
                         } else {
@@ -359,9 +378,11 @@ pub async fn run_event_loop(
                                 }
                             } else if msg_count == 1 {
                                 // Single response - just add label tag
-                                let msg = messages.drain(..).next().unwrap();
-                                let tagged = with_label(msg, Some(&label_str));
-                                let _ = transport.write_message(&tagged).await;
+                                // Safe: msg_count == 1 guarantees exactly one message
+                                if let Some(msg) = messages.drain(..).next() {
+                                    let tagged = with_label(msg, Some(&label_str));
+                                    let _ = transport.write_message(&tagged).await;
+                                }
                             } else {
                                 // Multiple responses - wrap in BATCH
                                 let batch_ref = generate_batch_ref();

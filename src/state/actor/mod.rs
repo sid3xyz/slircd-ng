@@ -67,10 +67,16 @@ impl ChannelActor {
         }
     }
 
-    /// Create a new Channel Actor and spawn it.
-    /// Optionally pass an initial topic for registered channels (loaded from DB).
-    pub fn spawn(name: String, matrix: Weak<Matrix>, initial_topic: Option<Topic>) -> mpsc::Sender<ChannelEvent> {
-        let (tx, rx) = mpsc::channel(100);
+    /// Create a new Channel Actor with custom mailbox capacity.
+    /// The capacity controls how many events can be queued before senders block.
+    /// Higher values provide burst tolerance; lower values apply backpressure sooner.
+    pub fn spawn_with_capacity(
+        name: String,
+        matrix: Weak<Matrix>,
+        initial_topic: Option<Topic>,
+        capacity: usize,
+    ) -> mpsc::Sender<ChannelEvent> {
+        let (tx, rx) = mpsc::channel(capacity);
 
         let mut modes = HashSet::new();
         modes.insert(ChannelMode::NoExternal);

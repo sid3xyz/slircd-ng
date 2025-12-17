@@ -1,3 +1,8 @@
+//! TRACE command handler for connection debugging.
+//!
+//! Shows routing and connection information for debugging purposes.
+//! Operator-only command per RFC 2812.
+
 use super::super::{Context,
     HandlerResult, PostRegHandler,
     resolve_nick_to_uid, server_reply,

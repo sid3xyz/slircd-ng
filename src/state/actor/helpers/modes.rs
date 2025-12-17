@@ -1,3 +1,7 @@
+//! Channel mode utilities.
+//!
+//! Helpers for setting/clearing channel modes and converting to strings.
+
 use super::super::{ChannelActor, ChannelMode};
 use std::collections::HashSet;
 
@@ -109,9 +113,6 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
     if modes.contains(&ChannelMode::RegisteredOnly) {
         flags.push('R');
     }
-    if modes.contains(&ChannelMode::SSLOnly) {
-        flags.push('S');
-    }
 
     // Param modes
     for mode in modes {
@@ -126,30 +127,6 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
                 if !flags.contains('l') {
                     flags.push('l');
                     params.push(l.to_string());
-                }
-            }
-            ChannelMode::Redirect(c) => {
-                if !flags.contains('L') {
-                    flags.push('L');
-                    params.push(c.clone());
-                }
-            }
-            ChannelMode::JoinDelay(s) => {
-                if !flags.contains('J') {
-                    flags.push('J');
-                    params.push(s.to_string());
-                }
-            }
-            ChannelMode::JoinThrottle { joins, seconds } => {
-                if !flags.contains('j') {
-                    flags.push('j');
-                    params.push(format!("{}:{}", joins, seconds));
-                }
-            }
-            ChannelMode::FloodProtection { messages, seconds } => {
-                if !flags.contains('f') {
-                    flags.push('f');
-                    params.push(format!("{}:{}", messages, seconds));
                 }
             }
             _ => {}

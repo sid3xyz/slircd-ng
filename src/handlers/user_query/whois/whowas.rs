@@ -5,8 +5,15 @@ use crate::state::RegisteredState;
 use async_trait::async_trait;
 use regex::Regex;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
+use std::sync::LazyLock;
+
+/// Pre-compiled empty regex for fallback - cannot panic.
+static EMPTY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("^$").expect("empty regex pattern is always valid")
+});
 
 /// Convert a glob pattern (with * and ?) to a regex.
+/// Returns a reference to a static empty regex on compilation failure.
 fn glob_to_regex(pattern: &str) -> Regex {
     let mut regex_str = String::from("^");
     for c in pattern.chars() {
@@ -21,7 +28,7 @@ fn glob_to_regex(pattern: &str) -> Regex {
         }
     }
     regex_str.push('$');
-    Regex::new(&regex_str).unwrap_or_else(|_| Regex::new("^$").unwrap())
+    Regex::new(&regex_str).unwrap_or_else(|_| EMPTY_REGEX.clone())
 }
 
 /// Handler for WHOWAS command.

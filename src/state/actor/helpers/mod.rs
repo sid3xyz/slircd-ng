@@ -1,3 +1,7 @@
+//! Channel actor helper utilities.
+//!
+//! Internal helpers for member management, mode handling, and list operations.
+
 pub mod lists;
 pub mod members;
 pub mod modes;

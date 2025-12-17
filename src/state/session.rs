@@ -22,7 +22,7 @@
 //! ```
 
 use crate::handlers::{BatchState, SaslState};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 // ============================================================================
@@ -208,6 +208,9 @@ impl UnregisteredState {
                     last_activity: Instant::now(),
                     ping_pending: false,
                     ping_sent_at: None,
+                    // Rate limiting for KNOCK and INVITE commands
+                    knock_timestamps: HashMap::new(),
+                    invite_timestamps: HashMap::new(),
                 })
             }
             _ => Err(self),
@@ -262,6 +265,12 @@ pub struct RegisteredState {
     pub ping_pending: bool,
     /// When we sent the pending PING (for timeout calculation).
     pub ping_sent_at: Option<Instant>,
+    /// Track last KNOCK time per channel (for rate limiting).
+    /// Key: lowercase channel name, Value: timestamp of last knock.
+    pub knock_timestamps: HashMap<String, Instant>,
+    /// Track last INVITE time per target user (for rate limiting).
+    /// Key: lowercase target nick, Value: timestamp of last invite.
+    pub invite_timestamps: HashMap<String, Instant>,
 }
 
 impl RegisteredState {
@@ -385,6 +394,8 @@ mod tests {
             last_activity: Instant::now(),
             ping_pending: false,
             ping_sent_at: None,
+            knock_timestamps: HashMap::new(),
+            invite_timestamps: HashMap::new(),
         };
 
         assert!(state.has_cap("echo-message"));

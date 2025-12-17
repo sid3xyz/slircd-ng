@@ -293,7 +293,10 @@ impl PostRegHandler for SilenceHandler {
             return Ok(());
         }
 
-        let mask_str = mask_arg.unwrap();
+        // Safe: we just checked mask_arg.is_some() above
+        let Some(mask_str) = mask_arg else {
+            return Err(HandlerError::NeedMoreParams);
+        };
 
         // Check for +/- prefix
         if mask_str.is_empty() {

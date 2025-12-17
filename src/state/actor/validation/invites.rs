@@ -1,3 +1,8 @@
+//! Invite management for invite-only channels.
+//!
+//! Tracks pending invites with TTL expiration and provides
+//! validation for users attempting to join +i channels.
+
 use super::super::{ChannelActor, INVITE_TTL, InviteEntry, MAX_INVITES_PER_CHANNEL, Uid};
 use std::time::Instant;
 

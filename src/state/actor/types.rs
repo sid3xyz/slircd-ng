@@ -1,3 +1,8 @@
+//! Type definitions for the channel actor model.
+//!
+//! Contains [`ChannelEvent`] variants and related types used for
+//! message passing to [`ChannelActor`](super::ChannelActor) instances.
+
 use crate::security::UserContext;
 use crate::state::{ListEntry, MemberModes, Topic};
 use slirc_proto::{Message, Prefix};
@@ -248,18 +253,6 @@ pub enum ChannelMode {
     Registered,
     /// +Q: No kicks (prevent KICK command, only services can kick)
     NoKicks,
-    /// +j <joins>:<seconds>: Join throttle (limit join rate)
-    #[allow(dead_code)] // Reserved for future channel join controls
-    JoinThrottle { joins: u32, seconds: u32 },
-    /// +J <seconds>: Join delay after kick (prevent rejoin for N seconds after kick)
-    #[allow(dead_code)] // Reserved for future channel join controls
-    JoinDelay(u32),
-    /// +L <channel>: Redirect/overflow channel (when +l limit hit, redirect to overflow)
-    #[allow(dead_code)] // Reserved for future redirect support
-    Redirect(String),
-    /// +f <messages>:<seconds>: Flood protection (kick users exceeding message threshold)
-    #[allow(dead_code)] // Reserved for future flood controls
-    FloodProtection { messages: u32, seconds: u32 },
     /// +s: Secret channel (hidden from LIST)
     Secret,
     /// +p: Private channel (hidden from LIST, no KNOCK)
@@ -272,9 +265,6 @@ pub enum ChannelMode {
     Permanent,
     /// +R: Registered-only (only identified users can join)
     RegisteredOnly,
-    /// +S: SSL-only (only TLS connections can join)
-    #[allow(dead_code)] // Used in modes.rs but not fully enforced yet
-    SSLOnly,
     /// +k <key>: Channel key required to join
     Key(String),
     /// +l <limit>: User limit

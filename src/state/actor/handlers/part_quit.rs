@@ -1,3 +1,7 @@
+//! PART and QUIT event handling.
+//!
+//! Removes users from channels and broadcasts departure messages.
+
 use super::{ChannelActor, ChannelError, Uid};
 use slirc_proto::{Command, Message, Prefix};
 use tokio::sync::oneshot;

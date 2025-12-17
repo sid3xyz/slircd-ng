@@ -1,3 +1,8 @@
+//! WALLOPS command handler for operator wall messages.
+//!
+//! Sends a message to all users with +w (wallops) mode set.
+//! Typically used for important server announcements.
+
 use super::super::{Context,
     HandlerResult, PostRegHandler,
     user_mask_from_state,

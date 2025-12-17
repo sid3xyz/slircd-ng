@@ -26,7 +26,7 @@
 mod error_handling;
 mod lifecycle;
 
-use lifecycle::{run_handshake_loop, run_event_loop};
+use lifecycle::{run_handshake_loop, run_event_loop, ConnectionContext, LifecycleChannels};
 
 use crate::db::Database;
 use crate::handlers::Registry;
@@ -144,15 +144,19 @@ impl Connection {
 
         // Phase 1: Handshake
         if let Err(exit) = run_handshake_loop(
-            &self.uid,
-            &mut self.transport,
-            &self.matrix,
-            &self.registry,
-            &self.db,
-            self.addr,
+            ConnectionContext {
+                uid: &self.uid,
+                transport: &mut self.transport,
+                matrix: &self.matrix,
+                registry: &self.registry,
+                db: &self.db,
+                addr: self.addr,
+            },
+            LifecycleChannels {
+                tx: &handshake_tx,
+                rx: &mut handshake_rx,
+            },
             &mut unreg_state,
-            &handshake_tx,
-            &mut handshake_rx,
         )
         .await
         {
@@ -181,15 +185,19 @@ impl Connection {
         self.matrix.register_sender(&self.uid, outgoing_tx.clone());
 
         let quit_message = run_event_loop(
-            &self.uid,
-            &mut self.transport,
-            &self.matrix,
-            &self.registry,
-            &self.db,
-            self.addr,
+            ConnectionContext {
+                uid: &self.uid,
+                transport: &mut self.transport,
+                matrix: &self.matrix,
+                registry: &self.registry,
+                db: &self.db,
+                addr: self.addr,
+            },
+            LifecycleChannels {
+                tx: &outgoing_tx,
+                rx: &mut outgoing_rx,
+            },
             &mut reg_state,
-            &outgoing_tx,
-            &mut outgoing_rx,
         )
         .await;
 

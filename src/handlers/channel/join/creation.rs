@@ -24,7 +24,7 @@ pub(super) async fn join_channel(
     let channel_lower = irc_to_lower(channel_name);
 
     // Single user read to capture all needed fields (eliminates redundant lookup)
-    let (nick, user_name, visible_host, real_host, realname, session_id, account, away_message, caps, is_registered) = {
+    let (nick, user_name, visible_host, real_host, realname, session_id, account, away_message, caps, is_registered, is_oper, oper_type) = {
         let user_ref = ctx
             .matrix
             .users
@@ -42,6 +42,8 @@ pub(super) async fn join_channel(
             user.away.clone(),
             user.caps.clone(),
             user.modes.registered,
+            user.modes.oper,
+            user.modes.oper_type.clone(),
         )
     };
 
@@ -56,6 +58,9 @@ pub(super) async fn join_channel(
         realname.clone(),
         ctx.server_name().to_string(),
         account.clone(),
+        ctx.state.is_tls,
+        is_oper,
+        oper_type,
     );
 
     // Check AKICK before joining (pass pre-fetched host)
@@ -130,6 +135,8 @@ pub(super) async fn join_channel(
         None
     };
 
+    let mailbox_capacity = ctx.matrix.config.limits.channel_mailbox_capacity;
+
     loop {
         let channel_sender = ctx
             .matrix
@@ -137,10 +144,11 @@ pub(super) async fn join_channel(
             .entry(channel_lower.clone())
             .or_insert_with(|| {
                 crate::metrics::ACTIVE_CHANNELS.inc();
-                crate::state::actor::ChannelActor::spawn(
+                crate::state::actor::ChannelActor::spawn_with_capacity(
                     channel_name.to_string(),
                     Arc::downgrade(&matrix),
                     initial_topic.clone(),
+                    mailbox_capacity,
                 )
             })
             .clone();

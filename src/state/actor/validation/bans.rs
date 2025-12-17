@@ -1,3 +1,8 @@
+//! Ban and exception matching for channel access control.
+//!
+//! Provides utilities to check if a user is banned from a channel,
+//! with support for extended bans and exception lists.
+
 use crate::security::{UserContext, matches_ban_or_except};
 use crate::state::ListEntry;
 

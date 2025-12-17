@@ -1,3 +1,8 @@
+//! Channel actor event handlers.
+//!
+//! Each submodule handles a category of [`ChannelEvent`](super::ChannelEvent)
+//! messages processed by [`ChannelActor`](super::ChannelActor).
+
 use super::*;
 
 pub mod broadcast;

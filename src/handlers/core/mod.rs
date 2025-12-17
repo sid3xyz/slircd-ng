@@ -39,7 +39,3 @@ pub use registry::Registry;
 
 // Re-export typestate handler traits (Innovation 1)
 pub use traits::{PostRegHandler, PreRegHandler, UniversalHandler};
-
-// DynUniversalHandler is used internally by Registry
-#[allow(unused_imports)]
-pub(crate) use traits::DynUniversalHandler;

@@ -1,3 +1,8 @@
+//! Permission checking for channel operations.
+//!
+//! Determines whether a user has sufficient privileges for
+//! channel operations like setting modes, kicking, or changing topic.
+
 use super::super::{ChannelActor, Uid};
 
 impl ChannelActor {

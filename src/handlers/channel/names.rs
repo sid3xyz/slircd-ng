@@ -101,7 +101,7 @@ impl PostRegHandler for NamesHandler {
                     Err(_) => continue,
                 };
 
-                let mut names_list = Vec::new();
+                let mut names_list = Vec::with_capacity(members.len());
                 for (uid, member_modes) in &members {
                     if let Some(user) = ctx.matrix.users.get(uid) {
                         let user = user.read().await;
@@ -211,7 +211,7 @@ impl PostRegHandler for NamesHandler {
                 Err(_) => return Ok(()),
             };
 
-            let mut names_list = Vec::new();
+            let mut names_list = Vec::with_capacity(members.len());
 
             for (uid, member_modes) in &members {
                 if let Some(user) = ctx.matrix.users.get(uid) {

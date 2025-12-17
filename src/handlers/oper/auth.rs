@@ -1,3 +1,8 @@
+//! OPER command handler for operator authentication.
+//!
+//! Authenticates users as IRC operators using password verification
+//! and hostmask matching from the server configuration.
+
 use super::super::{Context,
     HandlerResult, PostRegHandler, matches_hostmask,
     server_reply,
@@ -6,8 +11,16 @@ use crate::require_arg_or_reply;
 use crate::state::RegisteredState;
 use crate::state::actor::validation::format_user_mask;
 use async_trait::async_trait;
+use rand::Rng;
 use slirc_proto::mode::{Mode, UserMode};
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use std::time::Duration;
+
+/// Baseline delay for all OPER responses to prevent timing side-channels.
+/// All paths (success, failure, lockout) take approximately this long.
+const OPER_BASELINE_DELAY_MS: u64 = 500;
+/// Random jitter added to baseline delay (0..OPER_JITTER_MS).
+const OPER_JITTER_MS: u64 = 200;
 
 /// Handler for OPER command.
 ///
@@ -34,6 +47,15 @@ impl PostRegHandler for OperHandler {
         const OPER_DELAY_MS: u64 = 3000;
         const LOCKOUT_DELAY_MS: u64 = 30000;
 
+        // Helper to apply timing normalization to prevent side-channel attacks.
+        // All OPER responses (success, failure, lockout) will take approximately
+        // the same amount of time, making it impossible to distinguish valid
+        // usernames from invalid ones via timing analysis.
+        async fn apply_timing_delay() {
+            let jitter = rand::thread_rng().gen_range(0..OPER_JITTER_MS);
+            tokio::time::sleep(Duration::from_millis(OPER_BASELINE_DELAY_MS + jitter)).await;
+        }
+
         let now = std::time::Instant::now();
 
         if ctx.state.failed_oper_attempts >= MAX_OPER_ATTEMPTS
@@ -41,6 +63,9 @@ impl PostRegHandler for OperHandler {
         {
             let elapsed = now.duration_since(last_attempt).as_millis() as u64;
             if elapsed < LOCKOUT_DELAY_MS {
+                // Apply timing normalization even for lockout responses
+                apply_timing_delay().await;
+
                 let remaining_sec = (LOCKOUT_DELAY_MS - elapsed) / 1000;
                 let reply = server_reply(
                     &server_name,
@@ -61,6 +86,7 @@ impl PostRegHandler for OperHandler {
             }
         }
 
+        // Rate limiting between attempts (this is separate from timing normalization)
         if let Some(last_attempt) = ctx.state.last_oper_attempt {
             let elapsed = now.duration_since(last_attempt).as_millis() as u64;
             if elapsed < OPER_DELAY_MS {
@@ -79,6 +105,9 @@ impl PostRegHandler for OperHandler {
             .find(|block| block.name == name);
 
         let Some(oper_block) = oper_block else {
+            // Apply timing normalization before responding
+            apply_timing_delay().await;
+
             ctx.state.failed_oper_attempts += 1;
             tracing::warn!(
                 nick = %nick,
@@ -96,6 +125,9 @@ impl PostRegHandler for OperHandler {
         };
 
         if !oper_block.verify_password(password) {
+            // Apply timing normalization before responding
+            apply_timing_delay().await;
+
             ctx.state.failed_oper_attempts += 1;
             tracing::warn!(
                 nick = %nick,
@@ -125,6 +157,9 @@ impl PostRegHandler for OperHandler {
             let user_mask = format_user_mask(&user_nick, &user_user, &user_host);
 
             if !matches_hostmask(required_mask, &user_mask) {
+                // Apply timing normalization before responding
+                apply_timing_delay().await;
+
                 ctx.state.failed_oper_attempts += 1;
                 tracing::warn!(
                     nick = %nick,
@@ -143,6 +178,10 @@ impl PostRegHandler for OperHandler {
                 return Ok(());
             }
         }
+
+        // Apply timing normalization for success path too
+        // This ensures success and failure take the same amount of time
+        apply_timing_delay().await;
 
         ctx.state.failed_oper_attempts = 0;
 

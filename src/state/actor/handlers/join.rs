@@ -1,3 +1,7 @@
+//! JOIN event handling.
+//!
+//! Processes channel join requests with ban/invite/key validation.
+
 use super::super::validation::{create_user_mask, is_banned};
 use super::{ActorState, ChannelActor, ChannelError, ChannelMode, JoinSuccessData, MemberModes, Uid};
 use crate::security::UserContext;
@@ -91,6 +95,33 @@ impl ChannelActor {
                 let _ = reply_tx.send(Err(ChannelError::BadChannelKey));
                 return;
             }
+        }
+
+        // 5. RegisteredOnly (+R) - only users identified to NickServ can join
+        if self.modes.contains(&ChannelMode::RegisteredOnly) && !user_context.is_registered {
+            let _ = reply_tx.send(Err(ChannelError::NeedReggedNick));
+            return;
+        }
+
+        // 6. TlsOnly (+z) - only TLS/SSL connections can join
+        if self.modes.contains(&ChannelMode::TlsOnly) && !user_context.is_tls {
+            let _ = reply_tx.send(Err(ChannelError::SecureOnlyChan));
+            return;
+        }
+
+        // 7. OperOnly (+O) - only IRC operators can join
+        if self.modes.contains(&ChannelMode::OperOnly) && !user_context.is_oper {
+            let _ = reply_tx.send(Err(ChannelError::OperOnlyChan));
+            return;
+        }
+
+        // 8. AdminOnly (+A) - only server admins can join
+        // Uses oper_type to distinguish admin from regular oper.
+        if self.modes.contains(&ChannelMode::AdminOnly)
+            && user_context.oper_type.as_deref() != Some("admin")
+        {
+            let _ = reply_tx.send(Err(ChannelError::AdminOnlyChan));
+            return;
         }
 
         // Consume invite

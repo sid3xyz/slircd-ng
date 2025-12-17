@@ -134,10 +134,13 @@ pub struct UserContext {
     pub ip_address: IpAddr,
     /// Whether the user has identified to an account.
     pub is_registered: bool,
+    /// Whether the user is connected via TLS.
+    pub is_tls: bool,
 }
 
 impl UserContext {
     /// Create a context for registration-time checks (after NICK/USER, before welcome).
+    #[allow(clippy::too_many_arguments)]
     pub fn for_registration(
         ip: IpAddr,
         hostname: String,
@@ -146,6 +149,9 @@ impl UserContext {
         realname: String,
         server: String,
         account: Option<String>,
+        is_tls: bool,
+        is_oper: bool,
+        oper_type: Option<String>,
     ) -> Self {
         Self {
             nickname,
@@ -155,12 +161,13 @@ impl UserContext {
             account: account.clone(),
             server,
             channels: Vec::new(),
-            is_oper: false,
-            oper_type: None,
+            is_oper,
+            oper_type,
             certificate_fp: None,
             sasl_mechanism: None,
             ip_address: ip,
             is_registered: account.is_some(),
+            is_tls,
         }
     }
 }
@@ -231,6 +238,7 @@ mod tests {
             oper_type: None,
             certificate_fp: None,
             sasl_mechanism: Some("PLAIN".to_string()),
+            is_tls: false,
             ip_address: "192.168.1.100".parse().unwrap(),
             is_registered: true,
         }

@@ -1,3 +1,7 @@
+//! TOPIC event handling.
+//!
+//! Manages channel topic retrieval and modification with +t enforcement.
+
 use super::{ChannelActor, ChannelError, ChannelMode, Uid};
 use crate::state::Topic;
 use slirc_proto::message::Tag;

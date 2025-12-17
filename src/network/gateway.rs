@@ -17,6 +17,7 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use tokio_rustls::rustls::version::{TLS12, TLS13};
 use tokio_tungstenite::accept_hdr_async;
 use tracing::{error, info, instrument, warn};
 
@@ -121,11 +122,19 @@ impl Gateway {
 
         let key = keys.remove(0);
 
-        // Build TLS server config
-        let tls_config = ServerConfig::builder()
+        // Build TLS server config with explicit minimum version enforcement.
+        // Only TLS 1.2 and 1.3 are allowed - TLS 1.0/1.1 are rejected.
+        // This prevents downgrade attacks and ensures modern cryptography.
+        //
+        // NOTE: rustls does not currently support OCSP stapling or CRL checking
+        // for client certificates. SASL EXTERNAL clients using client certs
+        // are trusted based on the certificate chain only. For high-security
+        // deployments, consider additional out-of-band verification.
+        let tls_config = ServerConfig::builder_with_protocol_versions(&[&TLS13, &TLS12])
             .with_no_client_auth()
             .with_single_cert(certs, key)?;
 
+        info!("TLS configured with minimum version TLS 1.2");
         Ok(TlsAcceptor::from(Arc::new(tls_config)))
     }
 
@@ -172,10 +181,10 @@ impl Gateway {
                                     let ip = addr.ip();
 
                                     tokio::spawn(async move {
-                                        // DNSBL Check
-                                        #[allow(clippy::collapsible_if)]
-                                        if let Some(spam) = &matrix_conn.spam_detector {
-                                            if spam.check_ip_dnsbl(ip).await {
+                                        // DNSBL Check - extracted to avoid nested if
+                                        if let Some(ref spam) = matrix_conn.spam_detector {
+                                            let blocked = spam.check_ip_dnsbl(ip).await;
+                                            if blocked {
                                                 warn!(%addr, "Connection rejected by DNSBL");
                                                 matrix_rl.rate_limiter.on_connection_end(ip);
                                                 return;
@@ -253,10 +262,10 @@ impl Gateway {
                                     let ip = addr.ip();
 
                                     tokio::spawn(async move {
-                                        // DNSBL Check
-                                        #[allow(clippy::collapsible_if)]
-                                        if let Some(spam) = &matrix_conn.spam_detector {
-                                            if spam.check_ip_dnsbl(ip).await {
+                                        // DNSBL Check - extracted to avoid nested if
+                                        if let Some(ref spam) = matrix_conn.spam_detector {
+                                            let blocked = spam.check_ip_dnsbl(ip).await;
+                                            if blocked {
                                                 warn!(%addr, "Connection rejected by DNSBL");
                                                 matrix_rl.rate_limiter.on_connection_end(ip);
                                                 return;
@@ -265,8 +274,21 @@ impl Gateway {
 
                                         // CORS validation callback for WebSocket handshake
                                         let cors_callback = |req: &http::Request<()>, response: http::Response<()>| {
-                                            // If allow_origins is empty, allow all origins
+                                            // If allow_origins is empty, DENY by default (secure)
+                                            // Explicit "*" in config is required to allow all origins
                                             if allowed.is_empty() {
+                                                warn!("WebSocket CORS: No origins configured, rejecting all");
+                                                let response = http::Response::builder()
+                                                    .status(http::StatusCode::FORBIDDEN)
+                                                    .body(Some("No WebSocket origins configured".to_string()))
+                                                    .unwrap_or_else(|_| {
+                                                        http::Response::new(Some("Internal Server Error".to_string()))
+                                                    });
+                                                return Err(response);
+                                            }
+
+                                            // Check for wildcard "*" - allows all origins
+                                            if allowed.iter().any(|a| a == "*") {
                                                 return Ok(response);
                                             }
 
@@ -274,7 +296,7 @@ impl Gateway {
                                             if let Some(origin) = req.headers().get("Origin")
                                                 .and_then(|o| o.to_str().ok())
                                             {
-                                                if allowed.iter().any(|a| a == origin || a == "*") {
+                                                if allowed.iter().any(|a| a == origin) {
                                                     return Ok(response);
                                                 }
                                                 warn!(%addr, origin = %origin, "WebSocket CORS rejected");
@@ -354,10 +376,10 @@ impl Gateway {
                             let ip = addr.ip();
 
                             tokio::spawn(async move {
-                                // DNSBL Check
-                                #[allow(clippy::collapsible_if)]
-                                if let Some(spam) = &matrix_conn.spam_detector {
-                                    if spam.check_ip_dnsbl(ip).await {
+                                // DNSBL Check - extracted to avoid nested if
+                                if let Some(ref spam) = matrix_conn.spam_detector {
+                                    let blocked = spam.check_ip_dnsbl(ip).await;
+                                    if blocked {
                                         warn!(%addr, "Connection rejected by DNSBL");
                                         matrix_rl.rate_limiter.on_connection_end(ip);
                                         return;

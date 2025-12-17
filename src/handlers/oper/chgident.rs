@@ -1,3 +1,7 @@
+//! CHGIDENT command handler for operator ident changes.
+//!
+//! Allows operators to change a user's ident (username field).
+
 use super::super::{Context,
     HandlerResult, PostRegHandler,
     resolve_nick_to_uid, server_notice,

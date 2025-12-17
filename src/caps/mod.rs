@@ -51,27 +51,12 @@ mod tokens;
 // Re-export authority (used by 9 handler files)
 pub use authority::CapabilityAuthority;
 
-// Re-export capability types
+// Re-export capability types - public API surface for handlers that need type-specific tokens.
+// Currently unused but exported for future handler implementations.
 #[allow(unused_imports)]
 pub use irc::{
-    // Channel capabilities
-    BanCap,
-    // Special capabilities
-    BypassFloodCap,
-    BypassModeCap,
-    ChannelModeCap,
-    DieCap,
-    DlineCap,
-    GlineCap,
-    GlobalNoticeCap,
-    InviteCap,
-    KickCap,
-    // Oper capabilities (in use)
-    KillCap,
-    KlineCap,
-    RehashCap,
-    RestartCap,
-    TopicCap,
+    BanCap, BypassFloodCap, BypassModeCap, ChannelModeCap, DieCap, DlineCap, GlineCap,
+    GlobalNoticeCap, InviteCap, KickCap, KillCap, KlineCap, RehashCap, RestartCap, TopicCap,
     VoiceCap,
 };
 #[allow(unused_imports)]

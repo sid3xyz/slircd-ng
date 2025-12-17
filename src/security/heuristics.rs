@@ -1,3 +1,12 @@
+//! Behavioral heuristics engine for spam detection.
+//!
+//! Tracks per-user behavioral metrics to identify spam patterns:
+//! - Message velocity (messages per time window)
+//! - Fan-out detection (many unique recipients)
+//! - Content repetition scoring
+//!
+//! Used by the spam detection service to trigger rate limiting or bans.
+
 use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use std::collections::VecDeque;

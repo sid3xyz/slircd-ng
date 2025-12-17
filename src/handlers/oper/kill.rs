@@ -1,3 +1,8 @@
+//! KILL command handler for operator-initiated disconnections.
+//!
+//! Allows operators to forcibly disconnect a user from the server.
+//! Uses capability-based authorization (Innovation 4).
+
 use super::super::{Context,
     HandlerResult, PostRegHandler,
     resolve_nick_to_uid, user_mask_from_state,

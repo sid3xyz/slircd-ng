@@ -29,37 +29,37 @@ lazy_static! {
     pub static ref MESSAGES_SENT: IntCounter = IntCounter::new(
         "irc_messages_sent_total",
         "Total messages sent"
-    ).unwrap();
+    ).expect("MESSAGES_SENT metric creation failed");
 
     /// Total messages blocked by spam detection.
     pub static ref SPAM_BLOCKED: IntCounter = IntCounter::new(
         "irc_spam_blocked_total",
         "Messages blocked as spam"
-    ).unwrap();
+    ).expect("SPAM_BLOCKED metric creation failed");
 
     /// Total ban enforcement events (channel bans blocking JOIN).
     pub static ref BANS_TRIGGERED: IntCounter = IntCounter::new(
         "irc_bans_triggered_total",
         "Ban enforcement events"
-    ).unwrap();
+    ).expect("BANS_TRIGGERED metric creation failed");
 
     /// Total X-line enforcement events (K/G/Z/R/S-lines blocking connections).
     pub static ref XLINES_ENFORCED: IntCounter = IntCounter::new(
         "irc_xlines_enforced_total",
         "X-line enforcement events"
-    ).unwrap();
+    ).expect("XLINES_ENFORCED metric creation failed");
 
     /// Total rate limit hits (flood protection).
     pub static ref RATE_LIMITED: IntCounter = IntCounter::new(
         "irc_rate_limited_total",
         "Rate limit hits"
-    ).unwrap();
+    ).expect("RATE_LIMITED metric creation failed");
 
     /// Total +r (registered-only) enforcement events (JOIN/speak denied).
     pub static ref REGISTERED_ONLY_BLOCKED: IntCounter = IntCounter::new(
         "irc_registered_only_blocked_total",
         "Registered-only (+r) enforcement events"
-    ).unwrap();
+    ).expect("REGISTERED_ONLY_BLOCKED metric creation failed");
 
     // ========================================================================
     // Gauges (can increase/decrease)
@@ -69,13 +69,13 @@ lazy_static! {
     pub static ref CONNECTED_USERS: IntGauge = IntGauge::new(
         "irc_connected_users",
         "Currently connected users"
-    ).unwrap();
+    ).expect("CONNECTED_USERS metric creation failed");
 
     /// Active channels (both registered and temporary).
     pub static ref ACTIVE_CHANNELS: IntGauge = IntGauge::new(
         "irc_active_channels",
         "Active channels"
-    ).unwrap();
+    ).expect("ACTIVE_CHANNELS metric creation failed");
 
     // ========================================================================
     // IRC-Specific Metrics (Innovation 3: Protocol-Aware Observability)
@@ -85,7 +85,7 @@ lazy_static! {
     pub static ref COMMAND_COUNTER: IntCounterVec = IntCounterVec::new(
         Opts::new("irc_command_total", "IRC commands processed by type"),
         &["command"]
-    ).unwrap();
+    ).expect("COMMAND_COUNTER metric creation failed");
 
     /// Command processing latency by command type.
     /// Buckets optimized for IRC: 50µs to 500ms.
@@ -93,33 +93,33 @@ lazy_static! {
         HistogramOpts::new("irc_command_duration_seconds", "IRC command latency by type")
             .buckets(vec![0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]),
         &["command"]
-    ).unwrap();
+    ).expect("COMMAND_LATENCY metric creation failed");
 
     /// Channel member counts (gauge).
     /// Updated on JOIN/PART/KICK/QUIT.
     pub static ref CHANNEL_MEMBERS: IntGaugeVec = IntGaugeVec::new(
         Opts::new("irc_channel_members", "Members per IRC channel"),
         &["channel"]
-    ).unwrap();
+    ).expect("CHANNEL_MEMBERS metric creation failed");
 
     /// Message fan-out histogram: how many recipients per channel message.
     /// Buckets: 1, 5, 10, 25, 50, 100, 250, 500, 1000+.
     pub static ref MESSAGE_FANOUT: Histogram = Histogram::with_opts(
         HistogramOpts::new("irc_message_fanout", "Recipients per channel message")
             .buckets(vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0])
-    ).unwrap();
+    ).expect("MESSAGE_FANOUT metric creation failed");
 
     /// Command errors by type and error kind.
     pub static ref COMMAND_ERRORS: IntCounterVec = IntCounterVec::new(
         Opts::new("irc_command_errors_total", "IRC command errors by type"),
         &["command", "error"]
-    ).unwrap();
+    ).expect("COMMAND_ERRORS metric creation failed");
 
     /// Channel mode changes (counter).
     pub static ref CHANNEL_MODE_CHANGES: IntCounterVec = IntCounterVec::new(
         Opts::new("irc_channel_mode_changes_total", "Channel mode changes"),
         &["mode"]
-    ).unwrap();
+    ).expect("CHANNEL_MODE_CHANGES metric creation failed");
 }
 
 /// Initialize the Prometheus metrics registry.

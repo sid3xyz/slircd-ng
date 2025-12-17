@@ -39,6 +39,8 @@ pub struct SenderSnapshot {
     pub is_oper: bool,
     /// Whether sender is marked as a bot (+B).
     pub is_bot: bool,
+    /// Whether sender is on a TLS connection.
+    pub is_tls: bool,
 }
 
 impl SenderSnapshot {
@@ -59,6 +61,7 @@ impl SenderSnapshot {
             is_registered: user.modes.registered,
             is_oper: user.modes.oper,
             is_bot: user.modes.bot,
+            is_tls: user.modes.secure,
         })
     }
 
@@ -82,6 +85,9 @@ impl SenderSnapshot {
             self.realname.clone(),
             server_name.to_string(),
             self.account.clone(),
+            self.is_tls,
+            self.is_oper,
+            None, // oper_type not yet tracked
         )
     }
 }

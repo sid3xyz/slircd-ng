@@ -1,3 +1,7 @@
+//! Message broadcasting to channel members.
+//!
+//! Handles fan-out of messages to all users in a channel.
+
 use super::{ChannelActor, Uid};
 use slirc_proto::Message;
 use std::sync::Arc;

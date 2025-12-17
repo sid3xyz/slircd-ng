@@ -1,3 +1,8 @@
+//! No-op history provider that discards all messages.
+//!
+//! Used when history storage is disabled or unavailable.
+//! All operations succeed but store nothing.
+
 use async_trait::async_trait;
 use super::{HistoryProvider, HistoryError, HistoryQuery, StoredMessage};
 use std::time::Duration;

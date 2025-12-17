@@ -47,6 +47,10 @@ pub struct UserModes {
     /// +s - Server notices with granular snomasks (c, r, k, o, etc.)
     /// Empty set means no server notices
     pub snomasks: HashSet<char>,
+    /// Operator type (e.g., "admin", "oper") for privilege differentiation.
+    /// None means not an operator, Some("oper") for regular opers,
+    /// Some("admin") for server admins.
+    pub oper_type: Option<String>,
 }
 
 impl UserModes {

@@ -1,4 +1,8 @@
-use super::{ChannelActor, ChannelError, Uid};
+//! KICK event handling.
+//!
+//! Removes users from channels with operator privilege checking.
+
+use super::{ChannelActor, ChannelError, ChannelMode, Uid};
 use slirc_proto::{Command, Message, Prefix};
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
@@ -15,6 +19,13 @@ impl ChannelActor {
         force: bool,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     ) {
+        // Check +Q (no kicks) - even ops cannot kick when this is set
+        // Only force (from capabilities/services) can bypass
+        if !force && self.modes.contains(&ChannelMode::NoKicks) {
+            let _ = reply_tx.send(Err(ChannelError::NoKicksActive));
+            return;
+        }
+
         if !force {
             let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
             if !sender_modes.op && !sender_modes.halfop {

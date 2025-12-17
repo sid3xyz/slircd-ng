@@ -26,6 +26,62 @@ const MAX_HISTORY_LIMIT: u32 = 100;
 /// messages at the same millisecond but different sub-millisecond times are excluded.
 const ONE_MILLISECOND_NS: i64 = 1_000_000;
 
+// ============================================================================
+// Error Messages (DRY)
+// ============================================================================
+
+/// Standard FAIL message for unknown CHATHISTORY subcommand.
+const FAIL_UNKNOWN_SUBCOMMAND: &str = "Unknown subcommand";
+/// Standard FAIL message for invalid target.
+const FAIL_NOT_IN_CHANNEL: &str = "You are not in that channel";
+/// Standard FAIL message for query errors.
+const FAIL_QUERY_ERROR: &str = "Failed to retrieve history";
+
+// ============================================================================
+// Message Reference Parsing (DRY helper)
+// ============================================================================
+
+/// Parsed timestamp from a message reference with precision info.
+struct ResolvedTimestamp {
+    /// The timestamp in nanoseconds.
+    timestamp: i64,
+    /// Whether the original reference was a timestamp (ms precision) vs msgid (ns precision).
+    is_timestamp: bool,
+}
+
+/// Resolve a message reference string to a timestamp.
+/// Returns None if the reference is "*" or cannot be resolved.
+async fn resolve_msgref(
+    ctx: &Context<'_, RegisteredState>,
+    query_target: &str,
+    msgref_str: &str,
+) -> Result<Option<ResolvedTimestamp>, HandlerError> {
+    if msgref_str == "*" {
+        return Ok(None);
+    }
+
+    match MessageReference::parse(msgref_str) {
+        Ok(MessageReference::MsgId(id)) => {
+            let ts = ctx.matrix.history.lookup_timestamp(query_target, &id).await
+                .map_err(|e| HandlerError::Internal(e.to_string()))?;
+            Ok(ts.map(|t| ResolvedTimestamp { timestamp: t, is_timestamp: false }))
+        }
+        Ok(MessageReference::Timestamp(ts)) => {
+            Ok(Some(ResolvedTimestamp {
+                timestamp: parse_server_time(&ts),
+                is_timestamp: true,
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Get the exclusivity offset based on precision.
+/// Timestamps have millisecond precision, msgids have nanosecond precision.
+fn exclusivity_offset(resolved: &ResolvedTimestamp) -> i64 {
+    if resolved.is_timestamp { ONE_MILLISECOND_NS } else { 1 }
+}
+
 /// Handler for CHATHISTORY command.
 pub struct ChatHistoryHandler;
 
@@ -88,23 +144,8 @@ impl ChatHistoryHandler {
             target.to_string()
         };
 
-        let start = if msgref_str == "*" {
-            None
-        } else {
-            let msgref = MessageReference::parse(msgref_str);
-            match msgref {
-                Ok(MessageReference::MsgId(id)) => {
-                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
-                        .map_err(|e| HandlerError::Internal(e.to_string()))?
-                        .map(|ts| ts + 1) // Exclusive: exact nanotime, so +1 ns is sufficient
-                }
-                Ok(MessageReference::Timestamp(ts)) => {
-                    // Timestamps have millisecond precision, add 1ms for exclusivity
-                    Some(parse_server_time(&ts) + ONE_MILLISECOND_NS)
-                }
-                _ => None,
-            }
-        };
+        let start = resolve_msgref(ctx, &query_target, msgref_str).await?
+            .map(|resolved| resolved.timestamp + exclusivity_offset(&resolved));
 
         let query = HistoryQuery {
             target: query_target,
@@ -137,19 +178,9 @@ impl ChatHistoryHandler {
             target.to_string()
         };
 
-        let end = if msgref_str == "*" {
-            None
-        } else {
-            let msgref = MessageReference::parse(msgref_str);
-            match msgref {
-                Ok(MessageReference::MsgId(id)) => {
-                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
-                        .map_err(|e| HandlerError::Internal(e.to_string()))?
-                }
-                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
-                _ => None,
-            }
-        };
+        // For BEFORE, we don't add exclusivity offset - we want messages up to but not including
+        let end = resolve_msgref(ctx, &query_target, msgref_str).await?
+            .map(|r| r.timestamp);
 
         let query = HistoryQuery {
             target: query_target,
@@ -182,23 +213,9 @@ impl ChatHistoryHandler {
             target.to_string()
         };
 
-        let start = if msgref_str == "*" {
-            None
-        } else {
-            let msgref = MessageReference::parse(msgref_str);
-            match msgref {
-                Ok(MessageReference::MsgId(id)) => {
-                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
-                        .map_err(|e| HandlerError::Internal(e.to_string()))?
-                        .map(|ts| ts + 1) // Exclusive: exact nanotime, so +1 ns is sufficient
-                }
-                Ok(MessageReference::Timestamp(ts)) => {
-                    // Timestamps have millisecond precision, add 1ms for exclusivity
-                    Some(parse_server_time(&ts) + ONE_MILLISECOND_NS)
-                }
-                _ => None,
-            }
-        };
+        // For AFTER, add exclusivity offset to skip the referenced message
+        let start = resolve_msgref(ctx, &query_target, msgref_str).await?
+            .map(|resolved| resolved.timestamp + exclusivity_offset(&resolved));
 
         let query = HistoryQuery {
             target: query_target,
@@ -230,20 +247,9 @@ impl ChatHistoryHandler {
             target.to_string()
         };
 
-        let center_ts = if msgref_str == "*" {
-            None
-        } else {
-            match MessageReference::parse(msgref_str) {
-                Ok(MessageReference::MsgId(id)) => {
-                    ctx.matrix.history.lookup_timestamp(&query_target, &id).await
-                        .map_err(|e| HandlerError::Internal(e.to_string()))?
-                }
-                Ok(MessageReference::Timestamp(ts)) => Some(parse_server_time(&ts)),
-                _ => None,
-            }
-        };
-
-        let center_ts = center_ts.unwrap_or(0);
+        let center_ts = resolve_msgref(ctx, &query_target, msgref_str).await?
+            .map(|r| r.timestamp)
+            .unwrap_or(0);
 
         let limit_before = limit / 2;
         let limit_after = limit - limit_before;
@@ -291,54 +297,23 @@ impl ChatHistoryHandler {
             target.to_string()
         };
 
-        // Parse references, tracking whether they're timestamps (millisecond precision)
-        // or msgids (nanosecond precision) for correct exclusivity offset
-        let (ts1, is_ts1_timestamp) = if ref1_str == "*" {
-            (None, false)
-        } else {
-            match MessageReference::parse(ref1_str) {
-                Ok(MessageReference::MsgId(id)) => {
-                    let ts = ctx.matrix.history.lookup_timestamp(&query_target, &id).await
-                        .map_err(|e| HandlerError::Internal(e.to_string()))?;
-                    (ts, false) // msgid has nanosecond precision
-                }
-                Ok(MessageReference::Timestamp(ts)) => {
-                    (Some(parse_server_time(&ts)), true) // timestamp has millisecond precision
-                }
-                _ => (None, false),
-            }
-        };
+        // Parse both references using the helper
+        let resolved1 = resolve_msgref(ctx, &query_target, ref1_str).await?;
+        let resolved2 = resolve_msgref(ctx, &query_target, ref2_str).await?;
 
-        let (ts2, is_ts2_timestamp) = if ref2_str == "*" {
-            (None, false)
-        } else {
-            match MessageReference::parse(ref2_str) {
-                Ok(MessageReference::MsgId(id)) => {
-                    let ts = ctx.matrix.history.lookup_timestamp(&query_target, &id).await
-                        .map_err(|e| HandlerError::Internal(e.to_string()))?;
-                    (ts, false) // msgid has nanosecond precision
-                }
-                Ok(MessageReference::Timestamp(ts)) => {
-                    (Some(parse_server_time(&ts)), true) // timestamp has millisecond precision
-                }
-                _ => (None, false),
-            }
-        };
-
-        // Determine exclusivity offsets based on precision
-        let offset1 = if is_ts1_timestamp { ONE_MILLISECOND_NS } else { 1 };
-        let offset2 = if is_ts2_timestamp { ONE_MILLISECOND_NS } else { 1 };
-
-        let (start, end, reverse) = match (ts1, ts2) {
-            (Some(t1), Some(t2)) => {
-                if t1 > t2 {
-                    (Some(t2 + offset2), Some(t1), true)
+        // Calculate exclusive boundaries with appropriate precision-based offsets
+        let (start, end, reverse) = match (resolved1, resolved2) {
+            (Some(r1), Some(r2)) => {
+                if r1.timestamp > r2.timestamp {
+                    // ref1 is later - query backwards from ref1 to ref2
+                    (Some(r2.timestamp + exclusivity_offset(&r2)), Some(r1.timestamp), true)
                 } else {
-                    (Some(t1 + offset1), Some(t2), false)
+                    // ref1 is earlier - query forwards from ref1 to ref2
+                    (Some(r1.timestamp + exclusivity_offset(&r1)), Some(r2.timestamp), false)
                 }
             }
-            (Some(t1), None) => (Some(t1 + offset1), None, false),
-            (None, Some(t2)) => (None, Some(t2), false),
+            (Some(r1), None) => (Some(r1.timestamp + exclusivity_offset(&r1)), None, false),
+            (None, Some(r2)) => (None, Some(r2.timestamp), false),
             (None, None) => (None, None, false),
         };
 
@@ -496,7 +471,7 @@ impl PostRegHandler for ChatHistoryHandler {
                     command: Command::FAIL(
                         "CHATHISTORY".to_string(),
                         "INVALID_PARAMS".to_string(),
-                        vec![format!("Unknown subcommand: {}", subcommand_str)],
+                        vec![format!("{}: {}", FAIL_UNKNOWN_SUBCOMMAND, subcommand_str)],
                     ),
                 };
                 ctx.sender.send(fail).await?;
@@ -538,7 +513,7 @@ impl PostRegHandler for ChatHistoryHandler {
                         command: Command::FAIL(
                             "CHATHISTORY".to_string(),
                             "INVALID_TARGET".to_string(),
-                            vec![subcommand_str.to_string(), target.clone(), "You are not in that channel".to_string()],
+                            vec![subcommand_str.to_string(), target.clone(), FAIL_NOT_IN_CHANNEL.to_string()],
                         ),
                     };
                     ctx.sender.send(fail).await?;
@@ -575,7 +550,7 @@ impl PostRegHandler for ChatHistoryHandler {
                     command: Command::FAIL(
                         "CHATHISTORY".to_string(),
                         "MESSAGE_ERROR".to_string(),
-                        vec!["Failed to retrieve history".to_string()],
+                        vec![FAIL_QUERY_ERROR.to_string()],
                     ),
                 };
                 ctx.sender.send(fail).await?;

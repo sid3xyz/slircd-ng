@@ -1,3 +1,7 @@
+//! CHGHOST command handler for operator hostname changes.
+//!
+//! Allows operators to change a user's visible hostname (vhost).
+
 use super::super::{Context,
     HandlerResult, PostRegHandler,
     resolve_nick_to_uid, server_notice,

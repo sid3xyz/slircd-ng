@@ -510,6 +510,10 @@ pub struct LimitsConfig {
     /// NAMES #channel is unlimited since it's a single channel.
     #[serde(default = "default_max_names_channels")]
     pub max_names_channels: usize,
+    /// Channel actor mailbox capacity (default: 500).
+    /// Higher values provide burst tolerance during floods.
+    #[serde(default = "default_channel_mailbox_capacity")]
+    pub channel_mailbox_capacity: usize,
 }
 
 impl Default for LimitsConfig {
@@ -518,6 +522,7 @@ impl Default for LimitsConfig {
             max_who_results: default_max_who_results(),
             max_list_channels: default_max_list_channels(),
             max_names_channels: default_max_names_channels(),
+            channel_mailbox_capacity: default_channel_mailbox_capacity(),
         }
     }
 }
@@ -532,6 +537,10 @@ fn default_max_list_channels() -> usize {
 
 fn default_max_names_channels() -> usize {
     50
+}
+
+fn default_channel_mailbox_capacity() -> usize {
+    500
 }
 
 /// Rate limiting configuration for anti-flood protection.

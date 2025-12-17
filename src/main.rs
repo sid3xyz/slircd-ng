@@ -232,6 +232,13 @@ async fn main() -> anyhow::Result<()> {
                 if removed > 0 {
                     info!(removed = removed, "Expired bans pruned from cache");
                 }
+                // Prune expired entries from IP deny list (in-memory bitmap)
+                if let Ok(mut deny_list) = matrix.ip_deny_list.write() {
+                    let pruned = deny_list.prune_expired();
+                    if pruned > 0 {
+                        info!(removed = pruned, "Expired IP deny entries pruned");
+                    }
+                }
                 // Cleanup rate limiters (connection_limiters keyed by IP grow unbounded)
                 matrix.rate_limiter.cleanup();
             }

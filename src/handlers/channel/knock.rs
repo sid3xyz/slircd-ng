@@ -7,7 +7,11 @@ use crate::state::RegisteredState;
 use crate::state::actor::{ChannelEvent, ChannelError};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
+use std::time::Instant;
 use tokio::sync::oneshot;
+
+/// Minimum seconds between KNOCK requests to the same channel per user.
+const KNOCK_COOLDOWN_SECS: u64 = 30;
 
 /// Handler for KNOCK command.
 ///
@@ -54,7 +58,7 @@ impl PostRegHandler for KnockHandler {
             }
         };
 
-        let server_name = ctx.server_name();
+        let server_name = ctx.server_name().to_string();
         let channel_lower = irc_to_lower(channel_name);
 
         // Get user info
@@ -78,6 +82,38 @@ impl PostRegHandler for KnockHandler {
             }
         };
 
+        // Rate limit: prevent KNOCK spam to the same channel
+        let now = Instant::now();
+        if let Some(last_knock) = ctx.state.knock_timestamps.get(&channel_lower) {
+            let elapsed = now.duration_since(*last_knock).as_secs();
+            if elapsed < KNOCK_COOLDOWN_SECS {
+                let remaining = KNOCK_COOLDOWN_SECS - elapsed;
+                let reply = server_reply(
+                    &server_name,
+                    Response::ERR_TOOMANYKNOCK,
+                    vec![
+                        nick.clone(),
+                        channel_name.to_string(),
+                        format!("You must wait {} seconds before knocking again", remaining),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+        }
+        // Record this knock attempt
+        ctx.state.knock_timestamps.insert(channel_lower.clone(), now);
+
+        // Prune old entries to prevent unbounded growth (keep last 10 channels)
+        if ctx.state.knock_timestamps.len() > 10 {
+            let mut entries: Vec<_> = ctx.state.knock_timestamps.iter()
+                .map(|(k, v)| (k.clone(), *v))
+                .collect();
+            entries.sort_by_key(|(_, v)| std::cmp::Reverse(*v));
+            entries.truncate(10);
+            ctx.state.knock_timestamps = entries.into_iter().collect();
+        }
+
         let (reply_tx, reply_rx) = oneshot::channel();
         let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
 
@@ -94,7 +130,7 @@ impl PostRegHandler for KnockHandler {
         match reply_rx.await {
             Ok(Ok(())) => {
                 let reply = server_reply(
-                    server_name,
+                    &server_name,
                     Response::RPL_KNOCKDLVR,
                     vec![
                         nick,
@@ -107,7 +143,7 @@ impl PostRegHandler for KnockHandler {
             Ok(Err(e)) => {
                 let reply = match e {
                     ChannelError::CannotKnock => server_reply(
-                        server_name,
+                        &server_name,
                         Response::ERR_CHANOPRIVSNEEDED,
                         vec![
                             nick.clone(),
@@ -116,7 +152,7 @@ impl PostRegHandler for KnockHandler {
                         ],
                     ),
                     ChannelError::ChanOpen => server_reply(
-                        server_name,
+                        &server_name,
                         Response::ERR_CHANOPEN,
                         vec![
                             nick.clone(),
@@ -125,7 +161,7 @@ impl PostRegHandler for KnockHandler {
                         ],
                     ),
                     ChannelError::UserOnChannel(_) => server_reply(
-                        server_name,
+                        &server_name,
                         Response::ERR_KNOCKONCHAN,
                         vec![
                             nick.clone(),
@@ -134,7 +170,7 @@ impl PostRegHandler for KnockHandler {
                         ],
                     ),
                     _ => server_reply(
-                        server_name,
+                        &server_name,
                         Response::ERR_UNKNOWNERROR,
                         vec![nick.clone(), e.to_string()],
                     ),

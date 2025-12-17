@@ -42,7 +42,7 @@ use crate::handlers::{
     monitor::MonitorHandler,
     oper::{
         ChghostHandler, ChgIdentHandler, DieHandler, GlobOpsHandler, KillHandler, OperHandler,
-        RehashHandler, RestartHandler, TraceHandler, VhostHandler, WallopsHandler,
+        RehashHandler, RestartHandler, SpamConfHandler, TraceHandler, VhostHandler, WallopsHandler,
     },
     server_query::{
         AdminHandler, HelpHandler, InfoHandler, LinksHandler, LusersHandler, MapHandler,
@@ -185,6 +185,7 @@ impl Registry {
         post_reg_handlers.insert("CHGIDENT", Box::new(ChgIdentHandler));
         post_reg_handlers.insert("VHOST", Box::new(VhostHandler));
         post_reg_handlers.insert("TRACE", Box::new(TraceHandler));
+        post_reg_handlers.insert("SPAMCONF", Box::new(SpamConfHandler));
 
         // Ban handlers
         post_reg_handlers.insert("KLINE", Box::new(KlineHandler::kline()));

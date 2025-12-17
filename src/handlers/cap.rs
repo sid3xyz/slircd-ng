@@ -133,6 +133,7 @@ async fn handle_ls<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, versio
     // Build capability tokens (include EXTERNAL if TLS with cert)
     let caps = build_cap_list_tokens(
         version,
+        ctx.state.is_tls(),
         ctx.state.is_tls() && ctx.state.certfp().is_some(),
         &ctx.matrix.config.account_registration,
     );
@@ -302,31 +303,40 @@ async fn handle_end<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str) -> Ha
 
 /// Build capability list string for CAP LS response.
 ///
+/// `is_tls` indicates whether the connection is over TLS.
 /// `has_cert` indicates whether the client presented a TLS certificate,
 /// which enables SASL EXTERNAL.
+///
+/// SECURITY: SASL PLAIN is ONLY advertised over TLS connections to prevent
+/// plaintext credential exposure. Non-TLS connections cannot use password auth.
 fn build_cap_list_tokens(
     version: u32,
+    is_tls: bool,
     has_cert: bool,
     acct_cfg: &AccountRegistrationConfig,
 ) -> Vec<String> {
     SUPPORTED_CAPS
         .iter()
-        .map(|cap| {
+        .filter_map(|cap| {
             // For CAP 302+, add values for caps that have them
             if version >= 302 {
                 match cap {
                     Capability::Sasl => {
+                        // SECURITY: Only advertise SASL over TLS
+                        if !is_tls {
+                            return None; // Don't advertise SASL at all on plaintext
+                        }
                         if has_cert {
-                            "sasl=PLAIN,EXTERNAL".to_string()
+                            Some("sasl=PLAIN,EXTERNAL".to_string())
                         } else {
-                            "sasl=PLAIN".to_string()
+                            Some("sasl=PLAIN".to_string())
                         }
                     }
                     Capability::Multiline => {
-                        format!(
+                        Some(format!(
                             "draft/multiline=max-bytes={},max-lines={}",
                             MULTILINE_MAX_BYTES, MULTILINE_MAX_LINES
-                        )
+                        ))
                     }
                     Capability::AccountRegistration => {
                         // Build flags based on server configuration
@@ -341,15 +351,20 @@ fn build_cap_list_tokens(
                             flags.push("email-required");
                         }
                         if flags.is_empty() {
-                            "draft/account-registration".to_string()
+                            Some("draft/account-registration".to_string())
                         } else {
-                            format!("draft/account-registration={}", flags.join(","))
+                            Some(format!("draft/account-registration={}", flags.join(",")))
                         }
                     }
-                    _ => cap.as_ref().to_string(),
+                    _ => Some(cap.as_ref().to_string()),
                 }
             } else {
-                cap.as_ref().to_string()
+                // For older CAP versions, filter SASL on non-TLS
+                if *cap == Capability::Sasl && !is_tls {
+                    None
+                } else {
+                    Some(cap.as_ref().to_string())
+                }
             }
         })
         .collect()
@@ -433,203 +448,200 @@ impl PreRegHandler for AuthenticateHandler {
             return Ok(());
         }
 
-        // Handle SASL flow
+        // Handle SASL flow - dispatch to state-specific handlers
         match ctx.state.sasl_state.clone() {
-            SaslState::None => {
-                // Client is initiating SASL with mechanism name
-                if data.eq_ignore_ascii_case("PLAIN") {
-                    ctx.state.sasl_state = SaslState::WaitingForData;
-                    // Send empty challenge (AUTHENTICATE +)
-                    let reply = Message {
-                        tags: None,
-                        prefix: Some(ctx.server_prefix()),
-                        command: Command::AUTHENTICATE("+".to_string()),
-                    };
-                    ctx.sender.send(reply).await?;
-                    debug!(nick = %nick, "SASL PLAIN: sent challenge");
-                } else if data.eq_ignore_ascii_case("EXTERNAL") {
-                    // EXTERNAL uses TLS client certificate
-                    if !ctx.state.is_tls {
-                        send_sasl_fail(ctx, &nick, "EXTERNAL requires TLS connection").await?;
-                        ctx.state.sasl_state = SaslState::None;
-                        return Ok(());
-                    }
-
-                    let Some(certfp) = ctx.state.certfp.as_ref() else {
-                        send_sasl_fail(ctx, &nick, "No client certificate presented").await?;
-                        ctx.state.sasl_state = SaslState::None;
-                        return Ok(());
-                    };
-
-                    // Send empty challenge to get optional authzid
-                    ctx.state.sasl_state = SaslState::WaitingForExternal;
-                    let reply = Message {
-                        tags: None,
-                        prefix: Some(ctx.server_prefix()),
-                        command: Command::AUTHENTICATE("+".to_string()),
-                    };
-                    ctx.sender.send(reply).await?;
-                    debug!(nick = %nick, certfp = %certfp, "SASL EXTERNAL: sent challenge");
-                } else {
-                    // Unsupported mechanism
-                    send_sasl_fail(ctx, &nick, "Unsupported SASL mechanism").await?;
-                    ctx.state.sasl_state = SaslState::None;
-                }
-            }
-            SaslState::WaitingForExternal => {
-                // Client sending empty response or authzid for EXTERNAL
-                if data == "*" {
-                    // Client aborting
-                    send_sasl_fail(ctx, &nick, "SASL authentication aborted").await?;
-                    ctx.state.sasl_state = SaslState::None;
-                } else {
-                    // data is either "+" (empty) or base64-encoded authzid
-                    let authzid = if data == "+" {
-                        None
-                    } else {
-                        slirc_proto::sasl::decode_base64(data)
-                            .ok()
-                            .and_then(|b| String::from_utf8(b).ok())
-                    };
-
-                    let certfp = ctx
-                        .state
-                        .certfp
-                        .as_ref()
-                        .expect("checked above")
-                        .clone();
-
-                    // Look up account by certificate fingerprint
-                    match ctx.db.accounts().find_by_certfp(&certfp).await {
-                        Ok(Some(account)) => {
-                            // If authzid provided, verify it matches
-                            if let Some(ref az) = authzid
-                                && !az.eq_ignore_ascii_case(&account.name)
-                            {
-                                warn!(nick = %nick, authzid = %az, account = %account.name, "SASL EXTERNAL authzid mismatch");
-                                send_sasl_fail(ctx, &nick, "Authorization identity mismatch")
-                                    .await?;
-                                ctx.state.sasl_state = SaslState::None;
-                                return Ok(());
-                            }
-
-                            info!(
-                                nick = %nick,
-                                account = %account.name,
-                                certfp = %certfp,
-                                "SASL EXTERNAL authentication successful"
-                            );
-
-                            let user = ctx
-                                .state
-                                .user
-                                .clone()
-                                .unwrap_or_else(|| "*".to_string());
-                            send_sasl_success(ctx, &nick, &user, &account.name).await?;
-                            ctx.state.sasl_state = SaslState::Authenticated;
-                            ctx.state.account = Some(account.name);
-                        }
-                        Ok(None) => {
-                            warn!(nick = %nick, certfp = %certfp, "SASL EXTERNAL: no account with this certificate");
-                            send_sasl_fail(ctx, &nick, "Certificate not registered to any account")
-                                .await?;
-                            ctx.state.sasl_state = SaslState::None;
-                        }
-                        Err(e) => {
-                            warn!(nick = %nick, certfp = %certfp, error = ?e, "SASL EXTERNAL database error");
-                            send_sasl_fail(ctx, &nick, "Authentication failed").await?;
-                            ctx.state.sasl_state = SaslState::None;
-                        }
-                    }
-                }
-            }
-            SaslState::WaitingForData => {
-                // Client sending base64-encoded credentials
-                // Per SASL 3.1 spec: messages are split into 400-byte chunks
-                // - Line == 400 bytes: more data follows
-                // - Line < 400 bytes: last chunk
-                // - "+" alone: empty final chunk (when prior was exactly 400 bytes)
-
-                if data == "*" {
-                    // Client aborting
-                    ctx.state.sasl_buffer.clear();
-                    send_sasl_fail(ctx, &nick, "SASL authentication aborted").await?;
-                    ctx.state.sasl_state = SaslState::None;
-                } else {
-                    // Accumulate the chunk
-                    // "+" alone means empty chunk (final when previous was exactly 400 bytes)
-                    if data != "+" {
-                        ctx.state.sasl_buffer.push_str(data);
-                    }
-
-                    // Check if more data is expected
-                    // If this chunk is exactly 400 bytes, wait for more
-                    if data.len() == 400 {
-                        // More data expected, wait for next AUTHENTICATE
-                        debug!(nick = %nick, chunk_len = data.len(), total_len = ctx.state.sasl_buffer.len(), "SASL: accumulated chunk, waiting for more");
-                        return Ok(());
-                    }
-
-                    // We have the complete payload, process it
-                    // Use mem::take to get ownership and clear the buffer
-                    let mut full_data = std::mem::take(&mut ctx.state.sasl_buffer);
-                    debug!(nick = %nick, total_len = full_data.len(), "SASL: processing complete payload");
-
-                    // Try to decode and validate
-                    let result = validate_sasl_plain(&full_data);
-                    // Zeroize the buffer after decoding (it may contain base64-encoded credentials)
-                    full_data.zeroize();
-
-                    match result {
-                        Ok((authzid, authcid, password)) => {
-                            // Validate against database
-                            // password is SecureString and will be zeroized on drop
-                            let account_name = if authzid.is_empty() {
-                                &authcid
-                            } else {
-                                &authzid
-                            };
-                            match ctx.db.accounts().identify(account_name, password.as_str()).await {
-                                Ok(account) => {
-                                    info!(
-                                        nick = %nick,
-                                        account = %account.name,
-                                        "SASL PLAIN authentication successful"
-                                    );
-
-                                    // Send success
-                                    let user = ctx
-                                        .state
-                                        .user
-                                        .clone()
-                                        .unwrap_or_else(|| "*".to_string());
-                                    send_sasl_success(ctx, &nick, &user, &account.name).await?;
-                                    ctx.state.sasl_state = SaslState::Authenticated;
-                                    ctx.state.account = Some(account.name);
-                                }
-                                Err(e) => {
-                                    warn!(nick = %nick, account = %account_name, error = ?e, "SASL authentication failed");
-                                    send_sasl_fail(ctx, &nick, "Invalid credentials").await?;
-                                    ctx.state.sasl_state = SaslState::None;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            debug!(nick = %nick, error = %e, "SASL PLAIN decode failed");
-                            send_sasl_fail(ctx, &nick, "Invalid SASL credentials").await?;
-                            ctx.state.sasl_state = SaslState::None;
-                        }
-                    }
-                }
-            }
+            SaslState::None => handle_sasl_init(ctx, &nick, data).await,
+            SaslState::WaitingForExternal => handle_sasl_external(ctx, &nick, data).await,
+            SaslState::WaitingForData => handle_sasl_plain_data(ctx, &nick, data).await,
             SaslState::Authenticated => {
-                // Already authenticated
                 debug!(nick = %nick, "AUTHENTICATE after already authenticated");
+                Ok(())
             }
         }
-
-        Ok(())
     }
+}
+
+/// Handle SASL initiation - client sends mechanism name (PLAIN or EXTERNAL).
+async fn handle_sasl_init(
+    ctx: &mut Context<'_, UnregisteredState>,
+    nick: &str,
+    mechanism: &str,
+) -> HandlerResult {
+    if mechanism.eq_ignore_ascii_case("PLAIN") {
+        ctx.state.sasl_state = SaslState::WaitingForData;
+        // Send empty challenge (AUTHENTICATE +)
+        let reply = Message {
+            tags: None,
+            prefix: Some(ctx.server_prefix()),
+            command: Command::AUTHENTICATE("+".to_string()),
+        };
+        ctx.sender.send(reply).await?;
+        debug!(nick = %nick, "SASL PLAIN: sent challenge");
+    } else if mechanism.eq_ignore_ascii_case("EXTERNAL") {
+        // EXTERNAL uses TLS client certificate
+        if !ctx.state.is_tls {
+            send_sasl_fail(ctx, nick, "EXTERNAL requires TLS connection").await?;
+            ctx.state.sasl_state = SaslState::None;
+            return Ok(());
+        }
+
+        let Some(certfp) = ctx.state.certfp.as_ref() else {
+            send_sasl_fail(ctx, nick, "No client certificate presented").await?;
+            ctx.state.sasl_state = SaslState::None;
+            return Ok(());
+        };
+
+        // Send empty challenge to get optional authzid
+        ctx.state.sasl_state = SaslState::WaitingForExternal;
+        let reply = Message {
+            tags: None,
+            prefix: Some(ctx.server_prefix()),
+            command: Command::AUTHENTICATE("+".to_string()),
+        };
+        ctx.sender.send(reply).await?;
+        debug!(nick = %nick, certfp = %certfp, "SASL EXTERNAL: sent challenge");
+    } else {
+        // Unsupported mechanism
+        send_sasl_fail(ctx, nick, "Unsupported SASL mechanism").await?;
+        ctx.state.sasl_state = SaslState::None;
+    }
+    Ok(())
+}
+
+/// Handle SASL EXTERNAL response - client sends authzid or empty.
+async fn handle_sasl_external(
+    ctx: &mut Context<'_, UnregisteredState>,
+    nick: &str,
+    data: &str,
+) -> HandlerResult {
+    if data == "*" {
+        // Client aborting
+        send_sasl_fail(ctx, nick, "SASL authentication aborted").await?;
+        ctx.state.sasl_state = SaslState::None;
+        return Ok(());
+    }
+
+    // data is either "+" (empty) or base64-encoded authzid
+    let authzid = if data == "+" {
+        None
+    } else {
+        slirc_proto::sasl::decode_base64(data)
+            .ok()
+            .and_then(|b| String::from_utf8(b).ok())
+    };
+
+    let certfp = ctx
+        .state
+        .certfp
+        .as_ref()
+        .expect("certfp verified in handle_sasl_init")
+        .clone();
+
+    // Look up account by certificate fingerprint
+    match ctx.db.accounts().find_by_certfp(&certfp).await {
+        Ok(Some(account)) => {
+            // If authzid provided, verify it matches
+            if let Some(ref az) = authzid
+                && !az.eq_ignore_ascii_case(&account.name)
+            {
+                warn!(nick = %nick, authzid = %az, account = %account.name, "SASL EXTERNAL authzid mismatch");
+                send_sasl_fail(ctx, nick, "Authorization identity mismatch").await?;
+                ctx.state.sasl_state = SaslState::None;
+                return Ok(());
+            }
+
+            info!(
+                nick = %nick,
+                account = %account.name,
+                certfp = %certfp,
+                "SASL EXTERNAL authentication successful"
+            );
+
+            let user = ctx.state.user.clone().unwrap_or_else(|| "*".to_string());
+            send_sasl_success(ctx, nick, &user, &account.name).await?;
+            ctx.state.sasl_state = SaslState::Authenticated;
+            ctx.state.account = Some(account.name);
+        }
+        Ok(None) => {
+            warn!(nick = %nick, certfp = %certfp, "SASL EXTERNAL: no account with this certificate");
+            send_sasl_fail(ctx, nick, "Certificate not registered to any account").await?;
+            ctx.state.sasl_state = SaslState::None;
+        }
+        Err(e) => {
+            warn!(nick = %nick, certfp = %certfp, error = ?e, "SASL EXTERNAL database error");
+            send_sasl_fail(ctx, nick, "Authentication failed").await?;
+            ctx.state.sasl_state = SaslState::None;
+        }
+    }
+    Ok(())
+}
+
+/// Handle SASL PLAIN data - client sends base64-encoded credentials.
+///
+/// Per SASL 3.1 spec: messages are split into 400-byte chunks.
+/// - Line == 400 bytes: more data follows
+/// - Line < 400 bytes: last chunk
+/// - "+" alone: empty final chunk (when prior was exactly 400 bytes)
+async fn handle_sasl_plain_data(
+    ctx: &mut Context<'_, UnregisteredState>,
+    nick: &str,
+    data: &str,
+) -> HandlerResult {
+    if data == "*" {
+        // Client aborting
+        ctx.state.sasl_buffer.clear();
+        send_sasl_fail(ctx, nick, "SASL authentication aborted").await?;
+        ctx.state.sasl_state = SaslState::None;
+        return Ok(());
+    }
+
+    // Accumulate the chunk ("+" alone means empty chunk)
+    if data != "+" {
+        ctx.state.sasl_buffer.push_str(data);
+    }
+
+    // If this chunk is exactly 400 bytes, wait for more
+    if data.len() == 400 {
+        debug!(nick = %nick, chunk_len = data.len(), total_len = ctx.state.sasl_buffer.len(), "SASL: accumulated chunk, waiting for more");
+        return Ok(());
+    }
+
+    // We have the complete payload, process it
+    let mut full_data = std::mem::take(&mut ctx.state.sasl_buffer);
+    debug!(nick = %nick, total_len = full_data.len(), "SASL: processing complete payload");
+
+    // Try to decode and validate
+    let result = validate_sasl_plain(&full_data);
+    // Zeroize the buffer after decoding (it may contain base64-encoded credentials)
+    full_data.zeroize();
+
+    match result {
+        Ok((authzid, authcid, password)) => {
+            // Validate against database (password is SecureString, zeroized on drop)
+            let account_name = if authzid.is_empty() { &authcid } else { &authzid };
+
+            match ctx.db.accounts().identify(account_name, password.as_str()).await {
+                Ok(account) => {
+                    info!(nick = %nick, account = %account.name, "SASL PLAIN authentication successful");
+                    let user = ctx.state.user.clone().unwrap_or_else(|| "*".to_string());
+                    send_sasl_success(ctx, nick, &user, &account.name).await?;
+                    ctx.state.sasl_state = SaslState::Authenticated;
+                    ctx.state.account = Some(account.name);
+                }
+                Err(e) => {
+                    warn!(nick = %nick, account = %account_name, error = ?e, "SASL authentication failed");
+                    send_sasl_fail(ctx, nick, "Invalid credentials").await?;
+                    ctx.state.sasl_state = SaslState::None;
+                }
+            }
+        }
+        Err(e) => {
+            debug!(nick = %nick, error = %e, "SASL PLAIN decode failed");
+            send_sasl_fail(ctx, nick, "Invalid SASL credentials").await?;
+            ctx.state.sasl_state = SaslState::None;
+        }
+    }
+    Ok(())
 }
 
 /// SASL authentication state.

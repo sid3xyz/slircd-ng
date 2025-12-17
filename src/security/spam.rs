@@ -107,7 +107,9 @@ impl SpamDetectionService {
             keyword_matcher: matcher,
             raw_keywords: keywords.into_iter().collect(),
             url_shorteners: Self::default_url_shorteners(),
-            entropy_threshold: 3.0,
+            // Entropy threshold of 2.5 catches spam more effectively
+            // Research suggests <2.5 for spam detection, >4.5 for normal text
+            entropy_threshold: 2.5,
             max_char_repetition: 10,
             recent_messages: DashMap::new(),
             reputation,
@@ -515,7 +517,6 @@ impl SpamDetectionService {
     }
 
     /// Get current entropy threshold
-    #[allow(dead_code)] // Available for runtime config
     pub fn entropy_threshold(&self) -> f32 {
         self.entropy_threshold
     }

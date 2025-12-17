@@ -9,6 +9,7 @@
 //! - Event-sourced history (Innovation 5)
 
 mod common;
+mod errors;
 mod notice;
 mod privmsg;
 mod validation;
@@ -25,6 +26,7 @@ use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 use uuid::Uuid;
+use errors::*;
 
 use common::{
     ChannelRouteResult, RouteOptions, SenderSnapshot, is_shunned_with_snapshot,
@@ -186,14 +188,14 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                     send_no_such_channel(ctx, &snapshot.nick, target).await?;
                 }
                 ChannelRouteResult::BlockedExternal => {
-                    send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+n)").await?;
+                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_NOT_IN_CHANNEL).await?;
                 }
                 ChannelRouteResult::BlockedModerated => {
                     // TAGMSG doesn't check +m, so this shouldn't happen
                     unreachable!("TAGMSG should not check moderated mode");
                 }
                 ChannelRouteResult::BlockedRegisteredOnly => {
-                    send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+r)").await?;
+                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_REGISTERED_ONLY).await?;
                 }
                 ChannelRouteResult::BlockedCTCP => {
                     // TAGMSG has no CTCP, so this shouldn't happen
@@ -204,7 +206,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                     unreachable!("TAGMSG is not a NOTICE");
                 }
                 ChannelRouteResult::BlockedBanned => {
-                    send_cannot_send(ctx, &snapshot.nick, target, "Cannot send to channel (+b)").await?;
+                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_BANNED).await?;
                 }
             }
         } else {

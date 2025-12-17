@@ -52,6 +52,7 @@ pub async fn force_join_channel<S>(
     send_topic_names_to: Option<&tokio::sync::mpsc::Sender<Message>>,
 ) -> HandlerResult {
     let channel_lower = irc_to_lower(channel_name);
+    let mailbox_capacity = ctx.matrix.config.limits.channel_mailbox_capacity;
 
     // Get or create channel
     let channel_ref = ctx
@@ -60,10 +61,11 @@ pub async fn force_join_channel<S>(
         .entry(channel_lower.clone())
         .or_insert_with(|| {
             crate::metrics::ACTIVE_CHANNELS.inc();
-            crate::state::actor::ChannelActor::spawn(
+            crate::state::actor::ChannelActor::spawn_with_capacity(
                 channel_name.to_string(),
                 std::sync::Arc::downgrade(ctx.matrix),
                 None, // No initial topic for SAJOIN-created channels
+                mailbox_capacity,
             )
         })
         .clone();
@@ -85,6 +87,9 @@ pub async fn force_join_channel<S>(
                 user.realname.clone(),
                 ctx.server_name().to_string(),
                 user.account.clone(),
+                user.modes.secure,            // TLS status from user modes (+Z)
+                user.modes.oper,              // Oper status
+                user.modes.oper_type.clone(), // Oper type (admin/oper)
             );
             let sender = ctx.matrix.senders.get(target.uid).map(|s| s.clone());
             (user.caps.clone(), context, sender, user.session_id)
@@ -184,7 +189,7 @@ pub async fn force_join_channel<S>(
 
         if let Ok(members) = members_rx.await {
             let channel_symbol = if join_data.is_secret { "@" } else { "=" };
-            let mut names_list = Vec::new();
+            let mut names_list = Vec::with_capacity(members.len());
 
             for (uid, member_modes) in members {
                 if let Some(user_arc) = ctx.matrix.users.get(&uid).map(|u| u.value().clone()) {

@@ -1,3 +1,8 @@
+//! Redb-backed persistent history storage.
+//!
+//! Implements [`HistoryProvider`] using the redb embedded database for
+//! durable message history with efficient range queries by target and time.
+
 use async_trait::async_trait;
 use super::{HistoryProvider, HistoryError, HistoryQuery, StoredMessage};
 use redb::{Database, TableDefinition, ReadableTable, ReadableDatabase};

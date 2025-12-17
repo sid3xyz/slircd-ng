@@ -1,3 +1,7 @@
+//! Channel list management (bans, excepts, invex).
+//!
+//! Helpers for adding, removing, and querying channel list entries.
+
 use super::super::ChannelActor;
 use crate::state::ListEntry;
 use chrono::Utc;

@@ -27,6 +27,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 
+// Safe NonZeroU32 constants - these are compile-time verified non-zero values
+const NZ_1: NonZeroU32 = match NonZeroU32::new(1) { Some(v) => v, None => panic!("1 is non-zero") };
+const NZ_2: NonZeroU32 = match NonZeroU32::new(2) { Some(v) => v, None => panic!("2 is non-zero") };
+const NZ_3: NonZeroU32 = match NonZeroU32::new(3) { Some(v) => v, None => panic!("3 is non-zero") };
+const NZ_5: NonZeroU32 = match NonZeroU32::new(5) { Some(v) => v, None => panic!("5 is non-zero") };
+
 /// Type alias for governor's direct rate limiter.
 type DirectRateLimiter = governor::DefaultDirectRateLimiter;
 
@@ -120,8 +126,7 @@ impl RateLimitManager {
     /// Returns `true` if allowed, `false` if rate limited.
     pub fn check_message_rate(&self, uid: &Uid) -> bool {
         let entry = self.message_limiters.entry(uid.clone()).or_insert_with(|| {
-            let rate = NonZeroU32::new(self.config.message_rate_per_second)
-                .unwrap_or(NonZeroU32::new(2).unwrap());
+            let rate = NonZeroU32::new(self.config.message_rate_per_second).unwrap_or(NZ_2);
             TimedLimiter::new(GovRateLimiter::direct(Quota::per_second(rate)))
         });
 
@@ -143,11 +148,10 @@ impl RateLimitManager {
         }
 
         let entry = self.connection_limiters.entry(ip).or_insert_with(|| {
-            let burst = NonZeroU32::new(self.config.connection_burst_per_ip)
-                .unwrap_or(NonZeroU32::new(3).unwrap());
+            let burst = NonZeroU32::new(self.config.connection_burst_per_ip).unwrap_or(NZ_3);
             // 1 connection per 10 seconds with burst
             TimedLimiter::new(GovRateLimiter::direct(
-                Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(burst),
+                Quota::per_second(NZ_1).allow_burst(burst),
             ))
         });
 
@@ -163,11 +167,10 @@ impl RateLimitManager {
     /// Returns `true` if allowed, `false` if rate limited.
     pub fn check_join_rate(&self, uid: &Uid) -> bool {
         let entry = self.join_limiters.entry(uid.clone()).or_insert_with(|| {
-            let burst = NonZeroU32::new(self.config.join_burst_per_client)
-                .unwrap_or(NonZeroU32::new(5).unwrap());
+            let burst = NonZeroU32::new(self.config.join_burst_per_client).unwrap_or(NZ_5);
             // 1 join per second with burst
             TimedLimiter::new(GovRateLimiter::direct(
-                Quota::per_second(NonZeroU32::new(1).unwrap()).allow_burst(burst),
+                Quota::per_second(NZ_1).allow_burst(burst),
             ))
         });
 
@@ -181,12 +184,10 @@ impl RateLimitManager {
     /// Check if a client can send a CTCP message.
     pub fn check_ctcp_rate(&self, uid: &Uid) -> bool {
         let entry = self.ctcp_limiters.entry(uid.clone()).or_insert_with(|| {
-            let burst = NonZeroU32::new(self.config.ctcp_burst_per_client)
-                .unwrap_or(NonZeroU32::new(2).unwrap());
+            let burst = NonZeroU32::new(self.config.ctcp_burst_per_client).unwrap_or(NZ_2);
             TimedLimiter::new(GovRateLimiter::direct(
                 Quota::per_second(
-                    NonZeroU32::new(self.config.ctcp_rate_per_second)
-                        .unwrap_or(NonZeroU32::new(1).unwrap()),
+                    NonZeroU32::new(self.config.ctcp_rate_per_second).unwrap_or(NZ_1),
                 )
                 .allow_burst(burst),
             ))

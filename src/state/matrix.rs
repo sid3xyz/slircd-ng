@@ -216,7 +216,8 @@ impl Matrix {
         let ban_cache = BanCache::load(klines, glines);
 
         // Create shutdown broadcast channel
-        let (shutdown_tx, _) = broadcast::channel(1);
+        // Capacity 16 provides buffer for multiple slow subscribers during shutdown
+        let (shutdown_tx, _) = broadcast::channel(16);
 
         Self {
             users: DashMap::new(),

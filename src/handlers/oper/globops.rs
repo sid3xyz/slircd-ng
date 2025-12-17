@@ -1,3 +1,7 @@
+//! GLOBOPS command handler for global operator messages.
+//!
+//! Sends a message to all operators with +g (globops) mode set.
+
 use super::super::{Context,
     HandlerResult, PostRegHandler,
 };

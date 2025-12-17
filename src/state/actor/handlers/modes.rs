@@ -1,3 +1,7 @@
+//! MODE event handling for channels.
+//!
+//! Applies mode changes with privilege validation and broadcasts results.
+
 use super::{ChannelActor, ChannelError, ChannelMode, Uid, ClearTarget};
 use slirc_proto::mode::{ChannelMode as ProtoChannelMode, Mode};
 use slirc_proto::{Command, Message, Prefix};

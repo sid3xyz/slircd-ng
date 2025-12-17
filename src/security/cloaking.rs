@@ -183,12 +183,42 @@ pub fn cloak_hostname(hostname: &str, secret_key: &str) -> String {
 /// Check if a secret key is the insecure default.
 ///
 /// Returns `true` if the key appears to be a placeholder that should be changed.
+///
+/// Checks for:
+/// - Empty or too short secrets (< 16 chars)
+/// - Known weak patterns ("changeme", "default", etc.)
+/// - Low entropy (< 4 unique character classes)
 pub fn is_default_secret(secret: &str) -> bool {
-    secret.is_empty()
+    // Basic length and pattern checks
+    if secret.is_empty()
         || secret == "changeme"
         || secret.contains("default")
         || secret.contains("changeme")
         || secret.len() < 16
+    {
+        return true;
+    }
+
+    // Entropy check: good secrets should have character diversity
+    // Check for presence of different character classes
+    let has_lower = secret.chars().any(|c| c.is_ascii_lowercase());
+    let has_upper = secret.chars().any(|c| c.is_ascii_uppercase());
+    let has_digit = secret.chars().any(|c| c.is_ascii_digit());
+    let has_special = secret.chars().any(|c| !c.is_alphanumeric());
+    let unique_chars = secret.chars().collect::<std::collections::HashSet<_>>().len();
+
+    // Require at least 3 character classes and 8 unique characters
+    let char_classes = [has_lower, has_upper, has_digit, has_special]
+        .iter()
+        .filter(|&&b| b)
+        .count();
+
+    // Low entropy = likely a weak secret
+    if char_classes < 3 || unique_chars < 8 {
+        return true;
+    }
+
+    false
 }
 
 #[cfg(test)]

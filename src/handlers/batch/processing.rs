@@ -24,11 +24,10 @@ pub fn process_batch_message<S: SessionState>(
     // Check if message has a batch tag
     let batch_ref = msg.tag_value("batch");
 
-    if batch_ref.is_none() {
+    // If no batch tag, process normally
+    let Some(batch_ref) = batch_ref else {
         return Ok(None);
-    }
-
-    let batch_ref = batch_ref.unwrap();
+    };
 
     // Check if it matches our active batch
     let active_ref = match state.active_batch_ref() {

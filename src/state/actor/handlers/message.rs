@@ -1,3 +1,7 @@
+//! PRIVMSG/NOTICE routing through channels.
+//!
+//! Validates message delivery against bans, moderation, and member status.
+
 use super::super::validation::{create_user_mask, is_banned};
 use super::{ChannelActor, ChannelMode, ChannelRouteResult, Uid};
 use crate::security::UserContext;
@@ -99,6 +103,14 @@ impl ChannelActor {
         }
 
         // Broadcast
+        // Strip colors/formatting if +c mode is set
+        let text = if modes.contains(&ChannelMode::NoColors) && !is_tagmsg {
+            use slirc_proto::colors::FormattedStringExt;
+            text.strip_formatting().into_owned()
+        } else {
+            text
+        };
+
         // Generate server-side tags
         let timestamp = timestamp.unwrap_or_else(|| {
             chrono::Utc::now()

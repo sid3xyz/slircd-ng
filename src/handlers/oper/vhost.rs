@@ -1,3 +1,7 @@
+//! VHOST command handler for virtual host assignment.
+//!
+//! Allows operators to set custom virtual hostnames on users.
+
 use super::super::{Context,
     HandlerResult, PostRegHandler,
     resolve_nick_to_uid, server_notice,

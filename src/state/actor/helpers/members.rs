@@ -1,3 +1,7 @@
+//! Channel member management.
+//!
+//! Helpers for updating member modes (op, voice, etc.).
+
 use super::super::{ChannelActor, Uid};
 use crate::state::MemberModes;
 

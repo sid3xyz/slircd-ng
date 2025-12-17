@@ -6,13 +6,17 @@
 
 use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler,
-    server_reply, user_mask_from_state,
+    server_notice, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
+use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
+
+/// Rate limit cooldown for INVITE command (per target user)
+const INVITE_COOLDOWN: Duration = Duration::from_secs(30);
 
 /// Handler for INVITE command.
 ///
@@ -30,8 +34,9 @@ impl PostRegHandler for InviteHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        let server_name = ctx.server_name();
-        let nick = &ctx.state.nick;
+        // Own server_name to avoid borrowing ctx for the entire function
+        let server_name = ctx.server_name().to_string();
+        let nick = ctx.state.nick.clone();
 
         // INVITE <nickname> <channel> or INVITE <channel> <nickname>
         // Detect which argument is which based on whether it starts with a channel prefix
@@ -55,11 +60,47 @@ impl PostRegHandler for InviteHandler {
         let channel_lower = irc_to_lower(channel_name);
         let target_lower = irc_to_lower(target_nick);
 
+        // Rate limit INVITE: 30-second cooldown per target:channel combination
+        // This prevents spam invitations to the same user for the same channel
+        let invite_key = format!("{}:{}", target_lower, channel_lower);
+        let now = Instant::now();
+
+        // Check rate limit
+        if let Some(&last_time) = ctx.state.invite_timestamps.get(&invite_key)
+            && now.duration_since(last_time) < INVITE_COOLDOWN
+        {
+            let secs_left = (INVITE_COOLDOWN - now.duration_since(last_time)).as_secs();
+            let reply = server_notice(
+                &server_name,
+                &nick,
+                format!(
+                    "Cannot invite {} to {} (rate limited). Try again in {} seconds.",
+                    target_nick, channel_name, secs_left
+                ),
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
+        // Record this invite attempt and prune old entries
+        ctx.state.invite_timestamps.insert(invite_key.clone(), now);
+        ctx.state.invite_timestamps.retain(|_, t| now.duration_since(*t) < INVITE_COOLDOWN);
+        // Limit map size to prevent memory exhaustion
+        if ctx.state.invite_timestamps.len() > 50 {
+            // Find and remove oldest entry
+            if let Some((oldest_key, _)) = ctx.state.invite_timestamps.iter()
+                .min_by_key(|(_, t)| *t)
+                .map(|(k, v)| (k.clone(), *v))
+            {
+                ctx.state.invite_timestamps.remove(&oldest_key);
+            }
+        }
+
         // Check if target exists
         let target_uid = match ctx.matrix.nicks.get(&target_lower) {
             Some(uid) => uid.value().clone(),
             None => {
-                let reply = Response::err_nosuchnick(nick, target_nick)
+                let reply = Response::err_nosuchnick(&nick, target_nick)
                     .with_prefix(ctx.server_prefix());
                 ctx.send_error("INVITE", "ERR_NOSUCHNICK", reply).await?;
                 return Ok(());
@@ -79,7 +120,7 @@ impl PostRegHandler for InviteHandler {
             };
 
             if !user_in_channel {
-                let reply = Response::err_notonchannel(nick, channel_name)
+                let reply = Response::err_notonchannel(&nick, channel_name)
                     .with_prefix(ctx.server_prefix());
                 ctx.send_error("INVITE", "ERR_NOTONCHANNEL", reply).await?;
                 return Ok(());
@@ -157,7 +198,7 @@ impl PostRegHandler for InviteHandler {
 
                     // RPL_INVITING (341)
                     let reply = server_reply(
-                        server_name,
+                        &server_name,
                         Response::RPL_INVITING,
                         vec![
                             nick.clone(),
@@ -168,7 +209,7 @@ impl PostRegHandler for InviteHandler {
                     ctx.sender.send(reply).await?;
                 }
                 Ok(Err(e)) => {
-                    let reply = e.to_irc_reply(server_name, &nick, channel_name);
+                    let reply = e.to_irc_reply(&server_name, &nick, channel_name);
                     ctx.sender.send(reply).await?;
                 }
                 Err(_) => {}

@@ -320,7 +320,6 @@ impl IpDenyList {
     ///
     /// Called periodically by a background task.
     /// Returns the number of bans removed.
-    #[allow(dead_code)] // Available for scheduled cleanup tasks
     pub fn prune_expired(&mut self) -> usize {
         let mut removed = 0;
         let mut expired_keys: Vec<String> = Vec::new();
@@ -374,7 +373,6 @@ impl IpDenyList {
     }
 
     /// Get the number of banned entries.
-    #[allow(dead_code)] // Available for stats commands
     pub fn len(&self) -> usize {
         self.metadata.len()
     }
@@ -386,7 +384,6 @@ impl IpDenyList {
     }
 
     /// Get an iterator over all bans with their metadata.
-    #[allow(dead_code)] // Available for STATS commands
     pub fn iter(&self) -> impl Iterator<Item = (&String, &BanMetadata)> {
         self.metadata.iter()
     }

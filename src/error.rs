@@ -37,31 +37,12 @@ pub enum HandlerError {
     #[error("already registered")]
     AlreadyRegistered,
 
-    #[allow(dead_code)]
-    #[error("no such nick: {0}")]
-    NoSuchNick(String),
-
-    #[allow(dead_code)]
     #[error("no such channel: {0}")]
     NoSuchChannel(String),
 
-    #[allow(dead_code)]
-    #[error("channel privileges needed: {0}")]
-    ChanPrivsNeeded(String),
-
-    #[allow(dead_code)]
-    #[error("user not in channel: {0} {1}")]
-    UserNotInChannel(String, String),
-
-    #[allow(dead_code)]
     #[error("not on channel: {0}")]
     NotOnChannel(String),
 
-    #[allow(dead_code)]
-    #[error("user on channel: {0} {1}")]
-    UserOnChannel(String, String),
-
-    #[allow(dead_code)]
     #[error("permission denied: you're not an IRC operator")]
     NoPrivileges,
 
@@ -93,12 +74,8 @@ impl HandlerError {
             Self::NotRegistered => "not_registered",
             Self::AccessDenied => "access_denied",
             Self::AlreadyRegistered => "already_registered",
-            Self::NoSuchNick(_) => "no_such_nick",
             Self::NoSuchChannel(_) => "no_such_channel",
-            Self::ChanPrivsNeeded(_) => "chan_privs_needed",
-            Self::UserNotInChannel(_, _) => "user_not_in_channel",
             Self::NotOnChannel(_) => "not_on_channel",
-            Self::UserOnChannel(_, _) => "user_on_channel",
             Self::NoPrivileges => "no_privileges",
             Self::UnknownCommand(_) => "unknown_command",
             Self::NickOrUserMissing => "nick_or_user_missing",
@@ -120,12 +97,8 @@ impl HandlerError {
             Self::NicknameInUse(bad_nick) => Response::err_nicknameinuse(nick, bad_nick),
             Self::ErroneousNickname(bad_nick) => Response::err_erroneusnickname(nick, bad_nick),
             Self::AlreadyRegistered => Response::err_alreadyregistred(nick),
-            Self::NoSuchNick(bad_nick) => Response::err_nosuchnick(nick, bad_nick),
             Self::NoSuchChannel(bad_chan) => Response::err_nosuchchannel(nick, bad_chan),
-            Self::ChanPrivsNeeded(chan) => Response::err_chanoprivsneeded(nick, chan),
-            Self::UserNotInChannel(target, chan) => Response::err_usernotinchannel(nick, target, chan),
             Self::NotOnChannel(chan) => Response::err_notonchannel(nick, chan),
-            Self::UserOnChannel(target, chan) => Response::err_useronchannel(nick, target, chan),
             Self::NoPrivileges => Response::err_noprivileges(nick),
             Self::UnknownCommand(cmd) => Response::err_unknowncommand(nick, cmd),
 
@@ -192,24 +165,42 @@ pub enum ChannelError {
     #[error("cannot join channel (+k)")]
     BadChannelKey,
 
+    #[error("cannot join channel (+R)")]
+    NeedReggedNick,
+
+    #[error("cannot join channel (+z)")]
+    SecureOnlyChan,
+
+    #[error("cannot join channel (+O)")]
+    OperOnlyChan,
+
+    #[error("cannot join channel (+A)")]
+    AdminOnlyChan,
+
+    #[error("kicks are disabled in this channel (+Q)")]
+    NoKicksActive,
+
+    #[error("invites are disabled in this channel (+V)")]
+    NoInviteActive,
+
     #[error("channel key already set")]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Matched in mode handler but not yet constructed
     KeySet,
 
     #[error("{0} is unknown mode char to me for {1}")]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Matched in mode handler but not yet constructed
     UnknownMode(char, String),
 
     #[error("channel doesn't support modes")]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Matched in mode handler but not yet constructed
     NoChanModes,
 
     #[error("channel list {0} is full")]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Matched in mode handler but not yet constructed
     BanListFull(char),
 
     #[error("you're not the original channel operator")]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Matched in mode handler but not yet constructed
     UniqOpPrivsNeeded,
 
     #[error("{0}")]
@@ -235,6 +226,12 @@ impl ChannelError {
             Self::InviteOnlyChan => "invite_only_chan",
             Self::ChannelIsFull => "channel_is_full",
             Self::BadChannelKey => "bad_channel_key",
+            Self::NeedReggedNick => "need_regged_nick",
+            Self::SecureOnlyChan => "secure_only_chan",
+            Self::OperOnlyChan => "oper_only_chan",
+            Self::AdminOnlyChan => "admin_only_chan",
+            Self::NoKicksActive => "no_kicks_active",
+            Self::NoInviteActive => "no_invite_active",
             Self::KeySet => "key_set",
             Self::UnknownMode(_, _) => "unknown_mode",
             Self::NoChanModes => "no_chan_modes",
@@ -291,6 +288,32 @@ impl ChannelError {
             Self::UniqOpPrivsNeeded => (
                 Response::ERR_UNIQOPPRIVSNEEDED,
                 vec![nick.to_string(), "You're not the original channel operator".to_string()],
+            ),
+            Self::NeedReggedNick => (
+                // 477 is commonly used for "you need to register to join"
+                Response::ERR_NOCHANMODES,
+                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+R) - you need to be identified with services".to_string()],
+            ),
+            Self::SecureOnlyChan => (
+                Response::ERR_SECUREONLYCHAN,
+                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+z) - you need to be connected via TLS".to_string()],
+            ),
+            Self::OperOnlyChan => (
+                Response::ERR_OPERONLY,
+                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+O) - you need to be an IRC operator".to_string()],
+            ),
+            // AdminOnlyChan uses ERR_OPERONLY as well since there's no standard admin-only numeric
+            Self::AdminOnlyChan => (
+                Response::ERR_OPERONLY,
+                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+A) - you need to be a server administrator".to_string()],
+            ),
+            Self::NoKicksActive => (
+                Response::ERR_UNKNOWNERROR,
+                vec![nick.to_string(), channel.to_string(), "Kicks are disabled in this channel (+Q)".to_string()],
+            ),
+            Self::NoInviteActive => (
+                Response::ERR_UNKNOWNERROR,
+                vec![nick.to_string(), channel.to_string(), "Invites are disabled in this channel (+V)".to_string()],
             ),
             // These don't have standard IRC numerics - use generic error
             Self::CannotKnock | Self::ChanOpen | Self::ChannelTombstone

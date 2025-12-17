@@ -1,3 +1,8 @@
+//! Server administration commands: DIE, REHASH, RESTART.
+//!
+//! These commands require operator privileges and use capability-based
+//! authorization (Innovation 4) for access control.
+
 use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler, get_nick_or_star,
     server_notice, server_reply,

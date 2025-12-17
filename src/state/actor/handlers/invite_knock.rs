@@ -1,3 +1,7 @@
+//! INVITE and KNOCK event handling.
+//!
+//! Manages channel invitations and knock requests for +i channels.
+
 use super::{ChannelActor, ChannelError, ChannelMode, Uid};
 use slirc_proto::{Command, Message, Prefix};
 use tokio::sync::mpsc::error::TrySendError;
@@ -14,6 +18,13 @@ impl ChannelActor {
         force: bool,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     ) {
+        // Check +V (no invites) - blocks all invitations to this channel
+        // Only force (from capabilities/services) can bypass
+        if !force && self.modes.contains(&ChannelMode::NoInvite) {
+            let _ = reply_tx.send(Err(ChannelError::NoInviteActive));
+            return;
+        }
+
         if !force && self.modes.contains(&ChannelMode::InviteOnly) {
             let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
             if !sender_modes.op && !sender_modes.halfop {
