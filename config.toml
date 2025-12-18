@@ -2,13 +2,13 @@
 
 [server]
 # Server hostname
-name = "irc.straylight.net"
+name = "irc.example.net"
 # Network name
-network = "Straylight"
+network = "ExampleNet"
 # Server ID (TS6 format: 3 characters)
 sid = "001"
 # Server description
-description = "Straylight IRC Daemon - Next Generation"
+description = "Example IRC Daemon - Next Generation"
 # Prometheus metrics HTTP port
 metrics_port = 9090
 

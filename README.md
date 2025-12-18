@@ -6,11 +6,29 @@
 
 | Metric | Value |
 |--------|-------|
-| Source files | 174 |
-| Lines of Rust | 32,196 |
-| Commands | 82 (6 universal, 4 pre-reg, 72 post-reg) |
-| IRCv3 Caps | 22 |
-| Migrations | 6 |
+| Source files | 175 |
+| Lines of Rust | 32,182 |
+| Commands | 81 (6 universal, 4 pre-reg, 71 post-reg) |
+| IRCv3 Caps | 21 |
+| Migrations | 7 |
+
+### Quality (Phase 2)
+
+| Metric | Value |
+|--------|-------|
+| Clippy allows | 19 (from 104) |
+| Capacity hints | 47 |
+| Deep nesting | 0 files >8 levels |
+| TODOs/FIXMEs | 0 |
+
+### Compliance (Phase 3)
+
+| Metric | Value |
+|--------|-------|
+| irctest passed | 262+ |
+| Pass rate | >99% |
+| Skipped | ~44 (unsupported features) |
+| XFailed | ~6 (deprecated RFCs) |
 
 ## Commands
 
@@ -40,6 +58,8 @@ batch, message-tags, labeled-response, setname, away-notify,
 account-notify, extended-join, invite-notify, chghost, monitor,
 cap-notify, account-tag, draft/multiline, draft/account-registration,
 draft/chathistory, draft/event-playback
+
+Note: SASL is only advertised over TLS connections for security.
 
 ## ISUPPORT Tokens
 
@@ -79,6 +99,7 @@ SQLite via sqlx. Migrations:
 - 004_certfp.sql — certificate fingerprint storage
 - 005_channel_topics.sql — persistent topics
 - 006_reputation.sql — user reputation scores
+- 007_bans.sql — channel ban persistence
 
 ## Build
 
