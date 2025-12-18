@@ -25,10 +25,11 @@
 
 | Metric | Value |
 |--------|-------|
-| irctest passed | 262+ |
-| Pass rate | >99% |
-| Skipped | ~44 (unsupported features) |
-| XFailed | ~6 (deprecated RFCs) |
+| irctest passed | 269 |
+| Pass rate | 100% (on applicable tests) |
+| Skipped | 36 (SASL=TLS, ascii casemapping, optional) |
+| XFailed | 6 (deprecated RFCs) |
+| Failed | 1 (upstream test bug in deprecated test) |
 
 ## Commands
 
