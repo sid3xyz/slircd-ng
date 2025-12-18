@@ -299,21 +299,6 @@ pub async fn handle_channel_mode(
                         ChannelError::ChanOpPrivsNeeded => {
                             Response::err_chanoprivsneeded(ctx.server_name(), &canonical_name)
                         }
-                        ChannelError::KeySet => {
-                            Response::err_keyset(ctx.server_name(), &canonical_name)
-                        }
-                        ChannelError::UnknownMode(c, _) => {
-                            Response::err_unknownmode(ctx.server_name(), c, &canonical_name)
-                        }
-                        ChannelError::NoChanModes => {
-                            Response::err_nochanmodes(ctx.server_name(), &canonical_name)
-                        }
-                        ChannelError::BanListFull(c) => {
-                            Response::err_banlistfull(ctx.server_name(), &canonical_name, c)
-                        }
-                        ChannelError::UniqOpPrivsNeeded => {
-                            Response::err_uniqopprivsneeded(ctx.server_name())
-                        }
                         ChannelError::UserNotInChannel(target) => {
                             Response::err_usernotinchannel(ctx.server_name(), &nick, &target)
                         }

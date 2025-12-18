@@ -108,10 +108,8 @@ pub struct UserContext {
     /// User's current nickname.
     pub nickname: String,
     /// User's username (ident).
-    #[allow(dead_code)] // Future: $u:pattern extended ban type
     pub username: String,
     /// User's hostname (may be cloaked).
-    #[allow(dead_code)] // Future: $h:pattern extended ban type
     pub hostname: String,
     /// User's realname (GECOS).
     pub realname: String,

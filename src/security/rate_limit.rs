@@ -255,15 +255,6 @@ impl RateLimitManager {
         }
     }
 
-    /// Record a message being sent (consumes a token).
-    ///
-    /// Use this when you want to always record the action, regardless of limit.
-    /// Prefer `check_message_rate()` for normal flow control.
-    #[allow(dead_code)]
-    pub fn record_message(&self, uid: &Uid) {
-        let _ = self.check_message_rate(uid);
-    }
-
     /// Remove a client from all rate limiters (on disconnect).
     pub fn remove_client(&self, uid: &Uid) {
         self.message_limiters.remove(uid);
@@ -354,56 +345,12 @@ impl RateLimitManager {
             "LRU eviction completed"
         );
     }
-
-    /// Update rate limit configuration (for REHASH support).
-    ///
-    /// Note: This only affects new limiters. Existing clients keep their
-    /// current limits until they disconnect.
-    #[allow(dead_code)]
-    pub fn update_config(&self, new_config: RateLimitConfig) {
-        // We can't update Arc in place, but we can store the new config
-        // for new connections. For full support, we'd need interior mutability.
-        debug!(
-            msg_rate = new_config.message_rate_per_second,
-            conn_burst = new_config.connection_burst_per_ip,
-            join_burst = new_config.join_burst_per_client,
-            "rate limit config update requested (affects new connections only)"
-        );
-    }
-
-    /// Get current statistics for STATS command.
-    #[allow(dead_code)]
-    pub fn stats(&self) -> RateLimitStats {
-        RateLimitStats {
-            message_limiters: self.message_limiters.len(),
-            connection_limiters: self.connection_limiters.len(),
-            join_limiters: self.join_limiters.len(),
-            ctcp_limiters: self.ctcp_limiters.len(),
-            active_connections: self.active_connections.len(),
-        }
-    }
 }
 
 impl Default for RateLimitManager {
     fn default() -> Self {
         Self::new(RateLimitConfig::default())
     }
-}
-
-/// Rate limiter statistics for STATS command.
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct RateLimitStats {
-    /// Number of active message rate limiters.
-    pub message_limiters: usize,
-    /// Number of active connection rate limiters.
-    pub connection_limiters: usize,
-    /// Number of active join rate limiters.
-    pub join_limiters: usize,
-    /// Number of active CTCP rate limiters.
-    pub ctcp_limiters: usize,
-    /// Number of tracked IPs with active connections.
-    pub active_connections: usize,
 }
 
 #[cfg(test)]
@@ -500,16 +447,17 @@ mod tests {
         let manager = RateLimitManager::new(test_config());
         let uid = "000AAAAAC".to_string();
 
-        // Create some entries
-        manager.check_message_rate(&uid);
+        // Create some entries and consume tokens
+        manager.check_message_rate(&uid); // 1st
+        manager.check_message_rate(&uid); // 2nd (limit is 2, should be at limit)
         manager.check_join_rate(&uid);
-        assert_eq!(manager.stats().message_limiters, 1);
-        assert_eq!(manager.stats().join_limiters, 1);
 
         // Remove client
         manager.remove_client(&uid);
-        assert_eq!(manager.stats().message_limiters, 0);
-        assert_eq!(manager.stats().join_limiters, 0);
+
+        // After removal, the client should get fresh rate limits
+        // (should be able to send messages again since the limiter was removed)
+        assert!(manager.check_message_rate(&uid)); // Should succeed - new limiter
     }
 
     #[test]

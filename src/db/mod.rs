@@ -29,7 +29,7 @@ pub enum DbError {
     #[error("migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
     #[error("database connection timeout")]
-    #[allow(dead_code)] // Used for circuit breaker pattern - may be triggered by pool timeouts
+    #[allow(dead_code)] // Matched in error handlers, constructed by pool timeout handler
     ConnectionTimeout,
     #[error("account not found: {0}")]
     AccountNotFound(String),
@@ -44,7 +44,7 @@ pub enum DbError {
     #[error("unknown option: {0}")]
     UnknownOption(String),
     #[error("channel not found: {0}")]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Future: ChanServ channel operations
     ChannelNotFound(String),
     #[error("channel already registered: {0}")]
     ChannelExists(String),

@@ -10,7 +10,6 @@
 
 mod channel;
 mod matrix;
-mod mode_builder;
 pub mod session;
 mod uid;
 mod user;

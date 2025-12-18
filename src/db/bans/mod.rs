@@ -3,6 +3,5 @@
 mod models;
 mod queries;
 
-#[allow(unused_imports)] // Available for admin commands
-pub use models::{Dline, Gline, Kline, Rline, Shun, Zline};
+pub use models::{Dline, Gline, Kline, Shun, Zline};
 pub use queries::BanRepository;

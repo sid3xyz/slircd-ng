@@ -88,7 +88,6 @@ impl UserModes {
     }
 
     /// Check if user has a specific snomask.
-    #[allow(dead_code)]
     pub fn has_snomask(&self, mask: char) -> bool {
         self.snomasks.contains(&mask)
     }

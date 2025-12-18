@@ -22,7 +22,7 @@ pub(super) async fn apply_mlock_filter(
         _ => return modes, // No MLOCK set
     };
 
-    // Parse MLOCK string manually (same logic as mode_builder::parse_mlock but inline)
+    // Parse MLOCK string inline
     let mlock_modes = parse_mlock_inline(&mlock_str);
 
     // Build sets of locked modes

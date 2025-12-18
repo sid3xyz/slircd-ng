@@ -76,33 +76,6 @@ impl<'a, S> Context<'a, S> {
         CapabilityAuthority::new(self.matrix.clone())
     }
 
-    /// Create a new context.
-    #[allow(clippy::too_many_arguments)]
-    #[allow(dead_code)] // Available for future use
-    pub fn new(
-        uid: &'a str,
-        matrix: &'a Arc<Matrix>,
-        sender: ResponseMiddleware<'a>,
-        state: &'a mut S,
-        db: &'a Database,
-        remote_addr: SocketAddr,
-        label: Option<String>,
-        registry: &'a Arc<Registry>,
-    ) -> Self {
-        Self {
-            uid,
-            matrix,
-            sender,
-            state,
-            db,
-            remote_addr,
-            label,
-            suppress_labeled_ack: false,
-            active_batch_id: None,
-            registry,
-        }
-    }
-
     /// Build and send a server reply in one call.
     #[inline]
     pub async fn send_reply(
@@ -163,45 +136,6 @@ impl<'a> Context<'a, RegisteredState> {
     #[inline]
     pub fn nick_user(&self) -> (&str, &str) {
         (&self.state.nick, &self.state.user)
-    }
-
-    /// Check if a capability is enabled.
-    #[inline]
-    #[allow(dead_code)]
-    pub fn has_cap(&self, cap: &str) -> bool {
-        self.state.capabilities.contains(cap)
-    }
-
-    /// Get account name for message tags.
-    #[inline]
-    #[allow(dead_code)]
-    pub fn account_tag(&self) -> Option<&str> {
-        self.state.account.as_deref()
-    }
-
-    /// Ensure the user is an IRC operator.
-    #[allow(dead_code)]
-    pub async fn require_oper(&self) -> Result<(), HandlerError> {
-        if let Some(user_lock) = self.matrix.users.get(self.uid) {
-            let user = user_lock.read().await;
-            if user.modes.oper {
-                return Ok(());
-            }
-        }
-        Err(HandlerError::NoPrivileges)
-    }
-
-    /// Ensure the user is a member of the specified channel.
-    #[allow(dead_code)]
-    pub async fn require_channel_membership(&self, channel: &str) -> Result<(), HandlerError> {
-        let channel_lower = slirc_proto::irc_to_lower(channel);
-        if let Some(user_lock) = self.matrix.users.get(self.uid) {
-            let user = user_lock.read().await;
-            if user.channels.contains(&channel_lower) {
-                return Ok(());
-            }
-        }
-        Err(HandlerError::NotOnChannel(channel.to_string()))
     }
 
     /// Ensure the channel exists and return its sender.

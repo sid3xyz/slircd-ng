@@ -32,12 +32,6 @@ pub mod heuristics;
 
 // Re-export primary types for convenience
 pub use ban_cache::BanCache;
-#[allow(unused_imports)] // BanResult/BanType used by welcome.rs
-pub use ban_cache::{BanResult, BanType};
-#[allow(unused_imports)]
-pub use cloaking::{cloak_hostname, cloak_ip_hmac};
-#[allow(unused_imports)] // BanMetadata used by STATS command
-pub use ip_deny::{BanMetadata, IpDenyList};
 pub use rate_limit::RateLimitManager;
 pub use xlines::{ExtendedBan, UserContext, matches_extended_ban};
 pub use reputation::ReputationManager;

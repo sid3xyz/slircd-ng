@@ -40,12 +40,6 @@ pub enum HandlerError {
     #[error("no such channel: {0}")]
     NoSuchChannel(String),
 
-    #[error("not on channel: {0}")]
-    NotOnChannel(String),
-
-    #[error("permission denied: you're not an IRC operator")]
-    NoPrivileges,
-
     #[error("unknown command: {0}")]
     UnknownCommand(String),
 
@@ -75,8 +69,6 @@ impl HandlerError {
             Self::AccessDenied => "access_denied",
             Self::AlreadyRegistered => "already_registered",
             Self::NoSuchChannel(_) => "no_such_channel",
-            Self::NotOnChannel(_) => "not_on_channel",
-            Self::NoPrivileges => "no_privileges",
             Self::UnknownCommand(_) => "unknown_command",
             Self::NickOrUserMissing => "nick_or_user_missing",
             Self::Send(_) => "send_error",
@@ -98,8 +90,6 @@ impl HandlerError {
             Self::ErroneousNickname(bad_nick) => Response::err_erroneusnickname(nick, bad_nick),
             Self::AlreadyRegistered => Response::err_alreadyregistred(nick),
             Self::NoSuchChannel(bad_chan) => Response::err_nosuchchannel(nick, bad_chan),
-            Self::NotOnChannel(chan) => Response::err_notonchannel(nick, chan),
-            Self::NoPrivileges => Response::err_noprivileges(nick),
             Self::UnknownCommand(cmd) => Response::err_unknowncommand(nick, cmd),
 
             // These errors don't get client-visible replies
@@ -182,65 +172,9 @@ pub enum ChannelError {
 
     #[error("invites are disabled in this channel (+V)")]
     NoInviteActive,
-
-    #[error("channel key already set")]
-    #[allow(dead_code)] // Matched in mode handler but not yet constructed
-    KeySet,
-
-    #[error("{0} is unknown mode char to me for {1}")]
-    #[allow(dead_code)] // Matched in mode handler but not yet constructed
-    UnknownMode(char, String),
-
-    #[error("channel doesn't support modes")]
-    #[allow(dead_code)] // Matched in mode handler but not yet constructed
-    NoChanModes,
-
-    #[error("channel list {0} is full")]
-    #[allow(dead_code)] // Matched in mode handler but not yet constructed
-    BanListFull(char),
-
-    #[error("you're not the original channel operator")]
-    #[allow(dead_code)] // Matched in mode handler but not yet constructed
-    UniqOpPrivsNeeded,
-
-    #[error("{0}")]
-    #[allow(dead_code)]
-    UnknownError(String),
 }
 
 impl ChannelError {
-    /// Get a static error code string for metrics labeling.
-    #[inline]
-    #[allow(dead_code)] // Available for future metrics integration
-    pub fn error_code(&self) -> &'static str {
-        match self {
-            Self::NotOnChannel => "not_on_channel",
-            Self::ChanOpPrivsNeeded => "chanop_privs_needed",
-            Self::UserNotInChannel(_) => "user_not_in_channel",
-            Self::UserOnChannel(_) => "user_on_channel",
-            Self::CannotKnock => "cannot_knock",
-            Self::ChanOpen => "chan_open",
-            Self::ChannelTombstone => "channel_tombstone",
-            Self::SessionInvalid => "session_invalid",
-            Self::BannedFromChan => "banned_from_chan",
-            Self::InviteOnlyChan => "invite_only_chan",
-            Self::ChannelIsFull => "channel_is_full",
-            Self::BadChannelKey => "bad_channel_key",
-            Self::NeedReggedNick => "need_regged_nick",
-            Self::SecureOnlyChan => "secure_only_chan",
-            Self::OperOnlyChan => "oper_only_chan",
-            Self::AdminOnlyChan => "admin_only_chan",
-            Self::NoKicksActive => "no_kicks_active",
-            Self::NoInviteActive => "no_invite_active",
-            Self::KeySet => "key_set",
-            Self::UnknownMode(_, _) => "unknown_mode",
-            Self::NoChanModes => "no_chan_modes",
-            Self::BanListFull(_) => "ban_list_full",
-            Self::UniqOpPrivsNeeded => "uniq_op_privs_needed",
-            Self::UnknownError(_) => "unknown_error",
-        }
-    }
-
     /// Convert to an IRC error reply message.
     pub fn to_irc_reply(&self, server_name: &str, nick: &str, channel: &str) -> Message {
         let (response, args) = match self {
@@ -276,18 +210,6 @@ impl ChannelError {
                 Response::ERR_BADCHANNELKEY,
                 vec![nick.to_string(), channel.to_string(), "Cannot join channel (+k)".to_string()],
             ),
-            Self::UnknownMode(c, chan) => (
-                Response::ERR_UNKNOWNMODE,
-                vec![nick.to_string(), c.to_string(), format!("is unknown mode char to me for {}", chan)],
-            ),
-            Self::BanListFull(list_char) => (
-                Response::ERR_BANLISTFULL,
-                vec![nick.to_string(), channel.to_string(), list_char.to_string(), "Channel list is full".to_string()],
-            ),
-            Self::UniqOpPrivsNeeded => (
-                Response::ERR_UNIQOPPRIVSNEEDED,
-                vec![nick.to_string(), "You're not the original channel operator".to_string()],
-            ),
             Self::NeedReggedNick => (
                 // 477 is commonly used for "you need to register to join"
                 Response::ERR_NOCHANMODES,
@@ -316,8 +238,7 @@ impl ChannelError {
             ),
             // These don't have standard IRC numerics - use generic error
             Self::CannotKnock | Self::ChanOpen | Self::ChannelTombstone
-            | Self::SessionInvalid | Self::KeySet | Self::NoChanModes
-            | Self::UnknownError(_) => (
+            | Self::SessionInvalid => (
                 Response::ERR_UNKNOWNERROR,
                 vec![nick.to_string(), channel.to_string(), self.to_string()],
             ),
@@ -347,12 +268,6 @@ mod tests {
         assert_eq!(HandlerError::NeedMoreParams.error_code(), "need_more_params");
         assert_eq!(HandlerError::NotRegistered.error_code(), "not_registered");
         assert_eq!(HandlerError::Internal("test".into()).error_code(), "internal_error");
-    }
-
-    #[test]
-    fn test_channel_error_codes() {
-        assert_eq!(ChannelError::NotOnChannel.error_code(), "not_on_channel");
-        assert_eq!(ChannelError::BannedFromChan.error_code(), "banned_from_chan");
     }
 
     #[test]
