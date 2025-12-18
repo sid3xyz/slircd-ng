@@ -4,7 +4,7 @@
 //! incoming client. Supports both plaintext and TLS connections.
 
 use crate::config::WebircBlock;
-use crate::config::{TlsConfig, WebSocketConfig};
+use crate::config::{ClientAuth, TlsConfig, WebSocketConfig};
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::network::Connection;
@@ -15,8 +15,10 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use tokio_rustls::rustls::server::WebPkiClientVerifier;
 use tokio_rustls::rustls::version::{TLS12, TLS13};
 use tokio_tungstenite::accept_hdr_async;
 use tracing::{error, info, instrument, warn};
@@ -293,9 +295,55 @@ impl Gateway {
             vec![&TLS13, &TLS12]
         };
 
-        let tls_config = ServerConfig::builder_with_protocol_versions(&protocol_versions)
-            .with_no_client_auth()
-            .with_single_cert(certs, key)?;
+        let builder = ServerConfig::builder_with_protocol_versions(&protocol_versions);
+
+        // Configure client certificate verification based on client_auth mode
+        let tls_config = match config.client_auth {
+            ClientAuth::None => {
+                info!("TLS client auth: disabled");
+                builder.with_no_client_auth().with_single_cert(certs, key)?
+            }
+            ClientAuth::Optional | ClientAuth::Required => {
+                let ca_path = config.ca_path.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "ca_path is required when client_auth is '{}'",
+                        if config.client_auth == ClientAuth::Optional {
+                            "optional"
+                        } else {
+                            "required"
+                        }
+                    )
+                })?;
+
+                // Load CA certificates for client verification
+                let ca_file = std::fs::read(ca_path)?;
+                let ca_reader = &mut BufReader::new(Cursor::new(ca_file));
+                let ca_certs: Vec<CertificateDer> =
+                    rustls_pemfile::certs(ca_reader).collect::<Result<Vec<_>, _>>()?;
+
+                if ca_certs.is_empty() {
+                    anyhow::bail!("No CA certificates found in {}", ca_path);
+                }
+
+                let mut root_store = RootCertStore::empty();
+                for cert in ca_certs {
+                    root_store.add(cert)?;
+                }
+
+                let verifier_builder = WebPkiClientVerifier::builder(Arc::new(root_store));
+                let verifier = if config.client_auth == ClientAuth::Optional {
+                    info!("TLS client auth: optional (SASL EXTERNAL available)");
+                    verifier_builder.allow_unauthenticated().build()?
+                } else {
+                    info!("TLS client auth: required (connections without valid cert rejected)");
+                    verifier_builder.build()?
+                };
+
+                builder
+                    .with_client_cert_verifier(verifier)
+                    .with_single_cert(certs, key)?
+            }
+        };
 
         Ok(TlsAcceptor::from(Arc::new(tls_config)))
     }

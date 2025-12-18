@@ -336,6 +336,19 @@ pub struct ListenConfig {
     pub address: SocketAddr,
 }
 
+/// Client certificate authentication mode.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ClientAuth {
+    /// No client certificate requested.
+    #[default]
+    None,
+    /// Client certificate optional (SASL EXTERNAL available if provided).
+    Optional,
+    /// Client certificate required (connection rejected without valid cert).
+    Required,
+}
+
 /// TLS listener configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TlsConfig {
@@ -348,6 +361,12 @@ pub struct TlsConfig {
     /// Whether to require TLS 1.3 only (disables TLS 1.2).
     #[serde(default)]
     pub tls13_only: bool,
+    /// Client certificate verification mode.
+    #[serde(default)]
+    pub client_auth: ClientAuth,
+    /// Path to CA certificate file for client verification (PEM format).
+    /// Required if client_auth is "optional" or "required".
+    pub ca_path: Option<String>,
 }
 
 /// WebSocket listener configuration.
