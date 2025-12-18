@@ -380,12 +380,9 @@ pub async fn run_event_loop(
                         match flood_result {
                             FloodCheckResult::Ok => {}
                             FloodCheckResult::RateLimited => {
-                                let notice = flood_warning_notice(
-                                    &matrix.server_info.name,
-                                    flood_violations,
-                                    MAX_FLOOD_VIOLATIONS,
-                                );
-                                let _ = transport.write_message(&notice).await;
+                                let name = &matrix.server_info.name;
+                                let msg = flood_warning_notice(name, flood_violations, MAX_FLOOD_VIOLATIONS);
+                                let _ = transport.write_message(&msg).await;
                                 continue;
                             }
                             FloodCheckResult::Disconnect => {
@@ -408,9 +405,7 @@ pub async fn run_event_loop(
                                 warn!(error = %fail_msg, "Batch processing error");
                                 reg_state.active_batch = None;
                                 reg_state.active_batch_ref = None;
-                                if let Ok(fail) = fail_msg.parse::<Message>() {
-                                    let _ = outgoing_tx.send(fail).await;
-                                }
+                                if let Ok(fail) = fail_msg.parse::<Message>() { let _ = outgoing_tx.send(fail).await; }
                                 continue;
                             }
                         }
@@ -487,20 +482,16 @@ pub async fn run_event_loop(
                         match classify_read_error(&e) {
                             ReadErrorAction::InputTooLong => {
                                 warn!("Input line too long");
-                                let reply = input_too_long_response(
-                                    &matrix.server_info.name,
-                                    &reg_state.nick,
-                                );
+                                let server_name = &matrix.server_info.name;
+                                let nick = &reg_state.nick;
+                                let reply = input_too_long_response(server_name, nick);
                                 let _ = transport.write_message(&reply).await;
                                 continue;
                             }
                             ReadErrorAction::FatalProtocolError { error_msg } => {
                                 warn!(error = %error_msg, "Protocol error");
-                                let error_reply = Message {
-                                    tags: None,
-                                    prefix: None,
-                                    command: Command::ERROR(error_msg),
-                                };
+                                let cmd = Command::ERROR(error_msg);
+                                let error_reply = Message { tags: None, prefix: None, command: cmd };
                                 let _ = transport.write_message(&error_reply).await;
                                 break;
                             }
