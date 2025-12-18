@@ -368,6 +368,7 @@ mod tests {
 
         assert!(state.can_register());
 
+        // SAFETY: Test code - expect() is acceptable for test assertions
         let registered = state.try_register().expect("should register");
         assert_eq!(registered.nick, "test");
         assert_eq!(registered.user, "testuser");

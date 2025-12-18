@@ -530,6 +530,7 @@ async fn handle_sasl_external(
             .and_then(|b| String::from_utf8(b).ok())
     };
 
+    // SAFETY: certfp presence is verified as a precondition in handle_sasl_init before calling this function
     let certfp = ctx
         .state
         .certfp

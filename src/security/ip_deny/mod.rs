@@ -237,6 +237,7 @@ impl IpDenyList {
         duration: Option<Duration>,
         added_by: String,
     ) -> Result<(), std::io::Error> {
+        // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are always valid - these are compile-time constants
         let net = match ip {
             IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
             IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
@@ -309,6 +310,7 @@ impl IpDenyList {
     /// Remove a ban by IP address.
     #[allow(dead_code)] // Available for future admin commands
     pub fn remove_ban_ip(&mut self, ip: IpAddr) -> Result<bool, std::io::Error> {
+        // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are always valid - these are compile-time constants
         let net = match ip {
             IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
             IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
@@ -491,6 +493,7 @@ impl IpDenyList {
                 }
             } else if let Ok(ip) = dline.mask.parse::<IpAddr>() {
                 // Single IP without /prefix
+                // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are always valid - hardcoded constants
                 let net = match ip {
                     IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
                     IpAddr::V6(v6) => {
@@ -544,6 +547,7 @@ impl IpDenyList {
                 }
             } else if let Ok(ip) = zline.mask.parse::<IpAddr>() {
                 // Single IP without /prefix
+                // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are always valid - hardcoded constants
                 let net = match ip {
                     IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
                     IpAddr::V6(v6) => {

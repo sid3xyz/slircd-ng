@@ -98,7 +98,7 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
             ti += 1;
         } else if let Some(s_pi) = star_pi {
             pi = s_pi + 1;
-            // star_ti is always Some when star_pi is Some (set together on line 91-92)
+            // SAFETY: star_ti is always Some when star_pi is Some - both set together on lines 91-92
             let new_ti = star_ti.expect("star_ti set with star_pi") + 1;
             star_ti = Some(new_ti);
             ti = new_ti;

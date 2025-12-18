@@ -9,6 +9,7 @@ use std::sync::LazyLock;
 
 /// Pre-compiled empty regex for fallback - cannot panic.
 static EMPTY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    // SAFETY: "^$" is a compile-time constant literal that is always valid regex
     Regex::new("^$").expect("empty regex pattern is always valid")
 });
 

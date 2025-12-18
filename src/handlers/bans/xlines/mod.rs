@@ -236,6 +236,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
 fn parse_ip_or_cidr(ip: &str) -> Option<IpNet> {
     ip.parse().ok().or_else(|| {
         // Try parsing as single IP and convert to /32 or /128
+        // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are compile-time constants and always valid
         ip.parse::<std::net::IpAddr>().ok().map(|addr| match addr {
             std::net::IpAddr::V4(v4) => {
                 IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect("prefix 32 is valid"))

@@ -77,6 +77,7 @@ impl SpamDetectionService {
                 AhoCorasick::builder()
                     .ascii_case_insensitive(true)
                     .build(&empty)
+                    // SAFETY: Empty pattern list is a valid compile-time constant
                     .expect("building empty Aho-Corasick should not fail")
             }
         };

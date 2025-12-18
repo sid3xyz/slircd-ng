@@ -124,6 +124,7 @@ pub fn cloak_ip_hmac_with_suffix(ip: &IpAddr, secret_key: &str, suffix: &str) ->
     let masked_ip = apply_cidr_mask(ip);
 
     // Step 2: HMAC-SHA256 the masked IP
+    // SAFETY: HMAC-SHA256 accepts keys of any length per RFC 2104, this cannot fail
     let mut mac =
         HmacSha256::new_from_slice(secret_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(masked_ip.to_string().as_bytes());
@@ -162,6 +163,7 @@ pub fn cloak_ip_hmac_with_suffix(ip: &IpAddr, secret_key: &str, suffix: &str) ->
 /// * `secret_key` - Server secret key for HMAC (MUST be kept private)
 pub fn cloak_hostname(hostname: &str, secret_key: &str) -> String {
     // Step 1: HMAC-SHA256 the full hostname
+    // SAFETY: HMAC-SHA256 accepts keys of any length per RFC 2104, this cannot fail
     let mut mac =
         HmacSha256::new_from_slice(secret_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(hostname.as_bytes());
