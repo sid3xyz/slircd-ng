@@ -4,32 +4,32 @@
 
 ## Metrics (from code)
 
-| Metric | Value |
-|--------|-------|
-| Source files | 175 |
-| Lines of Rust | 32,182 |
-| Commands | 81 (6 universal, 4 pre-reg, 71 post-reg) |
-| IRCv3 Caps | 21 |
-| Migrations | 7 |
+| Metric        | Value                                    |
+| ------------- | ---------------------------------------- |
+| Source files  | 175                                      |
+| Lines of Rust | 32,182                                   |
+| Commands      | 81 (6 universal, 4 pre-reg, 71 post-reg) |
+| IRCv3 Caps    | 21                                       |
+| Migrations    | 7                                        |
 
 ### Quality (Phase 2)
 
-| Metric | Value |
-|--------|-------|
-| Clippy allows | 19 (from 104) |
-| Capacity hints | 47 |
-| Deep nesting | 0 files >8 levels |
-| TODOs/FIXMEs | 0 |
+| Metric         | Value             |
+| -------------- | ----------------- |
+| Clippy allows  | 19 (from 104)     |
+| Capacity hints | 47                |
+| Deep nesting   | 0 files >8 levels |
+| TODOs/FIXMEs   | 0                 |
 
 ### Compliance (Phase 3)
 
-| Metric | Value |
-|--------|-------|
-| irctest passed | 269 |
-| Pass rate | 100% (on applicable tests) |
-| Skipped | 36 (SASL=TLS, ascii casemapping, optional) |
-| XFailed | 6 (deprecated RFCs) |
-| Failed | 1 (upstream test bug in deprecated test) |
+| Metric         | Value                                      |
+| -------------- | ------------------------------------------ |
+| irctest passed | 269                                        |
+| Pass rate      | 100% (on applicable tests)                 |
+| Skipped        | 36 (SASL=TLS, ascii casemapping, optional) |
+| XFailed        | 6 (deprecated RFCs)                        |
+| Failed         | 1 (upstream test bug in deprecated test)   |
 
 ## Commands
 
@@ -79,16 +79,16 @@ REGISTER, ACCESS, INFO, SET, DROP, OP, DEOP, VOICE, DEVOICE, AKICK, CLEAR
 
 ## Security Modules
 
-| Module | File |
-|--------|------|
-| DNSBL | src/security/dnsbl.rs |
+| Module     | File                       |
+| ---------- | -------------------------- |
+| DNSBL      | src/security/dnsbl.rs      |
 | Reputation | src/security/reputation.rs |
 | Heuristics | src/security/heuristics.rs |
-| Spam | src/security/spam.rs |
-| X-lines | src/security/xlines.rs |
-| Cloaking | src/security/cloaking.rs |
+| Spam       | src/security/spam.rs       |
+| X-lines    | src/security/xlines.rs     |
+| Cloaking   | src/security/cloaking.rs   |
 | Rate Limit | src/security/rate_limit.rs |
-| Ban Cache | src/security/ban_cache.rs |
+| Ban Cache  | src/security/ban_cache.rs  |
 
 ## Persistence
 

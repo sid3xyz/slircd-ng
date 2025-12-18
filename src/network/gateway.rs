@@ -285,11 +285,18 @@ impl Gateway {
         // for client certificates. SASL EXTERNAL clients using client certs
         // are trusted based on the certificate chain only. For high-security
         // deployments, consider additional out-of-band verification.
-        let tls_config = ServerConfig::builder_with_protocol_versions(&[&TLS13, &TLS12])
+        let protocol_versions = if config.tls13_only {
+            info!("TLS configured with TLS 1.3 only mode");
+            vec![&TLS13]
+        } else {
+            info!("TLS configured with minimum version TLS 1.2");
+            vec![&TLS13, &TLS12]
+        };
+
+        let tls_config = ServerConfig::builder_with_protocol_versions(&protocol_versions)
             .with_no_client_auth()
             .with_single_cert(certs, key)?;
 
-        info!("TLS configured with minimum version TLS 1.2");
         Ok(TlsAcceptor::from(Arc::new(tls_config)))
     }
 

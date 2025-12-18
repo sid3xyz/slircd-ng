@@ -222,6 +222,9 @@ pub struct OperBlock {
     pub password: String,
     /// Optional hostmask restriction (e.g., "*!*@trusted.host").
     pub hostmask: Option<String>,
+    /// Require TLS connection to use this oper block.
+    #[serde(default)]
+    pub require_tls: bool,
 }
 
 impl OperBlock {
@@ -342,6 +345,9 @@ pub struct TlsConfig {
     pub cert_path: String,
     /// Path to private key file (PEM format).
     pub key_path: String,
+    /// Whether to require TLS 1.3 only (disables TLS 1.2).
+    #[serde(default)]
+    pub tls13_only: bool,
 }
 
 /// WebSocket listener configuration.

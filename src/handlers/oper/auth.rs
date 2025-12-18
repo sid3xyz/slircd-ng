@@ -124,6 +124,25 @@ impl PostRegHandler for OperHandler {
             return Ok(());
         };
 
+        // Check TLS requirement before password verification
+        if oper_block.require_tls && !ctx.state.is_tls {
+            apply_timing_delay().await;
+
+            ctx.state.failed_oper_attempts += 1;
+            tracing::warn!(
+                nick = %nick,
+                oper_name = %name,
+                "OPER failed: TLS required for this oper block"
+            );
+            let reply = server_reply(
+                &server_name,
+                Response::ERR_NOOPERHOST,
+                vec![nick, "TLS connection required for this oper block".to_string()],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
+
         if !oper_block.verify_password(password) {
             // Apply timing normalization before responding
             apply_timing_delay().await;

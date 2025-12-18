@@ -111,6 +111,7 @@ impl PostRegHandler for WhoisHandler {
                     target_account,
                     target_away,
                     target_uid_owned,
+                    target_certfp,
                 ) = {
                     let target_user = target_user_arc.read().await;
                     (
@@ -123,6 +124,7 @@ impl PostRegHandler for WhoisHandler {
                         target_user.account.clone(),
                         target_user.away.clone(),
                         target_user.uid.clone(),
+                        target_user.certfp.clone(),
                     )
                 }; // Lock dropped here
 
@@ -254,6 +256,20 @@ impl PostRegHandler for WhoisHandler {
                             nick.clone(),
                             target_nick.clone(),
                             "is using a secure connection".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+
+                // RPL_WHOISCERTFP (276): <nick> :has client certificate fingerprint <fingerprint>
+                if let Some(ref certfp) = target_certfp {
+                    let reply = server_reply(
+                        server_name,
+                        Response::RPL_WHOISCERTFP,
+                        vec![
+                            nick.clone(),
+                            target_nick.clone(),
+                            format!("has client certificate fingerprint {}", certfp),
                         ],
                     );
                     ctx.sender.send(reply).await?;
