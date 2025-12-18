@@ -82,20 +82,6 @@ impl PostRegHandler for InviteHandler {
             return Ok(());
         }
 
-        // Record this invite attempt and prune old entries
-        ctx.state.invite_timestamps.insert(invite_key.clone(), now);
-        ctx.state.invite_timestamps.retain(|_, t| now.duration_since(*t) < INVITE_COOLDOWN);
-        // Limit map size to prevent memory exhaustion
-        if ctx.state.invite_timestamps.len() > 50 {
-            // Find and remove oldest entry
-            if let Some((oldest_key, _)) = ctx.state.invite_timestamps.iter()
-                .min_by_key(|(_, t)| *t)
-                .map(|(k, v)| (k.clone(), *v))
-            {
-                ctx.state.invite_timestamps.remove(&oldest_key);
-            }
-        }
-
         // Check if target exists
         let target_uid = match ctx.matrix.nicks.get(&target_lower) {
             Some(uid) => uid.value().clone(),
@@ -157,6 +143,20 @@ impl PostRegHandler for InviteHandler {
             match reply_rx.await {
                 Ok(Ok(())) => {
                     // Success, invite recorded in channel.
+                    
+                    // Record rate limit for this successful invite
+                    ctx.state.invite_timestamps.insert(invite_key.clone(), now);
+                    ctx.state.invite_timestamps.retain(|_, t| now.duration_since(*t) < INVITE_COOLDOWN);
+                    // Limit map size to prevent memory exhaustion
+                    if ctx.state.invite_timestamps.len() > 50 {
+                        let oldest = ctx.state.invite_timestamps.iter()
+                            .min_by_key(|(_, t)| *t)
+                            .map(|(k, _)| k.clone());
+                        if let Some(oldest_key) = oldest {
+                            ctx.state.invite_timestamps.remove(&oldest_key);
+                        }
+                    }
+
                     // Now send INVITE message to target user.
 
                     // Get sender's account for account-tag
