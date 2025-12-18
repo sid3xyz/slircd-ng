@@ -121,7 +121,7 @@ pub(super) async fn send_names_list(
 
     if let Ok(members) = members_rx.await {
         let channel_symbol = if data.is_secret { "@" } else { "=" };
-        let mut names_list = Vec::new();
+        let mut names_list = Vec::with_capacity(members.len());
 
         for (uid, member_modes) in members {
             if let Some(user) = ctx.matrix.users.get(&uid) {

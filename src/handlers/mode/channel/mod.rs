@@ -208,7 +208,7 @@ pub async fn handle_channel_mode(
 
         // Pre-validate modes that require argument validation before applying
         // Filter out invalid modes and send appropriate error messages
-        let mut valid_modes = Vec::new();
+        let mut valid_modes = Vec::with_capacity(modes.len());
         for mode in modes {
             let validation = match mode.mode() {
                 // Status modes (prefix modes) - validate target exists and is in channel
@@ -246,7 +246,7 @@ pub async fn handle_channel_mode(
             }
 
             // Resolve target UIDs for user modes
-            let mut target_uids = std::collections::HashMap::new();
+            let mut target_uids = std::collections::HashMap::with_capacity(mlock_filtered_modes.len());
             for mode in &mlock_filtered_modes {
                 match mode.mode() {
                     ChannelMode::Oper | ChannelMode::Voice => {
@@ -342,7 +342,7 @@ pub async fn handle_channel_mode(
 pub fn format_modes_for_log(modes: &[Mode<ChannelMode>]) -> String {
     use std::fmt::Write;
     let mut result = String::new();
-    let mut args = Vec::new();
+    let mut args = Vec::with_capacity(modes.len());
 
     for mode in modes {
         let _ = write!(result, "{}", mode.flag());

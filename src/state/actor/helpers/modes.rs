@@ -42,7 +42,7 @@ impl ChannelActor {
 /// Convert channel modes to a string representation (e.g. "+ntk key").
 pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
     let mut flags = String::new();
-    let mut params = Vec::new();
+    let mut params = Vec::with_capacity(3); // key, limit, forward
 
     flags.push('+');
 

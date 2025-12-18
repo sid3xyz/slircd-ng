@@ -46,7 +46,7 @@ pub async fn disconnect_matching_ban<S>(
     pattern: &str,
     reason: &str,
 ) -> usize {
-    let mut to_disconnect = Vec::new();
+    let mut to_disconnect = Vec::with_capacity(4); // Ban typically affects few users
 
     // Collect matching users
     for entry in ctx.matrix.users.iter() {

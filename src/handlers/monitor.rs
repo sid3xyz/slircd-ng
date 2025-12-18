@@ -76,8 +76,8 @@ async fn handle_add(
         .entry(ctx.uid.to_string())
         .or_insert_with(DashSet::new);
 
-    let mut online = Vec::new();
-    let mut offline = Vec::new();
+    let mut online = Vec::with_capacity(8); // Typical MONITOR + has 5-15 targets
+    let mut offline = Vec::with_capacity(8);
 
     for target in targets.split(',') {
         let target = target.trim();
@@ -230,8 +230,8 @@ async fn handle_list(ctx: &mut Context<'_, RegisteredState>, nick: &str, server_
 
 /// Handle MONITOR S - show status of all monitored nicknames.
 async fn handle_status(ctx: &mut Context<'_, RegisteredState>, nick: &str, server_name: &str) -> HandlerResult {
-    let mut online = Vec::new();
-    let mut offline = Vec::new();
+    let mut online = Vec::with_capacity(16); // Status returns full monitor list
+    let mut offline = Vec::with_capacity(16);
 
     if let Some(user_monitors) = ctx.matrix.monitors.get(ctx.uid) {
         for target_lower in user_monitors.iter() {

@@ -42,7 +42,7 @@ impl PostRegHandler for UserhostHandler {
         }
 
         // Build response (up to 5 nicks)
-        let mut replies = Vec::new();
+        let mut replies = Vec::with_capacity(5);
         for target_nick in nicks.iter().take(5) {
             let target_lower = irc_to_lower(target_nick);
             let uid = ctx.matrix.nicks.get(&target_lower);

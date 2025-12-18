@@ -87,7 +87,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         // The label tag is needed for labeled-response echoes
         // Unescape tag values since they come from wire format
         // Also track which tags to persist for history
-        let mut persist_tags: Vec<(String, Option<String>)> = Vec::new();
+        let mut persist_tags: Vec<(String, Option<String>)> = Vec::with_capacity(4);
         let tags: Option<Vec<Tag>> = if msg.tags.is_some() {
             let client_tags: Vec<Tag> = msg
                 .tags_iter()

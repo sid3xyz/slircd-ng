@@ -195,8 +195,8 @@ async fn handle_list<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str) -> H
 async fn handle_req<S: SessionState>(ctx: &mut Context<'_, S>, nick: &str, caps_arg: Option<&str>) -> HandlerResult {
     let requested = caps_arg.unwrap_or("");
 
-    let mut accepted = Vec::new();
-    let mut rejected = Vec::new();
+    let mut accepted = Vec::with_capacity(8); // Typical CAP REQ has 5-10 capabilities
+    let mut rejected = Vec::with_capacity(4);
 
     for cap in requested.split_whitespace() {
         // Check for removal prefix
@@ -340,7 +340,7 @@ fn build_cap_list_tokens(
                     }
                     Capability::AccountRegistration => {
                         // Build flags based on server configuration
-                        let mut flags = Vec::new();
+                        let mut flags = Vec::with_capacity(3);
                         if acct_cfg.custom_account_name {
                             flags.push("custom-account-name");
                         }
@@ -393,7 +393,7 @@ fn pack_cap_ls_lines(server_name: &str, nick: &str, caps: &[String]) -> Vec<Stri
         msg.to_string().len() <= 512
     }
 
-    let mut lines: Vec<String> = Vec::new();
+    let mut lines: Vec<String> = Vec::with_capacity(4);
     let mut current = String::new();
 
     for cap in caps {

@@ -370,7 +370,7 @@ impl ChatHistoryHandler {
         let targets = ctx.matrix.history.query_targets(start, end, limit as usize, nick.to_string(), channels).await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
 
-        let mut msgs = Vec::new();
+        let mut msgs = Vec::with_capacity(limit as usize);
         let nick_lower = slirc_proto::irc_to_lower(nick);
 
         for (target_name, timestamp) in targets {

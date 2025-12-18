@@ -88,8 +88,8 @@ pub fn apply_user_modes_typed(
     user_modes: &mut UserModes,
     modes: &[Mode<UserMode>],
 ) -> (Vec<Mode<UserMode>>, Vec<UserMode>) {
-    let mut applied = Vec::new();
-    let mut rejected = Vec::new();
+    let mut applied = Vec::with_capacity(modes.len());
+    let mut rejected = Vec::with_capacity(4);
 
     for mode in modes {
         let adding = mode.is_plus();

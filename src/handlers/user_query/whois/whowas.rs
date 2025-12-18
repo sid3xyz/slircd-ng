@@ -103,7 +103,7 @@ impl PostRegHandler for WhowasHandler {
         let mut first_matched_nick: Option<String> = None;
 
         // Collect all entries from all targets, then sort by logout_time (most recent first)
-        let mut all_entries: Vec<crate::state::WhowasEntry> = Vec::new();
+        let mut all_entries: Vec<crate::state::WhowasEntry> = Vec::with_capacity(16);
 
         for target in &target_list {
             let target_lower = irc_to_lower(target);

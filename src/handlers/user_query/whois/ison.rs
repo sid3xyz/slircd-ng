@@ -42,7 +42,7 @@ impl PostRegHandler for IsonHandler {
         }
 
         // Find which nicks are online
-        let mut online = Vec::new();
+        let mut online = Vec::with_capacity(nicks.len());
         for target_nick in nicks {
             let target_lower = irc_to_lower(target_nick);
             if ctx.matrix.nicks.contains_key(&target_lower) {

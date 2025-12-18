@@ -63,7 +63,7 @@ pub(super) async fn apply_mlock_filter(
 /// Parse MLOCK string inline (simplified version).
 /// Returns list of modes from MLOCK string like "+nt-s" or "+ntk secretkey".
 pub(super) fn parse_mlock_inline(mlock: &str) -> Vec<Mode<ChannelMode>> {
-    let mut modes = Vec::new();
+    let mut modes = Vec::with_capacity(6); // Typical MLOCK has 3-6 modes
     let trimmed = mlock.trim();
     if trimmed.is_empty() {
         return modes;

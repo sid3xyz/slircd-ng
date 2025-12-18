@@ -31,7 +31,7 @@ impl ChannelActor {
         force: bool,
         reply_tx: oneshot::Sender<Result<Vec<Mode<ProtoChannelMode>>, ChannelError>>,
     ) {
-        let mut applied_modes = Vec::new();
+        let mut applied_modes = Vec::with_capacity(modes.len());
 
         // Basic permission check
         let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
@@ -223,7 +223,7 @@ impl ChannelActor {
         target: ClearTarget,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     ) {
-        let mut changes = Vec::new();
+        let mut changes = Vec::with_capacity(8);
 
         match target {
             ClearTarget::Modes => {

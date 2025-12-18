@@ -20,7 +20,7 @@ fn build_echo_tags(
     has_message_tags: bool,
     has_server_time: bool,
 ) -> Option<Vec<Tag>> {
-    let mut echo_tags: Vec<Tag> = Vec::new();
+    let mut echo_tags: Vec<Tag> = Vec::with_capacity(4); // time, msgid, label, maybe 1 client tag
 
     // Add server-time if sender has the capability
     if has_server_time {
@@ -258,7 +258,7 @@ impl ChannelActor {
             }
 
             // Build recipient's tags based on their capabilities
-            let mut recipient_tags: Vec<Tag> = Vec::new();
+            let mut recipient_tags: Vec<Tag> = Vec::with_capacity(5);
 
             // Add server-time if recipient has the capability (independent of message-tags)
             if has_server_time {

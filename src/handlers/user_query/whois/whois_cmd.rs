@@ -175,7 +175,7 @@ impl PostRegHandler for WhoisHandler {
                 };
 
                 if show_channels && !target_channels.is_empty() {
-                    let mut channel_list = Vec::new();
+                    let mut channel_list = Vec::with_capacity(target_channels.len());
                     for channel_name in &target_channels {
                         let Some(channel_sender) = ctx.matrix.channels.get(channel_name) else {
                             continue;
