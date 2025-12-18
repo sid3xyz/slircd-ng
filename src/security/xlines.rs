@@ -22,7 +22,6 @@
 //! extended ban patterns for channel mode +b.
 
 use slirc_proto::wildcard_match;
-use std::net::IpAddr;
 
 /// Extended Ban types for advanced pattern matching.
 ///
@@ -127,30 +126,41 @@ pub struct UserContext {
     pub certificate_fp: Option<String>,
     /// SASL mechanism used for authentication.
     pub sasl_mechanism: Option<String>,
-    /// User's real IP address.
-    #[allow(dead_code)] // Future: $i:pattern extended ban type
-    pub ip_address: IpAddr,
     /// Whether the user has identified to an account.
     pub is_registered: bool,
     /// Whether the user is connected via TLS.
     pub is_tls: bool,
 }
 
+/// Parameters for creating a UserContext during registration.
+#[derive(Debug, Clone)]
+pub struct RegistrationParams {
+    pub hostname: String,
+    pub nickname: String,
+    pub username: String,
+    pub realname: String,
+    pub server: String,
+    pub account: Option<String>,
+    pub is_tls: bool,
+    pub is_oper: bool,
+    pub oper_type: Option<String>,
+}
+
 impl UserContext {
     /// Create a context for registration-time checks (after NICK/USER, before welcome).
-    #[allow(clippy::too_many_arguments)]
-    pub fn for_registration(
-        ip: IpAddr,
-        hostname: String,
-        nickname: String,
-        username: String,
-        realname: String,
-        server: String,
-        account: Option<String>,
-        is_tls: bool,
-        is_oper: bool,
-        oper_type: Option<String>,
-    ) -> Self {
+    pub fn for_registration(params: RegistrationParams) -> Self {
+        let RegistrationParams {
+            hostname,
+            nickname,
+            username,
+            realname,
+            server,
+            account,
+            is_tls,
+            is_oper,
+            oper_type,
+        } = params;
+
         Self {
             nickname,
             username,
@@ -163,7 +173,6 @@ impl UserContext {
             oper_type,
             certificate_fp: None,
             sasl_mechanism: None,
-            ip_address: ip,
             is_registered: account.is_some(),
             is_tls,
         }
@@ -237,7 +246,6 @@ mod tests {
             certificate_fp: None,
             sasl_mechanism: Some("PLAIN".to_string()),
             is_tls: false,
-            ip_address: "192.168.1.100".parse().unwrap(),
             is_registered: true,
         }
     }

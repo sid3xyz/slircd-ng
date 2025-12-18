@@ -2,23 +2,26 @@
 //!
 //! Removes users from channels with operator privilege checking.
 
-use super::{ChannelActor, ChannelError, ChannelMode, Uid};
-use slirc_proto::{Command, Message, Prefix};
+use super::{ChannelActor, ChannelError, ChannelMode, KickParams};
+use slirc_proto::{Command, Message};
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 impl ChannelActor {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn handle_kick(
         &mut self,
-        sender_uid: Uid,
-        sender_prefix: Prefix,
-        target_uid: Uid,
-        target_nick: String,
-        reason: String,
-        force: bool,
+        params: KickParams,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     ) {
+        let KickParams {
+            sender_uid,
+            sender_prefix,
+            target_uid,
+            target_nick,
+            reason,
+            force,
+        } = params;
+
         // Check +Q (no kicks) - even ops cannot kick when this is set
         // Only force (from capabilities/services) can bypass
         if !force && self.modes.contains(&ChannelMode::NoKicks) {

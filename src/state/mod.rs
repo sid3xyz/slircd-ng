@@ -15,10 +15,10 @@ mod uid;
 mod user;
 
 pub use channel::{ListEntry, MemberModes, Topic};
-pub use matrix::Matrix;
+pub use matrix::{Matrix, MatrixParams};
 pub use user::WhowasEntry;
 pub mod actor;
-pub use user::{User, UserModes};
+pub use user::{User, UserModes, UserParams};
 
 // Session state types (Innovation 1: Typestate pattern)
 pub use session::{RegisteredState, SessionState, UnregisteredState};

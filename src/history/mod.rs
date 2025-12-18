@@ -40,10 +40,6 @@ pub trait HistoryProvider: Send + Sync {
     /// Prune old messages (Maintenance).
     async fn prune(&self, retention: Duration) -> Result<usize, HistoryError>;
 
-    /// "Nuke" option: Clear all history for a target or globally.
-    #[allow(dead_code)]
-    async fn purge(&self, target: Option<&str>) -> Result<(), HistoryError>;
-
     /// Lookup timestamp for a message ID.
     async fn lookup_timestamp(&self, target: &str, msgid: &str) -> Result<Option<i64>, HistoryError>;
 

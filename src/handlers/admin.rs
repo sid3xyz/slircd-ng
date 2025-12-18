@@ -355,7 +355,7 @@ impl PostRegHandler for SamodeHandler {
         };
 
         // Resolve target UIDs for user modes
-        let mut target_uids = std::collections::HashMap::new();
+        let mut target_uids = std::collections::HashMap::with_capacity(typed_modes.len());
         for mode in &typed_modes {
             match mode.mode() {
                 slirc_proto::mode::ChannelMode::Oper | slirc_proto::mode::ChannelMode::Voice => {
@@ -374,11 +374,13 @@ impl PostRegHandler for SamodeHandler {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         if (channel
             .send(crate::state::actor::ChannelEvent::ApplyModes {
-                sender_uid: ctx.uid.to_string(),
-                sender_prefix: ctx.server_prefix(),
-                modes: typed_modes,
-                target_uids,
-                force: true,
+                params: crate::state::actor::ModeParams {
+                    sender_uid: ctx.uid.to_string(),
+                    sender_prefix: ctx.server_prefix(),
+                    modes: typed_modes,
+                    target_uids,
+                    force: true,
+                },
                 reply_tx,
             })
             .await)

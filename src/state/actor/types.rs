@@ -24,22 +24,90 @@ pub struct JoinSuccessData {
     pub is_secret: bool,
 }
 
+// =============================================================================
+// Parameter structs for actor handlers (reduces argument counts)
+// =============================================================================
+
+/// Parameters for JOIN event handling.
+#[derive(Debug)]
+pub struct JoinParams {
+    pub uid: Uid,
+    pub nick: String,
+    pub sender: mpsc::Sender<Message>,
+    pub caps: HashSet<String>,
+    pub user_context: UserContext,
+    pub key: Option<String>,
+    pub initial_modes: Option<MemberModes>,
+    pub join_msg_extended: Message,
+    pub join_msg_standard: Message,
+    pub session_id: Uuid,
+}
+
+/// Parameters for KICK event handling.
+#[derive(Debug)]
+pub struct KickParams {
+    pub sender_uid: Uid,
+    pub sender_prefix: Prefix,
+    pub target_uid: Uid,
+    pub target_nick: String,
+    pub reason: String,
+    pub force: bool,
+}
+
+/// Parameters for TOPIC event handling.
+#[derive(Debug)]
+pub struct TopicParams {
+    pub sender_uid: Uid,
+    pub sender_prefix: Prefix,
+    pub topic: String,
+    pub msgid: String,
+    pub timestamp: String,
+    pub force: bool,
+}
+
+/// Parameters for INVITE event handling.
+#[derive(Debug)]
+pub struct InviteParams {
+    pub sender_uid: Uid,
+    pub sender_prefix: Prefix,
+    pub target_uid: Uid,
+    pub target_nick: String,
+    pub force: bool,
+}
+
+/// Parameters for MODE event handling.
+#[derive(Debug)]
+pub struct ModeParams {
+    pub sender_uid: Uid,
+    pub sender_prefix: Prefix,
+    pub modes: Vec<slirc_proto::mode::Mode<slirc_proto::mode::ChannelMode>>,
+    pub target_uids: HashMap<String, Uid>,
+    pub force: bool,
+}
+
+/// Parameters for channel MESSAGE event handling.
+#[derive(Debug)]
+pub struct ChannelMessageParams {
+    pub sender_uid: Uid,
+    pub text: String,
+    pub tags: Option<Vec<slirc_proto::message::Tag>>,
+    pub is_notice: bool,
+    pub is_tagmsg: bool,
+    pub user_context: UserContext,
+    pub is_registered: bool,
+    pub is_tls: bool,
+    pub is_bot: bool,
+    pub status_prefix: Option<char>,
+    pub timestamp: Option<String>,
+    pub msgid: Option<String>,
+}
+
 /// Events that can be sent to a Channel Actor.
 #[derive(Debug)]
 pub enum ChannelEvent {
     /// User joining the channel.
     Join {
-        uid: Uid,
-        nick: String,
-        sender: mpsc::Sender<Message>,
-        caps: HashSet<String>,
-        user_context: Box<UserContext>,
-        key: Option<String>,
-        initial_modes: Option<MemberModes>,
-        join_msg_extended: Box<Message>,
-        join_msg_standard: Box<Message>,
-        session_id: Uuid,
-        /// Reply channel for the result (success/error).
+        params: Box<JoinParams>,
         reply_tx: oneshot::Sender<Result<JoinSuccessData, ChannelError>>,
     },
     /// User leaving the channel.
@@ -57,18 +125,7 @@ pub enum ChannelEvent {
     },
     /// User sending a message (PRIVMSG, NOTICE, or TAGMSG) to the channel.
     Message {
-        sender_uid: Uid,
-        text: String,
-        tags: Option<Vec<slirc_proto::message::Tag>>,
-        is_notice: bool,
-        is_tagmsg: bool,
-        user_context: Box<UserContext>,
-        is_registered: bool,
-        is_tls: bool,
-        is_bot: bool,
-        status_prefix: Option<char>,
-        timestamp: Option<String>,
-        msgid: Option<String>,
+        params: Box<ChannelMessageParams>,
         reply_tx: oneshot::Sender<ChannelRouteResult>,
     },
     /// Request channel information (for LIST/WHO/NAMES).
@@ -92,45 +149,24 @@ pub enum ChannelEvent {
     },
     /// Apply mode changes.
     ApplyModes {
-        sender_uid: Uid,
-        sender_prefix: Prefix,
-        modes: Vec<slirc_proto::mode::Mode<slirc_proto::mode::ChannelMode>>,
-        /// Mapping of nick arguments to UIDs for modes that target users (+o, +v, etc).
-        target_uids: HashMap<String, Uid>,
-        force: bool,
+        params: ModeParams,
         reply_tx: oneshot::Sender<
             Result<Vec<slirc_proto::mode::Mode<slirc_proto::mode::ChannelMode>>, ChannelError>,
         >,
     },
     /// Kick a user from the channel.
     Kick {
-        sender_uid: Uid,
-        sender_prefix: Prefix,
-        target_uid: Uid,
-        target_nick: String,
-        reason: String,
-        force: bool,
+        params: KickParams,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Set the channel topic.
     SetTopic {
-        sender_uid: Uid,
-        sender_prefix: Prefix,
-        topic: String,
-        /// msgid for event-playback (Innovation 5)
-        msgid: String,
-        /// ISO8601 timestamp for event-playback
-        timestamp: String,
-        force: bool,
+        params: TopicParams,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Invite a user to the channel.
     Invite {
-        sender_uid: Uid,
-        sender_prefix: Prefix,
-        target_uid: Uid,
-        target_nick: String,
-        force: bool,
+        params: InviteParams,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Knock on the channel.
@@ -163,8 +199,6 @@ pub enum ChannelEvent {
     /// User nickname change.
     NickChange {
         uid: Uid,
-        #[allow(dead_code)] // retained for future auditing/logging
-        old_nick: String,
         new_nick: String,
     },
     /// Clear channel state (modes, bans, etc).

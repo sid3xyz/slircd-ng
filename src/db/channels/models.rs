@@ -22,8 +22,6 @@ pub struct ChannelRecord {
 /// Channel access entry.
 #[derive(Debug, Clone)]
 pub struct ChannelAccess {
-    #[allow(dead_code)] // DB field - query uses channel_id param directly
-    pub channel_id: i64,
     pub account_id: i64,
     pub flags: String,
     pub added_by: String,

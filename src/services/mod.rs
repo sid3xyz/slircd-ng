@@ -58,13 +58,6 @@ pub enum ServiceEffect {
         adding: bool,
     },
 
-    /// Apply multiple channel mode changes at once (ChanServ MLOCK, auto-modes).
-    #[allow(dead_code)] // Ready for CLEAR MODES and batch mode commands
-    ChannelModes {
-        channel: String,
-        modes: Vec<Mode<ChannelMode>>,
-    },
-
     /// Force nick change (enforcement).
     ForceNick {
         target_uid: String,
@@ -79,16 +72,6 @@ pub enum ServiceEffect {
         target_uid: String,
         /// Account name, or "*" for logout.
         new_account: String,
-    },
-
-    /// Broadcast host change to all shared channels (chghost capability).
-    /// Sends `:old_prefix CHGHOST new_user new_host` to channel members with chghost.
-    /// Used by CHGHOST/VHOST oper commands. Future HostServ could also use this.
-    #[allow(dead_code)]
-    BroadcastChghost {
-        target_uid: String,
-        new_user: String,
-        new_host: String,
     },
 }
 
@@ -312,7 +295,7 @@ pub async fn apply_effect(
                 Mode::minus(channel_mode, Some(&target_nick))
             };
 
-            let mut target_uids = std::collections::HashMap::new();
+            let mut target_uids = std::collections::HashMap::with_capacity(1);
             target_uids.insert(target_nick.clone(), target_uid.clone());
 
             let sender_prefix = Prefix::new(
@@ -323,53 +306,13 @@ pub async fn apply_effect(
 
             let (tx, rx) = tokio::sync::oneshot::channel();
             let event = crate::state::actor::ChannelEvent::ApplyModes {
-                sender_uid: "ChanServ".to_string(),
-                sender_prefix,
-                modes: vec![mode_obj],
-                target_uids,
-                force: true,
-                reply_tx: tx,
-            };
-
-            let _ = channel_sender.send(event).await;
-            let _ = rx.await;
-        }
-
-        ServiceEffect::ChannelModes { channel, modes } => {
-            if modes.is_empty() {
-                return;
-            }
-
-            let channel_lower = irc_to_lower(&channel);
-            let channel_sender = if let Some(c) = matrix.channels.get(&channel_lower) {
-                c.clone()
-            } else {
-                return;
-            };
-
-            let mut target_uids = std::collections::HashMap::new();
-            for mode in &modes {
-                if let Some(nick) = mode.arg() {
-                    let nick_lower = irc_to_lower(nick);
-                    if let Some(uid) = matrix.nicks.get(&nick_lower).map(|r| r.clone()) {
-                        target_uids.insert(nick.to_string(), uid);
-                    }
-                }
-            }
-
-            let sender_prefix = Prefix::new(
-                "ChanServ".to_string(),
-                "ChanServ".to_string(),
-                "services.".to_string(),
-            );
-
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let event = crate::state::actor::ChannelEvent::ApplyModes {
-                sender_uid: "ChanServ".to_string(),
-                sender_prefix,
-                modes,
-                target_uids,
-                force: true,
+                params: crate::state::actor::ModeParams {
+                    sender_uid: "ChanServ".to_string(),
+                    sender_prefix,
+                    modes: vec![mode_obj],
+                    target_uids,
+                    force: true,
+                },
                 reply_tx: tx,
             };
 
@@ -403,12 +346,14 @@ pub async fn apply_effect(
 
             let (tx, rx) = tokio::sync::oneshot::channel();
             let event = crate::state::actor::ChannelEvent::Kick {
-                sender_uid: kicker.clone(),
-                sender_prefix,
-                target_uid: target_uid.clone(),
-                target_nick: target_nick.clone(),
-                reason: reason.clone(),
-                force: true,
+                params: crate::state::actor::KickParams {
+                    sender_uid: kicker.clone(),
+                    sender_prefix,
+                    target_uid: target_uid.clone(),
+                    target_nick: target_nick.clone(),
+                    reason: reason.clone(),
+                    force: true,
+                },
                 reply_tx: tx,
             };
 
@@ -530,64 +475,6 @@ pub async fn apply_effect(
             }
 
             info!(uid = %target_uid, account = %new_account, "Broadcast account change");
-        }
-
-        ServiceEffect::BroadcastChghost {
-            target_uid,
-            new_user,
-            new_host,
-        } => {
-            // Get user info for CHGHOST broadcast BEFORE updating
-            let (nick, old_user, old_host, channels) = {
-                let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
-                if let Some(user_arc) = user_arc {
-                    let user = user_arc.read().await;
-                    (
-                        user.nick.clone(),
-                        user.user.clone(),
-                        user.host.clone(),
-                        user.channels.iter().cloned().collect::<Vec<_>>(),
-                    )
-                } else {
-                    return;
-                }
-            };
-
-            // Build CHGHOST message: :nick!old_user@old_host CHGHOST new_user new_host
-            let chghost_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::new(&nick, &old_user, &old_host)),
-                command: Command::CHGHOST(new_user.clone(), new_host.clone()),
-            };
-
-            // Broadcast to all shared channels (only to clients with chghost)
-            for channel_name in &channels {
-                matrix
-                    .broadcast_to_channel_with_cap(
-                        channel_name,
-                        chghost_msg.clone(),
-                        None,
-                        Some("chghost"),
-                        None, // No fallback - clients without cap get nothing
-                    )
-                    .await;
-            }
-
-            // Update the user's user and host fields
-            let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
-            if let Some(user_arc) = user_arc {
-                let mut user = user_arc.write().await;
-                user.user = new_user.clone();
-                user.host = new_host.clone();
-            }
-
-            // Also send to the user themselves
-            let sender = matrix.senders.get(&target_uid).map(|s| s.clone());
-            if let Some(sender) = sender {
-                let _ = sender.send(chghost_msg).await;
-            }
-
-            info!(uid = %target_uid, new_user = %new_user, new_host = %new_host, "Broadcast host change");
         }
     }
 }

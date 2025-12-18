@@ -23,10 +23,6 @@ impl HistoryProvider for NoOpProvider {
         Ok(0)
     }
 
-    async fn purge(&self, _target: Option<&str>) -> Result<(), HistoryError> {
-        Ok(())
-    }
-
     async fn lookup_timestamp(&self, _target: &str, _msgid: &str) -> Result<Option<i64>, HistoryError> {
         Ok(None)
     }

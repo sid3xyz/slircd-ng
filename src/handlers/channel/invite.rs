@@ -140,11 +140,13 @@ impl PostRegHandler for InviteHandler {
                 .is_some();
 
             let event = ChannelEvent::Invite {
-                sender_uid: ctx.uid.to_string(),
-                sender_prefix: sender_prefix.clone(),
-                target_uid: target_uid.clone(),
-                target_nick: target_nick.to_string(),
-                force: has_invite_cap,
+                params: crate::state::actor::InviteParams {
+                    sender_uid: ctx.uid.to_string(),
+                    sender_prefix: sender_prefix.clone(),
+                    target_uid: target_uid.clone(),
+                    target_nick: target_nick.to_string(),
+                    force: has_invite_cap,
+                },
                 reply_tx,
             };
 

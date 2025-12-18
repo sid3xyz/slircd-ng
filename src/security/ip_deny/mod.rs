@@ -379,21 +379,9 @@ impl IpDenyList {
         self.metadata.len()
     }
 
-    /// Check if the deny list is empty.
-    #[allow(dead_code)] // Available for stats commands
-    pub fn is_empty(&self) -> bool {
-        self.metadata.is_empty()
-    }
-
     /// Get an iterator over all bans with their metadata.
     pub fn iter(&self) -> impl Iterator<Item = (&String, &BanMetadata)> {
         self.metadata.iter()
-    }
-
-    /// Get metadata for a specific ban.
-    #[allow(dead_code)] // Available for admin queries
-    pub fn get_metadata(&self, key: &str) -> Option<&BanMetadata> {
-        self.metadata.get(key)
     }
 
     /// Reload the deny list from database (for REHASH command).

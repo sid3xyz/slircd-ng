@@ -2,26 +2,29 @@
 //!
 //! Manages channel topic retrieval and modification with +t enforcement.
 
-use super::{ChannelActor, ChannelError, ChannelMode, Uid};
+use super::{ChannelActor, ChannelError, ChannelMode, TopicParams};
 use crate::state::Topic;
 use slirc_proto::message::Tag;
-use slirc_proto::{Command, Message, Prefix};
+use slirc_proto::{Command, Message};
 use std::borrow::Cow;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 impl ChannelActor {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn handle_set_topic(
         &mut self,
-        sender_uid: Uid,
-        sender_prefix: Prefix,
-        topic: String,
-        msgid: String,
-        timestamp: String,
-        force: bool,
+        params: TopicParams,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     ) {
+        let TopicParams {
+            sender_uid,
+            sender_prefix,
+            topic,
+            msgid,
+            timestamp,
+            force,
+        } = params;
+
         if !force && self.modes.contains(&ChannelMode::TopicLock) {
             let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
             if !sender_modes.op && !sender_modes.halfop {

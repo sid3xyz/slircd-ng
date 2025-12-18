@@ -51,26 +51,4 @@ impl<'a> ResponseMiddleware<'a> {
             }
         }
     }
-
-    /// Try to send a message without blocking.
-    ///
-    /// Returns immediately if the queue is full. Useful for optional
-    /// notifications where dropping is acceptable.
-    #[allow(dead_code)]
-    #[allow(clippy::result_large_err)]
-    pub fn try_send(&self, msg: Message) -> Result<(), mpsc::error::TrySendError<Message>> {
-        match self {
-            Self::Direct(tx) => tx.try_send(msg),
-            Self::Capturing(buf) => {
-                // For capturing mode, we can't fail - just buffer
-                if let Ok(mut guard) = buf.try_lock() {
-                    guard.push(msg);
-                    Ok(())
-                } else {
-                    // Mutex contention - extremely rare, treat as full
-                    Err(mpsc::error::TrySendError::Full(msg))
-                }
-            }
-        }
-    }
 }

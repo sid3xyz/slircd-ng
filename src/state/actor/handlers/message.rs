@@ -3,8 +3,7 @@
 //! Validates message delivery against bans, moderation, and member status.
 
 use super::super::validation::{create_user_mask, is_banned};
-use super::{ChannelActor, ChannelMode, ChannelRouteResult, Uid};
-use crate::security::UserContext;
+use super::{ChannelActor, ChannelMessageParams, ChannelMode, ChannelRouteResult};
 use slirc_proto::message::Tag;
 use slirc_proto::{Command, Message};
 use std::borrow::Cow;
@@ -60,23 +59,26 @@ fn has_caps(caps: Option<&HashSet<String>>, required: &str) -> bool {
 }
 
 impl ChannelActor {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn handle_message(
         &mut self,
-        sender_uid: Uid,
-        text: String,
-        tags: Option<Vec<Tag>>,
-        is_notice: bool,
-        is_tagmsg: bool,
-        user_context: UserContext,
-        is_registered: bool,
-        is_tls: bool,
-        is_bot: bool,
-        status_prefix: Option<char>,
-        timestamp: Option<String>,
-        msgid: Option<String>,
+        params: ChannelMessageParams,
         reply_tx: oneshot::Sender<ChannelRouteResult>,
     ) {
+        let ChannelMessageParams {
+            sender_uid,
+            text,
+            tags,
+            is_notice,
+            is_tagmsg,
+            user_context,
+            is_registered,
+            is_tls,
+            is_bot,
+            status_prefix,
+            timestamp,
+            msgid,
+        } = params;
+
         let is_member = self.members.contains_key(&sender_uid);
         let modes = &self.modes;
 

@@ -3,29 +3,28 @@
 //! Processes channel join requests with ban/invite/key validation.
 
 use super::super::validation::{create_user_mask, is_banned};
-use super::{ActorState, ChannelActor, ChannelError, ChannelMode, JoinSuccessData, MemberModes, Uid};
-use crate::security::UserContext;
-use slirc_proto::Message;
-use std::collections::HashSet;
-use tokio::sync::{mpsc, oneshot};
-use uuid::Uuid;
+use super::{ActorState, ChannelActor, ChannelError, ChannelMode, JoinParams, JoinSuccessData, MemberModes};
+use tokio::sync::oneshot;
 
 impl ChannelActor {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn handle_join(
         &mut self,
-        uid: Uid,
-        nick: String,
-        sender: mpsc::Sender<Message>,
-        caps: HashSet<String>,
-        user_context: UserContext,
-        key_arg: Option<String>,
-        initial_modes: Option<MemberModes>,
-        join_msg_extended: Message,
-        join_msg_standard: Message,
-        session_id: Uuid,
+        params: JoinParams,
         reply_tx: oneshot::Sender<Result<JoinSuccessData, ChannelError>>,
     ) {
+        let JoinParams {
+            uid,
+            nick,
+            sender,
+            caps,
+            user_context,
+            key: key_arg,
+            initial_modes,
+            join_msg_extended,
+            join_msg_standard,
+            session_id,
+        } = params;
+
         if self.state == ActorState::Draining {
             let _ = reply_tx.send(Err(ChannelError::ChannelTombstone));
             return;

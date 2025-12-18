@@ -49,6 +49,15 @@ struct ResolvedTimestamp {
     is_timestamp: bool,
 }
 
+/// Parameters for execute_query (reduces argument count).
+struct QueryParams<'a> {
+    target: &'a str,
+    nick: &'a str,
+    limit: u32,
+    is_dm: bool,
+    msg: &'a MessageRef<'a>,
+}
+
 /// Resolve a message reference string to a timestamp.
 /// Returns None if the reference is "*" or cannot be resolved.
 async fn resolve_msgref(
@@ -413,17 +422,13 @@ impl ChatHistoryHandler {
         Ok(msgs)
     }
 
-    #[allow(clippy::too_many_arguments)] // Complex query dispatch needs all context
-    async fn execute_query(
+    async fn execute_query<'a>(
         &self,
         ctx: &Context<'_, RegisteredState>,
         subcommand: ChatHistorySubCommand,
-        target: &str,
-        nick: &str,
-        limit: u32,
-        is_dm: bool,
-        msg: &MessageRef<'_>,
+        params: QueryParams<'a>,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
+        let QueryParams { target, nick, limit, is_dm, msg } = params;
         match subcommand {
             ChatHistorySubCommand::LATEST => self.handle_latest(ctx, target, nick, limit, is_dm, msg).await,
             ChatHistorySubCommand::BEFORE => self.handle_before(ctx, target, nick, limit, is_dm, msg).await,
@@ -531,7 +536,13 @@ impl PostRegHandler for ChatHistoryHandler {
         let limit = limit.min(MAX_HISTORY_LIMIT);
 
         // Execute query based on subcommand
-        let messages = self.execute_query(ctx, subcommand.clone(), &target, &nick, limit, is_dm, msg).await;
+        let messages = self.execute_query(ctx, subcommand.clone(), QueryParams {
+            target: &target,
+            nick: &nick,
+            limit,
+            is_dm,
+            msg,
+        }).await;
 
         match messages {
             Ok(msgs) => {

@@ -149,12 +149,14 @@ impl PostRegHandler for TopicHandler {
                     .is_some();
 
                 let event = ChannelEvent::SetTopic {
-                    sender_uid: ctx.uid.to_string(),
-                    sender_prefix,
-                    topic: topic_text.to_string(),
-                    msgid: msgid.clone(),
-                    timestamp,
-                    force: has_topic_cap,
+                    params: crate::state::actor::TopicParams {
+                        sender_uid: ctx.uid.to_string(),
+                        sender_prefix,
+                        topic: topic_text.to_string(),
+                        msgid: msgid.clone(),
+                        timestamp,
+                        force: has_topic_cap,
+                    },
                     reply_tx,
                 };
 

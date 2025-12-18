@@ -2,10 +2,9 @@
 //!
 //! Applies mode changes with privilege validation and broadcasts results.
 
-use super::{ChannelActor, ChannelError, ChannelMode, Uid, ClearTarget};
+use super::{ChannelActor, ChannelError, ChannelMode, ClearTarget, ModeParams, Uid};
 use slirc_proto::mode::{ChannelMode as ProtoChannelMode, Mode};
 use slirc_proto::{Command, Message, Prefix};
-use std::collections::HashMap;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
@@ -21,16 +20,19 @@ fn parse_channel_limit(arg: Option<&str>) -> Option<usize> {
 }
 
 impl ChannelActor {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn handle_apply_modes(
         &mut self,
-        sender_uid: Uid,
-        sender_prefix: Prefix,
-        modes: Vec<Mode<ProtoChannelMode>>,
-        target_uids: HashMap<String, Uid>,
-        force: bool,
+        params: ModeParams,
         reply_tx: oneshot::Sender<Result<Vec<Mode<ProtoChannelMode>>, ChannelError>>,
     ) {
+        let ModeParams {
+            sender_uid,
+            sender_prefix,
+            modes,
+            target_uids,
+            force,
+        } = params;
+
         let mut applied_modes = Vec::with_capacity(modes.len());
 
         // Basic permission check

@@ -25,7 +25,7 @@ use crate::services::{chanserv, nickserv};
 use crate::history::HistoryProvider;
 
 use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
-use crate::db::{Dline, Gline, Kline, Shun, Zline};
+use crate::db::Shun;
 use crate::handlers::{cleanup_monitors, notify_monitors_offline};
 use crate::security::{BanCache, RateLimitManager};
 use crate::security::ip_deny::IpDenyList;
@@ -160,45 +160,50 @@ pub struct ServerInfo {
     pub idle_timeouts: crate::config::IdleTimeoutsConfig,
 }
 
+/// Parameters for creating a new Matrix.
+pub struct MatrixParams<'a> {
+    pub config: &'a Config,
+    pub data_dir: Option<&'a std::path::Path>,
+    pub db: Database,
+    pub history: std::sync::Arc<dyn crate::history::HistoryProvider>,
+    pub registered_channels: Vec<String>,
+    pub shuns: Vec<crate::db::Shun>,
+    pub klines: Vec<crate::db::Kline>,
+    pub dlines: Vec<crate::db::Dline>,
+    pub glines: Vec<crate::db::Gline>,
+    pub zlines: Vec<crate::db::Zline>,
+    pub disconnect_tx: mpsc::Sender<(Uid, String)>,
+}
+
 impl Matrix {
     /// Create a new Matrix with the given server configuration.
-    ///
-    /// # Arguments
-    /// - `config`: Server configuration
-    /// - `data_dir`: Directory for data files (IP deny list, etc.)
-    /// - `db`: Database handle for services
-    /// - `registered_channels`: Channel names registered with ChanServ (stored lowercase)
-    /// - `shuns`: Active shuns loaded from database
-    /// - `klines`: Active K-lines loaded from database
-    /// - `dlines`: Active D-lines loaded from database (synced to IpDenyList)
-    /// - `glines`: Active G-lines loaded from database
-    /// - `zlines`: Active Z-lines loaded from database (synced to IpDenyList)
-    #[allow(clippy::too_many_arguments)] // Startup initialization requires many data sources
-    pub fn new(
-        config: &Config,
-        data_dir: Option<&std::path::Path>,
-        db: Database,
-        history: Arc<dyn HistoryProvider>,
-        registered_channels: Vec<String>,
-        shuns: Vec<Shun>,
-        klines: Vec<Kline>,
-        dlines: Vec<Dline>,
-        glines: Vec<Gline>,
-        zlines: Vec<Zline>,
-        disconnect_tx: mpsc::Sender<(Uid, String)>,
-    ) -> Self {
+    pub fn new(params: MatrixParams<'_>) -> Self {
+        let MatrixParams {
+            config,
+            data_dir,
+            db,
+            history,
+            registered_channels,
+            shuns,
+            klines,
+            dlines,
+            glines,
+            zlines,
+            disconnect_tx,
+        } = params;
+
         use slirc_proto::irc_to_lower;
 
         let now = chrono::Utc::now().timestamp();
 
         // Build the registered channels set (lowercase for consistent lookup)
-        let registered_set = DashSet::new();
+        let registered_set = DashSet::with_capacity(registered_channels.len());
         for name in registered_channels {
             registered_set.insert(irc_to_lower(&name));
         }
 
         // Build the shuns map
-        let shuns_map = DashMap::new();
+        let shuns_map = DashMap::with_capacity(shuns.len());
         for shun in shuns {
             shuns_map.insert(shun.mask.clone(), shun);
         }

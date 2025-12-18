@@ -55,10 +55,6 @@ pub struct Config {
 /// Account registration configuration (draft/account-registration).
 #[derive(Debug, Clone, Deserialize)]
 pub struct AccountRegistrationConfig {
-    /// Whether account registration is enabled.
-    #[serde(default = "default_true")]
-    #[allow(dead_code)]
-    pub enabled: bool,
     /// Allow registration before connection is complete (before CAP END).
     #[serde(default = "default_true")]
     pub before_connect: bool,
@@ -73,7 +69,6 @@ pub struct AccountRegistrationConfig {
 impl Default for AccountRegistrationConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
             before_connect: true,
             email_required: false,
             custom_account_name: true,
@@ -137,10 +132,6 @@ pub struct HistoryConfig {
     /// Backend type: "redb", "sqlite", "none".
     #[serde(default = "default_history_backend")]
     pub backend: String,
-    /// Retention period (e.g., "7d").
-    #[serde(default = "default_history_retention")]
-    #[allow(dead_code)]
-    pub retention: String,
     /// Path to history database file.
     #[serde(default = "default_history_path")]
     pub path: String,
@@ -208,7 +199,6 @@ impl Default for HistoryConfig {
         Self {
             enabled: false,
             backend: "none".to_string(),
-            retention: "7d".to_string(),
             path: "history.db".to_string(),
             events: HistoryEventsConfig::default(),
         }
@@ -217,10 +207,6 @@ impl Default for HistoryConfig {
 
 fn default_history_backend() -> String {
     "none".to_string()
-}
-
-fn default_history_retention() -> String {
-    "7d".to_string()
 }
 
 fn default_history_path() -> String {
@@ -261,9 +247,6 @@ pub struct WebircBlock {
     /// Allowed host/IP patterns for the gateway (glob patterns supported).
     #[serde(default)]
     pub hosts: Vec<String>,
-    /// Description of this WEBIRC gateway (for admin reference).
-    #[allow(dead_code)] // Used for admin logging/inspection
-    pub description: Option<String>,
 }
 
 /// Server identity configuration.

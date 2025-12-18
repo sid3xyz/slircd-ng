@@ -33,7 +33,7 @@ pub mod heuristics;
 // Re-export primary types for convenience
 pub use ban_cache::BanCache;
 pub use rate_limit::RateLimitManager;
-pub use xlines::{ExtendedBan, UserContext, matches_extended_ban};
+pub use xlines::{ExtendedBan, RegistrationParams, UserContext, matches_extended_ban};
 pub use reputation::ReputationManager;
 pub use dnsbl::DnsblService;
 pub use heuristics::HeuristicsEngine;

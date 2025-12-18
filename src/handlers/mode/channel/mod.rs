@@ -277,11 +277,13 @@ pub async fn handle_channel_mode(
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
             if (channel
                 .send(crate::state::actor::ChannelEvent::ApplyModes {
-                    sender_uid: ctx.uid.to_string(),
-                    sender_prefix: prefix,
-                    modes: mlock_filtered_modes,
-                    target_uids,
-                    force: false,
+                    params: crate::state::actor::ModeParams {
+                        sender_uid: ctx.uid.to_string(),
+                        sender_prefix: prefix,
+                        modes: mlock_filtered_modes,
+                        target_uids,
+                        force: false,
+                    },
                     reply_tx,
                 })
                 .await)

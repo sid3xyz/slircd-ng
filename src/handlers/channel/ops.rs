@@ -43,7 +43,6 @@ pub struct TargetUser<'a> {
 /// Caller is responsible for:
 /// - Validating channel name
 /// - Checking permissions (invite-only, bans, etc.) if applicable
-#[allow(clippy::too_many_arguments)]
 pub async fn force_join_channel<S>(
     ctx: &Context<'_, S>,
     target: &TargetUser<'_>,
@@ -74,22 +73,18 @@ pub async fn force_join_channel<S>(
     let (caps, user_context, sender, session_id) =
         if let Some(user_arc) = ctx.matrix.users.get(target.uid).map(|u| u.value().clone()) {
             let user = user_arc.read().await;
-            // NOTE: IP address is not stored in User struct, so we use a placeholder.
-            // This means IP-based extended bans ($i:) won't match for forced joins.
-            // This is acceptable because SAJOIN is an operator command that bypasses
-            // normal ban checks anyway. If IP-based ban matching becomes needed,
-            // the User struct should be extended to store the connection IP.
             let context = crate::security::UserContext::for_registration(
-                std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
-                user.host.clone(),
-                user.nick.clone(),
-                user.user.clone(),
-                user.realname.clone(),
-                ctx.server_name().to_string(),
-                user.account.clone(),
-                user.modes.secure,            // TLS status from user modes (+Z)
-                user.modes.oper,              // Oper status
-                user.modes.oper_type.clone(), // Oper type (admin/oper)
+                crate::security::RegistrationParams {
+                    hostname: user.host.clone(),
+                    nickname: user.nick.clone(),
+                    username: user.user.clone(),
+                    realname: user.realname.clone(),
+                    server: ctx.server_name().to_string(),
+                    account: user.account.clone(),
+                    is_tls: user.modes.secure,
+                    is_oper: user.modes.oper,
+                    oper_type: user.modes.oper_type.clone(),
+                },
             );
             let sender = ctx.matrix.senders.get(target.uid).map(|s| s.clone());
             (user.caps.clone(), context, sender, user.session_id)
@@ -128,16 +123,18 @@ pub async fn force_join_channel<S>(
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
 
     let event = crate::state::actor::ChannelEvent::Join {
-        uid: target.uid.to_string(),
-        nick: target.nick.to_string(),
-        sender: sender.clone(),
-        caps,
-        user_context: Box::new(user_context),
-        key: None,
-        initial_modes: Some(modes),
-        join_msg_extended: Box::new(join_msg_extended),
-        join_msg_standard: Box::new(join_msg_standard),
-        session_id,
+        params: Box::new(crate::state::actor::JoinParams {
+            uid: target.uid.to_string(),
+            nick: target.nick.to_string(),
+            sender: sender.clone(),
+            caps,
+            user_context,
+            key: None,
+            initial_modes: Some(modes),
+            join_msg_extended,
+            join_msg_standard,
+            session_id,
+        }),
         reply_tx,
     };
 

@@ -3,11 +3,10 @@
 //! Provides common functionality for service reply handling, account verification,
 //! and error handling to eliminate code duplication across services.
 
-use crate::db::{Database, DbError};
+use crate::db::Database;
 use crate::state::Matrix;
 use slirc_proto::{Command, Message, Prefix};
 use std::sync::Arc;
-use tracing::warn;
 
 use super::ServiceEffect;
 
@@ -83,76 +82,6 @@ pub trait ServiceBase {
             match self.db().accounts().find_by_name(account_name).await {
                 Ok(Some(account)) => Some(account.id),
                 _ => None,
-            }
-        }
-    }
-
-    /// Require user to be identified, returning account ID or error.
-    #[allow(dead_code)]
-    fn require_identified(
-        &self,
-        matrix: &Arc<Matrix>,
-        uid: &str,
-    ) -> impl std::future::Future<Output = Result<i64, ServiceResult>> + Send
-    where
-        Self: Sync,
-    {
-        async move {
-            match self.get_user_account_id(matrix, uid).await {
-                Some(id) => Ok(id),
-                None => Err(self.error_reply(
-                    uid,
-                    "You must be identified to an account to use this command.",
-                )),
-            }
-        }
-    }
-
-    /// Handle database errors with consistent user-friendly messages.
-    ///
-    /// Logs the error and returns appropriate error reply to user.
-    /// Note: Entity names in responses are safe because users already know
-    /// what they requested. Internal errors (Sqlx, etc.) are sanitized.
-    #[allow(dead_code)]
-    fn handle_db_error(&self, uid: &str, error: DbError, operation: &str) -> ServiceResult {
-        match error {
-            DbError::AccountNotFound(name) => {
-                self.error_reply(uid, &format!("Account \x02{}\x02 not found.", name))
-            }
-            DbError::AccountExists(name) => self.error_reply(
-                uid,
-                &format!("An account named \x02{}\x02 already exists.", name),
-            ),
-            DbError::NicknameRegistered(name) => self.error_reply(
-                uid,
-                &format!("The nickname \x02{}\x02 is already registered.", name),
-            ),
-            DbError::ChannelExists(name) => self.error_reply(
-                uid,
-                &format!("Channel \x02{}\x02 is already registered.", name),
-            ),
-            DbError::ChannelNotFound(name) => {
-                self.error_reply(uid, &format!("Channel \x02{}\x02 not found.", name))
-            }
-            DbError::InvalidPassword => self.error_reply(uid, "Invalid password."),
-            DbError::ConnectionTimeout => {
-                warn!(service = %self.service_name(), operation = %operation, "Database connection timeout");
-                self.error_reply(uid, "Service temporarily unavailable. Please try again later.")
-            }
-            // All other errors (Sqlx, Migration, etc.) - log internally but don't expose details
-            _ => {
-                warn!(
-                    service = %self.service_name(),
-                    error = ?error,
-                    operation = %operation,
-                    "{} operation failed",
-                    self.service_name()
-                );
-                // Generic message - never expose internal DB errors to users
-                self.error_reply(
-                    uid,
-                    "An internal error occurred. Please try again later.",
-                )
             }
         }
     }

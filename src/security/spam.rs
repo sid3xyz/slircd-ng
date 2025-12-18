@@ -485,38 +485,6 @@ impl SpamDetectionService {
         }
     }
 
-    /// Remove spam keyword
-    #[allow(dead_code)] // Available for runtime config
-    pub fn remove_keyword(&mut self, keyword: &str) -> bool {
-        let keyword = keyword.to_lowercase();
-        let removed = self.raw_keywords.remove(&keyword);
-        if !removed {
-            return false;
-        }
-
-        // Rebuild matcher
-        match AhoCorasick::builder()
-            .ascii_case_insensitive(true)
-            .build(&self.raw_keywords)
-        {
-            Ok(matcher) => {
-                self.keyword_matcher = matcher;
-                true
-            }
-            Err(err) => {
-                warn!(error = ?err, keyword = %keyword, "Failed to rebuild spam keyword matcher; reverting keyword removal");
-                self.raw_keywords.insert(keyword);
-                false
-            }
-        }
-    }
-
-    /// Add URL shortener domain
-    #[allow(dead_code)] // Available for runtime config
-    pub fn add_shortener(&mut self, domain: String) {
-        self.url_shorteners.insert(domain.to_lowercase());
-    }
-
     /// Get current entropy threshold
     pub fn entropy_threshold(&self) -> f32 {
         self.entropy_threshold

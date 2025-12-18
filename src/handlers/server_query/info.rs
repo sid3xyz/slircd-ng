@@ -155,7 +155,7 @@ impl PostRegHandler for UseripHandler {
         }
 
         // Collect all target nicknames from arguments
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(16);
 
         for i in 0..16 {
             // Limit to 16 nicknames

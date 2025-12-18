@@ -91,18 +91,21 @@ impl UserModes {
     pub fn has_snomask(&self, mask: char) -> bool {
         self.snomasks.contains(&mask)
     }
+}
 
-    /// Add a snomask.
-    #[allow(dead_code)]
-    pub fn add_snomask(&mut self, mask: char) {
-        self.snomasks.insert(mask);
-    }
-
-    /// Remove a snomask.
-    #[allow(dead_code)]
-    pub fn remove_snomask(&mut self, mask: char) {
-        self.snomasks.remove(&mask);
-    }
+/// Parameters for creating a new User.
+#[derive(Debug)]
+pub struct UserParams {
+    pub uid: String,
+    pub nick: String,
+    pub user: String,
+    pub realname: String,
+    pub host: String,
+    pub ip: String,
+    pub cloak_secret: String,
+    pub cloak_suffix: String,
+    pub caps: HashSet<String>,
+    pub certfp: Option<String>,
 }
 
 impl User {
@@ -111,24 +114,25 @@ impl User {
     /// The `host` is cloaked using HMAC-SHA256 with the provided secret.
     /// `caps` is the set of IRCv3 capabilities negotiated during handshake.
     /// `certfp` is the TLS client certificate fingerprint, if any.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        uid: String,
-        nick: String,
-        user: String,
-        realname: String,
-        host: String,
-        ip: String,
-        cloak_secret: &str,
-        cloak_suffix: &str,
-        caps: HashSet<String>,
-        certfp: Option<String>,
-    ) -> Self {
+    pub fn new(params: UserParams) -> Self {
+        let UserParams {
+            uid,
+            nick,
+            user,
+            realname,
+            host,
+            ip,
+            cloak_secret,
+            cloak_suffix,
+            caps,
+            certfp,
+        } = params;
+
         // Try to parse as IP for proper cloaking, fall back to hostname cloaking
         let visible_host = if let Ok(addr) = ip.parse::<std::net::IpAddr>() {
-            crate::security::cloaking::cloak_ip_hmac_with_suffix(&addr, cloak_secret, cloak_suffix)
+            crate::security::cloaking::cloak_ip_hmac_with_suffix(&addr, &cloak_secret, &cloak_suffix)
         } else {
-            crate::security::cloaking::cloak_hostname(&host, cloak_secret)
+            crate::security::cloaking::cloak_hostname(&host, &cloak_secret)
         };
         Self {
             uid,

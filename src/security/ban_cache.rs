@@ -26,9 +26,6 @@ use tracing::debug;
 pub struct BanResult {
     /// The type of ban that matched.
     pub ban_type: BanType,
-    /// The pattern that matched.
-    #[allow(dead_code)] // Available for logging/display
-    pub pattern: String,
     /// The reason for the ban.
     pub reason: String,
 }
@@ -167,7 +164,6 @@ impl BanCache {
             if wildcard_match(&ban.mask, &user_host) {
                 return Some(BanResult {
                     ban_type: BanType::GLine,
-                    pattern: ban.mask.clone(),
                     reason: ban.reason.clone(),
                 });
             }
@@ -182,7 +178,6 @@ impl BanCache {
             if wildcard_match(&ban.mask, &user_host) {
                 return Some(BanResult {
                     ban_type: BanType::KLine,
-                    pattern: ban.mask.clone(),
                     reason: ban.reason.clone(),
                 });
             }

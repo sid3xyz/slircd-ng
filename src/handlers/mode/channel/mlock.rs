@@ -26,8 +26,8 @@ pub(super) async fn apply_mlock_filter(
     let mlock_modes = parse_mlock_inline(&mlock_str);
 
     // Build sets of locked modes
-    let mut locked_on = std::collections::HashSet::new();
-    let mut locked_off = std::collections::HashSet::new();
+    let mut locked_on = std::collections::HashSet::with_capacity(mlock_modes.len());
+    let mut locked_off = std::collections::HashSet::with_capacity(mlock_modes.len());
 
     for mlock_mode in mlock_modes {
         let mode_char = mode_to_char(mlock_mode.mode());

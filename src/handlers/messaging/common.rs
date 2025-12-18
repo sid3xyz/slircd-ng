@@ -76,19 +76,18 @@ impl SenderSnapshot {
     }
 
     /// Build UserContext for channel routing (extended ban checks, etc.).
-    pub fn to_user_context(&self, server_name: &str, remote_ip: std::net::IpAddr) -> UserContext {
-        UserContext::for_registration(
-            remote_ip,
-            self.host.clone(),
-            self.nick.clone(),
-            self.user.clone(),
-            self.realname.clone(),
-            server_name.to_string(),
-            self.account.clone(),
-            self.is_tls,
-            self.is_oper,
-            None, // oper_type not yet tracked
-        )
+    pub fn to_user_context(&self, server_name: &str) -> UserContext {
+        UserContext::for_registration(crate::security::RegistrationParams {
+            hostname: self.host.clone(),
+            nickname: self.nick.clone(),
+            username: self.user.clone(),
+            realname: self.realname.clone(),
+            server: server_name.to_string(),
+            account: self.account.clone(),
+            is_tls: self.is_tls,
+            is_oper: self.is_oper,
+            oper_type: None, // oper_type not yet tracked
+        })
     }
 }
 
@@ -125,9 +124,6 @@ pub use crate::state::actor::ChannelRouteResult;
 pub struct RouteOptions {
     /// Whether to send RPL_AWAY for user targets (only PRIVMSG).
     pub send_away_reply: bool,
-    /// Whether to block CTCP (+C mode, except ACTION).
-    #[allow(dead_code)] // Reserved for future use
-    pub block_ctcp: bool,
     /// Status prefix for channel messages (e.g. @#chan).
     pub status_prefix: Option<char>,
 }
@@ -155,7 +151,7 @@ pub async fn route_to_channel_with_snapshot(
     };
 
     // Build UserContext from snapshot (no user lookup needed)
-    let user_context = snapshot.to_user_context(ctx.server_name(), ctx.remote_addr.ip());
+    let user_context = snapshot.to_user_context(ctx.server_name());
 
     // Extract text and tags from message
     // TAGMSG has no text body, just tags
@@ -172,18 +168,20 @@ pub async fn route_to_channel_with_snapshot(
     // Send to actor
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     let event = crate::state::actor::ChannelEvent::Message {
-        sender_uid: ctx.uid.to_string(),
-        text,
-        tags,
-        is_notice,
-        is_tagmsg,
-        user_context: Box::new(user_context),
-        is_registered: snapshot.is_registered,
-        is_tls: ctx.state.is_tls,
-        is_bot: snapshot.is_bot,
-        status_prefix: opts.status_prefix,
-        timestamp,
-        msgid,
+        params: Box::new(crate::state::actor::ChannelMessageParams {
+            sender_uid: ctx.uid.to_string(),
+            text,
+            tags,
+            is_notice,
+            is_tagmsg,
+            user_context,
+            is_registered: snapshot.is_registered,
+            is_tls: ctx.state.is_tls,
+            is_bot: snapshot.is_bot,
+            status_prefix: opts.status_prefix,
+            timestamp,
+            msgid,
+        }),
         reply_tx,
     };
 

@@ -232,13 +232,15 @@ async fn route_to_channel_target(
         // STATUSMSG - route to specific member subset
         route_statusmsg(
             ctx,
-            &channel_lower,
-            target,
-            prepared.out_msg.clone(),
-            prefix_char,
-            Some(prepared.timestamp_iso.clone()),
-            Some(prepared.msgid.clone()),
-            snapshot,
+            StatusMsgParams {
+                channel_lower: &channel_lower,
+                original_target: target,
+                msg: prepared.out_msg.clone(),
+                prefix_char,
+                timestamp: Some(prepared.timestamp_iso.clone()),
+                msgid: Some(prepared.msgid.clone()),
+                snapshot,
+            },
         ).await?;
         debug!(from = %snapshot.nick, to = %target, prefix = %prefix_char, "PRIVMSG STATUSMSG");
         suppress_labeled_ack_if_echo(ctx);
@@ -246,7 +248,6 @@ async fn route_to_channel_target(
         // Regular channel message
         let opts = RouteOptions {
             send_away_reply: true,
-            block_ctcp: true,
             status_prefix: None,
         };
 
@@ -306,7 +307,6 @@ async fn route_to_user_target(
 ) -> HandlerResult {
     let opts = RouteOptions {
         send_away_reply: true,
-        block_ctcp: true,
         status_prefix: None,
     };
 
@@ -416,24 +416,37 @@ pub(super) fn parse_statusmsg(target: &str) -> (Option<char>, Option<&str>) {
     }
 }
 
+/// Parameters for STATUSMSG routing.
+pub(super) struct StatusMsgParams<'a> {
+    pub channel_lower: &'a str,
+    pub original_target: &'a str,
+    pub msg: Message,
+    pub prefix_char: char,
+    pub timestamp: Option<String>,
+    pub msgid: Option<String>,
+    pub snapshot: &'a SenderSnapshot,
+}
+
 /// Route a STATUSMSG to members matching the specified status level.
 ///
 /// - `@`: Send to ops only
 /// - `+`: Send to voiced+ (voice or op)
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn route_statusmsg(
     ctx: &Context<'_, crate::state::RegisteredState>,
-    channel_lower: &str,
-    original_target: &str, // Keep @#chan or +#chan in the message
-    msg: Message,
-    prefix_char: char,
-    timestamp: Option<String>,
-    msgid: Option<String>,
-    snapshot: &SenderSnapshot,
+    params: StatusMsgParams<'_>,
 ) -> HandlerResult {
+    let StatusMsgParams {
+        channel_lower,
+        original_target,
+        msg,
+        prefix_char,
+        timestamp,
+        msgid,
+        snapshot,
+    } = params;
+
     let opts = RouteOptions {
         send_away_reply: false,
-        block_ctcp: false,
         status_prefix: Some(prefix_char),
     };
 

@@ -153,13 +153,7 @@ impl BanType for Kline {
         }
     }
 
-    fn mask(&self) -> &str {
-        &self.mask
-    }
 
-    fn expires_at(&self) -> Option<i64> {
-        self.expires_at
-    }
 
     fn matches(&self, user_host: &str) -> bool {
         wildcard_match(&self.mask, user_host)
@@ -187,13 +181,7 @@ impl BanType for Dline {
         }
     }
 
-    fn mask(&self) -> &str {
-        &self.mask
-    }
 
-    fn expires_at(&self) -> Option<i64> {
-        self.expires_at
-    }
 
     fn matches(&self, ip: &str) -> bool {
         wildcard_match(&self.mask, ip) || cidr_match(&self.mask, ip)
@@ -221,13 +209,7 @@ impl BanType for Gline {
         }
     }
 
-    fn mask(&self) -> &str {
-        &self.mask
-    }
 
-    fn expires_at(&self) -> Option<i64> {
-        self.expires_at
-    }
 
     fn matches(&self, user_host: &str) -> bool {
         wildcard_match(&self.mask, user_host)
@@ -255,13 +237,7 @@ impl BanType for Zline {
         }
     }
 
-    fn mask(&self) -> &str {
-        &self.mask
-    }
 
-    fn expires_at(&self) -> Option<i64> {
-        self.expires_at
-    }
 
     fn matches(&self, ip: &str) -> bool {
         wildcard_match(&self.mask, ip) || cidr_match(&self.mask, ip)
@@ -289,13 +265,7 @@ impl BanType for Rline {
         }
     }
 
-    fn mask(&self) -> &str {
-        &self.mask
-    }
 
-    fn expires_at(&self) -> Option<i64> {
-        self.expires_at
-    }
 
     fn matches(&self, realname: &str) -> bool {
         wildcard_match(&self.mask, realname)
@@ -323,13 +293,7 @@ impl BanType for Shun {
         }
     }
 
-    fn mask(&self) -> &str {
-        &self.mask
-    }
 
-    fn expires_at(&self) -> Option<i64> {
-        self.expires_at
-    }
 
     fn matches(&self, user_host: &str) -> bool {
         wildcard_match(&self.mask, user_host)

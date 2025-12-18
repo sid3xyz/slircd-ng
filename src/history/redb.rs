@@ -60,7 +60,7 @@ impl HistoryProvider for RedbProvider {
 
         let range = table.range(start_key.as_str()..end_key.as_str()).map_err(|e| HistoryError::Database(e.to_string()))?;
 
-        let mut messages = Vec::new();
+        let mut messages = Vec::with_capacity(filter.limit);
 
         if filter.reverse {
              for item in range.rev() {
@@ -115,38 +115,6 @@ impl HistoryProvider for RedbProvider {
         Ok(count)
     }
 
-    async fn purge(&self, target: Option<&str>) -> Result<(), HistoryError> {
-        let write_txn = self.db.begin_write().map_err(|e| HistoryError::Database(e.to_string()))?;
-        {
-            let mut table = write_txn.open_table(HISTORY_TABLE).map_err(|e| HistoryError::Database(e.to_string()))?;
-            if let Some(t) = target {
-                let target_lower = irc_to_lower(t);
-                let start_key = format!("{}\0", target_lower);
-                let end_key = format!("{}\0\u{FFFF}", target_lower);
-
-                let mut to_delete = Vec::new();
-                for item in table.range(start_key.as_str()..end_key.as_str()).map_err(|e| HistoryError::Database(e.to_string()))? {
-                     let (k, _) = item.map_err(|e| HistoryError::Database(e.to_string()))?;
-                     to_delete.push(k.value().to_string());
-                }
-                for k in to_delete {
-                    table.remove(k.as_str()).map_err(|e| HistoryError::Database(e.to_string()))?;
-                }
-            } else {
-                 let mut to_delete = Vec::new();
-                for item in table.iter().map_err(|e| HistoryError::Database(e.to_string()))? {
-                     let (k, _) = item.map_err(|e| HistoryError::Database(e.to_string()))?;
-                     to_delete.push(k.value().to_string());
-                }
-                for k in to_delete {
-                    table.remove(k.as_str()).map_err(|e| HistoryError::Database(e.to_string()))?;
-                }
-            }
-        }
-        write_txn.commit().map_err(|e| HistoryError::Database(e.to_string()))?;
-        Ok(())
-    }
-
     async fn lookup_timestamp(&self, _target: &str, msgid: &str) -> Result<Option<i64>, HistoryError> {
         let read_txn = self.db.begin_read().map_err(|e| HistoryError::Database(e.to_string()))?;
         let index = read_txn.open_table(MSGID_INDEX).map_err(|e| HistoryError::Database(e.to_string()))?;
@@ -167,7 +135,7 @@ impl HistoryProvider for RedbProvider {
         let read_txn = self.db.begin_read().map_err(|e| HistoryError::Database(e.to_string()))?;
         let table = read_txn.open_table(HISTORY_TABLE).map_err(|e| HistoryError::Database(e.to_string()))?;
 
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(limit);
         let nick_lower = irc_to_lower(&nick);
         let channels_set: std::collections::HashSet<String> = channels.iter().map(|c| irc_to_lower(c)).collect();
 

@@ -168,9 +168,9 @@ impl<'a> ChannelRepository<'a> {
         channel_id: i64,
         account_id: i64,
     ) -> Result<Option<ChannelAccess>, DbError> {
-        let row = sqlx::query_as::<_, (i64, i64, String, String, i64)>(
+        let row = sqlx::query_as::<_, (i64, String, String, i64)>(
             r#"
-            SELECT channel_id, account_id, flags, added_by, added_at
+            SELECT account_id, flags, added_by, added_at
             FROM channel_access
             WHERE channel_id = ? AND account_id = ?
             "#,
@@ -181,8 +181,7 @@ impl<'a> ChannelRepository<'a> {
         .await?;
 
         Ok(row.map(
-            |(channel_id, account_id, flags, added_by, added_at)| ChannelAccess {
-                channel_id,
+            |(account_id, flags, added_by, added_at)| ChannelAccess {
                 account_id,
                 flags,
                 added_by,
@@ -193,9 +192,9 @@ impl<'a> ChannelRepository<'a> {
 
     /// Get all access entries for a channel.
     pub async fn list_access(&self, channel_id: i64) -> Result<Vec<ChannelAccess>, DbError> {
-        let rows = sqlx::query_as::<_, (i64, i64, String, String, i64)>(
+        let rows = sqlx::query_as::<_, (i64, String, String, i64)>(
             r#"
-            SELECT channel_id, account_id, flags, added_by, added_at
+            SELECT account_id, flags, added_by, added_at
             FROM channel_access
             WHERE channel_id = ?
             ORDER BY added_at ASC
@@ -208,8 +207,7 @@ impl<'a> ChannelRepository<'a> {
         Ok(rows
             .into_iter()
             .map(
-                |(channel_id, account_id, flags, added_by, added_at)| ChannelAccess {
-                    channel_id,
+                |(account_id, flags, added_by, added_at)| ChannelAccess {
                     account_id,
                     flags,
                     added_by,

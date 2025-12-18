@@ -2,22 +2,25 @@
 //!
 //! Manages channel invitations and knock requests for +i channels.
 
-use super::{ChannelActor, ChannelError, ChannelMode, Uid};
+use super::{ChannelActor, ChannelError, ChannelMode, InviteParams, Uid};
 use slirc_proto::{Command, Message, Prefix};
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 impl ChannelActor {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn handle_invite(
         &mut self,
-        sender_uid: Uid,
-        sender_prefix: Prefix,
-        target_uid: Uid,
-        target_nick: String,
-        force: bool,
+        params: InviteParams,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     ) {
+        let InviteParams {
+            sender_uid,
+            sender_prefix,
+            target_uid,
+            target_nick,
+            force,
+        } = params;
+
         // Check +V (no invites) - blocks all invitations to this channel
         // Only force (from capabilities/services) can bypass
         if !force && self.modes.contains(&ChannelMode::NoInvite) {

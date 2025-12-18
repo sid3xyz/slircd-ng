@@ -5,20 +5,36 @@ use crate::state::RegisteredState;
 use super::super::super::{Context, HandlerResult, server_reply, user_prefix, with_label};
 use slirc_proto::{Command, Message, Response};
 
+/// Context for handling successful JOIN responses.
+pub(super) struct JoinSuccessContext<'a> {
+    pub channel_sender: &'a tokio::sync::mpsc::Sender<crate::state::actor::ChannelEvent>,
+    pub channel_lower: &'a str,
+    pub nick: &'a str,
+    pub user_name: &'a str,
+    pub visible_host: &'a str,
+    pub extended_join_msg: &'a Message,
+    pub standard_join_msg: &'a Message,
+    pub away_message: &'a Option<String>,
+    pub data: crate::state::actor::JoinSuccessData,
+}
+
 /// Handle successful JOIN - send topic, names, and update user state.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_join_success(
     ctx: &mut Context<'_, RegisteredState>,
-    channel_sender: &tokio::sync::mpsc::Sender<crate::state::actor::ChannelEvent>,
-    channel_lower: &str,
-    nick: &str,
-    user_name: &str,
-    visible_host: &str,
-    extended_join_msg: &Message,
-    standard_join_msg: &Message,
-    away_message: &Option<String>,
-    data: crate::state::actor::JoinSuccessData,
+    join_ctx: JoinSuccessContext<'_>,
 ) -> HandlerResult {
+    let JoinSuccessContext {
+        channel_sender,
+        channel_lower,
+        nick,
+        user_name,
+        visible_host,
+        extended_join_msg,
+        standard_join_msg,
+        away_message,
+        data,
+    } = join_ctx;
+
     // Add channel to user's list
     if let Some(user) = ctx.matrix.users.get(&ctx.uid.to_string()) {
         let mut user = user.write().await;

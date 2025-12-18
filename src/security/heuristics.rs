@@ -129,10 +129,4 @@ impl HeuristicsEngine {
         // Velocity: 40%, Fan-Out: 40%, Repetition: 20%
         (velocity_score * 0.4) + (fanout_score * 0.4) + (repetition_risk * 0.2)
     }
-
-    /// Clear metrics for a user (e.g., on disconnect)
-    #[allow(dead_code)]
-    pub fn clear(&self, key: &str) {
-        self.metrics.remove(key);
-    }
 }

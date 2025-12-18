@@ -35,7 +35,9 @@ pub const DEFAULT_CLOAK_SUFFIX: &str = "ip";
 ///
 /// More compact than hex (1.6 bytes per char vs 2 bytes per char).
 fn base32_encode(data: &[u8]) -> String {
-    let mut result = String::new();
+    // Each 5 bits becomes one char, so ceil(len * 8 / 5) chars needed
+    let capacity = (data.len() * 8).div_ceil(5);
+    let mut result = String::with_capacity(capacity);
     let mut bits = 0u32;
     let mut bit_count = 0u8;
 

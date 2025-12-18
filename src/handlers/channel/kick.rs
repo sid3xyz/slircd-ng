@@ -109,12 +109,14 @@ impl PostRegHandler for KickHandler {
             let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user.clone(), host.clone());
 
             let event = ChannelEvent::Kick {
-                sender_uid: ctx.uid.to_string(),
-                sender_prefix,
-                target_uid: target_uid.clone(),
-                target_nick: target_nick.to_string(),
-                reason: reason_str.clone(),
-                force: has_kick_cap,
+                params: crate::state::actor::KickParams {
+                    sender_uid: ctx.uid.to_string(),
+                    sender_prefix,
+                    target_uid: target_uid.clone(),
+                    target_nick: target_nick.to_string(),
+                    reason: reason_str.clone(),
+                    force: has_kick_cap,
+                },
                 reply_tx,
             };
 

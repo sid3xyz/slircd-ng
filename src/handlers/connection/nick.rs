@@ -187,7 +187,6 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                     let _ = channel_sender
                         .send(crate::state::actor::ChannelEvent::NickChange {
                             uid: ctx.uid.to_string(),
-                            old_nick: old_nick.clone(),
                             new_nick: nick.to_string(),
                         })
                         .await;

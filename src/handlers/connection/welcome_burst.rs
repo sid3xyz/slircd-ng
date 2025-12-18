@@ -189,18 +189,18 @@ impl<'a> WelcomeBurstWriter<'a> {
         // Create user in Matrix
         let security_config = &self.matrix.config.security;
         let ip = webirc_ip.clone().unwrap_or_else(|| remote_ip.clone());
-        let mut user_obj = User::new(
-            self.uid.to_string(),
-            nick.clone(),
-            user.clone(),
+        let mut user_obj = User::new(crate::state::UserParams {
+            uid: self.uid.to_string(),
+            nick: nick.clone(),
+            user: user.clone(),
             realname,
-            host.clone(),
+            host: host.clone(),
             ip,
-            &security_config.cloak_secret,
-            &security_config.cloak_suffix,
-            self.state.capabilities.clone(),
-            self.state.certfp.clone(),
-        );
+            cloak_secret: security_config.cloak_secret.clone(),
+            cloak_suffix: security_config.cloak_suffix.clone(),
+            caps: self.state.capabilities.clone(),
+            certfp: self.state.certfp.clone(),
+        });
 
         // Set account and +r if authenticated via SASL
         if let Some(account_name) = &self.state.account {

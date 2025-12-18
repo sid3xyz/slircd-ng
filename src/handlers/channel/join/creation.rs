@@ -9,7 +9,7 @@ use crate::security::UserContext;
 use crate::state::{RegisteredState, Topic};
 use super::super::super::{Context, HandlerError, HandlerResult, user_prefix};
 use super::enforcement::{check_akick, check_auto_modes};
-use super::responses::{handle_join_success, send_join_error};
+use super::responses::{handle_join_success, send_join_error, JoinSuccessContext};
 use slirc_proto::{Command, Message, Prefix, irc_to_lower};
 use std::sync::Arc;
 use tracing::info;
@@ -47,21 +47,17 @@ pub(super) async fn join_channel(
         )
     };
 
-    // For registered connections, use remote_addr directly (WEBIRC already applied at registration)
-    let ip_addr = ctx.remote_addr.ip();
-
-    let user_context = UserContext::for_registration(
-        ip_addr,
-        real_host.clone(),
-        nick.clone(),
-        user_name.clone(),
-        realname.clone(),
-        ctx.server_name().to_string(),
-        account.clone(),
-        ctx.state.is_tls,
+    let user_context = UserContext::for_registration(crate::security::RegistrationParams {
+        hostname: real_host.clone(),
+        nickname: nick.clone(),
+        username: user_name.clone(),
+        realname: realname.clone(),
+        server: ctx.server_name().to_string(),
+        account: account.clone(),
+        is_tls: ctx.state.is_tls,
         is_oper,
         oper_type,
-    );
+    });
 
     // Check AKICK before joining (pass pre-fetched host)
     if ctx.matrix.registered_channels.contains(&channel_lower)
@@ -166,16 +162,18 @@ pub(super) async fn join_channel(
 
         let _ = channel_sender
             .send(crate::state::actor::ChannelEvent::Join {
-                uid: ctx.uid.to_string(),
-                nick: nick.clone(),
-                sender,
-                caps: caps.clone(),
-                user_context: Box::new(user_context.clone()),
-                key: provided_key.map(|s| s.to_string()),
-                initial_modes: initial_modes.clone(),
-                join_msg_extended: Box::new(extended_join_msg.clone()),
-                join_msg_standard: Box::new(standard_join_msg.clone()),
-                session_id,
+                params: Box::new(crate::state::actor::JoinParams {
+                    uid: ctx.uid.to_string(),
+                    nick: nick.clone(),
+                    sender,
+                    caps: caps.clone(),
+                    user_context: user_context.clone(),
+                    key: provided_key.map(|s| s.to_string()),
+                    initial_modes: initial_modes.clone(),
+                    join_msg_extended: extended_join_msg.clone(),
+                    join_msg_standard: standard_join_msg.clone(),
+                    session_id,
+                }),
                 reply_tx,
             })
             .await;
@@ -184,15 +182,17 @@ pub(super) async fn join_channel(
             Ok(Ok(data)) => {
                 handle_join_success(
                     ctx,
-                    &channel_sender,
-                    &channel_lower,
-                    &nick,
-                    &user_name,
-                    &visible_host,
-                    &extended_join_msg,
-                    &standard_join_msg,
-                    &away_message,
-                    data,
+                    JoinSuccessContext {
+                        channel_sender: &channel_sender,
+                        channel_lower: &channel_lower,
+                        nick: &nick,
+                        user_name: &user_name,
+                        visible_host: &visible_host,
+                        extended_join_msg: &extended_join_msg,
+                        standard_join_msg: &standard_join_msg,
+                        away_message: &away_message,
+                        data,
+                    },
                 )
                 .await?;
                 break;

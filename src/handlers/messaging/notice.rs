@@ -106,7 +106,7 @@ impl PostRegHandler for NoticeHandler {
         // NOTICE: silently drop on errors, check moderated, no away reply
         let opts = RouteOptions {
             send_away_reply: false,
-            block_ctcp: true,
+
             status_prefix: None,
         };
 
@@ -121,13 +121,15 @@ impl PostRegHandler for NoticeHandler {
                 // Route STATUSMSG with snapshot
                 let _ = super::privmsg::route_statusmsg(
                     ctx,
-                    &channel_lower,
-                    target,
-                    out_msg,
-                    prefix_char,
-                    Some(timestamp_iso.clone()),
-                    Some(msgid.clone()),
-                    &snapshot,
+                    super::privmsg::StatusMsgParams {
+                        channel_lower: &channel_lower,
+                        original_target: target,
+                        msg: out_msg,
+                        prefix_char,
+                        timestamp: Some(timestamp_iso.clone()),
+                        msgid: Some(msgid.clone()),
+                        snapshot: &snapshot,
+                    },
                 )
                 .await;
                 debug!(from = %snapshot.nick, to = %target, prefix = %prefix_char, "NOTICE STATUSMSG");

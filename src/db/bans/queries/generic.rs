@@ -26,14 +26,6 @@ pub trait BanType: Sized + Clone {
         expires_at: Option<i64>,
     ) -> Self;
 
-    /// Extract mask from the ban entry.
-    #[allow(dead_code)] // May be used in future for ban inspection
-    fn mask(&self) -> &str;
-
-    /// Extract expires_at from the ban entry.
-    #[allow(dead_code)] // May be used in future for ban expiry checks
-    fn expires_at(&self) -> Option<i64>;
-
     /// Check if the given target matches this ban's mask.
     fn matches(&self, target: &str) -> bool;
 }

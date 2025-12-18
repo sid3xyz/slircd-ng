@@ -151,7 +151,8 @@ async fn process_multiline_batch(
     }
 
     // Build the combined message
-    let mut combined = String::new();
+    // total_bytes is the sum of line content lengths; add extra for newlines
+    let mut combined = String::with_capacity(batch.total_bytes + batch.lines.len());
     for (i, line) in batch.lines.iter().enumerate() {
         if i > 0 && !line.concat {
             combined.push('\n');

@@ -50,7 +50,8 @@ impl MemberModes {
     /// Get all prefix characters for this member (for multi-prefix CAP).
     /// Returns in order from highest to lowest: ~ & @ % +
     pub fn all_prefix_chars(&self) -> String {
-        let mut s = String::new();
+        // Max 5 prefix chars: ~ & @ % +
+        let mut s = String::with_capacity(5);
         if self.owner {
             s.push('~');
         }
@@ -67,25 +68,6 @@ impl MemberModes {
             s.push('+');
         }
         s
-    }
-
-    /// Get the privilege rank (higher number = more privileges).
-    /// Returns 0 if no privileges, 5 for owner, 4 for admin, etc.
-    #[allow(dead_code)]
-    pub fn rank(&self) -> u8 {
-        if self.owner {
-            5
-        } else if self.admin {
-            4
-        } else if self.op {
-            3
-        } else if self.halfop {
-            2
-        } else if self.voice {
-            1
-        } else {
-            0
-        }
     }
 
     /// Check if this member has operator privileges (op or higher).

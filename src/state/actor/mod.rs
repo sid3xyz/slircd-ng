@@ -78,7 +78,8 @@ impl ChannelActor {
     ) -> mpsc::Sender<ChannelEvent> {
         let (tx, rx) = mpsc::channel(capacity);
 
-        let mut modes = HashSet::new();
+        // Default channel modes: +nt (NoExternal, TopicLock)
+        let mut modes = HashSet::with_capacity(8); // Typical channel mode count
         modes.insert(ChannelMode::NoExternal);
         modes.insert(ChannelMode::TopicLock);
 
@@ -117,33 +118,8 @@ impl ChannelActor {
 
     async fn handle_event(&mut self, event: ChannelEvent) {
         match event {
-            ChannelEvent::Join {
-                uid,
-                nick,
-                sender,
-                caps,
-                user_context,
-                key,
-                initial_modes,
-                join_msg_extended,
-                join_msg_standard,
-                session_id,
-                reply_tx,
-            } => {
-                self.handle_join(
-                    uid,
-                    nick,
-                    sender,
-                    caps,
-                    *user_context,
-                    key,
-                    initial_modes,
-                    *join_msg_extended,
-                    *join_msg_standard,
-                    session_id,
-                    reply_tx,
-                )
-                .await;
+            ChannelEvent::Join { params, reply_tx } => {
+                self.handle_join(*params, reply_tx).await;
             }
             ChannelEvent::Part {
                 uid,
@@ -160,37 +136,8 @@ impl ChannelActor {
             } => {
                 self.handle_quit(uid, quit_msg, reply_tx).await;
             }
-            ChannelEvent::Message {
-                sender_uid,
-                text,
-                tags,
-                is_notice,
-                is_tagmsg,
-                user_context,
-                is_registered,
-                is_tls,
-                is_bot,
-                status_prefix,
-                timestamp,
-                msgid,
-                reply_tx,
-            } => {
-                self.handle_message(
-                    sender_uid,
-                    text,
-                    tags,
-                    is_notice,
-                    is_tagmsg,
-                    *user_context,
-                    is_registered,
-                    is_tls,
-                    is_bot,
-                    status_prefix,
-                    timestamp,
-                    msgid,
-                    reply_tx,
-                )
-                .await;
+            ChannelEvent::Message { params, reply_tx } => {
+                self.handle_message(*params, reply_tx).await;
             }
             ChannelEvent::Broadcast { message, exclude } => {
                 self.handle_broadcast(message, exclude).await;
@@ -251,73 +198,17 @@ impl ChannelActor {
                 let modes = self.members.get(&uid).cloned();
                 let _ = reply_tx.send(modes);
             }
-            ChannelEvent::ApplyModes {
-                sender_uid,
-                sender_prefix,
-                modes,
-                target_uids,
-                force,
-                reply_tx,
-            } => {
-                self.handle_apply_modes(
-                    sender_uid,
-                    sender_prefix,
-                    modes,
-                    target_uids,
-                    force,
-                    reply_tx,
-                )
-                .await;
+            ChannelEvent::ApplyModes { params, reply_tx } => {
+                self.handle_apply_modes(params, reply_tx).await;
             }
-            ChannelEvent::Kick {
-                sender_uid,
-                sender_prefix,
-                target_uid,
-                target_nick,
-                reason,
-                force,
-                reply_tx,
-            } => {
-                self.handle_kick(
-                    sender_uid,
-                    sender_prefix,
-                    target_uid,
-                    target_nick,
-                    reason,
-                    force,
-                    reply_tx,
-                )
-                .await;
+            ChannelEvent::Kick { params, reply_tx } => {
+                self.handle_kick(params, reply_tx).await;
             }
-            ChannelEvent::SetTopic {
-                sender_uid,
-                sender_prefix,
-                topic,
-                msgid,
-                timestamp,
-                force,
-                reply_tx,
-            } => {
-                self.handle_set_topic(sender_uid, sender_prefix, topic, msgid, timestamp, force, reply_tx)
-                    .await;
+            ChannelEvent::SetTopic { params, reply_tx } => {
+                self.handle_set_topic(params, reply_tx).await;
             }
-            ChannelEvent::Invite {
-                sender_uid,
-                sender_prefix,
-                target_uid,
-                target_nick,
-                force,
-                reply_tx,
-            } => {
-                self.handle_invite(
-                    sender_uid,
-                    sender_prefix,
-                    target_uid,
-                    target_nick,
-                    force,
-                    reply_tx,
-                )
-                .await;
+            ChannelEvent::Invite { params, reply_tx } => {
+                self.handle_invite(params, reply_tx).await;
             }
             ChannelEvent::Knock {
                 sender_uid,
@@ -328,7 +219,6 @@ impl ChannelActor {
             }
             ChannelEvent::NickChange {
                 uid,
-                old_nick: _,
                 new_nick,
             } => {
                 self.handle_nick_change(uid, new_nick).await;

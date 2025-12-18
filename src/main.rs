@@ -143,19 +143,19 @@ async fn main() -> anyhow::Result<()> {
     // preventing unbounded memory growth.
     const DISCONNECT_CHANNEL_SIZE: usize = 1024;
     let (disconnect_tx, mut disconnect_rx) = tokio::sync::mpsc::channel::<(String, String)>(DISCONNECT_CHANNEL_SIZE);
-    let matrix = Arc::new(Matrix::new(
-        &config,
+    let matrix = Arc::new(Matrix::new(crate::state::MatrixParams {
+        config: &config,
         data_dir,
-        db.clone(),
+        db: db.clone(),
         history,
         registered_channels,
-        active_shuns,
-        active_klines,
-        active_dlines,
-        active_glines,
-        active_zlines,
+        shuns: active_shuns,
+        klines: active_klines,
+        dlines: active_dlines,
+        glines: active_glines,
+        zlines: active_zlines,
         disconnect_tx,
-    ));
+    }));
 
     // Process disconnect requests outside of channel actor tasks to avoid deadlocks.
     {

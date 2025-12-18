@@ -36,11 +36,6 @@ pub trait BanConfig: Send + Sync + 'static {
     /// Un-command name (e.g., "UNKLINE", "UNGLINE").
     fn unset_command_name(&self) -> &'static str;
 
-    /// Argument name for logging (e.g., "mask", "ip", "pattern").
-    /// Reserved for future extended logging.
-    #[allow(dead_code)]
-    fn arg_name(&self) -> &'static str;
-
     /// BanType for disconnect_matching_ban.
     fn ban_type(&self) -> BanType;
 
@@ -262,7 +257,6 @@ macro_rules! simple_ban_config {
         $config_name:ident {
             command: $cmd:literal,
             unset_command: $unset_cmd:literal,
-            arg_name: $arg_name:literal,
             ban_type: $ban_type:expr,
             capability_check: |$auth:ident, $uid:ident| $cap_check:expr,
             db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident| $add_expr:expr,
@@ -282,10 +276,6 @@ macro_rules! simple_ban_config {
 
             fn unset_command_name(&self) -> &'static str {
                 $unset_cmd
-            }
-
-            fn arg_name(&self) -> &'static str {
-                $arg_name
             }
 
             fn ban_type(&self) -> BanType {
@@ -331,7 +321,6 @@ simple_ban_config! {
     KlineConfig {
         command: "KLINE",
         unset_command: "UNKLINE",
-        arg_name: "mask",
         ban_type: BanType::Kline,
         capability_check: |authority, uid| authority.request_kline_cap(uid).await.is_some(),
         db_add: |db, target, reason, oper| db.bans().add_kline(target, Some(reason), oper, None).await,
@@ -350,7 +339,6 @@ simple_ban_config! {
     GlineConfig {
         command: "GLINE",
         unset_command: "UNGLINE",
-        arg_name: "mask",
         ban_type: BanType::Gline,
         capability_check: |authority, uid| authority.request_gline_cap(uid).await.is_some(),
         db_add: |db, target, reason, oper| db.bans().add_gline(target, Some(reason), oper, None).await,
@@ -391,10 +379,6 @@ macro_rules! ip_ban_config {
 
             fn unset_command_name(&self) -> &'static str {
                 $unset_cmd
-            }
-
-            fn arg_name(&self) -> &'static str {
-                "ip"
             }
 
             fn ban_type(&self) -> BanType {
@@ -486,7 +470,6 @@ simple_ban_config! {
     RlineConfig {
         command: "RLINE",
         unset_command: "UNRLINE",
-        arg_name: "pattern",
         ban_type: BanType::Rline,
         capability_check: |authority, uid| authority.request_rline_cap(uid).await.is_some(),
         db_add: |db, target, reason, oper| db.bans().add_rline(target, Some(reason), oper, None).await,
