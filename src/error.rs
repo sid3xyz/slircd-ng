@@ -54,6 +54,11 @@ pub enum HandlerError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    /// Signal to upgrade connection to TLS via STARTTLS.
+    /// Handled specially by the handshake loop - not an error condition.
+    #[error("STARTTLS upgrade requested")]
+    StartTls,
 }
 
 impl HandlerError {
@@ -74,6 +79,7 @@ impl HandlerError {
             Self::Send(_) => "send_error",
             Self::Quit(_) => "quit",
             Self::Internal(_) => "internal_error",
+            Self::StartTls => "starttls",
         }
     }
 
@@ -98,6 +104,7 @@ impl HandlerError {
             Self::Send(_) => return None,
             Self::Quit(_) => return None,
             Self::Internal(_) => return None,
+            Self::StartTls => return None, // Handled specially by handshake loop
         };
 
         // Set the prefix to the server name

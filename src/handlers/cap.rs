@@ -66,6 +66,7 @@ const SUPPORTED_CAPS: &[Capability] = &[
     Capability::AccountRegistration,
     Capability::ChatHistory,
     Capability::EventPlayback,
+    Capability::Tls, // STARTTLS - only useful on plaintext connections
 ];
 
 /// Maximum bytes allowed in a multiline batch message.
@@ -356,11 +357,22 @@ fn build_cap_list_tokens(
                             Some(format!("draft/account-registration={}", flags.join(",")))
                         }
                     }
+                    Capability::Tls => {
+                        // Only advertise STARTTLS on plaintext connections
+                        if is_tls {
+                            None
+                        } else {
+                            Some("tls".to_string())
+                        }
+                    }
                     _ => Some(cap.as_ref().to_string()),
                 }
             } else {
                 // For older CAP versions, filter SASL on non-TLS
                 if *cap == Capability::Sasl && !is_tls {
+                    None
+                } else if *cap == Capability::Tls && is_tls {
+                    // Don't advertise tls (STARTTLS) on already-TLS connections
                     None
                 } else {
                     Some(cap.as_ref().to_string())

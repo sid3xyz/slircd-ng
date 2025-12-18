@@ -37,6 +37,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tokio_rustls::TlsAcceptor;
 use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{error, info, instrument};
@@ -49,10 +50,15 @@ pub struct Connection {
     registry: Arc<Registry>,
     transport: ZeroCopyTransportEnum,
     db: Database,
+    /// TLS acceptor for STARTTLS upgrade (only available on plaintext connections).
+    starttls_acceptor: Option<TlsAcceptor>,
 }
 
 impl Connection {
     /// Create a new plaintext connection handler.
+    ///
+    /// If `starttls_acceptor` is provided, the connection can be upgraded to TLS
+    /// via the STARTTLS command before registration completes.
     pub fn new_plaintext(
         uid: String,
         stream: TcpStream,
@@ -60,6 +66,7 @@ impl Connection {
         matrix: Arc<Matrix>,
         registry: Arc<Registry>,
         db: Database,
+        starttls_acceptor: Option<TlsAcceptor>,
     ) -> Self {
         Self {
             uid,
@@ -68,6 +75,7 @@ impl Connection {
             registry,
             transport: ZeroCopyTransportEnum::tcp(stream),
             db,
+            starttls_acceptor,
         }
     }
 
@@ -87,6 +95,7 @@ impl Connection {
             registry,
             transport: ZeroCopyTransportEnum::tls(stream),
             db,
+            starttls_acceptor: None, // Already TLS, no STARTTLS needed
         }
     }
 
@@ -106,6 +115,7 @@ impl Connection {
             registry,
             transport: ZeroCopyTransportEnum::websocket(stream),
             db,
+            starttls_acceptor: None, // WebSocket doesn't support STARTTLS
         }
     }
 
@@ -151,6 +161,7 @@ impl Connection {
                 registry: &self.registry,
                 db: &self.db,
                 addr: self.addr,
+                starttls_acceptor: self.starttls_acceptor.as_ref(),
             },
             LifecycleChannels {
                 tx: &handshake_tx,
@@ -192,6 +203,7 @@ impl Connection {
                 registry: &self.registry,
                 db: &self.db,
                 addr: self.addr,
+                starttls_acceptor: None, // STARTTLS not available after registration
             },
             LifecycleChannels {
                 tx: &outgoing_tx,

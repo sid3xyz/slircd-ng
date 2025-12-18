@@ -34,7 +34,8 @@ use crate::handlers::{
     },
     chathistory::ChatHistoryHandler,
     connection::{
-        NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, UserHandler, WebircHandler,
+        NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, StarttlsHandler,
+        UserHandler, WebircHandler,
     },
     helpers::with_label,
     messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler},
@@ -107,6 +108,7 @@ impl Registry {
         pre_reg_handlers.insert("USER", Box::new(UserHandler));
         pre_reg_handlers.insert("PASS", Box::new(PassHandler));
         pre_reg_handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
+        pre_reg_handlers.insert("STARTTLS", Box::new(StarttlsHandler));
 
         // ====================================================================
         // Post-registration handlers (require completed registration)

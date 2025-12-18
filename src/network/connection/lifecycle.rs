@@ -14,6 +14,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, mpsc};
+use tokio_rustls::TlsAcceptor;
 use tracing::{debug, info, warn};
 
 const MAX_FLOOD_VIOLATIONS: u8 = 3;
@@ -148,6 +149,8 @@ pub struct ConnectionContext<'a> {
     pub db: &'a Database,
     /// Client's remote address.
     pub addr: SocketAddr,
+    /// TLS acceptor for STARTTLS upgrade (only on plaintext connections).
+    pub starttls_acceptor: Option<&'a TlsAcceptor>,
 }
 
 /// Message channels for lifecycle phases.
@@ -166,7 +169,7 @@ pub async fn run_handshake_loop(
     channels: LifecycleChannels<'_>,
     unreg_state: &mut UnregisteredState,
 ) -> Result<(), HandshakeExit> {
-    let ConnectionContext { uid, transport, matrix, registry, db, addr } = conn;
+    let ConnectionContext { uid, transport, matrix, registry, db, addr, starttls_acceptor } = conn;
     let LifecycleChannels { tx: handshake_tx, rx: handshake_rx } = channels;
     // Registration timeout from config
     let registration_timeout = Duration::from_secs(matrix.server_info.idle_timeouts.registration);
@@ -251,6 +254,43 @@ pub async fn run_handshake_loop(
                         return Err(HandshakeExit::AccessDenied(unreg_state.nick.clone()));
                     }
 
+                    // Handle STARTTLS - upgrade connection to TLS
+                    if matches!(e, crate::handlers::HandlerError::StartTls) {
+                        // Drain queued responses first (includes RPL_STARTTLS)
+                        while let Ok(response) = handshake_rx.try_recv() {
+                            if let Err(write_err) = transport.write_message(&response).await {
+                                warn!(error = ?write_err, "Write error before STARTTLS");
+                                return Err(HandshakeExit::WriteError(unreg_state.nick.clone()));
+                            }
+                        }
+
+                        // Check if we have a TLS acceptor available
+                        let Some(acceptor) = starttls_acceptor else {
+                            // No TLS configured - send error
+                            let nick = unreg_state.nick.as_deref().unwrap_or("*");
+                            let reply = Response::err_starttls(nick, "TLS not configured on this server")
+                                .with_prefix(Prefix::ServerName(matrix.server_info.name.clone()));
+                            let _ = transport.write_message(&reply).await;
+                            continue;
+                        };
+
+                        // Perform the TLS upgrade using the in-place upgrade method
+                        info!(uid = %uid, "Performing STARTTLS upgrade");
+
+                        match transport.upgrade_to_tls(acceptor.clone()).await {
+                            Ok(()) => {
+                                unreg_state.is_tls = true;
+                                info!(uid = %uid, "STARTTLS upgrade successful");
+                            }
+                            Err(tls_err) => {
+                                warn!(uid = %uid, error = ?tls_err, "STARTTLS handshake failed");
+                                // Connection is dead after failed TLS handshake - disconnect
+                                return Err(HandshakeExit::ProtocolError(unreg_state.nick.clone()));
+                            }
+                        }
+                        continue;
+                    }
+
                     // Send appropriate error reply
                     let nick = unreg_state.nick.as_deref().unwrap_or("*");
                     if let Some(reply) =
@@ -332,7 +372,7 @@ pub async fn run_event_loop(
     channels: LifecycleChannels<'_>,
     reg_state: &mut RegisteredState,
 ) -> Option<String> {
-    let ConnectionContext { uid, transport, matrix, registry, db, addr } = conn;
+    let ConnectionContext { uid, transport, matrix, registry, db, addr, starttls_acceptor: _ } = conn;
     let LifecycleChannels { tx: outgoing_tx, rx: outgoing_rx } = channels;
     let mut flood_violations = 0u8;
     let mut quit_message: Option<String> = None;

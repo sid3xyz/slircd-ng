@@ -178,6 +178,9 @@ fn validate_websocket_cors(
 }
 
 /// Handle plaintext connection after acceptance.
+///
+/// If `starttls_acceptor` is provided, the connection can upgrade to TLS
+/// via STARTTLS before registration completes.
 async fn handle_plaintext_connection(
     uid: String,
     stream: TcpStream,
@@ -185,6 +188,7 @@ async fn handle_plaintext_connection(
     matrix: Arc<Matrix>,
     registry: Arc<Registry>,
     db: Database,
+    starttls_acceptor: Option<TlsAcceptor>,
 ) {
     let ip = addr.ip();
 
@@ -194,7 +198,7 @@ async fn handle_plaintext_connection(
     }
 
     let connection =
-        Connection::new_plaintext(uid.clone(), stream, addr, matrix.clone(), registry, db);
+        Connection::new_plaintext(uid.clone(), stream, addr, matrix.clone(), registry, db, starttls_acceptor);
     if let Err(e) = connection.run().await {
         error!(%uid, %addr, error = %e, "Plaintext connection error");
     }
@@ -359,6 +363,10 @@ impl Gateway {
         // Subscribe to shutdown signal
         let mut shutdown_rx = matrix.shutdown_tx.subscribe();
 
+        // Extract TLS acceptor for STARTTLS on plaintext connections
+        // Clone it before the TLS listener task takes ownership
+        let starttls_acceptor = self.tls_listener.as_ref().map(|(_, a)| a.clone());
+
         // If TLS is configured, spawn a separate task for the TLS listener
         if let Some((tls_listener, tls_acceptor)) = self.tls_listener {
             let matrix_tls = Arc::clone(&matrix);
@@ -474,6 +482,7 @@ impl Gateway {
                         Arc::clone(&matrix),
                         Arc::clone(&registry),
                         self.db.clone(),
+                        starttls_acceptor.clone(),
                     ));
                 }
                 // Handle shutdown signal
