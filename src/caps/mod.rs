@@ -41,6 +41,9 @@
 //! ```
 //!
 //! All handlers using capability-based authorization have been migrated.
+//!
+//! NOTE: The `dead_code` allow is intentional - not all capability types are
+//! used by handlers yet, but they form a complete API for future integration.
 
 #![allow(dead_code)]
 

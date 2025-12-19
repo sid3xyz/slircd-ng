@@ -26,11 +26,6 @@ type HmacSha256 = Hmac<Sha256>;
 /// Base32 alphabet (RFC 4648 without padding, lowercase for IRC).
 const BASE32_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
 
-/// Default cloak suffix for IP addresses.
-/// Will be used when we integrate cloaking into User::new() with configurable suffix.
-#[allow(dead_code)]
-pub const DEFAULT_CLOAK_SUFFIX: &str = "ip";
-
 /// Encode bytes to base32 (RFC 4648 style, lowercase, no padding).
 ///
 /// More compact than hex (1.6 bytes per char vs 2 bytes per char).
@@ -111,16 +106,7 @@ fn apply_cidr_mask(ip: &IpAddr) -> IpAddr {
 ///
 /// Never panics - HMAC can accept keys of any size.
 ///
-/// Will be used when we expose this as primary public API.
-#[allow(dead_code)]
-pub fn cloak_ip_hmac(ip: &IpAddr, secret_key: &str) -> String {
-    cloak_ip_hmac_with_suffix(ip, secret_key, DEFAULT_CLOAK_SUFFIX)
-}
-
-/// Generate cloaked hostname with custom suffix.
-///
-/// See [`cloak_ip_hmac`] for details. This variant allows customizing
-/// the suffix (default: "ip") to match network branding.
+/// Generate cloaked hostname with custom suffix (e.g., "ip" for `abc123.def456.ghi789.ip`).
 pub fn cloak_ip_hmac_with_suffix(ip: &IpAddr, secret_key: &str, suffix: &str) -> String {
     // Step 1: Apply CIDR mask (/24 for IPv4, /48 for IPv6)
     let masked_ip = apply_cidr_mask(ip);
@@ -234,10 +220,10 @@ mod tests {
     #[test]
     fn test_cloak_ipv4() {
         let ip: IpAddr = "192.168.1.1".parse().unwrap();
-        let cloak = cloak_ip_hmac(&ip, TEST_SECRET);
+        let cloak = cloak_ip_hmac_with_suffix(&ip, TEST_SECRET, "ip");
         assert!(cloak.ends_with(".ip"));
         // Should be deterministic
-        assert_eq!(cloak, cloak_ip_hmac(&ip, TEST_SECRET));
+        assert_eq!(cloak, cloak_ip_hmac_with_suffix(&ip, TEST_SECRET, "ip"));
         // Should have 4 segments
         assert_eq!(cloak.split('.').count(), 4);
     }
@@ -248,8 +234,8 @@ mod tests {
         let ip1: IpAddr = "192.168.1.1".parse().unwrap();
         let ip2: IpAddr = "192.168.1.254".parse().unwrap();
         assert_eq!(
-            cloak_ip_hmac(&ip1, TEST_SECRET),
-            cloak_ip_hmac(&ip2, TEST_SECRET)
+            cloak_ip_hmac_with_suffix(&ip1, TEST_SECRET, "ip"),
+            cloak_ip_hmac_with_suffix(&ip2, TEST_SECRET, "ip")
         );
     }
 
@@ -258,18 +244,18 @@ mod tests {
         let ip1: IpAddr = "192.168.1.1".parse().unwrap();
         let ip2: IpAddr = "192.168.2.1".parse().unwrap();
         assert_ne!(
-            cloak_ip_hmac(&ip1, TEST_SECRET),
-            cloak_ip_hmac(&ip2, TEST_SECRET)
+            cloak_ip_hmac_with_suffix(&ip1, TEST_SECRET, "ip"),
+            cloak_ip_hmac_with_suffix(&ip2, TEST_SECRET, "ip")
         );
     }
 
     #[test]
     fn test_cloak_ipv6() {
         let ip: IpAddr = "2001:db8::1".parse().unwrap();
-        let cloak = cloak_ip_hmac(&ip, TEST_SECRET);
+        let cloak = cloak_ip_hmac_with_suffix(&ip, TEST_SECRET, "ip");
         assert!(cloak.ends_with(":ip"));
         // Should be deterministic
-        assert_eq!(cloak, cloak_ip_hmac(&ip, TEST_SECRET));
+        assert_eq!(cloak, cloak_ip_hmac_with_suffix(&ip, TEST_SECRET, "ip"));
     }
 
     #[test]
@@ -313,7 +299,7 @@ mod tests {
     fn test_base32_encoding() {
         // Verify base32 output is lowercase alphanumeric only
         let ip: IpAddr = "8.8.8.8".parse().unwrap();
-        let cloak = cloak_ip_hmac(&ip, TEST_SECRET);
+        let cloak = cloak_ip_hmac_with_suffix(&ip, TEST_SECRET, "ip");
         let hash_parts: Vec<&str> = cloak.split('.').collect();
         for part in &hash_parts[..3] {
             assert!(

@@ -82,21 +82,6 @@ impl ExtendedBan {
         }
     }
 
-    /// Convert extended ban back to string format.
-    #[allow(dead_code)] // Used for admin display/logging
-    pub fn to_ban_string(&self) -> String {
-        match self {
-            ExtendedBan::Account(p) => format!("$a:{}", p),
-            ExtendedBan::Realname(p) => format!("$r:{}", p),
-            ExtendedBan::Server(p) => format!("$s:{}", p),
-            ExtendedBan::Channel(p) => format!("$c:{}", p),
-            ExtendedBan::Oper(p) => format!("$o:{}", p),
-            ExtendedBan::Certificate(p) => format!("$x:{}", p),
-            ExtendedBan::Sasl(p) => format!("$z:{}", p),
-            ExtendedBan::Join(p) => format!("$j:{}", p),
-            ExtendedBan::Unregistered => "$U".to_string(),
-        }
-    }
 }
 
 /// User context for evaluating extended bans.
@@ -268,14 +253,7 @@ mod tests {
         assert!(ExtendedBan::parse("$x").is_none()); // Missing pattern
     }
 
-    #[test]
-    fn test_extended_ban_roundtrip() {
-        let bans = vec!["$a:testaccount", "$r:*bot*", "$s:*.freenode.net", "$U"];
-        for ban_str in bans {
-            let ban = ExtendedBan::parse(ban_str).unwrap();
-            assert_eq!(ban.to_ban_string(), ban_str);
-        }
-    }
+
 
     #[test]
     fn test_account_ban_match() {

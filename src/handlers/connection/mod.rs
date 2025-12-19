@@ -2,7 +2,6 @@
 //!
 //! Handles NICK, USER, PASS, PING, PONG, QUIT, STARTTLS commands.
 
-mod caps;
 mod nick;
 mod pass;
 mod ping;
