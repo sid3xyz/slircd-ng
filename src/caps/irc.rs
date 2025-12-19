@@ -144,6 +144,9 @@ define_capability!(special BypassModeCap, "special:bypass_mode", String,
 define_capability!(oper GlobalNoticeCap, "special:global_notice",
     "Capability to send global notices (WALLOPS, GLOBOPS). Required: IRC operator.");
 
+define_capability!(oper SpamConfCap, "oper:spamconf",
+    "Capability to configure spam detection at runtime. Required: IRC operator.");
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -23,9 +23,12 @@ impl ChannelActor {
             msgid,
             timestamp,
             force,
+            cap,
         } = params;
 
-        if !force && self.modes.contains(&ChannelMode::TopicLock) {
+        let authorized = force || cap.is_some();
+
+        if !authorized && self.modes.contains(&ChannelMode::TopicLock) {
             let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
             if !sender_modes.op && !sender_modes.halfop {
                 let _ = reply_tx.send(Err(ChannelError::ChanOpPrivsNeeded));

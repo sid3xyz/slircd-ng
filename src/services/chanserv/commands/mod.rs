@@ -10,9 +10,10 @@ mod modes;
 mod register;
 
 use crate::db::{ChannelRepository, Database};
-use crate::services::ServiceEffect;
+use crate::services::{Service, ServiceEffect};
 use crate::services::base::ServiceBase;
 use crate::state::Matrix;
+use async_trait::async_trait;
 use std::sync::Arc;
 
 /// Result of a ChanServ command - a list of effects to apply.
@@ -33,6 +34,27 @@ impl ServiceBase for ChanServ {
     }
 }
 
+#[async_trait]
+impl Service for ChanServ {
+    fn name(&self) -> &'static str {
+        "ChanServ"
+    }
+
+    fn aliases(&self) -> Vec<&'static str> {
+        vec!["CS"]
+    }
+
+    async fn handle(
+        &self,
+        matrix: &Arc<Matrix>,
+        uid: &str,
+        nick: &str,
+        text: &str,
+    ) -> Vec<ServiceEffect> {
+        self.handle_command(matrix, uid, nick, text).await
+    }
+}
+
 impl ChanServ {
     /// Create a new ChanServ service.
     pub fn new(db: Database) -> Self {
@@ -41,7 +63,7 @@ impl ChanServ {
 
     /// Handle a PRIVMSG to ChanServ.
     /// Returns a list of effects that the caller should apply.
-    pub async fn handle(
+    pub async fn handle_command(
         &self,
         matrix: &Arc<Matrix>,
         uid: &str,

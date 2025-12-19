@@ -18,3 +18,26 @@ pub use server_info::{
 pub use service::{ServiceHandler, ServlistHandler, SqueryHandler};
 pub use stats::StatsHandler;
 pub use disabled::{SummonHandler, UsersHandler};
+
+use std::collections::HashMap;
+use crate::handlers::PostRegHandler;
+
+pub fn register(map: &mut HashMap<&'static str, Box<dyn PostRegHandler>>) {
+    map.insert("HELP", Box::new(HelpHandler));
+    map.insert("LINKS", Box::new(LinksHandler));
+    map.insert("MAP", Box::new(MapHandler));
+    map.insert("RULES", Box::new(RulesHandler));
+    map.insert("USERIP", Box::new(UseripHandler));
+    map.insert("ADMIN", Box::new(AdminHandler));
+    map.insert("INFO", Box::new(InfoHandler));
+    map.insert("LUSERS", Box::new(LusersHandler));
+    map.insert("MOTD", Box::new(MotdHandler));
+    map.insert("TIME", Box::new(TimeHandler));
+    map.insert("VERSION", Box::new(VersionHandler));
+    map.insert("SERVICE", Box::new(ServiceHandler));
+    map.insert("SERVLIST", Box::new(ServlistHandler));
+    map.insert("SQUERY", Box::new(SqueryHandler));
+    map.insert("STATS", Box::new(StatsHandler));
+    map.insert("SUMMON", Box::new(SummonHandler));
+    map.insert("USERS", Box::new(UsersHandler));
+}

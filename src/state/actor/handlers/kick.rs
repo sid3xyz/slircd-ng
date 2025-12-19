@@ -20,16 +20,22 @@ impl ChannelActor {
             target_nick,
             reason,
             force,
+            cap,
         } = params;
 
+        // Authorization check:
+        // 1. Force (internal/service override)
+        // 2. Capability token (proof of authorization)
+        let authorized = force || cap.is_some();
+
         // Check +Q (no kicks) - even ops cannot kick when this is set
-        // Only force (from capabilities/services) can bypass
-        if !force && self.modes.contains(&ChannelMode::NoKicks) {
+        // Only force/cap can bypass (if cap implies override, which it currently does for all ops)
+        if !authorized && self.modes.contains(&ChannelMode::NoKicks) {
             let _ = reply_tx.send(Err(ChannelError::NoKicksActive));
             return;
         }
 
-        if !force {
+        if !authorized {
             let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
             if !sender_modes.op && !sender_modes.halfop {
                 let _ = reply_tx.send(Err(ChannelError::ChanOpPrivsNeeded));

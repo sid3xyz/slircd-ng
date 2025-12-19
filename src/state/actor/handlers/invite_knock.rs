@@ -19,16 +19,19 @@ impl ChannelActor {
             target_uid,
             target_nick,
             force,
+            cap,
         } = params;
+
+        let authorized = force || cap.is_some();
 
         // Check +V (no invites) - blocks all invitations to this channel
         // Only force (from capabilities/services) can bypass
-        if !force && self.modes.contains(&ChannelMode::NoInvite) {
+        if !authorized && self.modes.contains(&ChannelMode::NoInvite) {
             let _ = reply_tx.send(Err(ChannelError::NoInviteActive));
             return;
         }
 
-        if !force && self.modes.contains(&ChannelMode::InviteOnly) {
+        if !authorized && self.modes.contains(&ChannelMode::InviteOnly) {
             let sender_modes = self.members.get(&sender_uid).cloned().unwrap_or_default();
             if !sender_modes.op && !sender_modes.halfop {
                 let _ = reply_tx.send(Err(ChannelError::ChanOpPrivsNeeded));

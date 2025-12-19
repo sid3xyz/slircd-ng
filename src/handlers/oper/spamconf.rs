@@ -10,8 +10,9 @@
 //!
 //! Requires oper privileges.
 
-use crate::handlers::{Context, HandlerResult, PostRegHandler, server_notice};
+use crate::handlers::{Context, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;
+use crate::require_oper_cap;
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -25,92 +26,72 @@ impl PostRegHandler for SpamConfHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = ctx.server_name().to_string();
-        let nick = ctx.nick().to_string();
-
-        // Check oper status
-        let is_oper = if let Some(user_arc) = ctx.matrix.users.get(ctx.uid) {
-            let user = user_arc.read().await;
-            user.modes.oper
-        } else {
-            false
-        };
-
-        if !is_oper {
-            ctx.sender
-                .send(server_notice(&server_name, &nick, "Permission denied - operator status required"))
-                .await?;
+        // Check oper status via capability system (Innovation 4)
+        let Some(_cap) = require_oper_cap!(ctx, "SPAMCONF", request_spamconf_cap) else {
             return Ok(());
-        }
+        };
 
         let subcommand = msg.arg(0).unwrap_or("LIST").to_ascii_uppercase();
 
-        let Some(spam) = &ctx.matrix.spam_detector else {
-            ctx.sender
-                .send(server_notice(&server_name, &nick, "Spam detection is disabled"))
-                .await?;
+        let Some(spam_lock) = &ctx.matrix.spam_detector else {
+            ctx.send_notice("Spam detection is disabled").await?;
             return Ok(());
         };
 
         match subcommand.as_str() {
             "LIST" => {
-                ctx.sender
-                    .send(server_notice(&server_name, &nick, "*** Spam Detection Settings ***"))
-                    .await?;
-                ctx.sender
-                    .send(server_notice(
-                        &server_name,
-                        &nick,
-                        format!("Entropy threshold: {:.2}", spam.entropy_threshold()),
-                    ))
-                    .await?;
-                ctx.sender
-                    .send(server_notice(&server_name, &nick, "Use SPAMCONF ENTROPY/REPETITION/ADDKEYWORD/DELKEYWORD/ADDSHORTENER"))
-                    .await?;
+                let spam = spam_lock.read().await;
+                ctx.send_notice("*** Spam Detection Settings ***").await?;
+                ctx.send_notice(format!("Entropy threshold: {:.2}", spam.entropy_threshold())).await?;
+                ctx.send_notice("Use SPAMCONF ENTROPY/REPETITION/ADDKEYWORD").await?;
             }
             "ENTROPY" => {
                 let Some(value_str) = msg.arg(1) else {
-                    ctx.sender
-                        .send(server_notice(&server_name, &nick, "Usage: SPAMCONF ENTROPY <0.0-8.0>"))
-                        .await?;
+                    ctx.send_notice("Usage: SPAMCONF ENTROPY <0.0-8.0>").await?;
                     return Ok(());
                 };
 
                 let Ok(value) = value_str.parse::<f32>() else {
-                    ctx.sender
-                        .send(server_notice(&server_name, &nick, "Invalid number"))
-                        .await?;
+                    ctx.send_notice("Invalid number").await?;
                     return Ok(());
                 };
 
-                // Note: We need mutable access, but spam_detector is behind Arc
-                // For now, report that this requires a restart
-                ctx.sender
-                    .send(server_notice(
-                        &server_name,
-                        &nick,
-                        format!("Current entropy threshold: {:.2}. Runtime changes require Arc<RwLock<>> wrapper.", value),
-                    ))
-                    .await?;
+                let mut spam = spam_lock.write().await;
+                spam.set_entropy_threshold(value);
+                ctx.send_notice(format!("Entropy threshold set to {:.2}", value)).await?;
             }
-            "ADDKEYWORD" | "DELKEYWORD" | "REPETITION" | "ADDSHORTENER" => {
-                // These require mutable access to SpamDetectionService
-                ctx.sender
-                    .send(server_notice(
-                        &server_name,
-                        &nick,
-                        format!("{} noted. Runtime mutation requires refactoring spam_detector to Arc<RwLock<>>.", subcommand),
-                    ))
-                    .await?;
+            "REPETITION" => {
+                let Some(value_str) = msg.arg(1) else {
+                    ctx.send_notice("Usage: SPAMCONF REPETITION <1-50>").await?;
+                    return Ok(());
+                };
+
+                let Ok(value) = value_str.parse::<usize>() else {
+                    ctx.send_notice("Invalid number").await?;
+                    return Ok(());
+                };
+
+                if !(1..=50).contains(&value) {
+                    ctx.send_notice("Value must be between 1 and 50").await?;
+                    return Ok(());
+                }
+
+                let mut spam = spam_lock.write().await;
+                spam.set_max_repetition(value);
+                ctx.send_notice(format!("Max repetition set to {}", value)).await?;
+            }
+            "ADDKEYWORD" => {
+                let Some(keyword) = msg.arg(1) else {
+                    ctx.send_notice("Usage: SPAMCONF ADDKEYWORD <word>").await?;
+                    return Ok(());
+                };
+
+                let mut spam = spam_lock.write().await;
+                spam.add_keyword(keyword.to_string());
+                ctx.send_notice(format!("Spam keyword '{}' added", keyword)).await?;
             }
             _ => {
-                ctx.sender
-                    .send(server_notice(
-                        &server_name,
-                        &nick,
-                        "Unknown subcommand. Use: LIST, ENTROPY, REPETITION, ADDKEYWORD, DELKEYWORD, ADDSHORTENER",
-                    ))
-                    .await?;
+                ctx.send_notice("Unknown subcommand. Use: LIST, ENTROPY, REPETITION, ADDKEYWORD").await?;
             }
         }
 

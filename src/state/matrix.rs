@@ -80,8 +80,8 @@ pub struct Matrix {
     /// Global rate limiter for flood protection.
     pub rate_limiter: RateLimitManager,
 
-    /// Spam detection service for content analysis.
-    pub spam_detector: Option<Arc<crate::security::spam::SpamDetectionService>>,
+    /// Spam detection service for content analysis (wrapped in RwLock for runtime config).
+    pub spam_detector: Option<Arc<tokio::sync::RwLock<crate::security::spam::SpamDetectionService>>>,
 
     /// Set of registered channel names (lowercase) for fast lookup.
     pub registered_channels: DashSet<String>,
@@ -113,6 +113,9 @@ pub struct Matrix {
 
     /// ChanServ service singleton.
     pub chanserv: chanserv::ChanServ,
+
+    /// Extra services (dynamic).
+    pub extra_services: std::collections::HashMap<String, Box<dyn crate::services::Service>>,
 
     /// Maximum local user count (historical peak).
     pub max_local_users: AtomicUsize,
@@ -251,9 +254,11 @@ impl Matrix {
             },
             rate_limiter: RateLimitManager::new(config.security.rate_limits.clone()),
             spam_detector: if config.security.spam_detection_enabled {
-                Some(Arc::new(crate::security::spam::SpamDetectionService::new(
-                    Some(db.clone()),
-                    config.security.clone(),
+                Some(Arc::new(tokio::sync::RwLock::new(
+                    crate::security::spam::SpamDetectionService::new(
+                        Some(db.clone()),
+                        config.security.clone(),
+                    ),
                 )))
             } else {
                 None
@@ -267,6 +272,7 @@ impl Matrix {
             ip_deny_list: std::sync::RwLock::new(ip_deny_list),
             nickserv: nickserv::NickServ::new(db.clone()),
             chanserv: chanserv::ChanServ::new(db),
+            extra_services: std::collections::HashMap::new(),
             max_local_users: AtomicUsize::new(0),
             max_global_users: AtomicUsize::new(0),
             shutdown_tx,

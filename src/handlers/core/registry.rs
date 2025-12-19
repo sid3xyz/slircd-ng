@@ -21,37 +21,14 @@ use slirc_proto::{Response};
 use crate::handlers::{
     account::RegisterHandler,
     admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler},
-    bans::{
-        DlineHandler, GlineHandler, KlineHandler, RlineHandler, ShunHandler, UndlineHandler,
-        UnglineHandler, UnklineHandler, UnrlineHandler, UnshunHandler, UnzlineHandler,
-        ZlineHandler,
-    },
     batch::BatchHandler,
     cap::{AuthenticateHandler, CapHandler},
-    channel::{
-        CycleHandler, InviteHandler, JoinHandler, KickHandler, KnockHandler, ListHandler,
-        NamesHandler, PartHandler, TopicHandler,
-    },
     chathistory::ChatHistoryHandler,
-    connection::{
-        NickHandler, PassHandler, PingHandler, PongHandler, QuitHandler, StarttlsHandler,
-        UserHandler, WebircHandler,
-    },
     helpers::with_label,
     messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler},
     mode::ModeHandler,
     monitor::MonitorHandler,
-    oper::{
-        ChghostHandler, ChgIdentHandler, DieHandler, GlobOpsHandler, KillHandler, OperHandler,
-        RehashHandler, RestartHandler, SpamConfHandler, TraceHandler, VhostHandler, WallopsHandler,
-    },
-    server_query::{
-        AdminHandler, HelpHandler, InfoHandler, LinksHandler, LusersHandler, MapHandler,
-        MotdHandler, RulesHandler, ServiceHandler, ServlistHandler, SqueryHandler, StatsHandler,
-        TimeHandler, UseripHandler, VersionHandler, SummonHandler, UsersHandler,
-    },
     service_aliases::{CsHandler, NsHandler},
-    user_query::{IsonHandler, UserhostHandler, WhoHandler, WhoisHandler, WhowasHandler},
     user_status::{AwayHandler, SetnameHandler, SilenceHandler},
 };
 use crate::telemetry::CommandTimer;
@@ -93,10 +70,6 @@ impl Registry {
         // Universal handlers (valid in any state)
         // These implement DynUniversalHandler for dual-dispatch capability.
         // ====================================================================
-        universal_handlers.insert("QUIT", Box::new(QuitHandler));
-        universal_handlers.insert("PING", Box::new(PingHandler));
-        universal_handlers.insert("PONG", Box::new(PongHandler));
-        universal_handlers.insert("NICK", Box::new(NickHandler));
         universal_handlers.insert("CAP", Box::new(CapHandler));
         universal_handlers.insert("REGISTER", Box::new(RegisterHandler));
 
@@ -104,26 +77,18 @@ impl Registry {
         // Pre-registration handlers (valid only before registration completes)
         // These require UnregisteredState and cannot be used after registration.
         // ====================================================================
-        pre_reg_handlers.insert("WEBIRC", Box::new(WebircHandler::new(webirc_blocks)));
-        pre_reg_handlers.insert("USER", Box::new(UserHandler));
-        pre_reg_handlers.insert("PASS", Box::new(PassHandler));
         pre_reg_handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
-        pre_reg_handlers.insert("STARTTLS", Box::new(StarttlsHandler));
+
+        // Connection handlers (Universal + Pre-reg)
+        crate::handlers::connection::register(&mut pre_reg_handlers, &mut universal_handlers, webirc_blocks);
 
         // ====================================================================
         // Post-registration handlers (require completed registration)
         // ====================================================================
 
         // Channel handlers
-        post_reg_handlers.insert("JOIN", Box::new(JoinHandler));
-        post_reg_handlers.insert("PART", Box::new(PartHandler));
-        post_reg_handlers.insert("CYCLE", Box::new(CycleHandler));
-        post_reg_handlers.insert("TOPIC", Box::new(TopicHandler));
-        post_reg_handlers.insert("NAMES", Box::new(NamesHandler));
+        crate::handlers::channel::register(&mut post_reg_handlers);
         post_reg_handlers.insert("MODE", Box::new(ModeHandler));
-        post_reg_handlers.insert("KICK", Box::new(KickHandler));
-        post_reg_handlers.insert("LIST", Box::new(ListHandler));
-        post_reg_handlers.insert("INVITE", Box::new(InviteHandler));
 
         // Messaging handlers
         post_reg_handlers.insert("PRIVMSG", Box::new(PrivmsgHandler));
@@ -131,36 +96,13 @@ impl Registry {
         post_reg_handlers.insert("TAGMSG", Box::new(TagmsgHandler));
 
         // User query handlers
-        post_reg_handlers.insert("WHO", Box::new(WhoHandler));
-        post_reg_handlers.insert("WHOIS", Box::new(WhoisHandler));
-        post_reg_handlers.insert("WHOWAS", Box::new(WhowasHandler));
+        crate::handlers::user_query::register(&mut post_reg_handlers);
 
         // Server query handlers
-        post_reg_handlers.insert("VERSION", Box::new(VersionHandler));
-        post_reg_handlers.insert("TIME", Box::new(TimeHandler));
-        post_reg_handlers.insert("ADMIN", Box::new(AdminHandler));
-        post_reg_handlers.insert("INFO", Box::new(InfoHandler));
-        post_reg_handlers.insert("LUSERS", Box::new(LusersHandler));
-        post_reg_handlers.insert("STATS", Box::new(StatsHandler));
-        post_reg_handlers.insert("MOTD", Box::new(MotdHandler));
-        post_reg_handlers.insert("MAP", Box::new(MapHandler));
-        post_reg_handlers.insert("RULES", Box::new(RulesHandler));
-        post_reg_handlers.insert("USERIP", Box::new(UseripHandler));
-        post_reg_handlers.insert("LINKS", Box::new(LinksHandler));
-        post_reg_handlers.insert("HELP", Box::new(HelpHandler));
-        post_reg_handlers.insert("SUMMON", Box::new(SummonHandler));
-        post_reg_handlers.insert("USERS", Box::new(UsersHandler));
-
-        // Service query handlers (RFC 2812 §3.5)
-        post_reg_handlers.insert("SERVICE", Box::new(ServiceHandler));
-        post_reg_handlers.insert("SERVLIST", Box::new(ServlistHandler));
-        post_reg_handlers.insert("SQUERY", Box::new(SqueryHandler));
+        crate::handlers::server_query::register(&mut post_reg_handlers);
 
         // Misc handlers
         post_reg_handlers.insert("AWAY", Box::new(AwayHandler));
-        post_reg_handlers.insert("USERHOST", Box::new(UserhostHandler));
-        post_reg_handlers.insert("ISON", Box::new(IsonHandler));
-        post_reg_handlers.insert("KNOCK", Box::new(KnockHandler));
         post_reg_handlers.insert("SETNAME", Box::new(SetnameHandler));
         post_reg_handlers.insert("SILENCE", Box::new(SilenceHandler));
         post_reg_handlers.insert("MONITOR", Box::new(MonitorHandler));
@@ -176,32 +118,10 @@ impl Registry {
         post_reg_handlers.insert("CS", Box::new(CsHandler)); // Shortcut for ChanServ
 
         // Operator handlers
-        post_reg_handlers.insert("OPER", Box::new(OperHandler));
-        post_reg_handlers.insert("KILL", Box::new(KillHandler));
-        post_reg_handlers.insert("WALLOPS", Box::new(WallopsHandler));
-        post_reg_handlers.insert("GLOBOPS", Box::new(GlobOpsHandler));
-        post_reg_handlers.insert("DIE", Box::new(DieHandler));
-        post_reg_handlers.insert("REHASH", Box::new(RehashHandler));
-        post_reg_handlers.insert("RESTART", Box::new(RestartHandler));
-        post_reg_handlers.insert("CHGHOST", Box::new(ChghostHandler));
-        post_reg_handlers.insert("CHGIDENT", Box::new(ChgIdentHandler));
-        post_reg_handlers.insert("VHOST", Box::new(VhostHandler));
-        post_reg_handlers.insert("TRACE", Box::new(TraceHandler));
-        post_reg_handlers.insert("SPAMCONF", Box::new(SpamConfHandler));
+        crate::handlers::oper::register(&mut post_reg_handlers);
 
         // Ban handlers
-        post_reg_handlers.insert("KLINE", Box::new(KlineHandler::kline()));
-        post_reg_handlers.insert("DLINE", Box::new(DlineHandler::dline()));
-        post_reg_handlers.insert("GLINE", Box::new(GlineHandler::gline()));
-        post_reg_handlers.insert("ZLINE", Box::new(ZlineHandler::zline()));
-        post_reg_handlers.insert("RLINE", Box::new(RlineHandler::rline()));
-        post_reg_handlers.insert("SHUN", Box::new(ShunHandler));
-        post_reg_handlers.insert("UNKLINE", Box::new(UnklineHandler::unkline()));
-        post_reg_handlers.insert("UNDLINE", Box::new(UndlineHandler::undline()));
-        post_reg_handlers.insert("UNGLINE", Box::new(UnglineHandler::ungline()));
-        post_reg_handlers.insert("UNZLINE", Box::new(UnzlineHandler::unzline()));
-        post_reg_handlers.insert("UNRLINE", Box::new(UnrlineHandler::unrline()));
-        post_reg_handlers.insert("UNSHUN", Box::new(UnshunHandler));
+        crate::handlers::bans::register(&mut post_reg_handlers);
 
         // Admin SA* handlers
         post_reg_handlers.insert("SAJOIN", Box::new(SajoinHandler));

@@ -6,6 +6,9 @@ pub mod base;
 pub mod chanserv;
 pub mod enforce;
 pub mod nickserv;
+pub mod traits;
+
+pub use traits::Service;
 
 use crate::{handlers::ResponseMiddleware, state::Matrix};
 use slirc_proto::{ChannelMode, Command, Message, Mode, Prefix, irc_to_lower};
@@ -91,19 +94,37 @@ pub async fn route_service_message(
 ) -> bool {
     let target_lower = irc_to_lower(target);
 
-    match target_lower.as_str() {
-        "nickserv" | "ns" => {
-            let effects = matrix.nickserv.handle(matrix, uid, nick, text).await;
-            apply_effects(matrix, nick, sender, effects).await;
-            true
-        }
-        "chanserv" | "cs" => {
-            let effects = matrix.chanserv.handle(matrix, uid, nick, text).await;
-            apply_effects(matrix, nick, sender, effects).await;
-            true
-        }
-        _ => false,
+    // Check core services first
+    if target_lower == "nickserv" || target_lower == "ns" {
+        let effects = matrix.nickserv.handle_command(matrix, uid, nick, text).await;
+        apply_effects(matrix, nick, sender, effects).await;
+        return true;
     }
+
+    if target_lower == "chanserv" || target_lower == "cs" {
+        let effects = matrix.chanserv.handle_command(matrix, uid, nick, text).await;
+        apply_effects(matrix, nick, sender, effects).await;
+        return true;
+    }
+
+    // Check extra services
+    // We iterate because we need to check aliases too.
+    // Optimization: We could build a lookup map in Matrix::new, but for now iteration is fine
+    // as the number of services is small.
+    for service in matrix.extra_services.values() {
+        if irc_to_lower(service.name()) == target_lower
+            || service
+                .aliases()
+                .iter()
+                .any(|a| irc_to_lower(a) == target_lower)
+        {
+            let effects = service.handle(matrix, uid, nick, text).await;
+            apply_effects(matrix, nick, sender, effects).await;
+            return true;
+        }
+    }
+
+    false
 }
 
 /// Apply a list of service effects sequentially.
@@ -146,8 +167,9 @@ pub async fn apply_effect(
             // 2. Route the message to the target's sender channel
             if let Some(target_tx) = matrix.senders.get(&target_uid) {
                 // Update the NOTICE command with the correct target nick
-                if let Command::NOTICE(_, text) = &msg.command {
-                    msg.command = Command::NOTICE(target_nick, text.clone());
+                // Move text out of old command to avoid clone
+                if let Command::NOTICE(_, text) = msg.command {
+                    msg.command = Command::NOTICE(target_nick, text);
                 }
                 let _ = target_tx.send(msg).await;
             }
@@ -168,12 +190,14 @@ pub async fn apply_effect(
                 }
             };
 
+            info!(uid = %target_uid, account = %account, "User identified to account");
+
             // Set +r mode and account on user
             let user_arc = matrix.users.get(&target_uid).map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.modes.registered = true;
-                user.account = Some(account.clone());
+                user.account = Some(account);
             }
 
             // Clear any nick enforcement timer
@@ -196,8 +220,6 @@ pub async fn apply_effect(
             if let Some(sender) = sender {
                 let _ = sender.send(mode_msg).await;
             }
-
-            info!(uid = %target_uid, account = %account, "User identified to account");
         }
 
         ServiceEffect::AccountClear { target_uid } => {
@@ -353,6 +375,7 @@ pub async fn apply_effect(
                     target_nick: target_nick.clone(),
                     reason: reason.clone(),
                     force: true,
+                    cap: None,
                 },
                 reply_tx: tx,
             };

@@ -5,6 +5,7 @@
 
 use crate::security::UserContext;
 use crate::state::{ListEntry, MemberModes, Topic};
+use crate::caps::{Cap, KickCap, TopicCap, InviteCap};
 use slirc_proto::{Message, Prefix};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -52,6 +53,7 @@ pub struct KickParams {
     pub target_nick: String,
     pub reason: String,
     pub force: bool,
+    pub cap: Option<Cap<KickCap>>,
 }
 
 /// Parameters for TOPIC event handling.
@@ -63,6 +65,7 @@ pub struct TopicParams {
     pub msgid: String,
     pub timestamp: String,
     pub force: bool,
+    pub cap: Option<Cap<TopicCap>>,
 }
 
 /// Parameters for INVITE event handling.
@@ -73,6 +76,7 @@ pub struct InviteParams {
     pub target_uid: Uid,
     pub target_nick: String,
     pub force: bool,
+    pub cap: Option<Cap<InviteCap>>,
 }
 
 /// Parameters for MODE event handling.

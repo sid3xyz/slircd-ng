@@ -143,10 +143,9 @@ impl PostRegHandler for TopicHandler {
 
                 // Request TOPIC capability from authority (Innovation 4)
                 let authority = ctx.authority();
-                let has_topic_cap = authority
+                let topic_cap = authority
                     .request_topic_cap(ctx.uid, channel_name)
-                    .await
-                    .is_some();
+                    .await;
 
                 let event = ChannelEvent::SetTopic {
                     params: crate::state::actor::TopicParams {
@@ -155,7 +154,8 @@ impl PostRegHandler for TopicHandler {
                         topic: topic_text.to_string(),
                         msgid: msgid.clone(),
                         timestamp,
-                        force: has_topic_cap,
+                        force: false, // Deprecated in favor of cap
+                        cap: topic_cap,
                     },
                     reply_tx,
                 };

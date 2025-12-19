@@ -466,8 +466,7 @@ impl SpamDetectionService {
         ctcp_count > 2
     }
 
-    /// Add custom spam keyword
-    #[allow(dead_code)] // Used in tests, available for runtime config
+    /// Add custom spam keyword (used by SPAMCONF runtime config)
     pub fn add_keyword(&mut self, keyword: String) {
         let keyword = keyword.to_lowercase();
         self.raw_keywords.insert(keyword.clone());
@@ -490,16 +489,14 @@ impl SpamDetectionService {
         self.entropy_threshold
     }
 
-    /// Set entropy threshold (0.0-8.0)
+    /// Set entropy threshold (0.0-8.0) - used by SPAMCONF runtime config
     /// Lower = stricter detection, higher false positive rate
-    #[allow(dead_code)] // Available for runtime config
     pub fn set_entropy_threshold(&mut self, threshold: f32) {
         self.entropy_threshold = threshold.clamp(0.0, 8.0);
     }
 
-    /// Set maximum character repetition threshold
+    /// Set maximum character repetition threshold - used by SPAMCONF runtime config
     /// Higher = more lenient, allows more repeated characters
-    #[allow(dead_code)] // Available for runtime config
     pub fn set_max_repetition(&mut self, max: usize) {
         self.max_char_repetition = max;
     }

@@ -22,6 +22,25 @@ pub use trace::TraceHandler;
 pub use vhost::VhostHandler;
 pub use wallops::WallopsHandler;
 
+use crate::handlers::PostRegHandler;
+use std::collections::HashMap;
+
+/// Register all operator commands.
+pub fn register(map: &mut HashMap<&'static str, Box<dyn PostRegHandler>>) {
+    map.insert("OPER", Box::new(OperHandler));
+    map.insert("KILL", Box::new(KillHandler));
+    map.insert("WALLOPS", Box::new(WallopsHandler));
+    map.insert("GLOBOPS", Box::new(GlobOpsHandler));
+    map.insert("DIE", Box::new(DieHandler));
+    map.insert("REHASH", Box::new(RehashHandler));
+    map.insert("RESTART", Box::new(RestartHandler));
+    map.insert("CHGHOST", Box::new(ChghostHandler));
+    map.insert("CHGIDENT", Box::new(ChgIdentHandler));
+    map.insert("VHOST", Box::new(VhostHandler));
+    map.insert("TRACE", Box::new(TraceHandler));
+    map.insert("SPAMCONF", Box::new(SpamConfHandler));
+}
+
 /// Validate hostname per RFC 952/1123 rules.
 pub(super) fn is_valid_hostname(hostname: &str) -> bool {
     if hostname.is_empty() || hostname.len() > 253 {

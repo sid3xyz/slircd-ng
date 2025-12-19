@@ -291,6 +291,9 @@ impl CapabilityAuthority {
 
         /// Request capability to send global notices.
         request_global_notice_cap -> GlobalNoticeCap,
+
+        /// Request capability to configure spam detection.
+        request_spamconf_cap -> SpamConfCap,
     }
 
     /// Request capability to bypass mode restrictions on a channel.

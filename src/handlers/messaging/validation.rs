@@ -62,36 +62,38 @@ pub async fn validate_message_send(
     // with proper strike tracking. Do NOT check here to avoid double-penalty.
 
     // Check for repetition spam
-    if let Some(detector) = &ctx.matrix.spam_detector
-        && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
+    if let Some(detector_lock) = &ctx.matrix.spam_detector {
+        let detector = detector_lock.read().await;
+        if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
             detector.check_message_repetition(&uid_string, text)
-    {
-        // Record violation
-        if let Ok(ip) = snapshot.ip.parse() {
-            detector.record_violation(ip, "repetition").await;
-        }
-
-        debug!(
-            uid = %uid_string,
-            pattern = %pattern,
-            "Message blocked by spam detector (repetition)"
-        );
-        match strategy {
-            ErrorStrategy::SendError => {
-                let reply = server_reply(
-                    ctx.server_name(),
-                    Response::ERR_TOOMANYTARGETS,
-                    vec![
-                        nick.to_string(),
-                        target.to_string(),
-                        "Message blocked: repetition detected.".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+        {
+            // Record violation
+            if let Ok(ip) = snapshot.ip.parse() {
+                detector.record_violation(ip, "repetition").await;
             }
-            ErrorStrategy::SilentDrop => {}
+
+            debug!(
+                uid = %uid_string,
+                pattern = %pattern,
+                "Message blocked by spam detector (repetition)"
+            );
+            match strategy {
+                ErrorStrategy::SendError => {
+                    let reply = server_reply(
+                        ctx.server_name(),
+                        Response::ERR_TOOMANYTARGETS,
+                        vec![
+                            nick.to_string(),
+                            target.to_string(),
+                            "Message blocked: repetition detected.".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+                ErrorStrategy::SilentDrop => {}
+            }
+            return Ok(ValidationResult::Blocked);
         }
-        return Ok(ValidationResult::Blocked);
     }
 
     // Check for content spam (skip for trusted users)
@@ -99,36 +101,39 @@ pub async fn validate_message_send(
     let is_private = !target.starts_with('#') && !target.starts_with('&');
 
     if !is_trusted
-        && let Some(detector) = &ctx.matrix.spam_detector
-        && let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
-            detector.check_message(&uid_string, &snapshot.ip, text, is_private).await
+        && let Some(detector_lock) = &ctx.matrix.spam_detector
     {
-        // Record violation
-        if let Ok(ip) = snapshot.ip.parse() {
-            detector.record_violation(ip, &pattern).await;
-        }
-
-        debug!(
-            uid = %uid_string,
-            pattern = %pattern,
-            "Message blocked by spam detector (content)"
-        );
-        match strategy {
-            ErrorStrategy::SendError => {
-                let reply = server_reply(
-                    ctx.server_name(),
-                    Response::ERR_TOOMANYTARGETS,
-                    vec![
-                        nick.to_string(),
-                        target.to_string(),
-                        "Message blocked: spam pattern detected.".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
+        let detector = detector_lock.read().await;
+        if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
+            detector.check_message(&uid_string, &snapshot.ip, text, is_private).await
+        {
+            // Record violation
+            if let Ok(ip) = snapshot.ip.parse() {
+                detector.record_violation(ip, &pattern).await;
             }
-            ErrorStrategy::SilentDrop => {}
+
+            debug!(
+                uid = %uid_string,
+                pattern = %pattern,
+                "Message blocked by spam detector (content)"
+            );
+            match strategy {
+                ErrorStrategy::SendError => {
+                    let reply = server_reply(
+                        ctx.server_name(),
+                        Response::ERR_TOOMANYTARGETS,
+                        vec![
+                            nick.to_string(),
+                            target.to_string(),
+                            "Message blocked: spam pattern detected.".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(reply).await?;
+                }
+                ErrorStrategy::SilentDrop => {}
+            }
+            return Ok(ValidationResult::Blocked);
         }
-        return Ok(ValidationResult::Blocked);
     }
 
     // Rate-limit CTCP floods

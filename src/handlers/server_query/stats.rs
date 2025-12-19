@@ -321,7 +321,8 @@ impl PostRegHandler for StatsHandler {
             }
             'p' | 'P' => {
                 // Spam detection settings
-                if let Some(spam) = &ctx.matrix.spam_detector {
+                if let Some(spam_lock) = &ctx.matrix.spam_detector {
+                    let spam = spam_lock.read().await;
                     ctx.send_reply(
                         Response::RPL_STATSDLINE,
                         vec![

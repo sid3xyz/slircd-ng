@@ -11,9 +11,10 @@ pub mod set;
 pub mod ungroup;
 
 use crate::db::Database;
-use crate::services::ServiceEffect;
+use crate::services::{Service, ServiceEffect};
 use crate::services::base::ServiceBase;
 use crate::state::Matrix;
+use async_trait::async_trait;
 use std::sync::Arc;
 
 /// Result of a NickServ command - a list of effects to apply.
@@ -34,6 +35,27 @@ impl ServiceBase for NickServ {
     }
 }
 
+#[async_trait]
+impl Service for NickServ {
+    fn name(&self) -> &'static str {
+        "NickServ"
+    }
+
+    fn aliases(&self) -> Vec<&'static str> {
+        vec!["NS"]
+    }
+
+    async fn handle(
+        &self,
+        matrix: &Arc<Matrix>,
+        uid: &str,
+        nick: &str,
+        text: &str,
+    ) -> Vec<ServiceEffect> {
+        self.handle_command(matrix, uid, nick, text).await
+    }
+}
+
 impl NickServ {
     /// Create a new NickServ service.
     pub fn new(db: Database) -> Self {
@@ -47,7 +69,7 @@ impl NickServ {
 
     /// Handle a PRIVMSG to NickServ.
     /// Returns a list of effects that the caller should apply.
-    pub async fn handle(
+    pub async fn handle_command(
         &self,
         matrix: &Arc<Matrix>,
         uid: &str,

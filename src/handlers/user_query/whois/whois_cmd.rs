@@ -1,6 +1,6 @@
 //! WHOIS handler for detailed user information queries.
 
-use crate::handlers::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
+use crate::handlers::{Context, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;
 use crate::state::actor::{ChannelEvent, ChannelInfo};
 use async_trait::async_trait;
@@ -79,15 +79,14 @@ impl PostRegHandler for WhoisHandler {
         };
 
         if target.is_empty() {
-            let reply = server_reply(
-                ctx.server_name(),
+            ctx.send_reply(
                 Response::ERR_NONICKNAMEGIVEN,
                 vec![
                     ctx.state.nick.clone(),
                     "No nickname given".to_string(),
                 ],
-            );
-            ctx.sender.send(reply).await?;
+            )
+            .await?;
             return Ok(());
         }
 
@@ -119,7 +118,7 @@ impl PostRegHandler for WhoisHandler {
                         target_user.user.clone(),
                         target_user.visible_host.clone(),
                         target_user.realname.clone(),
-                        target_user.channels.clone(),
+                        target_user.channels.iter().cloned().collect::<Vec<_>>(),
                         target_user.modes.clone(),
                         target_user.account.clone(),
                         target_user.away.clone(),
@@ -129,8 +128,7 @@ impl PostRegHandler for WhoisHandler {
                 }; // Lock dropped here
 
                 // RPL_WHOISUSER (311): <nick> <user> <host> * :<realname>
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::RPL_WHOISUSER,
                     vec![
                         nick.clone(),
@@ -140,12 +138,11 @@ impl PostRegHandler for WhoisHandler {
                         "*".to_string(),
                         target_realname,
                     ],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
 
                 // RPL_WHOISSERVER (312): <nick> <server> :<server info>
-                let reply = server_reply(
-                    server_name,
+                ctx.send_reply(
                     Response::RPL_WHOISSERVER,
                     vec![
                         nick.clone(),
@@ -153,8 +150,8 @@ impl PostRegHandler for WhoisHandler {
                         server_name.to_string(),
                         ctx.matrix.server_info.description.clone(),
                     ],
-                );
-                ctx.sender.send(reply).await?;
+                )
+                .await?;
 
                 // RPL_WHOISCHANNELS (319): <nick> :{[@|+]<channel>}
                 // Skip if target is invisible and requester doesn't share any channels
@@ -195,110 +192,99 @@ impl PostRegHandler for WhoisHandler {
                     }
 
                     if !channel_list.is_empty() {
-                        let reply = server_reply(
-                            server_name,
+                        ctx.send_reply(
                             Response::RPL_WHOISCHANNELS,
                             vec![nick.clone(), target_nick.clone(), channel_list.join(" ")],
-                        );
-                        ctx.sender.send(reply).await?;
+                        )
+                        .await?;
                     }
                 }
 
                 // RPL_WHOISOPERATOR (313): <nick> :is an IRC operator
                 if target_modes.oper {
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::RPL_WHOISOPERATOR,
                         vec![
                             nick.clone(),
                             target_nick.clone(),
                             "is an IRC operator".to_string(),
                         ],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 }
 
                 // RPL_WHOISBOT (335): <nick> :is a Bot
                 if target_modes.bot {
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::RPL_WHOISBOT,
                         vec![
                             nick.clone(),
                             target_nick.clone(),
                             format!("is a Bot on {}", ctx.matrix.server_info.network),
                         ],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 }
 
                 // RPL_WHOISACCOUNT (330): <nick> <account> :is logged in as
-                if let Some(account) = &target_account {
-                    let reply = server_reply(
-                        server_name,
+                if let Some(account) = target_account {
+                    ctx.send_reply(
                         Response::RPL_WHOISACCOUNT,
                         vec![
                             nick.clone(),
                             target_nick.clone(),
-                            account.clone(),
+                            account,
                             "is logged in as".to_string(),
                         ],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 }
 
                 // RPL_WHOISSECURE (671): <nick> :is using a secure connection (if TLS)
                 if target_modes.secure {
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::RPL_WHOISSECURE,
                         vec![
                             nick.clone(),
                             target_nick.clone(),
                             "is using a secure connection".to_string(),
                         ],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 }
 
                 // RPL_WHOISCERTFP (276): <nick> :has client certificate fingerprint <fingerprint>
                 if let Some(ref certfp) = target_certfp {
-                    let reply = server_reply(
-                        server_name,
+                    ctx.send_reply(
                         Response::RPL_WHOISCERTFP,
                         vec![
                             nick.clone(),
                             target_nick.clone(),
                             format!("has client certificate fingerprint {}", certfp),
                         ],
-                    );
-                    ctx.sender.send(reply).await?;
+                    )
+                    .await?;
                 }
 
                 // RPL_AWAY (301): <nick> :<away message>
-                if let Some(away_msg) = &target_away {
-                    let reply = server_reply(
-                        server_name,
+                if let Some(away_msg) = target_away {
+                    ctx.send_reply(
                         Response::RPL_AWAY,
-                        vec![nick.clone(), target_nick.clone(), away_msg.clone()],
-                    );
-                    ctx.sender.send(reply).await?;
+                        vec![nick.clone(), target_nick.clone(), away_msg],
+                    )
+                    .await?;
                 }
 
                 // RPL_ENDOFWHOIS (318): <nick> :End of WHOIS list - attach label for labeled-response
-                let reply = with_label(
-                    server_reply(
-                        server_name,
-                        Response::RPL_ENDOFWHOIS,
-                        vec![
-                            nick.clone(),
-                            target_nick.clone(),
-                            "End of WHOIS list".to_string(),
-                        ],
-                    ),
-                    ctx.label.as_deref(),
-                );
-                ctx.sender.send(reply).await?;
+                ctx.send_reply(
+                    Response::RPL_ENDOFWHOIS,
+                    vec![
+                        nick.clone(),
+                        target_nick.clone(),
+                        "End of WHOIS list".to_string(),
+                    ],
+                )
+                .await?;
 
                 debug!(requester = %nick, target = %target_nick, "WHOIS completed");
             } else {
@@ -314,7 +300,6 @@ impl PostRegHandler for WhoisHandler {
 
 /// Send ERR_NOSUCHNICK for a target, followed by RPL_ENDOFWHOIS.
 async fn send_no_such_nick(ctx: &mut Context<'_, crate::state::RegisteredState>, target: &str) -> HandlerResult {
-    let server_name = ctx.server_name();
     let nick = &ctx.state.nick;
 
     let reply = Response::err_nosuchnick(nick, target)
@@ -322,19 +307,15 @@ async fn send_no_such_nick(ctx: &mut Context<'_, crate::state::RegisteredState>,
     ctx.send_error("WHOIS", "ERR_NOSUCHNICK", reply).await?;
 
     // Also send end of whois - attach label for labeled-response
-    let reply = with_label(
-        server_reply(
-            server_name,
-            Response::RPL_ENDOFWHOIS,
-            vec![
-                nick.clone(),
-                target.to_string(),
-                "End of WHOIS list".to_string(),
-            ],
-        ),
-        ctx.label.as_deref(),
-    );
-    ctx.sender.send(reply).await?;
+    ctx.send_reply(
+        Response::RPL_ENDOFWHOIS,
+        vec![
+            nick.clone(),
+            target.to_string(),
+            "End of WHOIS list".to_string(),
+        ],
+    )
+    .await?;
 
     Ok(())
 }

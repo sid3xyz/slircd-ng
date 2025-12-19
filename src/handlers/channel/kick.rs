@@ -98,13 +98,12 @@ impl PostRegHandler for KickHandler {
 
             // Request KICK capability from authority (Innovation 4)
             let authority = ctx.authority();
-            let has_kick_cap = authority
+            let kick_cap = authority
                 .request_kick_cap(ctx.uid, channel_name)
-                .await
-                .is_some();
+                .await;
 
-            // If no capability, let actor do the check (maintains backward compat)
-            // If capability granted, use force=true to skip actor check
+            // If capability granted, pass it to actor.
+            // The actor will verify either the capability OR internal op status.
             let (reply_tx, reply_rx) = oneshot::channel();
             let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user.clone(), host.clone());
 
@@ -115,7 +114,8 @@ impl PostRegHandler for KickHandler {
                     target_uid: target_uid.clone(),
                     target_nick: target_nick.to_string(),
                     reason: reason_str.clone(),
-                    force: has_kick_cap,
+                    force: false, // Deprecated in favor of cap, but kept for internal use
+                    cap: kick_cap,
                 },
                 reply_tx,
             };

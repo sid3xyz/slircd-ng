@@ -42,8 +42,10 @@
 //!
 //! All handlers using capability-based authorization have been migrated.
 //!
-//! NOTE: The `dead_code` allow is intentional - not all capability types are
-//! used by handlers yet, but they form a complete API for future integration.
+//! NOTE: Some capability types (BanCap, VoiceCap, ChannelModeCap, BypassFloodCap,
+//! BypassModeCap, GlobalNoticeCap) are defined but not yet used. These form a complete
+//! API for future integration when channel/oper operations are refactored to use
+//! capability tokens uniformly.
 
 #![allow(dead_code)]
 
@@ -53,3 +55,5 @@ mod tokens;
 
 // Re-export authority (used by 9 handler files)
 pub use authority::CapabilityAuthority;
+pub use tokens::Cap;
+pub use irc::*;

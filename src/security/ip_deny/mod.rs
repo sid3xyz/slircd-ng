@@ -228,23 +228,6 @@ impl IpDenyList {
         self.save()
     }
 
-    /// Add a ban from an IP address (treated as /32 or /128).
-    #[allow(dead_code)] // Available for future admin commands
-    pub fn add_ban_ip(
-        &mut self,
-        ip: IpAddr,
-        reason: String,
-        duration: Option<Duration>,
-        added_by: String,
-    ) -> Result<(), std::io::Error> {
-        // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are always valid - these are compile-time constants
-        let net = match ip {
-            IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
-            IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
-        };
-        self.add_ban(net, reason, duration, added_by)
-    }
-
     /// Remove a ban for an IP or CIDR range.
     ///
     /// Automatically triggers persistence to disk.
@@ -305,17 +288,6 @@ impl IpDenyList {
         }
 
         Ok(removed)
-    }
-
-    /// Remove a ban by IP address.
-    #[allow(dead_code)] // Available for future admin commands
-    pub fn remove_ban_ip(&mut self, ip: IpAddr) -> Result<bool, std::io::Error> {
-        // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are always valid - these are compile-time constants
-        let net = match ip {
-            IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
-            IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
-        };
-        self.remove_ban(net)
     }
 
     /// Prune expired bans from the list.
@@ -579,6 +551,29 @@ impl Default for IpDenyList {
 mod tests {
     use super::*;
     use std::net::{Ipv4Addr, Ipv6Addr};
+
+    trait IpDenyListTestExt {
+        fn add_ban_ip(&mut self, ip: IpAddr, reason: String, duration: Option<Duration>, added_by: String) -> Result<(), std::io::Error>;
+        fn remove_ban_ip(&mut self, ip: IpAddr) -> Result<bool, std::io::Error>;
+    }
+
+    impl IpDenyListTestExt for IpDenyList {
+        fn add_ban_ip(&mut self, ip: IpAddr, reason: String, duration: Option<Duration>, added_by: String) -> Result<(), std::io::Error> {
+            let net = match ip {
+                IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
+                IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
+            };
+            self.add_ban(net, reason, duration, added_by)
+        }
+
+        fn remove_ban_ip(&mut self, ip: IpAddr) -> Result<bool, std::io::Error> {
+            let net = match ip {
+                IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
+                IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),
+            };
+            self.remove_ban(net)
+        }
+    }
 
     #[test]
     fn test_add_and_check_ipv4_single() {

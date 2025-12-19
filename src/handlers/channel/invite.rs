@@ -120,10 +120,9 @@ impl PostRegHandler for InviteHandler {
 
             // Request INVITE capability from authority (Innovation 4)
             let authority = ctx.authority();
-            let has_invite_cap = authority
+            let invite_cap = authority
                 .request_invite_cap(ctx.uid, channel_name)
-                .await
-                .is_some();
+                .await;
 
             let event = ChannelEvent::Invite {
                 params: crate::state::actor::InviteParams {
@@ -131,7 +130,8 @@ impl PostRegHandler for InviteHandler {
                     sender_prefix: sender_prefix.clone(),
                     target_uid: target_uid.clone(),
                     target_nick: target_nick.to_string(),
-                    force: has_invite_cap,
+                    force: false, // Deprecated in favor of cap
+                    cap: invite_cap,
                 },
                 reply_tx,
             };
@@ -143,7 +143,7 @@ impl PostRegHandler for InviteHandler {
             match reply_rx.await {
                 Ok(Ok(())) => {
                     // Success, invite recorded in channel.
-                    
+
                     // Record rate limit for this successful invite
                     ctx.state.invite_timestamps.insert(invite_key.clone(), now);
                     ctx.state.invite_timestamps.retain(|_, t| now.duration_since(*t) < INVITE_COOLDOWN);

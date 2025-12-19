@@ -93,7 +93,8 @@ impl<'a> WelcomeBurstWriter<'a> {
         let remote_ip = self.remote_addr.ip().to_string();
 
         // Record successful connection for reputation
-        if let Some(spam) = &self.matrix.spam_detector {
+        if let Some(spam_lock) = &self.matrix.spam_detector {
+            let spam = spam_lock.read().await;
             spam.record_connection_success(self.remote_addr.ip()).await;
         }
 

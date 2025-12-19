@@ -49,11 +49,12 @@ fn validate_connection(addr: &SocketAddr, matrix: &Matrix, listener_type: &str) 
 
 /// Check DNSBL and return false if connection should be rejected.
 async fn check_dnsbl(matrix: &Matrix, ip: IpAddr, addr: SocketAddr) -> bool {
-    if let Some(ref spam) = matrix.spam_detector
-        && spam.check_ip_dnsbl(ip).await
-    {
-        warn!(%addr, "Connection rejected by DNSBL");
-        return false;
+    if let Some(ref spam_lock) = matrix.spam_detector {
+        let spam = spam_lock.read().await;
+        if spam.check_ip_dnsbl(ip).await {
+            warn!(%addr, "Connection rejected by DNSBL");
+            return false;
+        }
     }
     true
 }
