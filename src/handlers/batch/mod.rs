@@ -7,6 +7,7 @@
 //! Reference: <https://ircv3.net/specs/extensions/multiline>
 
 mod processing;
+pub mod server;
 mod types;
 mod validation;
 
@@ -178,7 +179,7 @@ async fn process_multiline_batch(
     let target = &batch.target;
 
     // Get sender info for prefix
-    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+    let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone());
     let prefix = if let Some(user_arc) = user_arc {
         let user = user_arc.read().await;
         Prefix::new(
@@ -214,7 +215,7 @@ async fn deliver_multiline_to_channel(
 ) -> HandlerResult {
     let channel_lower = batch.target.to_lowercase();
 
-    let channel_tx = ctx.matrix.channels.get(&channel_lower).map(|c| c.clone());
+    let channel_tx = ctx.matrix.channel_manager.channels.get(&channel_lower).map(|c| c.clone());
     let Some(channel_tx) = channel_tx else {
         // Channel doesn't exist - send error
         let reply = Response::err_nosuchchannel(&ctx.state.nick, &batch.target)
@@ -245,7 +246,7 @@ async fn deliver_multiline_to_channel(
     }
     let mut members: Vec<(String, MemberCaps)> = Vec::with_capacity(member_uids.len());
     for uid in member_uids {
-        let user_arc = ctx.matrix.users.get(&uid).map(|u| u.value().clone());
+        let user_arc = ctx.matrix.user_manager.users.get(&uid).map(|u| u.value().clone());
         if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             members.push((
@@ -279,7 +280,7 @@ async fn deliver_multiline_to_channel(
         if member_uid == ctx.uid {
             // Echo to self - use pre-fetched has_echo_message
             if member_caps.has_echo_message {
-                let Some(sender_ref) = ctx.matrix.senders.get(ctx.uid) else {
+                let Some(sender_ref) = ctx.matrix.user_manager.senders.get(ctx.uid) else {
                     continue;
                 };
                 let sender = sender_ref.clone();
@@ -312,7 +313,7 @@ async fn deliver_multiline_to_channel(
             }
         } else {
             // Send to other member - use direct channel and pre-fetched caps
-            let Some(member_sender_ref) = ctx.matrix.senders.get(member_uid) else {
+            let Some(member_sender_ref) = ctx.matrix.user_manager.senders.get(member_uid) else {
                 continue;
             };
             let member_sender = member_sender_ref.clone();
@@ -360,6 +361,7 @@ async fn deliver_multiline_to_user(
     // Find target user by nick
     let target_uid = ctx
         .matrix
+        .user_manager
         .nicks
         .get(&target_nick.to_lowercase())
         .map(|r| r.clone());
@@ -373,14 +375,14 @@ async fn deliver_multiline_to_user(
     };
 
     // Get target's sender
-    let Some(target_sender_ref) = ctx.matrix.senders.get(&target_uid) else {
+    let Some(target_sender_ref) = ctx.matrix.user_manager.senders.get(&target_uid) else {
         return Ok(());
     };
     let target_sender = target_sender_ref.clone();
     drop(target_sender_ref);
 
     // Check if target has draft/multiline capability
-    let target_user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.value().clone());
+    let target_user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.value().clone());
     let target_has_multiline = if let Some(target_user_arc) = target_user_arc {
         let user = target_user_arc.read().await;
         user.caps.contains("draft/multiline")
@@ -389,7 +391,7 @@ async fn deliver_multiline_to_user(
     };
 
     // Pre-fetch sender capabilities for echo (single read vs 2 reads)
-    let sender_user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+    let sender_user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone());
     let (sender_has_echo, sender_has_multiline) = if let Some(sender_user_arc) = sender_user_arc {
         let user = sender_user_arc.read().await;
         (
@@ -433,7 +435,7 @@ async fn deliver_multiline_to_user(
     // Echo to sender if echo-message enabled (using pre-fetched caps)
     if sender_has_echo {
         // Get direct sender channel to bypass middleware and apply label manually
-        let Some(sender_ref) = ctx.matrix.senders.get(ctx.uid) else {
+        let Some(sender_ref) = ctx.matrix.user_manager.senders.get(ctx.uid) else {
             return Ok(());
         };
         let sender = sender_ref.clone();

@@ -325,8 +325,8 @@ simple_ban_config! {
         capability_check: |authority, uid| authority.request_kline_cap(uid).await.is_some(),
         db_add: |db, target, reason, oper| db.bans().add_kline(target, Some(reason), oper, None).await,
         db_remove: |db, target| db.bans().remove_kline(target).await,
-        cache_add: |matrix, target, reason| matrix.ban_cache.add_kline(target.to_string(), reason.to_string(), None),
-        cache_remove: |matrix, target| matrix.ban_cache.remove_kline(target),
+        cache_add: |matrix, target, reason| matrix.security_manager.ban_cache.add_kline(target.to_string(), reason.to_string(), None),
+        cache_remove: |matrix, target| matrix.security_manager.ban_cache.remove_kline(target),
     }
 }
 
@@ -343,8 +343,8 @@ simple_ban_config! {
         capability_check: |authority, uid| authority.request_gline_cap(uid).await.is_some(),
         db_add: |db, target, reason, oper| db.bans().add_gline(target, Some(reason), oper, None).await,
         db_remove: |db, target| db.bans().remove_gline(target).await,
-        cache_add: |matrix, target, reason| matrix.ban_cache.add_gline(target.to_string(), reason.to_string(), None),
-        cache_remove: |matrix, target| matrix.ban_cache.remove_gline(target),
+        cache_add: |matrix, target, reason| matrix.security_manager.ban_cache.add_gline(target.to_string(), reason.to_string(), None),
+        cache_remove: |matrix, target| matrix.security_manager.ban_cache.remove_gline(target),
     }
 }
 
@@ -405,7 +405,7 @@ macro_rules! ip_ban_config {
 
             async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str) {
                 if let Some(net) = parse_ip_or_cidr(target) {
-                    if let Ok(mut deny_list) = matrix.ip_deny_list.write()
+                    if let Ok(mut deny_list) = matrix.security_manager.ip_deny_list.write()
                         && let Err(e) = deny_list.add_ban(net, reason.to_string(), None, oper.to_string())
                     {
                         tracing::error!(error = %e, concat!("Failed to add ", $log_prefix, " to IP deny list"));
@@ -417,7 +417,7 @@ macro_rules! ip_ban_config {
 
             async fn remove_from_cache(&self, matrix: &Arc<Matrix>, target: &str) -> bool {
                 if let Some(net) = parse_ip_or_cidr(target)
-                    && let Ok(mut deny_list) = matrix.ip_deny_list.write()
+                    && let Ok(mut deny_list) = matrix.security_manager.ip_deny_list.write()
                 {
                     return deny_list.remove_ban(net).unwrap_or(false);
                 }

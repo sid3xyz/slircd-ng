@@ -39,7 +39,7 @@ async fn validate_status_mode(
     };
 
     let target_lower = irc_to_lower(target_nick);
-    let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) else {
+    let Some(target_uid) = ctx.matrix.user_manager.nicks.get(&target_lower) else {
         let reply = Response::err_nosuchnick(nick, target_nick).with_prefix(ctx.server_prefix());
         ctx.send_error("MODE", "ERR_NOSUCHNICK", reply).await?;
         return Ok(ModeValidation::Invalid);
@@ -109,7 +109,7 @@ pub async fn handle_channel_mode(
     let channel_lower = irc_to_lower(channel_name);
 
     // Get channel
-    let channel = match ctx.matrix.channels.get(&channel_lower) {
+    let channel = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
         Some(c) => c.clone(),
         None => {
             let reply = Response::err_nosuchchannel(&nick, channel_name)
@@ -234,7 +234,7 @@ pub async fn handle_channel_mode(
 
         if !valid_modes.is_empty() {
             // MLOCK enforcement: filter out modes that conflict with registered channel's MLOCK
-            let mlock_filtered_modes = if ctx.matrix.registered_channels.contains(&channel_lower) {
+            let mlock_filtered_modes = if ctx.matrix.channel_manager.registered_channels.contains(&channel_lower) {
                 apply_mlock_filter(ctx, &channel_lower, valid_modes).await
             } else {
                 valid_modes
@@ -252,7 +252,7 @@ pub async fn handle_channel_mode(
                     ChannelMode::Oper | ChannelMode::Voice => {
                         if let Some(nick) = mode.arg() {
                             let nick_lower = irc_to_lower(nick);
-                            if let Some(uid) = ctx.matrix.nicks.get(&nick_lower) {
+                            if let Some(uid) = ctx.matrix.user_manager.nicks.get(&nick_lower) {
                                 target_uids.insert(nick.to_string(), uid.value().clone());
                             }
                         }
@@ -261,7 +261,7 @@ pub async fn handle_channel_mode(
                 }
             }
 
-            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+            let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone());
             let (nick, user, host) = if let Some(user_arc) = user_arc {
                 let u = user_arc.read().await;
                 (u.nick.clone(), u.user.clone(), u.host.clone())

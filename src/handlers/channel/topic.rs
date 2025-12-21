@@ -55,7 +55,7 @@ impl PostRegHandler for TopicHandler {
         let channel_lower = irc_to_lower(channel_name);
 
         // Get channel
-        let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
+        let channel_tx = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
                 let reply = Response::err_nosuchchannel(nick, channel_name)
@@ -187,7 +187,7 @@ impl PostRegHandler for TopicHandler {
                                 account: ctx.state.account.clone(),
                             };
 
-                            if let Err(e) = ctx.matrix.history.store(channel_name, stored_msg).await {
+                            if let Err(e) = ctx.matrix.service_manager.history.store(channel_name, stored_msg).await {
                                 debug!(error = %e, "Failed to store TOPIC in history");
                             }
                         }

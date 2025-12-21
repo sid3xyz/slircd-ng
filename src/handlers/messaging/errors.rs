@@ -16,6 +16,9 @@ pub const CANNOT_SEND_MODERATED: &str = "Cannot send to channel (+m)";
 /// Cannot send to channel - user is not identified/registered (+r mode)
 pub const CANNOT_SEND_REGISTERED_ONLY: &str = "Cannot send to channel (+r)";
 
+/// Cannot send to channel - user is not identified/registered (+M mode)
+pub const CANNOT_SEND_REGISTERED_SPEAK: &str = "Cannot send to channel (+M)";
+
 /// Cannot send to channel - user is banned (+b mode)
 pub const CANNOT_SEND_BANNED: &str = "Cannot send to channel (+b)";
 

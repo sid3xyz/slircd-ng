@@ -38,7 +38,7 @@ impl PostRegHandler for AwayHandler {
             && !away_text.is_empty()
         {
             // Get list of channels before setting away status (for away-notify)
-            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
             let channels = if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.channels.iter().cloned().collect::<Vec<_>>()
@@ -47,11 +47,14 @@ impl PostRegHandler for AwayHandler {
             };
 
             // Set away status
-            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.away = Some(away_text.to_string());
             }
+
+            // Notify observer of user update (Innovation 2)
+            ctx.matrix.user_manager.notify_observer(ctx.uid, None).await;
 
             // Broadcast AWAY to channels - only to clients with away-notify capability (IRCv3)
             let away_broadcast = slirc_proto::Message {
@@ -62,7 +65,7 @@ impl PostRegHandler for AwayHandler {
 
             for channel_name in &channels {
                 ctx.matrix
-                    .broadcast_to_channel_with_cap(
+                    .channel_manager.broadcast_to_channel_with_cap(
                         channel_name,
                         away_broadcast.clone(),
                         None,
@@ -87,7 +90,7 @@ impl PostRegHandler for AwayHandler {
         }
 
         // Get list of channels before clearing away status (for away-notify)
-        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
         let channels = if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             user.channels.iter().cloned().collect::<Vec<_>>()
@@ -96,11 +99,14 @@ impl PostRegHandler for AwayHandler {
         };
 
         // Clear away status
-        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
             user.away = None;
         }
+
+        // Notify observer of user update (Innovation 2)
+        ctx.matrix.user_manager.notify_observer(ctx.uid, None).await;
 
         // Broadcast AWAY (no message) to channels - only to clients with away-notify capability (IRCv3)
         let away_broadcast = slirc_proto::Message {
@@ -111,7 +117,7 @@ impl PostRegHandler for AwayHandler {
 
         for channel_name in &channels {
             ctx.matrix
-                .broadcast_to_channel_with_cap(
+                .channel_manager.broadcast_to_channel_with_cap(
                     channel_name,
                     away_broadcast.clone(),
                     None,
@@ -183,7 +189,7 @@ impl PostRegHandler for SetnameHandler {
         };
 
         // Update the user's realname
-        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
         let (nick, user, visible_host) = if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
             user.realname = new_realname.to_string();
@@ -207,7 +213,7 @@ impl PostRegHandler for SetnameHandler {
         };
 
         // Get user's channels
-        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
         let channels: Vec<String> = if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             user.channels.iter().cloned().collect()
@@ -223,7 +229,7 @@ impl PostRegHandler for SetnameHandler {
         // Broadcast to each channel (only to clients with setname capability)
         for channel_name in &channels {
             ctx.matrix
-                .broadcast_to_channel_with_cap(
+                .channel_manager.broadcast_to_channel_with_cap(
                     channel_name,
                     setname_msg.clone(),
                     Some(ctx.uid),
@@ -268,7 +274,7 @@ impl PostRegHandler for SilenceHandler {
 
         if mask_arg.is_none() {
             // List silence entries
-            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
 
@@ -317,7 +323,7 @@ impl PostRegHandler for SilenceHandler {
         }
 
         // Update silence list
-        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
 

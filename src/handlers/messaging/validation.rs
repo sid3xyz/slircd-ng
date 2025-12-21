@@ -62,7 +62,7 @@ pub async fn validate_message_send(
     // with proper strike tracking. Do NOT check here to avoid double-penalty.
 
     // Check for repetition spam
-    if let Some(detector_lock) = &ctx.matrix.spam_detector {
+    if let Some(detector_lock) = &ctx.matrix.security_manager.spam_detector {
         let detector = detector_lock.read().await;
         if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
             detector.check_message_repetition(&uid_string, text)
@@ -101,7 +101,7 @@ pub async fn validate_message_send(
     let is_private = !target.starts_with('#') && !target.starts_with('&');
 
     if !is_trusted
-        && let Some(detector_lock) = &ctx.matrix.spam_detector
+        && let Some(detector_lock) = &ctx.matrix.security_manager.spam_detector
     {
         let detector = detector_lock.read().await;
         if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
@@ -138,7 +138,7 @@ pub async fn validate_message_send(
 
     // Rate-limit CTCP floods
     if slirc_proto::ctcp::Ctcp::is_ctcp(text)
-        && !ctx.matrix.rate_limiter.check_ctcp_rate(&uid_string)
+        && !ctx.matrix.security_manager.rate_limiter.check_ctcp_rate(&uid_string)
     {
         match strategy {
             ErrorStrategy::SendError => {

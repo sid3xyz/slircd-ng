@@ -36,7 +36,7 @@ pub(super) async fn handle_join_success(
     } = join_ctx;
 
     // Add channel to user's list
-    if let Some(user) = ctx.matrix.users.get(&ctx.uid.to_string()) {
+    if let Some(user) = ctx.matrix.user_manager.users.get(&ctx.uid.to_string()) {
         let mut user = user.write().await;
         user.channels.insert(channel_lower.to_string());
     }
@@ -63,7 +63,7 @@ pub(super) async fn handle_join_success(
             command: Command::AWAY(Some(away_text.clone())),
         };
         ctx.matrix
-            .broadcast_to_channel_with_cap(
+            .channel_manager.broadcast_to_channel_with_cap(
                 channel_lower,
                 away_msg,
                 Some(ctx.uid),
@@ -140,7 +140,7 @@ pub(super) async fn send_names_list(
         let mut names_list = Vec::with_capacity(members.len());
 
         for (uid, member_modes) in members {
-            if let Some(user) = ctx.matrix.users.get(&uid) {
+            if let Some(user) = ctx.matrix.user_manager.users.get(&uid) {
                 let user = user.read().await;
                 let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
                     format!("{}{}", prefix, user.nick)

@@ -123,7 +123,7 @@ impl<S: SessionState> UniversalHandler<S> for RegisterHandler {
         if account == "*" {
             // Check if someone else is using this nick
             let nick_lower = slirc_proto::irc_to_lower(&target_account);
-            if let Some(existing_uid) = ctx.matrix.nicks.get(&nick_lower) {
+            if let Some(existing_uid) = ctx.matrix.user_manager.nicks.get(&nick_lower) {
                 // If the existing user isn't us, fail with ACCOUNT_EXISTS
                 // (they effectively have a claim on this nick)
                 if *existing_uid != ctx.uid {
@@ -140,7 +140,7 @@ impl<S: SessionState> UniversalHandler<S> for RegisterHandler {
         }
 
         // Check if account already exists (using NickServ)
-        if ctx.matrix.nickserv.account_exists(&target_account).await {
+        if ctx.matrix.service_manager.nickserv.account_exists(&target_account).await {
             let reply = fail_response(
                 server_name,
                 "ACCOUNT_EXISTS",

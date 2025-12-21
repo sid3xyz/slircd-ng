@@ -59,11 +59,11 @@ impl PostRegHandler for WallopsHandler {
         let _ = ctx.sender.send(wallops_msg.clone()).await;
 
         // Send to all users with +w (wallops) or +o (oper) modes, except the sender
-        for user_entry in ctx.matrix.users.iter() {
+        for user_entry in ctx.matrix.user_manager.users.iter() {
             let user = user_entry.read().await;
             if user.uid != ctx.uid
                 && (user.modes.wallops || user.modes.oper)
-                && let Some(sender) = ctx.matrix.senders.get(&user.uid)
+                && let Some(sender) = ctx.matrix.user_manager.senders.get(&user.uid)
             {
                 let _ = sender.send(wallops_msg.clone()).await;
             }

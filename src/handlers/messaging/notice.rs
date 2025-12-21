@@ -6,7 +6,7 @@ use super::super::{Context,
     HandlerError, HandlerResult, PostRegHandler, user_prefix,
 };
 use crate::state::RegisteredState;
-use super::common::{ChannelRouteResult, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot, route_to_user_with_snapshot};
+use super::common::{ChannelRouteResult, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot, route_to_user_with_snapshot, UserRouteResult};
 use super::validation::{ErrorStrategy, validate_message_send};
 use crate::history::{StoredMessage, MessageEnvelope};
 use crate::history::types::MessageTag as HistoryTag;
@@ -163,14 +163,14 @@ impl PostRegHandler for NoticeHandler {
                     nanotime,
                     account: ctx.state.account.clone(),
                 };
-                if let Err(e) = ctx.matrix.history.store(target, stored_msg).await {
+                if let Err(e) = ctx.matrix.service_manager.history.store(target, stored_msg).await {
                     debug!(error = %e, "Failed to store NOTICE in history");
                 }
             }
             // All errors silently ignored for NOTICE
         } else {
             let target_lower = irc_to_lower(routing_target);
-            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await {
+            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await == UserRouteResult::Sent {
                 debug!(from = %snapshot.nick, to = %target, "NOTICE to user");
 
                 // Store message in history (DMs)
@@ -192,11 +192,11 @@ impl PostRegHandler for NoticeHandler {
                 };
 
                 // Store for recipient
-                if let Err(e) = ctx.matrix.history.store(target, stored_msg.clone()).await {
+                if let Err(e) = ctx.matrix.service_manager.history.store(target, stored_msg.clone()).await {
                     debug!(error = %e, "Failed to store NOTICE DM for recipient");
                 }
                 // Store for sender
-                if let Err(e) = ctx.matrix.history.store(&snapshot.nick, stored_msg).await {
+                if let Err(e) = ctx.matrix.service_manager.history.store(&snapshot.nick, stored_msg).await {
                     debug!(error = %e, "Failed to store NOTICE DM for sender");
                 }
             }

@@ -19,7 +19,7 @@ use super::super::{
 };
 use crate::state::RegisteredState;
 use super::common::{
-    ChannelRouteResult, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot,
+    ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult, route_to_channel_with_snapshot,
     route_to_user_with_snapshot, send_cannot_send, send_no_such_channel, send_no_such_nick,
 };
 use super::errors::*;
@@ -32,6 +32,8 @@ use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
 use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Utc};
 use tracing::debug;
+use crate::telemetry::spans;
+use tracing::Instrument;
 use uuid::Uuid;
 
 // ============================================================================
@@ -162,54 +164,61 @@ impl PostRegHandler for PrivmsgHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        // PRIVMSG <target> <text>
-        let targets = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
+        let targets_raw = msg.arg(0);
+        let span = spans::command("PRIVMSG", ctx.uid, targets_raw);
 
-        if targets.is_empty() {
-            return Err(HandlerError::NeedMoreParams);
-        }
-        if text.is_empty() {
-            return Err(HandlerError::NoTextToSend);
-        }
+        async move {
+            // PRIVMSG <target> <text>
+            let targets = targets_raw.ok_or(HandlerError::NeedMoreParams)?;
+            let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
 
-        // Build sender snapshot once (eliminates redundant user reads across validation + routing)
-        let snapshot = SenderSnapshot::build(ctx)
-            .await
-            .ok_or(HandlerError::NickOrUserMissing)?;
-
-        // Split comma-separated targets (RFC 2812 section 3.3.1)
-        let target_list: Vec<&str> = targets.split(',').map(|s| s.trim()).collect();
-
-        // Process each target individually
-        for target in target_list {
-            if target.is_empty() {
-                continue;
+            if targets.is_empty() {
+                return Err(HandlerError::NeedMoreParams);
+            }
+            if text.is_empty() {
+                return Err(HandlerError::NoTextToSend);
             }
 
-            // Use shared validation (shun, rate limiting, spam detection)
-            validate_message_send(ctx, target, text, ErrorStrategy::SendError, &snapshot).await?;
+            // Build sender snapshot once (eliminates redundant user reads across validation + routing)
+            let snapshot = SenderSnapshot::build(ctx)
+                .await
+                .ok_or(HandlerError::NickOrUserMissing)?;
 
-            // Check if this is a service message (NickServ, ChanServ, etc.)
-            if route_service_message(ctx.matrix, ctx.uid, &snapshot.nick, target, text, &ctx.sender).await {
-                continue;
+            // Split comma-separated targets (RFC 2812 section 3.3.1)
+            let target_list: Vec<&str> = targets.split(',').map(|s| s.trim()).collect();
+
+            // Process each target individually
+            for target in target_list {
+                if target.is_empty() {
+                    continue;
+                }
+
+                // Use shared validation (shun, rate limiting, spam detection)
+                validate_message_send(ctx, target, text, ErrorStrategy::SendError, &snapshot).await?;
+
+                // Check if this is a service message (NickServ, ChanServ, etc.)
+                if route_service_message(ctx.matrix, ctx.uid, &snapshot.nick, target, text, &ctx.sender).await {
+                    continue;
+                }
+
+                // Prepare message with tags, timestamp, msgid (computed once per target)
+                let prepared = prepare_message(msg, target, text, &snapshot);
+
+                // STATUSMSG support: @#channel sends to ops, +#channel sends to voiced+
+                let (status_prefix, actual_target) = parse_statusmsg(target);
+                let routing_target = actual_target.unwrap_or(target);
+
+                if routing_target.is_channel_name() {
+                    route_to_channel_target(ctx, target, text, &snapshot, &prepared, status_prefix).await?;
+                } else {
+                    route_to_user_target(ctx, target, text, &snapshot, &prepared, routing_target).await?;
+                }
             }
 
-            // Prepare message with tags, timestamp, msgid (computed once per target)
-            let prepared = prepare_message(msg, target, text, &snapshot);
-
-            // STATUSMSG support: @#channel sends to ops, +#channel sends to voiced+
-            let (status_prefix, actual_target) = parse_statusmsg(target);
-            let routing_target = actual_target.unwrap_or(target);
-
-            if routing_target.is_channel_name() {
-                route_to_channel_target(ctx, target, text, &snapshot, &prepared, status_prefix).await?;
-            } else {
-                route_to_user_target(ctx, target, text, &snapshot, &prepared, routing_target).await?;
-            }
+            Ok(())
         }
-
-        Ok(())
+        .instrument(span)
+        .await
     }
 }
 
@@ -266,7 +275,7 @@ async fn route_to_channel_target(
 
                 // Store message in history for CHATHISTORY support
                 let stored_msg = create_stored_message(prepared, target, text, snapshot, &ctx.state.account);
-                if let Err(e) = ctx.matrix.history.store(target, stored_msg).await {
+                if let Err(e) = ctx.matrix.service_manager.history.store(target, stored_msg).await {
                     debug!(error = %e, "Failed to store message in history");
                 }
             }
@@ -281,6 +290,9 @@ async fn route_to_channel_target(
             }
             ChannelRouteResult::BlockedRegisteredOnly => {
                 send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_REGISTERED_ONLY).await?;
+            }
+            ChannelRouteResult::BlockedRegisteredSpeak => {
+                send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_REGISTERED_SPEAK).await?;
             }
             ChannelRouteResult::BlockedCTCP => {
                 send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_CTCP).await?;
@@ -311,7 +323,15 @@ async fn route_to_user_target(
     };
 
     let target_lower = irc_to_lower(routing_target);
-    if route_to_user_with_snapshot(
+
+    // Auto-Accept Logic: Add target to sender's accept list
+    // This allows the target to reply even if sender has +R
+    if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid) {
+        let mut user = user_arc.write().await;
+        user.accept_list.insert(target_lower.clone());
+    }
+
+    match route_to_user_with_snapshot(
         ctx,
         &target_lower,
         prepared.out_msg.clone(),
@@ -320,17 +340,30 @@ async fn route_to_user_target(
         Some(prepared.msgid.clone()),
         snapshot,
     ).await {
-        debug!(from = %snapshot.nick, to = %target, "PRIVMSG to user");
+        UserRouteResult::Sent => {
+            debug!(from = %snapshot.nick, to = %target, "PRIVMSG to user");
 
-        // Store DM in history with canonical key
-        let stored_msg = create_stored_message(prepared, target, text, snapshot, &ctx.state.account);
-        let dm_key = compute_dm_key(ctx, &target_lower, snapshot).await;
+            // Store DM in history with canonical key
+            let stored_msg = create_stored_message(prepared, target, text, snapshot, &ctx.state.account);
+            let dm_key = compute_dm_key(ctx, &target_lower, snapshot).await;
 
-        if let Err(e) = ctx.matrix.history.store(&dm_key, stored_msg).await {
-            debug!(error = %e, "Failed to store DM");
+            if let Err(e) = ctx.matrix.service_manager.history.store(&dm_key, stored_msg).await {
+                debug!(error = %e, "Failed to store DM");
+            }
         }
-    } else {
-        send_no_such_nick(ctx, &snapshot.nick, target).await?;
+        UserRouteResult::NoSuchNick => {
+            send_no_such_nick(ctx, &snapshot.nick, target).await?;
+        }
+        UserRouteResult::BlockedRegisteredOnly => {
+            let reply = slirc_proto::Response::err_needreggednick(
+                &snapshot.nick,
+                target,
+            );
+            ctx.sender.send(reply).await?;
+        }
+        UserRouteResult::BlockedSilence | UserRouteResult::BlockedCtcp => {
+            // Silent drop
+        }
     }
     Ok(())
 }
@@ -349,9 +382,9 @@ async fn compute_dm_key(
         format!("u:{}", irc_to_lower(&snapshot.nick))
     };
 
-    let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(target_lower) {
+    let target_account = if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(target_lower) {
         let uid = uid_ref.value();
-        if let Some(user) = ctx.matrix.users.get(uid) {
+        if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
             let u = user.read().await;
             u.account.clone()
         } else {

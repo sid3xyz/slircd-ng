@@ -305,7 +305,7 @@ impl PostRegHandler for LusersHandler {
 
         // Count users and channels
         // Collect user refs first to avoid holding DashMap shard lock across await points
-        let user_refs: Vec<_> = ctx.matrix.users.iter().map(|r| r.value().clone()).collect();
+        let user_refs: Vec<_> = ctx.matrix.user_manager.users.iter().map(|r| r.value().clone()).collect();
         let total_users = user_refs.len();
         let mut invisible_count = 0;
         let mut oper_count = 0;
@@ -324,7 +324,7 @@ impl PostRegHandler for LusersHandler {
         // where X = visible users (non-+i) and Y = invisible users (+i).
         // Total users = X + Y (irctest lusers.py line 56: GlobalInvisible + GlobalVisible == total)
         let visible_users = total_users.saturating_sub(invisible_count);
-        let channel_count = ctx.matrix.channels.len();
+        let channel_count = ctx.matrix.channel_manager.channels.len();
 
         // RPL_LUSERCLIENT (251): :There are <u> users and <i> invisible on <s> servers
         ctx.send_reply(
@@ -353,7 +353,7 @@ impl PostRegHandler for LusersHandler {
         // RPL_LUSERUNKNOWN (253): <u> :unknown connection(s)
         // Unregistered = connections with nick but not yet in users map
         // This includes connections that have sent NICK but not USER
-        let total_nicks = ctx.matrix.nicks.len();
+        let total_nicks = ctx.matrix.user_manager.nicks.len();
         let unregistered_count = total_nicks.saturating_sub(total_users);
 
         ctx.send_reply(
@@ -390,6 +390,7 @@ impl PostRegHandler for LusersHandler {
         // RPL_LOCALUSERS (265): <u> <m> :Current local users <u>, max <m>
         let max_local = ctx
             .matrix
+            .user_manager
             .max_local_users
             .load(std::sync::atomic::Ordering::Relaxed);
         ctx.send_reply(
@@ -406,6 +407,7 @@ impl PostRegHandler for LusersHandler {
         // RPL_GLOBALUSERS (266): <u> <m> :Current global users <u>, max <m>
         let max_global = ctx
             .matrix
+            .user_manager
             .max_global_users
             .load(std::sync::atomic::Ordering::Relaxed);
         ctx.send_reply(

@@ -38,7 +38,7 @@ impl PostRegHandler for GlobOpsHandler {
 
         // Send via snomask 'g'
         // Format: "From <nick>: <message>"
-        ctx.matrix.send_snomask('g', &format!("From {}: {}", sender_nick, globops_text)).await;
+        ctx.matrix.user_manager.send_snomask('g', &format!("From {}: {}", sender_nick, globops_text)).await;
 
         Ok(())
     }

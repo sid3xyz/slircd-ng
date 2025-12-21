@@ -45,7 +45,7 @@ impl PostRegHandler for ShunHandler {
         } else {
             // Also add to in-memory cache for fast lookup
             let now = chrono::Utc::now().timestamp();
-            ctx.matrix.shuns.insert(
+            ctx.matrix.security_manager.shuns.insert(
                 mask.to_string(),
                 Shun {
                     mask: mask.to_string(),
@@ -120,7 +120,7 @@ impl PostRegHandler for UnshunHandler {
         }
 
         // Remove from in-memory cache
-        let removed = ctx.matrix.shuns.remove(mask).is_some();
+        let removed = ctx.matrix.security_manager.shuns.remove(mask).is_some();
 
         if removed {
             tracing::info!(

@@ -68,7 +68,7 @@ impl PostRegHandler for StatsHandler {
             }
             'o' | 'O' => {
                 // RPL_STATSOLINE (243): List online operators
-                for user_entry in ctx.matrix.users.iter() {
+                for user_entry in ctx.matrix.user_manager.users.iter() {
                     let user_guard = user_entry.value().read().await;
                     if user_guard.modes.oper {
                         // :server 243 nick O * <oper_nick> * :<realname>
@@ -227,8 +227,8 @@ impl PostRegHandler for StatsHandler {
             }
             'c' | 'C' => {
                 // Connection statistics
-                let current_users = ctx.matrix.users.len();
-                let current_channels = ctx.matrix.channels.len();
+                let current_users = ctx.matrix.user_manager.users.len();
+                let current_channels = ctx.matrix.channel_manager.channels.len();
 
                 // Use RPL_LUSERCLIENT style for connection info
                 ctx.send_reply(
@@ -274,7 +274,7 @@ impl PostRegHandler for StatsHandler {
             'i' | 'I' => {
                 // IP deny list statistics (in-memory bitmap)
                 // Collect data synchronously to avoid holding lock across await
-                let ban_data = ctx.matrix.ip_deny_list.read().ok().map(|deny_list| {
+                let ban_data = ctx.matrix.security_manager.ip_deny_list.read().ok().map(|deny_list| {
                     let count = deny_list.len();
                     let entries: Vec<_> = deny_list
                         .iter()
@@ -321,7 +321,7 @@ impl PostRegHandler for StatsHandler {
             }
             'p' | 'P' => {
                 // Spam detection settings
-                if let Some(spam_lock) = &ctx.matrix.spam_detector {
+                if let Some(spam_lock) = &ctx.matrix.security_manager.spam_detector {
                     let spam = spam_lock.read().await;
                     ctx.send_reply(
                         Response::RPL_STATSDLINE,

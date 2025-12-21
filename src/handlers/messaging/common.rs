@@ -6,7 +6,7 @@
 use super::super::{Context, HandlerResult, server_reply};
 use crate::security::UserContext;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
-use slirc_proto::{Command, Message, Response};
+use slirc_proto::{Command, Message, Response, Prefix};
 use tracing::debug;
 
 // ============================================================================
@@ -48,7 +48,7 @@ impl SenderSnapshot {
     ///
     /// Returns None if the user is not found (shouldn't happen for registered users).
     pub async fn build<S>(ctx: &Context<'_, S>) -> Option<Self> {
-        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone())?;
+        let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone())?;
         let user = user_arc.read().await;
         Some(Self {
             nick: user.nick.clone(),
@@ -120,6 +120,21 @@ pub async fn is_shunned_with_snapshot<S>(ctx: &Context<'_, S>, snapshot: &Sender
 
 pub use crate::state::actor::ChannelRouteResult;
 
+/// Result of attempting to route a message to a user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserRouteResult {
+    /// Message was successfully sent (or queued).
+    Sent,
+    /// Target user does not exist.
+    NoSuchNick,
+    /// Blocked by +R (registered-only PMs).
+    BlockedRegisteredOnly,
+    /// Blocked by SILENCE list.
+    BlockedSilence,
+    /// Blocked by +T (no CTCP).
+    BlockedCtcp,
+}
+
 /// Options for message routing behavior.
 pub struct RouteOptions {
     /// Whether to send RPL_AWAY for user targets (only PRIVMSG).
@@ -145,7 +160,7 @@ pub async fn route_to_channel_with_snapshot(
     msgid: Option<String>,
     snapshot: &SenderSnapshot,
 ) -> ChannelRouteResult {
-    let channel_tx = ctx.matrix.channels.get(channel_lower).map(|c| c.clone());
+    let channel_tx = ctx.matrix.channel_manager.channels.get(channel_lower).map(|c| c.clone());
     let Some(channel_tx) = channel_tx else {
         return ChannelRouteResult::NoSuchChannel;
     };
@@ -198,7 +213,7 @@ pub async fn route_to_channel_with_snapshot(
 /// Route a message to a user target using pre-fetched snapshot, optionally sending RPL_AWAY.
 ///
 /// This is the optimized version that eliminates redundant sender lookups.
-/// Returns true if the user was found and message sent, false otherwise.
+/// Returns the result of the routing attempt.
 pub async fn route_to_user_with_snapshot(
     ctx: &Context<'_, crate::state::RegisteredState>,
     target_lower: &str,
@@ -207,11 +222,12 @@ pub async fn route_to_user_with_snapshot(
     timestamp: Option<String>,
     msgid: Option<String>,
     snapshot: &SenderSnapshot,
-) -> bool {
-    let target_uid = if let Some(uid) = ctx.matrix.nicks.get(target_lower) {
+) -> UserRouteResult {
+    let target_uid = if let Some(uid) = ctx.matrix.user_manager.nicks.get(target_lower) {
         uid.clone()
     } else {
-        return false;
+        debug!("Target nick '{}' not found in nicks map. Map size: {}", target_lower, ctx.matrix.user_manager.nicks.len());
+        return UserRouteResult::NoSuchNick;
     };
 
     // NOTE: Spam detection is handled by validate_message_send() in validation.rs
@@ -219,7 +235,7 @@ pub async fn route_to_user_with_snapshot(
 
     // Check away status and notify sender if requested
     if opts.send_away_reply {
-        let target_user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+        let target_user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
         if let Some(target_user_arc) = target_user_arc {
             let (target_nick, away_msg) = {
                 let target_user = target_user_arc.read().await;
@@ -242,14 +258,20 @@ pub async fn route_to_user_with_snapshot(
     }
 
     // Check +R (registered-only PMs) - target only accepts PMs from identified users
-    let target_user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+    let target_user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
     if let Some(target_user_arc) = target_user_arc {
         let target_user = target_user_arc.read().await;
+        debug!("Checking +R for target {}: registered_only={}, sender_registered={}", target_user.nick, target_user.modes.registered_only, snapshot.is_registered);
         if target_user.modes.registered_only {
             // Use pre-fetched registered status from snapshot
             if !snapshot.is_registered {
-                // Silently drop to avoid information leakage about +R status
-                return false;
+                // Check ACCEPT list (Caller ID) override
+                // If sender is in accept list, allow the message even if not registered
+                let sender_nick_lower = slirc_proto::irc_to_lower(&snapshot.nick);
+                if !target_user.accept_list.contains(&sender_nick_lower) {
+                    debug!("Blocked by +R");
+                    return UserRouteResult::BlockedRegisteredOnly;
+                }
             }
         }
 
@@ -266,7 +288,7 @@ pub async fn route_to_user_with_snapshot(
                         mask = %silence_mask,
                         "Message blocked by SILENCE"
                     );
-                    return false;
+                    return UserRouteResult::BlockedSilence;
                 }
             }
         }
@@ -290,7 +312,7 @@ pub async fn route_to_user_with_snapshot(
                         ctcp_type = ?ctcp.kind,
                         "CTCP blocked by +T mode"
                     );
-                    return false; // Silently drop non-ACTION CTCP
+                    return UserRouteResult::BlockedCtcp;
                 }
             }
         }
@@ -307,10 +329,12 @@ pub async fn route_to_user_with_snapshot(
     // Use sender's account from snapshot
     let sender_account = snapshot.account.as_ref();
 
-    let target_sender = ctx.matrix.senders.get(&target_uid).map(|s| s.clone());
+    // Check if target is local or remote
+    let target_sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|s| s.clone());
+
     if let Some(target_sender) = target_sender {
-        // Check target's capabilities and build appropriate message
-        let msg_for_target = if let Some(user_arc) = ctx.matrix.users.get(&target_uid).map(|u| u.clone()) {
+        // LOCAL USER: Check target's capabilities and build appropriate message
+        let msg_for_target = if let Some(user_arc) = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone()) {
             let user = user_arc.read().await;
             let has_message_tags = user.caps.contains("message-tags");
             let has_server_time = user.caps.contains("server-time");
@@ -393,9 +417,73 @@ pub async fn route_to_user_with_snapshot(
             let _ = ctx.sender.send(echo_msg).await;
         }
 
-        true
+        UserRouteResult::Sent
     } else {
-        false
+        // REMOTE USER: Route via SyncManager
+        // 1. Find which server hosts this user
+        if let Some(_user_arc) = ctx.matrix.user_manager.users.get(&target_uid) {
+            // We need to know the server ID of the user.
+            // Currently UserCrdt doesn't store "current server", but we can infer it or add it.
+            // For now, let's assume we can't easily route without knowing the server.
+            // Wait! The user manager should know where the user is.
+            // Actually, UserCrdt is replicated, so we have the user data.
+            // But we need to know which server they are connected to.
+            // In a full mesh, we might need a "location" map.
+            // For now, let's assume we broadcast if we don't know, or we need to add location tracking.
+
+            // Innovation 9: We need to track user location (ServerId).
+            // Let's check if we have it.
+            // UserCrdt doesn't seem to have a "server_id" field for current location.
+            // However, the UID might contain the server ID prefix?
+            // UID format: 3 chars SID + 6 chars sequence.
+            let sid_prefix = if target_uid.len() >= 3 {
+                &target_uid[0..3]
+            } else {
+                tracing::warn!("Target UID {} is too short", target_uid);
+                return UserRouteResult::NoSuchNick;
+            };
+
+            use slirc_crdt::clock::ServerId;
+            let target_sid = ServerId::new(sid_prefix.to_string());
+
+            tracing::info!(target_uid = %target_uid, target_sid = %target_sid.as_str(), "Attempting to route remote message");
+
+            if let Some(peer) = ctx.matrix.sync_manager.get_peer_for_server(&target_sid) {
+                // Construct S2S message: :SourceUID PRIVMSG TargetUID :text
+                // We need to rewrite the command to use UIDs
+                let text = match &msg.command {
+                    Command::PRIVMSG(_, text) => text,
+                    Command::NOTICE(_, text) => text,
+                    _ => return UserRouteResult::NoSuchNick,
+                };
+
+                let cmd = match &msg.command {
+                    Command::PRIVMSG(_, _) => Command::PRIVMSG(target_uid.clone(), text.clone()),
+                    Command::NOTICE(_, _) => Command::NOTICE(target_uid.clone(), text.clone()),
+                    _ => return UserRouteResult::NoSuchNick,
+                };
+
+                let mut routed_msg = Message {
+                    tags: msg.tags.clone(), // Preserve tags
+                    prefix: Some(Prefix::new_from_str(ctx.uid)), // Use UID as source
+                    command: cmd,
+                };
+
+                // Add metadata tags
+                routed_msg = routed_msg.with_tag("msgid", Some(msgid));
+                routed_msg = routed_msg.with_tag("time", Some(timestamp));
+                if let Some(account) = sender_account {
+                    routed_msg = routed_msg.with_tag("account", Some(account.clone()));
+                }
+
+                let _ = peer.tx.send(routed_msg).await;
+                return UserRouteResult::Sent;
+            }
+
+            UserRouteResult::NoSuchNick
+        } else {
+            UserRouteResult::NoSuchNick
+        }
     }
 }
 

@@ -56,7 +56,7 @@ impl PostRegHandler for KillHandler {
 
         let quit_reason = format!("Killed by {killer_nick} ({reason})");
 
-        let target_sender = ctx.matrix.senders.get(&target_uid).map(|s| s.clone());
+        let target_sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|s| s.clone());
         if let Some(target_sender) = target_sender {
             let error_msg = Message {
                 tags: None,
@@ -71,7 +71,7 @@ impl PostRegHandler for KillHandler {
         tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
 
         // Send snomask 'k'
-        ctx.matrix.send_snomask('k', &format!("Received KILL message for {}. From {} Path: {}!{}@{} ({})", target_nick, killer_nick, killer_nick, killer_user, killer_host, reason)).await;
+        ctx.matrix.user_manager.send_snomask('k', &format!("Received KILL message for {}. From {} Path: {}!{}@{} ({})", target_nick, killer_nick, killer_nick, killer_user, killer_host, reason)).await;
 
         let kill_msg = Message {
             tags: None,

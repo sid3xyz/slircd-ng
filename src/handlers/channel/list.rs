@@ -147,7 +147,7 @@ impl PostRegHandler for ListHandler {
 
         // Collect channel senders first to avoid holding DashMap lock across await points
         // This prevents deadlocks if the actor tries to access the channel map
-        let channels: Vec<_> = ctx.matrix.channels.iter().map(|r| r.value().clone()).collect();
+        let channels: Vec<_> = ctx.matrix.channel_manager.channels.iter().map(|r| r.value().clone()).collect();
 
         // Result limiting to prevent flooding
         let max_channels = ctx.matrix.config.limits.max_list_channels;

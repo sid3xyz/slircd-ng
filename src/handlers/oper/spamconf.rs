@@ -33,7 +33,7 @@ impl PostRegHandler for SpamConfHandler {
 
         let subcommand = msg.arg(0).unwrap_or("LIST").to_ascii_uppercase();
 
-        let Some(spam_lock) = &ctx.matrix.spam_detector else {
+        let Some(spam_lock) = &ctx.matrix.security_manager.spam_detector else {
             ctx.send_notice("Spam detection is disabled").await?;
             return Ok(());
         };

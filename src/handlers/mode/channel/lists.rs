@@ -32,7 +32,7 @@ pub(super) async fn send_list_mode(
 ) -> HandlerResult {
     let nick = ctx.nick();
 
-    if let Some(channel) = ctx.matrix.channels.get(channel_lower) {
+    if let Some(channel) = ctx.matrix.channel_manager.channels.get(channel_lower) {
         // Get the appropriate list and response codes based on mode type
         let (mode_char, reply_code, end_code, end_msg) = match list_mode {
             ChannelMode::Ban => (

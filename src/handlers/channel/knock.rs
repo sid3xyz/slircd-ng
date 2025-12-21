@@ -36,7 +36,7 @@ impl PostRegHandler for KnockHandler {
                 // ERR_NEEDMOREPARAMS (461)
                 let server_name = ctx.server_name();
                 let nick = {
-                    if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+                    if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
                         let user = user_arc.read().await;
                         user.nick.clone()
                     } else {
@@ -63,7 +63,7 @@ impl PostRegHandler for KnockHandler {
 
         // Get user info
         let (nick, user, host) = {
-            if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+            if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
                 let u = user_arc.read().await;
                 (u.nick.clone(), u.user.clone(), u.host.clone())
             } else {
@@ -72,7 +72,7 @@ impl PostRegHandler for KnockHandler {
         };
 
         // Check if channel exists
-        let channel_tx = match ctx.matrix.channels.get(&channel_lower) {
+        let channel_tx = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
                 let reply = Response::err_nosuchchannel(&nick, channel_name)

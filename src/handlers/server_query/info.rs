@@ -37,7 +37,7 @@ impl PostRegHandler for MapHandler {
         let server_name = ctx.server_name();
         let nick = &ctx.state.nick;
 
-        let user_count = ctx.matrix.users.len();
+        let user_count = ctx.matrix.user_manager.users.len();
 
         // RPL_MAP (006): <server> [<users>]
         ctx.send_reply(
@@ -165,9 +165,9 @@ impl PostRegHandler for UseripHandler {
 
             // Look up the user by nick
             let lower_nick = slirc_proto::irc_to_lower(target_nick);
-            if let Some(uid_ref) = ctx.matrix.nicks.get(&lower_nick) {
+            if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(&lower_nick) {
                 let uid = uid_ref.value();
-                let user_arc = ctx.matrix.users.get(uid).map(|u| u.value().clone());
+                let user_arc = ctx.matrix.user_manager.users.get(uid).map(|u| u.value().clone());
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
                     // Format: nick[*]=+user@host

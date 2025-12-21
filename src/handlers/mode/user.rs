@@ -31,7 +31,7 @@ pub async fn handle_user_mode(
     }
 
     // Get current user modes
-    let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone());
+    let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone());
     let Some(user) = user_arc else {
         return Ok(());
     };
@@ -67,6 +67,16 @@ pub async fn handle_user_mode(
             };
             ctx.sender.send(mode_msg.clone()).await?;
             debug!(nick = %nick, modes = ?applied, "User modes changed");
+
+            // Notify observer of user update (Innovation 2)
+            // We need to drop the lock before notifying to avoid potential deadlocks
+            // (though notify_observer reads, so it would be a read-after-write which is fine,
+            // but dropping write lock early is good practice).
+        }
+        drop(user);
+
+        if !applied.is_empty() {
+            ctx.matrix.user_manager.notify_observer(ctx.uid, None).await;
         }
 
         // Report any rejected modes (like +o which only server can set)

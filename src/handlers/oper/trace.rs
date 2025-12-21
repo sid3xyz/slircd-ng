@@ -38,7 +38,7 @@ impl PostRegHandler for TraceHandler {
 
         if let Some(target_nick) = target {
             if let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) {
-                let user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.value().clone());
+                let user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.value().clone());
                 if let Some(user_arc) = user_arc {
                     let (target_nick, is_oper) = {
                         let user = user_arc.read().await;
@@ -69,6 +69,7 @@ impl PostRegHandler for TraceHandler {
         } else {
             let user_arcs = ctx
                 .matrix
+                .user_manager
                 .users
                 .iter()
                 .map(|entry| entry.value().clone())

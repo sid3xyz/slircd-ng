@@ -11,6 +11,8 @@ use super::super::super::{Context, HandlerError, HandlerResult, user_prefix};
 use super::enforcement::{check_akick, check_auto_modes};
 use super::responses::{handle_join_success, send_join_error, JoinSuccessContext};
 use slirc_proto::{Command, Message, Prefix, irc_to_lower};
+use slirc_proto::ircv3::msgid::generate_msgid;
+use slirc_proto::ircv3::server_time::format_server_time;
 use std::sync::Arc;
 use tracing::info;
 
@@ -27,6 +29,7 @@ pub(super) async fn join_channel(
     let (nick, user_name, visible_host, real_host, realname, session_id, account, away_message, caps, is_registered, is_oper, oper_type) = {
         let user_ref = ctx
             .matrix
+            .user_manager
             .users
             .get(ctx.uid)
             .ok_or(HandlerError::NickOrUserMissing)?;
@@ -60,7 +63,7 @@ pub(super) async fn join_channel(
     });
 
     // Check AKICK before joining (pass pre-fetched host)
-    if ctx.matrix.registered_channels.contains(&channel_lower)
+    if ctx.matrix.channel_manager.registered_channels.contains(&channel_lower)
         && let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name, &real_host).await
     {
         let reason = akick
@@ -88,7 +91,7 @@ pub(super) async fn join_channel(
     }
 
     // Check auto modes if registered (pass pre-fetched user data)
-    let initial_modes = if ctx.matrix.registered_channels.contains(&channel_lower) {
+    let initial_modes = if ctx.matrix.channel_manager.registered_channels.contains(&channel_lower) {
         check_auto_modes(ctx, &channel_lower, is_registered, &account).await
     } else {
         None
@@ -104,16 +107,19 @@ pub(super) async fn join_channel(
             Some(account_name.to_string()),
             Some(realname.clone()),
         ),
-    };
+    }.with_tag("msgid", Some(generate_msgid()))
+     .with_tag("time", Some(format_server_time()));
+
     let make_standard_join_msg = || Message {
         tags: None,
         prefix: Some(user_prefix(&nick, &user_name, &visible_host)),
         command: Command::JOIN(channel_name.to_string(), None, None),
-    };
+    }.with_tag("msgid", Some(generate_msgid()))
+     .with_tag("time", Some(format_server_time()));
 
     let matrix = ctx.matrix.clone();
     let mut attempt = 0;
-    let is_registered_channel = ctx.matrix.registered_channels.contains(&channel_lower);
+    let is_registered_channel = ctx.matrix.channel_manager.registered_channels.contains(&channel_lower);
 
     // Pre-load saved topic for registered channels (passed to actor at spawn)
     let initial_topic = if is_registered_channel {
@@ -134,8 +140,10 @@ pub(super) async fn join_channel(
     let mailbox_capacity = ctx.matrix.config.limits.channel_mailbox_capacity;
 
     loop {
+        let observer = ctx.matrix.channel_manager.observer.clone();
         let channel_sender = ctx
             .matrix
+            .channel_manager
             .channels
             .entry(channel_lower.clone())
             .or_insert_with(|| {
@@ -145,16 +153,19 @@ pub(super) async fn join_channel(
                     Arc::downgrade(&matrix),
                     initial_topic.clone(),
                     mailbox_capacity,
+                    observer,
                 )
             })
             .clone();
 
         let extended_join_msg = make_extended_join_msg();
+        info!(?extended_join_msg, "Created extended join msg");
         let standard_join_msg = make_standard_join_msg();
 
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         let sender = ctx
             .matrix
+            .user_manager
             .senders
             .get(ctx.uid)
             .map(|s| s.clone())
@@ -199,7 +210,7 @@ pub(super) async fn join_channel(
             }
             Ok(Err(error)) => {
                 if matches!(error, ChannelError::ChannelTombstone) && attempt == 0 {
-                    if ctx.matrix.channels.remove(&channel_lower).is_some() {
+                    if ctx.matrix.channel_manager.channels.remove(&channel_lower).is_some() {
                         crate::metrics::ACTIVE_CHANNELS.dec();
                     }
                     attempt += 1;
@@ -213,7 +224,7 @@ pub(super) async fn join_channel(
                 // Channel actor died between entry() and send() - race with cleanup.
                 // Retry once to create a fresh actor.
                 if attempt == 0 {
-                    if ctx.matrix.channels.remove(&channel_lower).is_some() {
+                    if ctx.matrix.channel_manager.channels.remove(&channel_lower).is_some() {
                         crate::metrics::ACTIVE_CHANNELS.dec();
                     }
                     attempt += 1;

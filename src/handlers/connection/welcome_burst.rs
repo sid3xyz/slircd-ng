@@ -27,7 +27,6 @@ use slirc_proto::transport::ZeroCopyTransportEnum;
 use slirc_proto::{Command, Message, Prefix, Response};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tracing::info;
 
 /// Writer that sends welcome burst directly to transport.
@@ -93,7 +92,7 @@ impl<'a> WelcomeBurstWriter<'a> {
         let remote_ip = self.remote_addr.ip().to_string();
 
         // Record successful connection for reputation
-        if let Some(spam_lock) = &self.matrix.spam_detector {
+        if let Some(spam_lock) = &self.matrix.security_manager.spam_detector {
             let spam = spam_lock.read().await;
             spam.record_connection_success(self.remote_addr.ip()).await;
         }
@@ -136,7 +135,7 @@ impl<'a> WelcomeBurstWriter<'a> {
         }
 
         // Check BanCache for user@host bans (G-lines, K-lines)
-        if let Some(ban_result) = self.matrix.ban_cache.check_user_host(user, &host) {
+        if let Some(ban_result) = self.matrix.security_manager.ban_cache.check_user_host(user, &host) {
             let ban_reason = format!("{}: {}", ban_result.ban_type, ban_result.reason);
             let reply = Response::err_yourebannedcreep(nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
@@ -201,6 +200,7 @@ impl<'a> WelcomeBurstWriter<'a> {
             cloak_suffix: security_config.cloak_suffix.clone(),
             caps: self.state.capabilities.clone(),
             certfp: self.state.certfp.clone(),
+            last_modified: self.matrix.clock(),
         });
 
         // Set account and +r if authenticated via SASL
@@ -217,16 +217,19 @@ impl<'a> WelcomeBurstWriter<'a> {
         let cloaked_host = user_obj.visible_host.clone();
 
         self.matrix
-            .users
-            .insert(self.uid.to_string(), Arc::new(RwLock::new(user_obj)));
+            .user_manager
+            .add_local_user(user_obj)
+            .await;
 
         crate::metrics::CONNECTED_USERS.inc();
 
-        let current_count = self.matrix.users.len();
+        let current_count = self.matrix.user_manager.users.len();
         self.matrix
+            .user_manager
             .max_local_users
             .fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
         self.matrix
+            .user_manager
             .max_global_users
             .fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
 
@@ -287,7 +290,7 @@ impl<'a> WelcomeBurstWriter<'a> {
             .list_modes("beIq")
             .param_always("k")
             .param_set("l")
-            .no_param("imnrst");
+            .no_param("imnrstMU");
 
         let targmax = TargMaxBuilder::new()
             .add("JOIN", 10)
@@ -316,6 +319,7 @@ impl<'a> WelcomeBurstWriter<'a> {
             .custom("MONITOR", Some("100"))
             .excepts(Some('e'))
             .invex(Some('I'))
+            .custom("EXTBAN", Some(",m"))
             .custom("ELIST", Some("MNU"))
             .status_msg("~&@%+")
             .custom("BOT", Some("B"))
@@ -380,7 +384,7 @@ impl<'a> WelcomeBurstWriter<'a> {
         notify_monitors_online(self.matrix, nick, user, &cloaked_host).await;
 
         // Send snomask 'c' (Connect)
-        self.matrix.send_snomask('c', &format!("Client connecting: {} ({}) [{}]", nick, user, ban_host)).await;
+        self.matrix.user_manager.send_snomask('c', &format!("Client connecting: {} ({}) [{}]", nick, user, ban_host)).await;
 
         Ok(())
     }

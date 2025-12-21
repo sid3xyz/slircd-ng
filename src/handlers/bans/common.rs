@@ -49,7 +49,7 @@ pub async fn disconnect_matching_ban<S>(
     let mut to_disconnect = Vec::with_capacity(4); // Ban typically affects few users
 
     // Collect matching users
-    for entry in ctx.matrix.users.iter() {
+    for entry in ctx.matrix.user_manager.users.iter() {
         let uid = entry.key().clone();
         let user = entry.value().read().await;
 

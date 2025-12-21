@@ -95,9 +95,9 @@ impl PostRegHandler for WhoisHandler {
         let target_lower = irc_to_lower(target);
 
         // Look up target user
-        let target_uid = ctx.matrix.nicks.get(&target_lower).map(|r| r.value().clone());
+        let target_uid = ctx.matrix.user_manager.nicks.get(&target_lower).map(|r| r.value().clone());
         if let Some(target_uid) = target_uid {
-            let target_user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+            let target_user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
             if let Some(target_user_arc) = target_user_arc {
                 // Clone needed data, drop lock immediately to prevent holding during async ops
                 let (
@@ -158,7 +158,7 @@ impl PostRegHandler for WhoisHandler {
                 let show_channels = if target_modes.invisible && target_uid != ctx.uid {
                     // Check if requester shares any channel with target
                     let mut shares_channel = false;
-                    let requester_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+                    let requester_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
                     if let Some(requester_arc) = requester_arc {
                         let requester = requester_arc.read().await;
                         for ch in &target_channels {
@@ -176,7 +176,7 @@ impl PostRegHandler for WhoisHandler {
                 if show_channels && !target_channels.is_empty() {
                     let mut channel_list = Vec::with_capacity(target_channels.len());
                     for channel_name in &target_channels {
-                        let Some(channel_sender) = ctx.matrix.channels.get(channel_name) else {
+                        let Some(channel_sender) = ctx.matrix.channel_manager.channels.get(channel_name) else {
                             continue;
                         };
                         if let Some(display) = get_channel_display_info(

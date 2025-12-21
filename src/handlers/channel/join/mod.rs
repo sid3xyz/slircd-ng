@@ -33,6 +33,8 @@ use async_trait::async_trait;
 use slirc_proto::{ChannelExt, MessageRef, Response};
 
 use creation::join_channel;
+use crate::telemetry::spans;
+use tracing::Instrument;
 
 pub struct JoinHandler;
 
@@ -45,77 +47,84 @@ impl PostRegHandler for JoinHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
-        // JOIN <channels> [keys]
-        let channels_str = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let channels_str_raw = msg.arg(0);
+        let span = spans::command("JOIN", ctx.uid, channels_str_raw);
 
-        // Handle "JOIN 0" - leave all channels
-        if channels_str == "0" {
-            return leave_all_channels(ctx).await;
-        }
+        async move {
+            // JOIN <channels> [keys]
+            let channels_str = channels_str_raw.ok_or(HandlerError::NeedMoreParams)?;
 
-        // Check join rate limit before processing any channels
-        let uid_string = ctx.uid.to_string();
-        if !ctx.matrix.rate_limiter.check_join_rate(&uid_string) {
-            let nick = ctx.state.nick.clone();
-            let reply = server_reply(
-                ctx.server_name(),
-                Response::ERR_TOOMANYCHANNELS,
-                vec![
-                    nick,
-                    channels_str.to_string(),
-                    "You are joining channels too quickly. Please wait.".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
-        }
-
-        // Parse channel list (comma-separated) and optional keys
-        let channels: Vec<&str> = channels_str.split(',').collect();
-        let keys: Vec<Option<&str>> = if let Some(keys_str) = msg.arg(1) {
-            let mut key_list: Vec<Option<&str>> = keys_str
-                .split(',')
-                .map(|k| {
-                    let trimmed = k.trim();
-                    if trimmed.is_empty() {
-                        None
-                    } else {
-                        Some(trimmed)
-                    }
-                })
-                .collect();
-            key_list.resize(channels.len(), None);
-            key_list
-        } else {
-            vec![None; channels.len()]
-        };
-
-        for (i, channel_name) in channels.iter().enumerate() {
-            let channel_name = channel_name.trim();
-            if channel_name.is_empty() {
-                continue;
+            // Handle "JOIN 0" - leave all channels
+            if channels_str == "0" {
+                return leave_all_channels(ctx).await;
             }
 
-            if !channel_name.is_channel_name() {
+            // Check join rate limit before processing any channels
+            let uid_string = ctx.uid.to_string();
+            if !ctx.matrix.security_manager.rate_limiter.check_join_rate(&uid_string) {
+                let nick = ctx.state.nick.clone();
                 let reply = server_reply(
                     ctx.server_name(),
-                    Response::ERR_NOSUCHCHANNEL,
+                    Response::ERR_TOOMANYCHANNELS,
                     vec![
-                        ctx.state.nick.clone(),
-                        channel_name.to_string(),
-                        "Invalid channel name".to_string(),
+                        nick,
+                        channels_str.to_string(),
+                        "You are joining channels too quickly. Please wait.".to_string(),
                     ],
                 );
-
                 ctx.sender.send(reply).await?;
-                continue;
+                return Ok(());
             }
 
-            let key = keys.get(i).and_then(|k| *k);
-            join_channel(ctx, channel_name, key).await?;
-        }
+            // Parse channel list (comma-separated) and optional keys
+            let channels: Vec<&str> = channels_str.split(',').collect();
+            let keys: Vec<Option<&str>> = if let Some(keys_str) = msg.arg(1) {
+                let mut key_list: Vec<Option<&str>> = keys_str
+                    .split(',')
+                    .map(|k| {
+                        let trimmed = k.trim();
+                        if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed)
+                        }
+                    })
+                    .collect();
+                key_list.resize(channels.len(), None);
+                key_list
+            } else {
+                vec![None; channels.len()]
+            };
 
-        Ok(())
+            for (i, channel_name) in channels.iter().enumerate() {
+                let channel_name = channel_name.trim();
+                if channel_name.is_empty() {
+                    continue;
+                }
+
+                if !channel_name.is_channel_name() {
+                    let reply = server_reply(
+                        ctx.server_name(),
+                        Response::ERR_NOSUCHCHANNEL,
+                        vec![
+                            ctx.state.nick.clone(),
+                            channel_name.to_string(),
+                            "Invalid channel name".to_string(),
+                        ],
+                    );
+
+                    ctx.sender.send(reply).await?;
+                    continue;
+                }
+
+                let key = keys.get(i).and_then(|k| *k);
+                join_channel(ctx, channel_name, key).await?;
+            }
+
+            Ok(())
+        }
+        .instrument(span)
+        .await
     }
 }
 
@@ -123,7 +132,7 @@ impl PostRegHandler for JoinHandler {
 async fn leave_all_channels(ctx: &mut Context<'_, RegisteredState>) -> HandlerResult {
     // Single user read for both mask and channel list
     let (nick, user_name, host, channels): (String, String, String, Vec<String>) = {
-        let user_ref = ctx.matrix.users.get(ctx.uid)
+        let user_ref = ctx.matrix.user_manager.users.get(ctx.uid)
             .ok_or(HandlerError::NickOrUserMissing)?;
         let user = user_ref.read().await;
         (

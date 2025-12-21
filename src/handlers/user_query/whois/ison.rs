@@ -45,7 +45,7 @@ impl PostRegHandler for IsonHandler {
         let mut online = Vec::with_capacity(nicks.len());
         for target_nick in nicks {
             let target_lower = irc_to_lower(target_nick);
-            if ctx.matrix.nicks.contains_key(&target_lower) {
+            if ctx.matrix.user_manager.nicks.contains_key(&target_lower) {
                 // Return the nick as the user typed it (case preserved)
                 online.push((*target_nick).to_string());
             }

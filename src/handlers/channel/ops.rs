@@ -54,8 +54,10 @@ pub async fn force_join_channel<S>(
     let mailbox_capacity = ctx.matrix.config.limits.channel_mailbox_capacity;
 
     // Get or create channel
+    let observer = ctx.matrix.channel_manager.observer.clone();
     let channel_ref = ctx
         .matrix
+        .channel_manager
         .channels
         .entry(channel_lower.clone())
         .or_insert_with(|| {
@@ -65,13 +67,14 @@ pub async fn force_join_channel<S>(
                 std::sync::Arc::downgrade(ctx.matrix),
                 None, // No initial topic for SAJOIN-created channels
                 mailbox_capacity,
+                observer,
             )
         })
         .clone();
 
     // Get user data
     let (caps, user_context, sender, session_id) =
-        if let Some(user_arc) = ctx.matrix.users.get(target.uid).map(|u| u.value().clone()) {
+        if let Some(user_arc) = ctx.matrix.user_manager.users.get(target.uid).map(|u| u.value().clone()) {
             let user = user_arc.read().await;
             let context = crate::security::UserContext::for_registration(
                 crate::security::RegistrationParams {
@@ -86,7 +89,7 @@ pub async fn force_join_channel<S>(
                     oper_type: user.modes.oper_type.clone(),
                 },
             );
-            let sender = ctx.matrix.senders.get(target.uid).map(|s| s.clone());
+            let sender = ctx.matrix.user_manager.senders.get(target.uid).map(|s| s.clone());
             (user.caps.clone(), context, sender, user.session_id)
         } else {
             return Ok(());
@@ -149,7 +152,7 @@ pub async fn force_join_channel<S>(
     };
 
     // Add channel to user's list
-    if let Some(user_arc) = ctx.matrix.users.get(target.uid).map(|u| u.value().clone()) {
+    if let Some(user_arc) = ctx.matrix.user_manager.users.get(target.uid).map(|u| u.value().clone()) {
         let mut user = user_arc.write().await;
         user.channels.insert(channel_lower.clone());
     }
@@ -189,7 +192,7 @@ pub async fn force_join_channel<S>(
             let mut names_list = Vec::with_capacity(members.len());
 
             for (uid, member_modes) in members {
-                if let Some(user_arc) = ctx.matrix.users.get(&uid).map(|u| u.value().clone()) {
+                if let Some(user_arc) = ctx.matrix.user_manager.users.get(&uid).map(|u| u.value().clone()) {
                     let user = user_arc.read().await;
                     let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
                         format!("{}{}", prefix, user.nick)
@@ -255,7 +258,7 @@ pub async fn force_part_channel<S>(
     reason: Option<&str>,
 ) -> Result<bool, super::super::HandlerError> {
     // Get channel reference
-    let channel_sender = match ctx.matrix.channels.get(channel_lower) {
+    let channel_sender = match ctx.matrix.channel_manager.channels.get(channel_lower) {
         Some(c) => c.clone(),
         None => return Ok(false),
     };
@@ -276,7 +279,7 @@ pub async fn force_part_channel<S>(
 
     if (channel_sender.send(event).await).is_err() {
         // Channel actor died, remove it
-        ctx.matrix.channels.remove(channel_lower);
+        ctx.matrix.channel_manager.channels.remove(channel_lower);
         return Ok(false);
     }
 
@@ -284,13 +287,13 @@ pub async fn force_part_channel<S>(
         Ok(Ok(remaining_members)) => {
             // Success
             // Remove channel from user's list
-            if let Some(user) = ctx.matrix.users.get(target.uid) {
+            if let Some(user) = ctx.matrix.user_manager.users.get(target.uid) {
                 let mut user = user.write().await;
                 user.channels.remove(channel_lower);
             }
 
             if remaining_members == 0 {
-                ctx.matrix.channels.remove(channel_lower);
+                ctx.matrix.channel_manager.channels.remove(channel_lower);
                 crate::metrics::ACTIVE_CHANNELS.dec();
             }
 

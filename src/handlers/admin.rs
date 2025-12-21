@@ -19,7 +19,7 @@ use slirc_proto::{Command, Message, MessageRef, Mode, Prefix, Response, irc_to_l
 
 /// Get user prefix info (user, host, nick) for message construction.
 async fn get_user_prefix<S>(ctx: &Context<'_, S>, uid: &str) -> Option<(String, String, String)> {
-    let user_ref = ctx.matrix.users.get(uid)?;
+    let user_ref = ctx.matrix.user_manager.users.get(uid)?;
     let user = user_ref.read().await;
     Some((user.user.clone(), user.host.clone(), user.nick.clone()))
 }
@@ -69,7 +69,7 @@ impl PostRegHandler for SajoinHandler {
         };
 
         // Get sender for the target user to send topic/names
-        let target_sender = ctx.matrix.senders.get(&target_uid).map(|r| r.clone());
+        let target_sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|r| r.clone());
 
         // Use shared force_join_channel helper
         let target = TargetUser {
@@ -213,7 +213,7 @@ impl PostRegHandler for SanickHandler {
 
         // Check if new nick is already in use
         let new_lower = irc_to_lower(new_nick);
-        if ctx.matrix.nicks.contains_key(&new_lower) {
+        if ctx.matrix.user_manager.nicks.contains_key(&new_lower) {
             ctx.send_reply(
                 Response::ERR_NICKNAMEINUSE,
                 vec![
@@ -228,7 +228,7 @@ impl PostRegHandler for SanickHandler {
 
         // Get target user info for NICK message
         let (target_user, target_host) = {
-            let user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+            let user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 (user.user.clone(), user.host.clone())
@@ -249,11 +249,11 @@ impl PostRegHandler for SanickHandler {
         };
 
         // Update nick mapping
-        ctx.matrix.nicks.remove(&old_lower);
-        ctx.matrix.nicks.insert(new_lower, target_uid.clone());
+        ctx.matrix.user_manager.nicks.remove(&old_lower);
+        ctx.matrix.user_manager.nicks.insert(new_lower, target_uid.clone());
 
         // Update user's nick
-        let user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+        let user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
             user.nick = new_nick.to_string();
@@ -261,7 +261,7 @@ impl PostRegHandler for SanickHandler {
 
         // Broadcast NICK change to all channels the user is in
         let target_channels = {
-            let user_arc = ctx.matrix.users.get(&target_uid).map(|u| u.clone());
+            let user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.channels.iter().cloned().collect::<Vec<_>>()
@@ -271,12 +271,12 @@ impl PostRegHandler for SanickHandler {
         };
         for channel_name in &target_channels {
             ctx.matrix
-                .broadcast_to_channel(channel_name, nick_msg.clone(), None)
+                .channel_manager.broadcast_to_channel(channel_name, nick_msg.clone(), None)
                 .await;
         }
 
         // Also send to the target user
-        let sender = ctx.matrix.senders.get(&target_uid).map(|s| s.clone());
+        let sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|s| s.clone());
         if let Some(sender) = sender {
             let _ = sender.send(nick_msg).await;
         }
@@ -325,7 +325,7 @@ impl PostRegHandler for SamodeHandler {
         let channel_lower = irc_to_lower(channel_name);
 
         // Get channel
-        let channel = match ctx.matrix.channels.get(&channel_lower) {
+        let channel = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
             Some(c) => c.clone(),
             None => {
                 let reply = Response::err_nosuchchannel(oper_nick, channel_name)
@@ -361,7 +361,7 @@ impl PostRegHandler for SamodeHandler {
                 slirc_proto::mode::ChannelMode::Oper | slirc_proto::mode::ChannelMode::Voice => {
                     if let Some(nick) = mode.arg() {
                         let nick_lower = irc_to_lower(nick);
-                        if let Some(uid) = ctx.matrix.nicks.get(&nick_lower) {
+                        if let Some(uid) = ctx.matrix.user_manager.nicks.get(&nick_lower) {
                             target_uids.insert(nick.to_string(), uid.value().clone());
                         }
                     }

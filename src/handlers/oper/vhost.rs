@@ -61,7 +61,7 @@ impl PostRegHandler for VhostHandler {
             }
         };
 
-        if let Some(target_user_ref) = ctx.matrix.users.get(&target_uid) {
+        if let Some(target_user_ref) = ctx.matrix.user_manager.users.get(&target_uid) {
             let mut target_user = target_user_ref.write().await;
             let old_vhost = target_user.visible_host.clone();
             target_user.visible_host = new_vhost.to_string();
@@ -93,7 +93,7 @@ impl PostRegHandler for VhostHandler {
 
             for channel_name in &channels {
                 ctx.matrix
-                    .broadcast_to_channel_with_cap(
+                    .channel_manager.broadcast_to_channel_with_cap(
                         channel_name,
                         chghost_msg.clone(),
                         None,

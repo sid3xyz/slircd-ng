@@ -218,7 +218,7 @@ async fn handle_channel_who(
     let nick = &ctx.state.nick;
     let channel_lower = irc_to_lower(channel_name);
 
-    let channel_sender = match ctx.matrix.channels.get(&channel_lower) {
+    let channel_sender = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
         Some(c) => c.clone(),
         None => return Ok(()),
     };
@@ -267,7 +267,7 @@ async fn handle_channel_who(
             break;
         }
 
-        let member_arc = match ctx.matrix.users.get(&member_uid) {
+        let member_arc = match ctx.matrix.user_manager.users.get(&member_uid) {
             Some(u) => u.clone(),
             None => continue,
         };
@@ -334,7 +334,7 @@ async fn handle_mask_who(
     let is_exact_query = !mask_str.contains('*') && !mask_str.contains('?');
 
     // Get requester's operator status for invisible visibility
-    let requester_is_oper = ctx.matrix.users.get(ctx.uid)
+    let requester_is_oper = ctx.matrix.user_manager.users.get(ctx.uid)
         .map(|u| u.clone())
         .map(|arc| {
             // We need to check synchronously - use try_read
@@ -343,7 +343,7 @@ async fn handle_mask_who(
         .unwrap_or(false);
 
     // Pre-collect requester's channel memberships for invisible checking
-    let requester_channels: Vec<String> = ctx.matrix.users.get(ctx.uid)
+    let requester_channels: Vec<String> = ctx.matrix.user_manager.users.get(ctx.uid)
         .map(|u| u.clone())
         .map(|arc| {
             arc.try_read()
@@ -355,6 +355,7 @@ async fn handle_mask_who(
     // Collect all users
     let all_users: Vec<_> = ctx
         .matrix
+        .user_manager
         .users
         .iter()
         .map(|e| (e.key().clone(), e.value().clone()))
@@ -455,7 +456,7 @@ impl PostRegHandler for WhoHandler {
         let nick = ctx.state.nick.clone();
 
         // Check if the user has multi-prefix CAP enabled
-        let multi_prefix = ctx.matrix.users.get(ctx.uid)
+        let multi_prefix = ctx.matrix.user_manager.users.get(ctx.uid)
             .map(|u| u.clone())
             .map(|arc| arc.try_read().map(|u| u.caps.contains("multi-prefix")).unwrap_or(false))
             .unwrap_or(false);

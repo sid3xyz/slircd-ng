@@ -44,7 +44,7 @@ impl PostRegHandler for ChgIdentHandler {
         };
 
         let (old_nick, old_user, old_host, channels) = {
-            let Some(user_ref) = ctx.matrix.users.get(&target_uid) else {
+            let Some(user_ref) = ctx.matrix.user_manager.users.get(&target_uid) else {
                 let reply = Response::err_nosuchnick(oper_nick, target_nick)
                     .with_prefix(ctx.server_prefix());
                 ctx.send_error("CHGIDENT", "ERR_NOSUCHNICK", reply).await?;
@@ -76,7 +76,7 @@ impl PostRegHandler for ChgIdentHandler {
 
         for channel_name in &channels {
             ctx.matrix
-                .broadcast_to_channel_with_cap(
+                .channel_manager.broadcast_to_channel_with_cap(
                     channel_name,
                     chghost_msg.clone(),
                     None,
@@ -86,8 +86,8 @@ impl PostRegHandler for ChgIdentHandler {
                 .await;
         }
 
-        if let Some(target_sender) = ctx.matrix.senders.get(&target_uid)
-            && let Some(user_ref) = ctx.matrix.users.get(&target_uid)
+        if let Some(target_sender) = ctx.matrix.user_manager.senders.get(&target_uid)
+            && let Some(user_ref) = ctx.matrix.user_manager.users.get(&target_uid)
         {
             let user = user_ref.read().await;
             if user.caps.contains("chghost") {

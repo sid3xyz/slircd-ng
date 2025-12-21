@@ -112,7 +112,7 @@ impl PostRegHandler for WhowasHandler {
             if target.contains('*') || target.contains('?') {
                 // Wildcard match - search all entries
                 let pattern = glob_to_regex(&target_lower);
-                for entry in ctx.matrix.whowas.iter() {
+                for entry in ctx.matrix.user_manager.whowas.iter() {
                     if pattern.is_match(entry.key()) {
                         for e in entry.value().iter() {
                             if first_matched_nick.is_none() {
@@ -122,7 +122,7 @@ impl PostRegHandler for WhowasHandler {
                         }
                     }
                 }
-            } else if let Some(entries) = ctx.matrix.whowas.get(&target_lower) {
+            } else if let Some(entries) = ctx.matrix.user_manager.whowas.get(&target_lower) {
                 for entry in entries.iter() {
                     if first_matched_nick.is_none() {
                         first_matched_nick = Some(entry.nick.clone());

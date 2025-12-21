@@ -27,10 +27,15 @@ pub(super) async fn check_auto_modes(
     if account_record.id == channel_record.founder_account_id {
         return Some(MemberModes {
             owner: false,
+            owner_ts: None,
             admin: false,
+            admin_ts: None,
             op: true,
+            op_ts: None,
             halfop: false,
+            halfop_ts: None,
             voice: false,
+            voice_ts: None,
             join_time: None,
         });
     }
@@ -48,10 +53,15 @@ pub(super) async fn check_auto_modes(
     if op || voice {
         Some(MemberModes {
             owner: false,
+            owner_ts: None,
             admin: false,
+            admin_ts: None,
             op,
+            op_ts: None,
             halfop: false,
+            halfop_ts: None,
             voice,
+            voice_ts: None,
             join_time: None,
         })
     } else {

@@ -32,7 +32,7 @@ impl PostRegHandler for NamesHandler {
         let (nick, _user) = ctx.nick_user();
 
         // Check if the user has multi-prefix CAP enabled
-        let multi_prefix = if let Some(user) = ctx.matrix.users.get(ctx.uid) {
+        let multi_prefix = if let Some(user) = ctx.matrix.user_manager.users.get(ctx.uid) {
             let user = user.read().await;
             user.caps.contains("multi-prefix")
         } else {
@@ -50,7 +50,7 @@ impl PostRegHandler for NamesHandler {
             // Secret channels (+s) are not shown unless user is in them
 
             // Collect and sort channels alphabetically for deterministic output
-            let mut channel_names: Vec<_> = ctx.matrix.channels.iter()
+            let mut channel_names: Vec<_> = ctx.matrix.channel_manager.channels.iter()
                 .map(|entry| entry.key().clone())
                 .collect();
             channel_names.sort();
@@ -66,7 +66,7 @@ impl PostRegHandler for NamesHandler {
                     truncated = true;
                     break;
                 }
-                let Some(channel_arc) = ctx.matrix.channels.get(&channel_lower) else {
+                let Some(channel_arc) = ctx.matrix.channel_manager.channels.get(&channel_lower) else {
                     continue;
                 };
                 let sender = channel_arc.value();
@@ -102,8 +102,26 @@ impl PostRegHandler for NamesHandler {
                 };
 
                 let mut names_list = Vec::with_capacity(members.len());
+
+                let is_auditorium = channel_info.modes.contains(&crate::state::actor::ChannelMode::Auditorium);
+                let requester_privileged = if let Some(modes) = members.get(&ctx.uid.to_string()) {
+                    modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
+                } else {
+                    false
+                };
+
                 for (uid, member_modes) in &members {
-                    if let Some(user) = ctx.matrix.users.get(uid) {
+                    // Auditorium filtering: if +u and requester is not privileged,
+                    // they only see privileged users.
+                    if is_auditorium && !requester_privileged {
+                        let is_target_privileged = member_modes.voice || member_modes.halfop || member_modes.op || member_modes.admin || member_modes.owner;
+
+                        if !is_target_privileged {
+                            continue;
+                        }
+                    }
+
+                    if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
                         let user = user.read().await;
                         let prefix = get_member_prefix(member_modes, multi_prefix);
                         names_list.push((user.nick.clone(), format!("{}{}", prefix, user.nick)));
@@ -169,7 +187,7 @@ impl PostRegHandler for NamesHandler {
         for (idx, chan) in channels.iter().enumerate() {
             let channel_lower = irc_to_lower(chan);
 
-        if let Some(channel_sender) = ctx.matrix.channels.get(&channel_lower) {
+        if let Some(channel_sender) = ctx.matrix.channel_manager.channels.get(&channel_lower) {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let _ = channel_sender
                 .send(crate::state::actor::ChannelEvent::GetInfo {
@@ -213,8 +231,25 @@ impl PostRegHandler for NamesHandler {
 
             let mut names_list = Vec::with_capacity(members.len());
 
+            let is_auditorium = channel_info.modes.contains(&crate::state::actor::ChannelMode::Auditorium);
+            let requester_privileged = if let Some(modes) = members.get(&ctx.uid.to_string()) {
+                modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
+            } else {
+                false
+            };
+
             for (uid, member_modes) in &members {
-                if let Some(user) = ctx.matrix.users.get(uid) {
+                // Auditorium filtering: if +u and requester is not privileged,
+                // they only see privileged users.
+                if is_auditorium && !requester_privileged {
+                    let is_target_privileged = member_modes.voice || member_modes.halfop || member_modes.op || member_modes.admin || member_modes.owner;
+
+                    if !is_target_privileged {
+                        continue;
+                    }
+                }
+
+                if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
                     let user = user.read().await;
                     let prefix = get_member_prefix(member_modes, multi_prefix);
                     names_list.push((user.nick.clone(), format!("{}{}", prefix, user.nick)));

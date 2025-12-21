@@ -55,7 +55,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         }
 
         // Atomically claim nickname (prevents TOCTOU where two clients race between check/insert)
-        match ctx.matrix.nicks.entry(nick_lower.clone()) {
+        match ctx.matrix.user_manager.nicks.entry(nick_lower.clone()) {
             Entry::Occupied(entry) => {
                 let owner_uid = entry.get();
                 if owner_uid != ctx.uid {
@@ -71,11 +71,11 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         // Check +N (no nick change) on any channel the user is in
         // Only applies to registered (connected) users changing their nick
         if ctx.state.is_registered()
-            && let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.clone())
+            && let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone())
         {
             let user = user_arc.read().await;
             for channel_lower in &user.channels {
-                let channel_sender = ctx.matrix.channels.get(channel_lower).map(|c| c.clone());
+                let channel_sender = ctx.matrix.channel_manager.channels.get(channel_lower).map(|c| c.clone());
                 if let Some(channel_sender) = channel_sender {
                     let (tx, rx) = tokio::sync::oneshot::channel();
                     let _ = channel_sender
@@ -129,14 +129,15 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
 
             // If the lowercase nick is changing, remove the old mapping (case-only changes keep mapping)
             if old_nick_lower != nick_lower {
-                ctx.matrix.nicks.remove(&old_nick_lower);
+                ctx.matrix.user_manager.nicks.remove(&old_nick_lower);
             }
             // Clear any enforcement timer for old nick
-            ctx.matrix.enforce_timers.remove(ctx.uid);
+            ctx.matrix.user_manager.enforce_timers.remove(ctx.uid);
         }
 
         // Register new nick
         ctx.matrix
+            .user_manager
             .nicks
             .insert(nick_lower.clone(), ctx.uid.to_string());
         ctx.state.set_nick(nick.to_string());
@@ -144,7 +145,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         // Send NICK change message for registered users
         if let Some(old_nick) = old_nick_for_change {
             // Get user info for the prefix and channels
-            let (nick_msg, user_channels) = if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.clone()) {
+            let (nick_msg, user_channels) = if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone()) {
                 let user = user_arc.read().await;
                 let msg = Message {
                     tags: None,
@@ -178,11 +179,11 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             // Broadcast to all channels the user is in (including case-only changes)
             for channel_lower in &user_channels {
                 ctx.matrix
-                    .broadcast_to_channel(channel_lower, nick_msg.clone(), Some(ctx.uid))
+                    .channel_manager.broadcast_to_channel(channel_lower, nick_msg.clone(), Some(ctx.uid))
                     .await;
 
                 // Update the channel actor's user_nicks map
-                let channel_sender = ctx.matrix.channels.get(channel_lower).map(|c| c.clone());
+                let channel_sender = ctx.matrix.channel_manager.channels.get(channel_lower).map(|c| c.clone());
                 if let Some(channel_sender) = channel_sender {
                     let _ = channel_sender
                         .send(crate::state::actor::ChannelEvent::NickChange {
@@ -194,18 +195,21 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             }
 
             // Also update the User state with the new nick
-            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.nick = nick.to_string();
             }
+
+            // Notify observer of user update (Innovation 2)
+            ctx.matrix.user_manager.notify_observer(ctx.uid, None).await;
         }
 
         // Notify MONITOR watchers that new nick is online (only for already-registered users)
         // Skip notification for case-only changes (already computed above)
         if ctx.state.is_registered() && !is_case_only_change {
             // Get user info for the hostmask
-            let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+            let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 notify_monitors_online(ctx.matrix, nick, &user.user, &user.visible_host).await;
@@ -216,7 +220,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
 
         // Check if nick enforcement should be started
         // Only if user is not already identified to an account
-        let user_arc = ctx.matrix.users.get(ctx.uid).map(|u| u.clone());
+        let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
         let is_identified = if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             user.modes.registered
@@ -232,6 +236,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 // Start 60 second timer
                 let deadline = Instant::now() + Duration::from_secs(60);
                 ctx.matrix
+                    .user_manager
                     .enforce_timers
                     .insert(ctx.uid.to_string(), deadline);
 

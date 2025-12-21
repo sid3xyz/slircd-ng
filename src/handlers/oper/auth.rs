@@ -165,7 +165,7 @@ impl PostRegHandler for OperHandler {
 
         if let Some(ref required_mask) = oper_block.hostmask {
             let (user_nick, user_user, user_host) =
-                if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+                if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
                     let user = user_arc.read().await;
                     (user.nick.clone(), user.user.clone(), user.host.clone())
                 } else {
@@ -205,7 +205,7 @@ impl PostRegHandler for OperHandler {
         ctx.state.failed_oper_attempts = 0;
 
         let (user_nick, user_user, user_host) =
-            if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+            if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
                 let user = user_arc.read().await;
                 (user.nick.clone(), user.user.clone(), user.host.clone())
             } else {
@@ -216,15 +216,18 @@ impl PostRegHandler for OperHandler {
                 )
             };
 
-        if let Some(user_arc) = ctx.matrix.users.get(ctx.uid).map(|u| u.value().clone()) {
+        if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
             let mut user = user_arc.write().await;
             user.modes.oper = true;
         }
 
+        // Notify observer of user update (Innovation 2)
+        ctx.matrix.user_manager.notify_observer(ctx.uid, None).await;
+
         tracing::info!(nick = %nick, oper_name = %name, "OPER successful");
 
         // Send snomask 'o'
-        ctx.matrix.send_snomask('o', &format!("OPER: {} ({}) is now an IRC operator", nick, name)).await;
+        ctx.matrix.user_manager.send_snomask('o', &format!("OPER: {} ({}) is now an IRC operator", nick, name)).await;
 
         let reply = server_reply(
             &server_name,

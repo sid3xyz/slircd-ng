@@ -47,7 +47,7 @@ impl PostRegHandler for DieHandler {
 
         tracing::warn!(oper = %nick, "DIE command issued - initiating shutdown");
 
-        ctx.matrix.shutdown_tx.send(()).map_err(|_| {
+        ctx.matrix.lifecycle_manager.shutdown_tx.send(()).map_err(|_| {
             tracing::error!("Failed to send shutdown signal - no receivers");
             HandlerError::Send(mpsc::error::SendError(slirc_proto::Message::notice(
                 "*",
@@ -99,7 +99,7 @@ impl PostRegHandler for RehashHandler {
             let dlines = ctx.db.bans().get_active_dlines().await?;
             let zlines = ctx.db.bans().get_active_zlines().await?;
 
-            match ctx.matrix.ip_deny_list.write() {
+            match ctx.matrix.security_manager.ip_deny_list.write() {
                 Ok(mut deny_list) => {
                     deny_list.reload_from_database(&dlines, &zlines);
                     Ok::<_, anyhow::Error>(())
@@ -173,7 +173,7 @@ impl PostRegHandler for RestartHandler {
 
         tracing::warn!(oper = %nick, "RESTART command issued - exec restarting");
 
-        ctx.matrix.shutdown_tx.send(()).map_err(|_| {
+        ctx.matrix.lifecycle_manager.shutdown_tx.send(()).map_err(|_| {
             tracing::error!("Failed to send shutdown signal - no receivers");
             HandlerError::Send(mpsc::error::SendError(slirc_proto::Message::notice(
                 "*",

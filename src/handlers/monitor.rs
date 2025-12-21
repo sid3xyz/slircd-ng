@@ -72,6 +72,7 @@ async fn handle_add(
     // Get or create this user's monitor set
     let user_monitors = ctx
         .matrix
+        .monitor_manager
         .monitors
         .entry(ctx.uid.to_string())
         .or_insert_with(DashSet::new);
@@ -109,15 +110,17 @@ async fn handle_add(
 
         // Add to reverse mapping (who is monitoring this nick)
         ctx.matrix
+            .monitor_manager
             .monitoring
             .entry(target_lower.clone())
             .or_insert_with(DashSet::new)
             .insert(ctx.uid.to_string());
 
         // Check if target is online
-        if let Some(target_uid) = ctx.matrix.nicks.get(&target_lower) {
+        if let Some(target_uid) = ctx.matrix.user_manager.nicks.get(&target_lower) {
             let user_arc = ctx
                 .matrix
+                .user_manager
                 .users
                 .get(target_uid.value())
                 .map(|u| u.value().clone());
@@ -160,7 +163,7 @@ async fn handle_remove(ctx: &mut Context<'_, RegisteredState>, msg: &MessageRef<
         _ => return Ok(()),
     };
 
-    if let Some(user_monitors) = ctx.matrix.monitors.get(ctx.uid) {
+    if let Some(user_monitors) = ctx.matrix.monitor_manager.monitors.get(ctx.uid) {
         for target in targets.split(',') {
             let target = target.trim();
             if target.is_empty() {
@@ -173,7 +176,7 @@ async fn handle_remove(ctx: &mut Context<'_, RegisteredState>, msg: &MessageRef<
             user_monitors.remove(&target_lower);
 
             // Remove from reverse mapping
-            if let Some(watchers) = ctx.matrix.monitoring.get(&target_lower) {
+            if let Some(watchers) = ctx.matrix.monitor_manager.monitoring.get(&target_lower) {
                 watchers.remove(ctx.uid);
             }
         }
@@ -185,10 +188,10 @@ async fn handle_remove(ctx: &mut Context<'_, RegisteredState>, msg: &MessageRef<
 /// Handle MONITOR C - clear all monitored nicknames.
 #[allow(clippy::result_large_err)]
 fn handle_clear(ctx: &mut Context<'_, RegisteredState>) -> HandlerResult {
-    if let Some((_, user_monitors)) = ctx.matrix.monitors.remove(ctx.uid) {
+    if let Some((_, user_monitors)) = ctx.matrix.monitor_manager.monitors.remove(ctx.uid) {
         // Remove from all reverse mappings
         for target_lower in user_monitors.iter() {
-            if let Some(watchers) = ctx.matrix.monitoring.get(target_lower.as_str()) {
+            if let Some(watchers) = ctx.matrix.monitor_manager.monitoring.get(target_lower.as_str()) {
                 watchers.remove(ctx.uid);
             }
         }
@@ -199,7 +202,7 @@ fn handle_clear(ctx: &mut Context<'_, RegisteredState>) -> HandlerResult {
 
 /// Handle MONITOR L - list all monitored nicknames.
 async fn handle_list(ctx: &mut Context<'_, RegisteredState>, nick: &str, server_name: &str) -> HandlerResult {
-    if let Some(user_monitors) = ctx.matrix.monitors.get(ctx.uid) {
+    if let Some(user_monitors) = ctx.matrix.monitor_manager.monitors.get(ctx.uid) {
         // Collect all monitored nicks
         let targets: Vec<String> = user_monitors.iter().map(|r| r.clone()).collect();
 
@@ -233,11 +236,12 @@ async fn handle_status(ctx: &mut Context<'_, RegisteredState>, nick: &str, serve
     let mut online = Vec::with_capacity(16); // Status returns full monitor list
     let mut offline = Vec::with_capacity(16);
 
-    if let Some(user_monitors) = ctx.matrix.monitors.get(ctx.uid) {
+    if let Some(user_monitors) = ctx.matrix.monitor_manager.monitors.get(ctx.uid) {
         for target_lower in user_monitors.iter() {
-            if let Some(target_uid) = ctx.matrix.nicks.get(target_lower.as_str()) {
+            if let Some(target_uid) = ctx.matrix.user_manager.nicks.get(target_lower.as_str()) {
                 let user_arc = ctx
                     .matrix
+                    .user_manager
                     .users
                     .get(target_uid.value())
                     .map(|u| u.value().clone());
@@ -294,6 +298,7 @@ pub async fn notify_monitors_online(matrix: &Arc<Matrix>, nick: &str, user: &str
 
     // Collect watcher UIDs first to avoid holding DashSet lock across await points
     let watcher_uids: Vec<String> = matrix
+        .monitor_manager
         .monitoring
         .get(&nick_lower)
         .map(|watchers| watchers.iter().map(|uid| uid.clone()).collect())
@@ -311,7 +316,7 @@ pub async fn notify_monitors_online(matrix: &Arc<Matrix>, nick: &str, user: &str
     );
 
     for watcher_uid in watcher_uids {
-        let sender = matrix.senders.get(&watcher_uid).map(|s| s.clone());
+        let sender = matrix.user_manager.senders.get(&watcher_uid).map(|s| s.clone());
         if let Some(sender) = sender {
             let _ = sender.send(reply.clone()).await;
         }
@@ -327,6 +332,7 @@ pub async fn notify_monitors_offline(matrix: &Arc<Matrix>, nick: &str) {
 
     // Collect watcher UIDs first to avoid holding DashSet lock across await points
     let watcher_uids: Vec<String> = matrix
+        .monitor_manager
         .monitoring
         .get(&nick_lower)
         .map(|watchers| watchers.iter().map(|uid| uid.clone()).collect())
@@ -343,7 +349,7 @@ pub async fn notify_monitors_offline(matrix: &Arc<Matrix>, nick: &str) {
     );
 
     for watcher_uid in watcher_uids {
-        let sender = matrix.senders.get(&watcher_uid).map(|s| s.clone());
+        let sender = matrix.user_manager.senders.get(&watcher_uid).map(|s| s.clone());
         if let Some(sender) = sender {
             let _ = sender.send(reply.clone()).await;
         }
@@ -352,10 +358,10 @@ pub async fn notify_monitors_offline(matrix: &Arc<Matrix>, nick: &str) {
 
 /// Clean up a user's monitor entries when they disconnect.
 pub fn cleanup_monitors(matrix: &Arc<Matrix>, uid: &str) {
-    if let Some((_, user_monitors)) = matrix.monitors.remove(uid) {
+    if let Some((_, user_monitors)) = matrix.monitor_manager.monitors.remove(uid) {
         // Remove from all reverse mappings
         for target_lower in user_monitors.iter() {
-            if let Some(watchers) = matrix.monitoring.get(target_lower.as_str()) {
+            if let Some(watchers) = matrix.monitor_manager.monitoring.get(target_lower.as_str()) {
                 watchers.remove(uid);
             }
         }

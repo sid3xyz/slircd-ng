@@ -73,7 +73,7 @@ pub(super) async fn leave_channel_internal<S>(
     reason: Option<&str>,
 ) -> HandlerResult {
     // Check if channel exists
-    let channel_sender = match ctx.matrix.channels.get(channel_lower) {
+    let channel_sender = match ctx.matrix.channel_manager.channels.get(channel_lower) {
         Some(c) => c.clone(),
         None => {
             let reply = Response::err_nosuchchannel(nick, channel_lower)
@@ -95,7 +95,7 @@ pub(super) async fn leave_channel_internal<S>(
 
     if (channel_sender.send(event).await).is_err() {
         // Channel actor died, remove it
-        ctx.matrix.channels.remove(channel_lower);
+        ctx.matrix.channel_manager.channels.remove(channel_lower);
         return Ok(());
     }
 
@@ -103,13 +103,13 @@ pub(super) async fn leave_channel_internal<S>(
         Ok(Ok(remaining_members)) => {
             // Success
             // Remove channel from user's list
-            if let Some(user) = ctx.matrix.users.get(ctx.uid) {
+            if let Some(user) = ctx.matrix.user_manager.users.get(ctx.uid) {
                 let mut user = user.write().await;
                 user.channels.remove(channel_lower);
             }
 
             if remaining_members == 0 {
-                ctx.matrix.channels.remove(channel_lower);
+                ctx.matrix.channel_manager.channels.remove(channel_lower);
                 crate::metrics::ACTIVE_CHANNELS.dec();
             }
 
@@ -134,7 +134,7 @@ pub(super) async fn leave_channel_internal<S>(
         }
         Err(_) => {
             // Actor dropped
-            ctx.matrix.channels.remove(channel_lower);
+            ctx.matrix.channel_manager.channels.remove(channel_lower);
         }
     }
 
