@@ -46,6 +46,9 @@ pub enum HandlerError {
     #[error("internal error: nick or user missing after registration")]
     NickOrUserMissing,
 
+    #[error("protocol error: {0}")]
+    ProtocolError(String),
+
     #[error("send error: {0}")]
     Send(#[from] mpsc::error::SendError<Message>),
 
@@ -76,6 +79,7 @@ impl HandlerError {
             Self::NoSuchChannel(_) => "no_such_channel",
             Self::UnknownCommand(_) => "unknown_command",
             Self::NickOrUserMissing => "nick_or_user_missing",
+            Self::ProtocolError(_) => "protocol_error",
             Self::Send(_) => "send_error",
             Self::Quit(_) => "quit",
             Self::Internal(_) => "internal_error",
@@ -101,6 +105,7 @@ impl HandlerError {
             // These errors don't get client-visible replies
             Self::AccessDenied => return None,
             Self::NickOrUserMissing => return None,
+            Self::ProtocolError(_) => return None,
             Self::Send(_) => return None,
             Self::Quit(_) => return None,
             Self::Internal(_) => return None,
@@ -219,7 +224,7 @@ impl ChannelError {
             ),
             Self::NeedReggedNick => (
                 // 477 is commonly used for "you need to register to join"
-                Response::ERR_NOCHANMODES,
+                Response::ERR_NEEDREGGEDNICK,
                 vec![nick.to_string(), channel.to_string(), "Cannot join channel (+R) - you need to be identified with services".to_string()],
             ),
             Self::SecureOnlyChan => (

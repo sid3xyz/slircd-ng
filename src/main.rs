@@ -14,6 +14,7 @@ mod network;
 mod security;
 mod services;
 mod state;
+mod sync;
 mod telemetry;
 
 use crate::config::Config;
@@ -143,7 +144,7 @@ async fn main() -> anyhow::Result<()> {
     // preventing unbounded memory growth.
     const DISCONNECT_CHANNEL_SIZE: usize = 1024;
     let (disconnect_tx, mut disconnect_rx) = tokio::sync::mpsc::channel::<(String, String)>(DISCONNECT_CHANNEL_SIZE);
-    let matrix = Arc::new(Matrix::new(crate::state::MatrixParams {
+    let (matrix_struct, mut router_rx) = Matrix::new(crate::state::MatrixParams {
         config: &config,
         data_dir,
         db: db.clone(),
@@ -155,7 +156,59 @@ async fn main() -> anyhow::Result<()> {
         glines: active_glines,
         zlines: active_zlines,
         disconnect_tx,
-    }));
+    });
+    let matrix = Arc::new(matrix_struct);
+
+    // Spawn router task for remote messages
+    {
+        let matrix = Arc::clone(&matrix);
+        tokio::spawn(async move {
+            while let Some(mut msg) = router_rx.recv().await {
+                // Check for x-target-uid tag
+                let target_uid = msg.tags.as_ref()
+                    .and_then(|tags| tags.iter().find(|t| t.0 == "x-target-uid"))
+                    .and_then(|t| t.1.as_ref())
+                    .cloned();
+
+                let target_uid = if let Some(uid) = target_uid {
+                    // Rewrite command to target UID
+                    match &msg.command {
+                        slirc_proto::Command::PRIVMSG(_, text) => {
+                            msg.command = slirc_proto::Command::PRIVMSG(uid.clone(), text.clone());
+                        }
+                        slirc_proto::Command::NOTICE(_, text) => {
+                            msg.command = slirc_proto::Command::NOTICE(uid.clone(), text.clone());
+                        }
+                        _ => {}
+                    }
+                    uid
+                } else {
+                    // Fallback to command target (if it's a UID)
+                    match &msg.command {
+                        slirc_proto::Command::PRIVMSG(target, _) => target.clone(),
+                        slirc_proto::Command::NOTICE(target, _) => target.clone(),
+                        _ => continue,
+                    }
+                };
+
+                info!(target_uid = %target_uid, "Router task received message");
+
+                // Look up server for target UID
+                // Assuming UID prefix is SID (3 chars)
+                if target_uid.len() >= 3 {
+                    let sid_prefix = &target_uid[0..3];
+                    let target_sid = slirc_crdt::clock::ServerId::new(sid_prefix.to_string());
+
+                    if let Some(peer) = matrix.sync_manager.get_peer_for_server(&target_sid) {
+                        info!(target_sid = %target_sid.as_str(), "Routing message to peer");
+                        let _ = peer.tx.send(msg).await;
+                    } else {
+                        tracing::warn!(target_sid = %target_sid.as_str(), "No peer found for target server");
+                    }
+                }
+            }
+        });
+    }
 
     // Process disconnect requests outside of channel actor tasks to avoid deadlocks.
     {
@@ -193,7 +246,7 @@ async fn main() -> anyhow::Result<()> {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
             loop {
                 interval.tick().await;
-                matrix.cleanup_whowas(7);
+                matrix.user_manager.cleanup_whowas(7);
                 info!("WHOWAS cleanup completed");
             }
         });
@@ -208,11 +261,12 @@ async fn main() -> anyhow::Result<()> {
             loop {
                 interval.tick().await;
                 let now = chrono::Utc::now().timestamp();
-                let before = matrix.shuns.len();
+                let before = matrix.security_manager.shuns.len();
                 matrix
+                    .security_manager
                     .shuns
                     .retain(|_, shun| shun.expires_at.is_none_or(|exp| exp > now));
-                let removed = before - matrix.shuns.len();
+                let removed = before - matrix.security_manager.shuns.len();
                 if removed > 0 {
                     info!(removed = removed, "Expired shuns removed");
                 }
@@ -228,19 +282,19 @@ async fn main() -> anyhow::Result<()> {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
             loop {
                 interval.tick().await;
-                let removed = matrix.ban_cache.prune_expired();
+                let removed = matrix.security_manager.ban_cache.prune_expired();
                 if removed > 0 {
                     info!(removed = removed, "Expired bans pruned from cache");
                 }
                 // Prune expired entries from IP deny list (in-memory bitmap)
-                if let Ok(mut deny_list) = matrix.ip_deny_list.write() {
+                if let Ok(mut deny_list) = matrix.security_manager.ip_deny_list.write() {
                     let pruned = deny_list.prune_expired();
                     if pruned > 0 {
                         info!(removed = pruned, "Expired IP deny entries pruned");
                     }
                 }
                 // Cleanup rate limiters (connection_limiters keyed by IP grow unbounded)
-                matrix.rate_limiter.cleanup();
+                matrix.security_manager.rate_limiter.cleanup();
             }
         });
     }
@@ -252,7 +306,7 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move {
             let retention = std::time::Duration::from_secs(30 * 86400);
             // Run immediately at startup
-            match matrix.history.prune(retention).await {
+            match matrix.service_manager.history.prune(retention).await {
                 Ok(removed) if removed > 0 => {
                     info!(
                         removed = removed,
@@ -269,7 +323,7 @@ async fn main() -> anyhow::Result<()> {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(86400));
             loop {
                 interval.tick().await;
-                match matrix.history.prune(retention).await {
+                match matrix.service_manager.history.prune(retention).await {
                     Ok(removed) if removed > 0 => {
                         info!(removed = removed, "Old messages pruned from history");
                     }
@@ -289,10 +343,18 @@ async fn main() -> anyhow::Result<()> {
         config.tls,
         config.websocket,
         config.webirc,
-        matrix,
-        db,
+        matrix.clone(),
+        db.clone(),
     )
     .await?;
+
+    // Start outgoing connections
+    for link in &config.links {
+        if link.autoconnect {
+            matrix.sync_manager.connect_to_peer(matrix.clone(), link.clone());
+        }
+    }
+
     gateway.run().await?;
 
     Ok(())

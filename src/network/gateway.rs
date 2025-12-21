@@ -30,7 +30,7 @@ use tracing::{error, info, instrument, warn};
 fn validate_connection(addr: &SocketAddr, matrix: &Matrix, listener_type: &str) -> Option<String> {
     // HOT PATH: Nanosecond-scale IP denial check (Roaring Bitmap)
     // This runs BEFORE any other checks for maximum efficiency
-    if let Ok(deny_list) = matrix.ip_deny_list.read()
+    if let Ok(deny_list) = matrix.security_manager.ip_deny_list.read()
         && let Some(reason) = deny_list.check_ip(&addr.ip())
     {
         info!(%addr, %reason, "{} connection rejected by IP deny list", listener_type);
@@ -38,18 +38,18 @@ fn validate_connection(addr: &SocketAddr, matrix: &Matrix, listener_type: &str) 
     }
 
     // Check connection rate limit before accepting
-    if !matrix.rate_limiter.check_connection_rate(addr.ip()) {
+    if !matrix.security_manager.rate_limiter.check_connection_rate(addr.ip()) {
         warn!(%addr, "{} connection rate limit exceeded - rejecting", listener_type);
         return None;
     }
 
     info!(%addr, "{} connection accepted", listener_type);
-    Some(matrix.uid_gen.next())
+    Some(matrix.user_manager.uid_gen.next())
 }
 
 /// Check DNSBL and return false if connection should be rejected.
 async fn check_dnsbl(matrix: &Matrix, ip: IpAddr, addr: SocketAddr) -> bool {
-    if let Some(ref spam_lock) = matrix.spam_detector {
+    if let Some(ref spam_lock) = matrix.security_manager.spam_detector {
         let spam = spam_lock.read().await;
         if spam.check_ip_dnsbl(ip).await {
             warn!(%addr, "Connection rejected by DNSBL");
@@ -72,7 +72,7 @@ async fn handle_tls_connection(
     let ip = addr.ip();
 
     if !check_dnsbl(&matrix, ip, addr).await {
-        matrix.rate_limiter.on_connection_end(ip);
+        matrix.security_manager.rate_limiter.on_connection_end(ip);
         return;
     }
 
@@ -83,12 +83,12 @@ async fn handle_tls_connection(
             if let Err(e) = connection.run().await {
                 error!(%uid, %addr, error = %e, "TLS connection error");
             }
-            matrix.rate_limiter.on_connection_end(ip);
+            matrix.security_manager.rate_limiter.on_connection_end(ip);
             info!(%uid, %addr, "TLS connection closed");
         }
         Err(e) => {
             warn!(%addr, error = %e, "TLS handshake failed");
-            matrix.rate_limiter.on_connection_end(ip);
+            matrix.security_manager.rate_limiter.on_connection_end(ip);
         }
     }
 }
@@ -106,7 +106,7 @@ async fn handle_websocket_connection(
     let ip = addr.ip();
 
     if !check_dnsbl(&matrix, ip, addr).await {
-        matrix.rate_limiter.on_connection_end(ip);
+        matrix.security_manager.rate_limiter.on_connection_end(ip);
         return;
     }
 
@@ -129,12 +129,12 @@ async fn handle_websocket_connection(
             if let Err(e) = connection.run().await {
                 error!(%uid, %addr, error = %e, "WebSocket connection error");
             }
-            matrix.rate_limiter.on_connection_end(ip);
+            matrix.security_manager.rate_limiter.on_connection_end(ip);
             info!(%uid, %addr, "WebSocket connection closed");
         }
         Err(e) => {
             warn!(%addr, error = %e, "WebSocket handshake failed");
-            matrix.rate_limiter.on_connection_end(ip);
+            matrix.security_manager.rate_limiter.on_connection_end(ip);
         }
     }
 }
@@ -194,7 +194,7 @@ async fn handle_plaintext_connection(
     let ip = addr.ip();
 
     if !check_dnsbl(&matrix, ip, addr).await {
-        matrix.rate_limiter.on_connection_end(ip);
+        matrix.security_manager.rate_limiter.on_connection_end(ip);
         return;
     }
 
@@ -203,7 +203,7 @@ async fn handle_plaintext_connection(
     if let Err(e) = connection.run().await {
         error!(%uid, %addr, error = %e, "Plaintext connection error");
     }
-    matrix.rate_limiter.on_connection_end(ip);
+    matrix.security_manager.rate_limiter.on_connection_end(ip);
     info!(%uid, %addr, "Plaintext connection closed");
 }
 
@@ -212,9 +212,9 @@ pub struct Gateway {
     plaintext_listener: TcpListener,
     tls_listener: Option<(TcpListener, TlsAcceptor)>,
     websocket_listener: Option<(TcpListener, WebSocketConfig)>,
-    matrix: Arc<Matrix>,
-    registry: Arc<Registry>,
-    db: Database,
+    pub matrix: Arc<Matrix>,
+    pub registry: Arc<Registry>,
+    pub db: Database,
 }
 
 impl Gateway {
@@ -362,7 +362,7 @@ impl Gateway {
         let db = self.db.clone();
 
         // Subscribe to shutdown signal
-        let mut shutdown_rx = matrix.shutdown_tx.subscribe();
+        let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
 
         // Extract TLS acceptor for STARTTLS on plaintext connections
         // Clone it before the TLS listener task takes ownership
@@ -373,7 +373,7 @@ impl Gateway {
             let matrix_tls = Arc::clone(&matrix);
             let registry_tls = Arc::clone(&registry);
             let db_tls = db.clone();
-            let mut shutdown_rx_tls = matrix.shutdown_tx.subscribe();
+            let mut shutdown_rx_tls = matrix.lifecycle_manager.shutdown_tx.subscribe();
 
             tokio::spawn(async move {
                 loop {
@@ -387,7 +387,7 @@ impl Gateway {
                                 continue;
                             };
 
-                            if !matrix_tls.rate_limiter.on_connection_start(addr.ip()) {
+                            if !matrix_tls.security_manager.rate_limiter.on_connection_start(addr.ip()) {
                                 warn!(%addr, "Connection rejected: max connections per IP exceeded");
                                 continue;
                             }
@@ -417,7 +417,7 @@ impl Gateway {
             let registry_ws = Arc::clone(&registry);
             let db_ws = db.clone();
             let allow_origins = ws_config.allow_origins;
-            let mut shutdown_rx_ws = matrix.shutdown_tx.subscribe();
+            let mut shutdown_rx_ws = matrix.lifecycle_manager.shutdown_tx.subscribe();
 
             tokio::spawn(async move {
                 loop {
@@ -431,7 +431,7 @@ impl Gateway {
                                 continue;
                             };
 
-                            if !matrix_ws.rate_limiter.on_connection_start(addr.ip()) {
+                            if !matrix_ws.security_manager.rate_limiter.on_connection_start(addr.ip()) {
                                 warn!(%addr, "Connection rejected: max connections per IP exceeded");
                                 continue;
                             }
@@ -471,7 +471,7 @@ impl Gateway {
                         continue;
                     };
 
-                    if !matrix.rate_limiter.on_connection_start(addr.ip()) {
+                    if !matrix.security_manager.rate_limiter.on_connection_start(addr.ip()) {
                         warn!(%addr, "Connection rejected: max connections per IP exceeded");
                         continue;
                     }

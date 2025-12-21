@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 # Protocol core (use path for workspace dev, git for standalone builds)
 slirc-proto = { path = "../slirc-proto", features = ["tokio"] }
+slirc-crdt = { path = "../slirc-crdt" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

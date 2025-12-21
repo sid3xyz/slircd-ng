@@ -134,6 +134,38 @@ lazy_static! {
         Opts::new("irc_channel_mode_changes_total", "Channel mode changes"),
         &["mode"]
     ).expect("CHANNEL_MODE_CHANGES metric creation failed");
+
+    // ========================================================================
+    // Distributed System Metrics (Innovation 3, Phase 2)
+    // ========================================================================
+
+    /// Distributed messages routed between servers.
+    /// Labels: source_sid, target_sid, status (success/failure)
+    pub static ref DISTRIBUTED_MESSAGES_ROUTED: IntCounterVec = IntCounterVec::new(
+        Opts::new("slircd_distributed_messages_routed_total", "Messages routed between servers"),
+        &["source_sid", "target_sid", "status"]
+    ).expect("DISTRIBUTED_MESSAGES_ROUTED metric creation failed");
+
+    /// Distributed collisions (nick/channel) resolved.
+    /// Labels: type (nick/channel), resolution (kill/merge)
+    pub static ref DISTRIBUTED_COLLISIONS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new("slircd_distributed_collisions_total", "Distributed collisions resolved"),
+        &["type", "resolution"]
+    ).expect("DISTRIBUTED_COLLISIONS_TOTAL metric creation failed");
+
+    /// Distributed sync latency (processing time for DELTA messages).
+    /// Labels: peer_sid
+    pub static ref DISTRIBUTED_SYNC_LATENCY: HistogramVec = HistogramVec::new(
+        HistogramOpts::new("slircd_distributed_sync_latency_seconds", "Processing time for sync messages")
+            .buckets(vec![0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]),
+        &["peer_sid"]
+    ).expect("DISTRIBUTED_SYNC_LATENCY metric creation failed");
+
+    /// Connected distributed peers.
+    pub static ref DISTRIBUTED_PEERS_CONNECTED: IntGauge = IntGauge::new(
+        "slircd_distributed_peers_connected",
+        "Number of connected distributed peers"
+    ).expect("DISTRIBUTED_PEERS_CONNECTED metric creation failed");
 }
 
 /// Initialize the Prometheus metrics registry.
@@ -184,6 +216,20 @@ pub fn init() {
     }
     if let Err(e) = REGISTRY.register(Box::new(CHANNEL_MODE_CHANGES.clone())) {
         tracing::warn!(error = %e, "Failed to register metric irc_channel_mode_changes_total");
+    }
+
+    // Distributed metrics (Innovation 3, Phase 2)
+    if let Err(e) = REGISTRY.register(Box::new(DISTRIBUTED_MESSAGES_ROUTED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric slircd_distributed_messages_routed_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(DISTRIBUTED_COLLISIONS_TOTAL.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric slircd_distributed_collisions_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(DISTRIBUTED_SYNC_LATENCY.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric slircd_distributed_sync_latency_seconds");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(DISTRIBUTED_PEERS_CONNECTED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric slircd_distributed_peers_connected");
     }
 }
 
