@@ -37,6 +37,7 @@ pub struct HandshakeMachine {
     pub state: HandshakeState,
     pub remote_name: Option<String>,
     pub remote_pass: Option<String>,
+    pub remote_sid: Option<ServerId>,
 
     // Local identity
     pub local_sid: ServerId,
@@ -50,6 +51,7 @@ impl HandshakeMachine {
             state: HandshakeState::Unconnected,
             remote_name: None,
             remote_pass: None,
+            remote_sid: None,
             local_sid,
             local_name,
             local_desc,
@@ -100,8 +102,9 @@ impl HandshakeMachine {
                 }
                 Ok(vec![])
             }
-            Command::SERVER(name, _hopcount, _sid, _info) => {
+            Command::SERVER(name, _hopcount, sid, _info) => {
                 self.remote_name = Some(name.clone());
+                self.remote_sid = Some(ServerId::new(&sid));
 
                 // Verify credentials
                 self.verify_credentials(links)?;
@@ -130,8 +133,9 @@ impl HandshakeMachine {
                 }
                 Ok(vec![])
             }
-            Command::SERVER(name, _hopcount, _sid, _info) => {
+            Command::SERVER(name, _hopcount, sid, _info) => {
                 self.remote_name = Some(name.clone());
+                self.remote_sid = Some(ServerId::new(&sid));
 
                 // Verify credentials
                 let link = self.verify_credentials(links)?;
