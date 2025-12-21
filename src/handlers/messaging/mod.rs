@@ -12,10 +12,12 @@ mod common;
 mod errors;
 mod notice;
 mod privmsg;
+mod accept;
 mod validation;
 
 pub use notice::NoticeHandler;
 pub use privmsg::PrivmsgHandler;
+pub use accept::AcceptHandler;
 
 use super::{HandlerError, HandlerResult, user_prefix};
 use crate::history::{StoredMessage, MessageEnvelope};
@@ -30,7 +32,7 @@ use errors::*;
 
 use common::{
     ChannelRouteResult, RouteOptions, SenderSnapshot, is_shunned_with_snapshot,
-    route_to_channel_with_snapshot, route_to_user_with_snapshot,
+    route_to_channel_with_snapshot, route_to_user_with_snapshot, UserRouteResult,
     send_cannot_send, send_no_such_channel, send_no_such_nick,
 };
 
@@ -178,7 +180,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                             account: ctx.state.account.clone(),
                         };
 
-                        if let Err(e) = ctx.matrix.history.store(target, stored_msg).await {
+                        if let Err(e) = ctx.matrix.service_manager.history.store(target, stored_msg).await {
                             debug!(error = %e, "Failed to store TAGMSG in history");
                         }
                     }
@@ -196,6 +198,9 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                 ChannelRouteResult::BlockedRegisteredOnly => {
                     send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_REGISTERED_ONLY).await?;
                 }
+                ChannelRouteResult::BlockedRegisteredSpeak => {
+                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_REGISTERED_SPEAK).await?;
+                }
                 ChannelRouteResult::BlockedCTCP => {
                     // TAGMSG has no CTCP, so this shouldn't happen
                     unreachable!("TAGMSG has no CTCP content");
@@ -211,7 +216,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         } else {
             let target_lower = irc_to_lower(target);
             // Pass msgid to route function to ensure consistency between echo and history
-            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, None, Some(msgid.clone()), &snapshot).await {
+            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, None, Some(msgid.clone()), &snapshot).await == UserRouteResult::Sent {
                 debug!(from = %snapshot.nick, to = %target, "TAGMSG to user");
 
                 // Store TAGMSG in history for DMs if +draft/persist tag is present (Innovation 5)
@@ -255,9 +260,9 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                         format!("u:{}", irc_to_lower(&snapshot.nick))
                     };
 
-                    let target_account = if let Some(uid_ref) = ctx.matrix.nicks.get(&target_lower) {
+                    let target_account = if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(&target_lower) {
                         let uid = uid_ref.value();
-                        if let Some(user) = ctx.matrix.users.get(uid) {
+                        if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
                             let u = user.read().await;
                             u.account.clone()
                         } else {
@@ -277,7 +282,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                     users.sort();
                     let dm_key = format!("dm:{}:{}", users[0], users[1]);
 
-                    if let Err(e) = ctx.matrix.history.store(&dm_key, stored_msg).await {
+                    if let Err(e) = ctx.matrix.service_manager.history.store(&dm_key, stored_msg).await {
                         debug!(error = %e, "Failed to store TAGMSG DM in history");
                     }
                 }
