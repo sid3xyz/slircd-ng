@@ -13,3 +13,4 @@ pub mod message;
 pub mod modes;
 pub mod part_quit;
 pub mod topic;
+pub mod sjoin;
