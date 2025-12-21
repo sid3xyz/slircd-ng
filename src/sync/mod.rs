@@ -6,6 +6,7 @@
 pub mod handshake;
 pub mod protocol;
 pub mod burst;
+mod observer;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -13,9 +14,6 @@ mod test_protocol;
 
 use dashmap::DashMap;
 use slirc_crdt::clock::ServerId;
-use slirc_crdt::user::UserCrdt;
-use slirc_crdt::channel::ChannelCrdt;
-use crate::state::observer::StateObserver;
 use crate::state::{UserManager, ChannelManager, Matrix};
 use slirc_proto::{Message, Command};
 use std::sync::Arc;
@@ -312,25 +310,5 @@ impl SyncManager {
 
     pub fn register_route(&self, _target: ServerId, _via: ServerId) {
         // Stub
-    }
-}
-
-impl StateObserver for SyncManager {
-    fn on_user_update(&self, user: &UserCrdt, source: Option<ServerId>) {
-        // Placeholder for CRDT replication
-        info!(uid = %user.uid, source = ?source, "SyncManager: on_user_update (stub)");
-    }
-
-    fn on_user_quit(&self, uid: &str, reason: &str, _source: Option<ServerId>) {
-        // Placeholder for CRDT replication
-        info!(uid = %uid, reason = %reason, "SyncManager: on_user_quit (stub)");
-    }
-
-    fn on_channel_update(&self, channel: &ChannelCrdt, source: Option<ServerId>) {
-        info!(channel = %channel.name, source = ?source, "SyncManager: on_channel_update (stub)");
-    }
-
-    fn on_channel_destroy(&self, name: &str, source: Option<ServerId>) {
-        info!(channel = %name, source = ?source, "SyncManager: on_channel_destroy (stub)");
     }
 }
