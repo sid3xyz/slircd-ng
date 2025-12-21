@@ -6,6 +6,8 @@
 pub mod handshake;
 pub mod protocol;
 pub mod burst;
+pub mod topology;
+pub mod split;
 mod observer;
 #[cfg(test)]
 mod tests;
@@ -26,6 +28,9 @@ use crate::sync::handshake::{HandshakeMachine, HandshakeState};
 
 use crate::config::LinkBlock;
 
+// Re-export topology types
+pub use topology::{TopologyGraph, ServerInfo};
+
 /// Represents the state of a link to a peer server.
 #[derive(Debug)]
 pub struct LinkState {
@@ -43,29 +48,6 @@ impl Clone for LinkState {
             tx: self.tx.clone(),
             state: self.state.clone(),
             name: self.name.clone(),
-        }
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct ServerInfo {
-    pub sid: ServerId,
-    pub name: String,
-    pub info: String,
-    pub hopcount: u32,
-    pub parent: Option<ServerId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TopologyGraph {
-    pub servers: DashMap<ServerId, ServerInfo>,
-}
-
-impl TopologyGraph {
-    pub fn new() -> Self {
-        Self {
-            servers: DashMap::new(),
         }
     }
 }
@@ -112,6 +94,10 @@ impl SyncManager {
             );
             machine.transition(HandshakeState::InboundReceived);
 
+            // Track remote server info for netsplit handling
+            let mut remote_sid: Option<ServerId> = None;
+            let mut remote_name: Option<String> = None;
+
             while let Some(Ok(line)) = framed.next().await {
                 let msg = match line.parse::<Message>() {
                     Ok(m) => m,
@@ -130,11 +116,20 @@ impl SyncManager {
                         if machine.state == HandshakeState::Bursting {
                             info!("Handshake complete (Inbound). Remote: {:?}", machine.remote_name);
 
+                            // Capture remote server info
+                            remote_sid = machine.remote_sid.clone();
+                            remote_name = machine.remote_name.clone();
+
                             // Generate Burst
                             let burst = burst::generate_burst(&matrix, manager.local_id.as_str()).await;
                             for cmd in burst {
                                 if let Err(e) = framed.send(Message::from(cmd).to_string()).await {
                                     tracing::error!("Failed to send burst: {}", e);
+                                    // Connection failed, handle netsplit if we had a peer
+                                    if let Some(sid) = &remote_sid {
+                                        let rn = remote_name.as_deref().unwrap_or("unknown");
+                                        split::handle_netsplit(&matrix, sid, &manager.local_name, rn).await;
+                                    }
                                     return;
                                 }
                             }
@@ -161,8 +156,15 @@ impl SyncManager {
 
                 if let Err(e) = handler.handle_command(msg.command).await {
                     tracing::error!("Protocol error from peer: {}", e);
-                    return;
+                    break;
                 }
+            }
+
+            // Connection ended - handle netsplit
+            if let Some(sid) = remote_sid {
+                let rn = remote_name.as_deref().unwrap_or("unknown");
+                info!(remote_sid = %sid.as_str(), "Peer disconnected, initiating netsplit cleanup");
+                split::handle_netsplit(&matrix, &sid, &manager.local_name, rn).await;
             }
         });
     }
@@ -189,6 +191,10 @@ impl SyncManager {
                 manager.local_desc.clone(),
             );
             machine.transition(HandshakeState::OutboundInitiated);
+
+            // Track remote server info for netsplit handling
+            let mut remote_sid: Option<ServerId> = None;
+            let mut remote_name: Option<String> = None;
 
             // Send initial PASS and SERVER
             let pass_cmd = Command::Raw(
@@ -231,11 +237,20 @@ impl SyncManager {
                         if machine.state == HandshakeState::Bursting {
                             info!("Handshake complete (Outbound). Remote: {:?}", machine.remote_name);
 
+                            // Capture remote server info
+                            remote_sid = machine.remote_sid.clone();
+                            remote_name = machine.remote_name.clone();
+
                             // Generate Burst
                             let burst = burst::generate_burst(&matrix, manager.local_id.as_str()).await;
                             for cmd in burst {
                                 if let Err(e) = framed.send(Message::from(cmd).to_string()).await {
                                     tracing::error!("Failed to send burst: {}", e);
+                                    // Connection failed, handle netsplit if we had a peer
+                                    if let Some(sid) = &remote_sid {
+                                        let rn = remote_name.as_deref().unwrap_or("unknown");
+                                        split::handle_netsplit(&matrix, sid, &manager.local_name, rn).await;
+                                    }
                                     return;
                                 }
                             }
@@ -262,8 +277,15 @@ impl SyncManager {
 
                 if let Err(e) = handler.handle_command(msg.command).await {
                     tracing::error!("Protocol error from peer: {}", e);
-                    return;
+                    break;
                 }
+            }
+
+            // Connection ended - handle netsplit
+            if let Some(sid) = remote_sid {
+                let rn = remote_name.as_deref().unwrap_or("unknown");
+                info!(remote_sid = %sid.as_str(), "Peer disconnected, initiating netsplit cleanup");
+                split::handle_netsplit(&matrix, &sid, &manager.local_name, rn).await;
             }
         });
     }
@@ -286,7 +308,7 @@ impl SyncManager {
             name,
             info,
             hopcount,
-            parent: None, // Direct peer
+            via: None, // Direct peer
         });
         rx
     }

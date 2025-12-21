@@ -200,7 +200,7 @@ impl ServerHandler for ServerPropagationHandler {
             name: name.to_string(),
             hopcount,
             info: info.to_string(),
-            parent: Some(peer_sid.clone()),
+            via: Some(peer_sid.clone()),
         };
         ctx.matrix.sync_manager.topology.servers.insert(sid.clone(), server_info);
 
