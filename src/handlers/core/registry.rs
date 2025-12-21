@@ -15,8 +15,8 @@
 //! making invalid dispatch a structural impossibility.
 
 use super::context::{Context, HandlerResult};
-use super::traits::{DynUniversalHandler, PostRegHandler, PreRegHandler};
-use crate::state::{RegisteredState, UnregisteredState};
+use super::traits::{DynUniversalHandler, PostRegHandler, PreRegHandler, ServerHandler};
+use crate::state::{RegisteredState, ServerState, UnregisteredState};
 use slirc_proto::{Response};
 use crate::handlers::{
     account::RegisterHandler,
@@ -25,9 +25,10 @@ use crate::handlers::{
     cap::{AuthenticateHandler, CapHandler},
     chathistory::ChatHistoryHandler,
     helpers::with_label,
-    messaging::{NoticeHandler, PrivmsgHandler, TagmsgHandler},
+    messaging::{AcceptHandler, NoticeHandler, PrivmsgHandler, TagmsgHandler},
     mode::ModeHandler,
     monitor::MonitorHandler,
+    server::{BurstHandler, delta::DeltaHandler, ServerHandshakeHandler, ServerPropagationHandler, routing::RoutedMessageHandler},
     service_aliases::{CsHandler, NsHandler},
     user_status::{AwayHandler, SetnameHandler, SilenceHandler},
 };
@@ -49,6 +50,8 @@ pub struct Registry {
     pre_reg_handlers: HashMap<&'static str, Box<dyn PreRegHandler>>,
     /// Handlers for post-registration commands (PRIVMSG, JOIN, etc.)
     post_reg_handlers: HashMap<&'static str, Box<dyn PostRegHandler>>,
+    /// Handlers for server-to-server commands (BURST, DELTA, etc.)
+    server_handlers: HashMap<&'static str, Box<dyn ServerHandler>>,
     /// Handlers valid in any state (QUIT, PING, PONG, NICK, CAP, REGISTER)
     universal_handlers: HashMap<&'static str, Box<dyn DynUniversalHandler>>,
     /// Command usage counters for STATS m
@@ -63,6 +66,7 @@ impl Registry {
     pub fn new(webirc_blocks: Vec<crate::config::WebircBlock>) -> Self {
         let mut pre_reg_handlers: HashMap<&'static str, Box<dyn PreRegHandler>> = HashMap::new();
         let mut post_reg_handlers: HashMap<&'static str, Box<dyn PostRegHandler>> = HashMap::new();
+        let mut server_handlers: HashMap<&'static str, Box<dyn ServerHandler>> = HashMap::new();
         let mut universal_handlers: HashMap<&'static str, Box<dyn DynUniversalHandler>> =
             HashMap::new();
 
@@ -82,6 +86,19 @@ impl Registry {
         // Connection handlers (Universal + Pre-reg)
         crate::handlers::connection::register(&mut pre_reg_handlers, &mut universal_handlers, webirc_blocks);
 
+        // Server-to-server handshake
+        pre_reg_handlers.insert("SERVER", Box::new(ServerHandshakeHandler));
+
+        // ====================================================================
+        // Server-to-server handlers (valid for registered servers)
+        // ====================================================================
+        server_handlers.insert("BURST", Box::new(BurstHandler));
+        server_handlers.insert("DELTA", Box::new(DeltaHandler));
+        server_handlers.insert("SERVER", Box::new(ServerPropagationHandler));
+        server_handlers.insert("PRIVMSG", Box::new(RoutedMessageHandler));
+        server_handlers.insert("NOTICE", Box::new(RoutedMessageHandler));
+        server_handlers.insert("BATCH", Box::new(crate::handlers::batch::server::ServerBatchHandler));
+
         // ====================================================================
         // Post-registration handlers (require completed registration)
         // ====================================================================
@@ -94,6 +111,7 @@ impl Registry {
         post_reg_handlers.insert("PRIVMSG", Box::new(PrivmsgHandler));
         post_reg_handlers.insert("NOTICE", Box::new(NoticeHandler));
         post_reg_handlers.insert("TAGMSG", Box::new(TagmsgHandler));
+        post_reg_handlers.insert("ACCEPT", Box::new(AcceptHandler));
 
         // User query handlers
         crate::handlers::user_query::register(&mut post_reg_handlers);
@@ -137,6 +155,9 @@ impl Registry {
         for &cmd in post_reg_handlers.keys() {
             command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
         }
+        for &cmd in server_handlers.keys() {
+            command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
+        }
         for &cmd in universal_handlers.keys() {
             command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
         }
@@ -144,6 +165,7 @@ impl Registry {
         Self {
             pre_reg_handlers,
             post_reg_handlers,
+            server_handlers,
             universal_handlers,
             command_counts,
         }
@@ -301,6 +323,55 @@ impl Registry {
 
         // Record errors for metrics
         self.handle_dispatch_result(&uid, Some(&nick), &cmd_name, result, ctx).await
+    }
+
+    /// Dispatch a message to the appropriate handler for server-to-server connections.
+    pub async fn dispatch_server(
+        &self,
+        ctx: &mut Context<'_, ServerState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        let cmd_name = msg.command_name().to_ascii_uppercase();
+        let cmd_str = cmd_name.as_str();
+
+        // Increment command counter
+        if let Some(counter) = self.command_counts.get(cmd_str) {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
+
+        // Create instrumented span
+        let span = span!(
+            Level::INFO,
+            "server_command",
+            command = %cmd_name,
+            sid = %ctx.state.sid,
+            server = %ctx.state.name
+        );
+
+        let result = async {
+            // 1. Check universal handlers first
+            if let Some(handler) = self.universal_handlers.get(cmd_str) {
+                return handler.handle_server(ctx, msg).await;
+            }
+
+            // 2. Check server-specific handlers
+            if let Some(handler) = self.server_handlers.get(cmd_str) {
+                return handler.handle(ctx, msg).await;
+            }
+
+            // 3. Unknown command for servers
+            debug!(
+                command = %cmd_name,
+                sid = %ctx.state.sid,
+                "Unknown server command"
+            );
+            Ok(()) // Servers usually ignore unknown commands silently or log them
+        }
+        .instrument(span)
+        .await;
+
+        // Record errors for metrics
+        self.handle_dispatch_result(ctx.uid, None, &cmd_name, result, ctx).await
     }
 
     /// Common result handling for both dispatch methods.

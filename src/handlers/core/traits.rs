@@ -24,7 +24,7 @@
 //! - The client has completed the full registration handshake
 
 use super::context::{Context, HandlerResult};
-use crate::state::{RegisteredState, SessionState, UnregisteredState};
+use crate::state::{RegisteredState, ServerState, SessionState, UnregisteredState};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -50,6 +50,17 @@ pub trait PostRegHandler: Send + Sync {
     async fn handle(
         &self,
         ctx: &mut Context<'_, RegisteredState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult;
+}
+
+/// Handler for commands from other SERVERS (BURST, DELTA, etc.).
+/// Receives `Context<'_, ServerState>`.
+#[async_trait]
+pub trait ServerHandler: Send + Sync {
+    async fn handle(
+        &self,
+        ctx: &mut Context<'_, ServerState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult;
 }
@@ -89,6 +100,13 @@ pub trait DynUniversalHandler: Send + Sync {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult;
+
+    /// Handle a command in server state.
+    async fn handle_server(
+        &self,
+        ctx: &mut Context<'_, ServerState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult;
 }
 
 /// Blanket implementation: any type that implements UniversalHandler for both
@@ -96,7 +114,11 @@ pub trait DynUniversalHandler: Send + Sync {
 #[async_trait]
 impl<T> DynUniversalHandler for T
 where
-    T: UniversalHandler<UnregisteredState> + UniversalHandler<RegisteredState> + Send + Sync,
+    T: UniversalHandler<UnregisteredState>
+        + UniversalHandler<RegisteredState>
+        + UniversalHandler<ServerState>
+        + Send
+        + Sync,
 {
     async fn handle_unreg(
         &self,
@@ -112,6 +134,14 @@ where
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         <T as UniversalHandler<RegisteredState>>::handle(self, ctx, msg).await
+    }
+
+    async fn handle_server(
+        &self,
+        ctx: &mut Context<'_, ServerState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        <T as UniversalHandler<ServerState>>::handle(self, ctx, msg).await
     }
 }
 
@@ -140,5 +170,17 @@ impl<T: UniversalHandler<RegisteredState>> PostRegHandler for T {
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         <T as UniversalHandler<RegisteredState>>::handle(self, ctx, msg).await
+    }
+}
+
+/// A handler that implements UniversalHandler<ServerState> can act as ServerHandler.
+#[async_trait]
+impl<T: UniversalHandler<ServerState>> ServerHandler for T {
+    async fn handle(
+        &self,
+        ctx: &mut Context<'_, ServerState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
+        <T as UniversalHandler<ServerState>>::handle(self, ctx, msg).await
     }
 }

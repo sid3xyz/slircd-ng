@@ -35,6 +35,7 @@ mod messaging;
 mod mode;
 mod monitor;
 mod oper;
+mod server;
 mod server_query;
 mod service_aliases;
 mod user_query;
