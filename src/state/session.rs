@@ -22,6 +22,7 @@
 //! ```
 
 use crate::handlers::{BatchState, SaslState};
+use slirc_crdt::clock::ServerId;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -72,6 +73,101 @@ pub trait SessionState: Send {
 
     /// Get active batch reference tag.
     fn active_batch_ref(&self) -> Option<&str>;
+
+    /// Whether this is a server connection.
+    #[allow(dead_code)]
+    fn is_server(&self) -> bool;
+
+    /// Get batch routing decision (Server only).
+    fn batch_routing(&self) -> Option<&BatchRouting> { None }
+}
+
+// ============================================================================
+// ServerState — Server-to-server connection state
+// ============================================================================
+
+/// State for a registered server-to-server connection.
+#[derive(Debug)]
+pub struct ServerState {
+    /// Server name.
+    pub name: String,
+    /// Server ID (SID).
+    pub sid: String,
+    /// Server info string.
+    pub info: String,
+    /// Hop count.
+    pub hopcount: u32,
+    /// Capabilities enabled by this server.
+    pub capabilities: HashSet<String>,
+    /// Whether this is a TLS connection.
+    pub is_tls: bool,
+    /// Active batch state for server-to-server batches.
+    pub active_batch: Option<BatchState>,
+    /// Reference tag for the active batch.
+    pub active_batch_ref: Option<String>,
+    /// Routing decision for the active batch.
+    pub batch_routing: Option<BatchRouting>,
+}
+
+/// Routing decision for a server batch.
+#[derive(Debug, Clone)]
+pub enum BatchRouting {
+    /// Broadcast to all peers (except source).
+    Broadcast,
+    /// Route to a specific server.
+    Routed(ServerId),
+    /// Route to a local user.
+    Local(String),
+    /// Do not relay.
+    None,
+}
+
+impl SessionState for ServerState {
+    fn nick(&self) -> Option<&str> {
+        None
+    }
+
+    fn set_nick(&mut self, _nick: String) {}
+
+    fn is_registered(&self) -> bool {
+        true
+    }
+
+    fn is_server(&self) -> bool {
+        true
+    }
+
+    fn capabilities(&self) -> &HashSet<String> {
+        &self.capabilities
+    }
+
+    fn capabilities_mut(&mut self) -> &mut HashSet<String> {
+        &mut self.capabilities
+    }
+
+    fn set_cap_negotiating(&mut self, _negotiating: bool) {}
+
+    fn set_cap_version(&mut self, _version: u32) {}
+
+    fn is_tls(&self) -> bool {
+        self.is_tls
+    }
+
+    fn certfp(&self) -> Option<&str> {
+        None
+    }
+
+    fn active_batch_mut(&mut self) -> &mut Option<BatchState> {
+        &mut self.active_batch
+    }
+
+    fn active_batch_ref(&self) -> Option<&str> {
+        self.active_batch_ref.as_deref()
+    }
+
+    fn batch_routing(&self) -> Option<&BatchRouting> {
+        self.batch_routing.as_ref()
+    }
 }
 
 // ============================================================================
@@ -119,6 +215,27 @@ pub struct UnregisteredState {
     pub active_batch: Option<BatchState>,
     /// Reference tag for the active batch.
     pub active_batch_ref: Option<String>,
+    /// Whether this connection is performing a server-to-server handshake.
+    pub is_server_handshake: bool,
+    /// Server name (if SERVER command received).
+    pub server_name: Option<String>,
+    /// Server ID (if SERVER command received).
+    pub server_sid: Option<String>,
+    /// Server info (if SERVER command received).
+    pub server_info: Option<String>,
+    /// Server hop count (if SERVER command received).
+    pub server_hopcount: u32,
+    /// Data for initiating a server connection.
+    pub initiator_data: Option<InitiatorData>,
+}
+
+/// Data for initiating a server connection.
+#[derive(Debug, Clone)]
+pub struct InitiatorData {
+    /// Password to send in PASS command.
+    pub remote_password: String,
+    /// Expected remote SID (optional).
+    pub remote_sid: Option<String>,
 }
 
 impl SessionState for UnregisteredState {
@@ -131,6 +248,10 @@ impl SessionState for UnregisteredState {
     }
 
     fn is_registered(&self) -> bool {
+        false
+    }
+
+    fn is_server(&self) -> bool {
         false
     }
 
@@ -177,6 +298,31 @@ impl UnregisteredState {
     /// - CAP negotiation is not in progress (if started)
     pub fn can_register(&self) -> bool {
         self.nick.is_some() && self.user.is_some() && !self.cap_negotiating
+    }
+
+    /// Check if server registration requirements are met.
+    pub fn can_register_server(&self) -> bool {
+        self.is_server_handshake && self.server_name.is_some() && self.server_sid.is_some()
+    }
+
+    /// Attempt to transition to ServerState.
+    #[allow(clippy::result_large_err)]
+    pub fn try_register_server(self) -> Result<ServerState, Self> {
+        if self.can_register_server() {
+            Ok(ServerState {
+                name: self.server_name.unwrap(),
+                sid: self.server_sid.unwrap(),
+                info: self.server_info.unwrap_or_default(),
+                hopcount: self.server_hopcount,
+                capabilities: self.capabilities,
+                is_tls: self.is_tls,
+                active_batch: None,
+                active_batch_ref: None,
+                batch_routing: None,
+            })
+        } else {
+            Err(self)
+        }
     }
 
     /// Attempt to transition to RegisteredState.
@@ -293,6 +439,10 @@ impl SessionState for RegisteredState {
 
     fn is_registered(&self) -> bool {
         true
+    }
+
+    fn is_server(&self) -> bool {
+        false
     }
 
     fn capabilities(&self) -> &HashSet<String> {

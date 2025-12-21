@@ -2,6 +2,9 @@
 
 use std::collections::HashSet;
 use uuid::Uuid;
+use slirc_crdt::clock::HybridTimestamp;
+use slirc_crdt::user::{UserCrdt, UserModesCrdt};
+use slirc_crdt::traits::LwwRegister;
 
 /// A connected user.
 #[derive(Debug)]
@@ -31,6 +34,11 @@ pub struct User {
     pub certfp: Option<String>,
     /// SILENCE list: masks of users to ignore (server-side ignore).
     pub silence_list: HashSet<String>,
+    /// ACCEPT list: nicknames allowed to PM even if +R is set (Caller ID).
+    pub accept_list: HashSet<String>,
+    /// Last modified timestamp for CRDT synchronization.
+    #[allow(dead_code)]
+    pub last_modified: HybridTimestamp,
 }
 
 /// User modes.
@@ -91,6 +99,41 @@ impl UserModes {
     pub fn has_snomask(&self, mask: char) -> bool {
         self.snomasks.contains(&mask)
     }
+
+    /// Create UserModes from a CRDT representation.
+    pub fn from_crdt(crdt: &UserModesCrdt) -> Self {
+        Self {
+            invisible: *crdt.invisible.value(),
+            wallops: *crdt.wallops.value(),
+            oper: *crdt.oper.value(),
+            registered: *crdt.registered.value(),
+            secure: *crdt.secure.value(),
+            registered_only: *crdt.registered_only.value(),
+            no_ctcp: *crdt.no_ctcp.value(),
+            bot: *crdt.bot.value(),
+            snomasks: crdt.snomasks.iter().cloned().collect(),
+            oper_type: crdt.oper_type.value().clone(),
+        }
+    }
+
+    /// Convert to CRDT representation.
+    #[allow(dead_code)]
+    pub fn to_crdt(&self, timestamp: HybridTimestamp) -> UserModesCrdt {
+        let mut crdt = UserModesCrdt::new(timestamp);
+        crdt.invisible = LwwRegister::new(self.invisible, timestamp);
+        crdt.wallops = LwwRegister::new(self.wallops, timestamp);
+        crdt.oper = LwwRegister::new(self.oper, timestamp);
+        crdt.registered = LwwRegister::new(self.registered, timestamp);
+        crdt.secure = LwwRegister::new(self.secure, timestamp);
+        crdt.registered_only = LwwRegister::new(self.registered_only, timestamp);
+        crdt.no_ctcp = LwwRegister::new(self.no_ctcp, timestamp);
+        crdt.bot = LwwRegister::new(self.bot, timestamp);
+        for &mask in &self.snomasks {
+            crdt.snomasks.add(mask, timestamp);
+        }
+        crdt.oper_type = LwwRegister::new(self.oper_type.clone(), timestamp);
+        crdt
+    }
 }
 
 /// Parameters for creating a new User.
@@ -106,6 +149,7 @@ pub struct UserParams {
     pub cloak_suffix: String,
     pub caps: HashSet<String>,
     pub certfp: Option<String>,
+    pub last_modified: HybridTimestamp,
 }
 
 impl User {
@@ -126,6 +170,7 @@ impl User {
             cloak_suffix,
             caps,
             certfp,
+            last_modified,
         } = params;
 
         // Try to parse as IP for proper cloaking, fall back to hostname cloaking
@@ -150,7 +195,84 @@ impl User {
             caps,
             certfp,
             silence_list: HashSet::new(),
+            accept_list: HashSet::new(),
+            last_modified,
         }
+    }
+
+    /// Convert to CRDT representation.
+    #[allow(dead_code)]
+    pub fn to_crdt(&self) -> UserCrdt {
+        let mut crdt = UserCrdt::new(
+            self.uid.clone(),
+            self.nick.clone(),
+            self.user.clone(),
+            self.realname.clone(),
+            self.host.clone(),
+            self.visible_host.clone(),
+            self.last_modified,
+        );
+        crdt.account = LwwRegister::new(self.account.clone(), self.last_modified);
+        crdt.away = LwwRegister::new(self.away.clone(), self.last_modified);
+        for chan in &self.channels {
+            crdt.channels.add(chan.clone(), self.last_modified);
+        }
+        for cap in &self.caps {
+            crdt.caps.add(cap.clone(), self.last_modified);
+        }
+        crdt.modes = self.modes.to_crdt(self.last_modified);
+        for mask in &self.silence_list {
+            crdt.silence_list.add(mask.clone(), self.last_modified);
+        }
+        for nick in &self.accept_list {
+            crdt.accept_list.add(nick.clone(), self.last_modified);
+        }
+        crdt
+    }
+
+    /// Create a User from a CRDT representation.
+    pub fn from_crdt(crdt: UserCrdt) -> Self {
+        let last_modified = crdt.nick.timestamp();
+        Self {
+            uid: crdt.uid.clone(),
+            nick: crdt.nick.value().clone(),
+            user: crdt.user.value().clone(),
+            realname: crdt.realname.value().clone(),
+            host: crdt.host.value().clone(),
+            ip: "0.0.0.0".to_string(), // Remote users don't have local IP
+            visible_host: crdt.visible_host.value().clone(),
+            session_id: Uuid::nil(), // Remote users don't have local session
+            channels: crdt.channels.iter().cloned().collect(),
+            modes: UserModes::from_crdt(&crdt.modes),
+            account: crdt.account.value().clone(),
+            away: crdt.away.value().clone(),
+            caps: crdt.caps.iter().cloned().collect(),
+            certfp: None,
+            silence_list: crdt.silence_list.iter().cloned().collect(),
+            accept_list: crdt.accept_list.iter().cloned().collect(),
+            last_modified,
+        }
+    }
+
+    /// Merge a UserCrdt into this user.
+    pub fn merge(&mut self, other: UserCrdt) {
+        use slirc_crdt::traits::Crdt;
+        let mut current_crdt = self.to_crdt();
+        current_crdt.merge(&other);
+
+        // Update self from merged CRDT
+        self.nick = current_crdt.nick.value().clone();
+        self.user = current_crdt.user.value().clone();
+        self.realname = current_crdt.realname.value().clone();
+        self.host = current_crdt.host.value().clone();
+        self.visible_host = current_crdt.visible_host.value().clone();
+        self.account = current_crdt.account.value().clone();
+        self.away = current_crdt.away.value().clone();
+        self.channels = current_crdt.channels.iter().cloned().collect();
+        self.caps = current_crdt.caps.iter().cloned().collect();
+        self.modes = UserModes::from_crdt(&current_crdt.modes);
+        self.silence_list = current_crdt.silence_list.iter().cloned().collect();
+        self.last_modified = current_crdt.nick.timestamp();
     }
 }
 

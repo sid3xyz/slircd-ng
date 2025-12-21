@@ -2,6 +2,9 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Unique identifier for a user (TS6 UID string).
+pub type Uid = String;
+
 /// Generates unique user IDs (UIDs) in TS6 format.
 ///
 /// Format: SID (3 chars) + Client ID (6 chars base36) = 9 chars total.
