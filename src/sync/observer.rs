@@ -21,7 +21,7 @@ impl SyncManager {
     async fn broadcast_to_peers(&self, msg: Message, source: Option<&ServerId>) {
         for entry in self.links.iter() {
             let peer_sid = entry.key();
-            
+
             // Split-horizon: don't send back to source
             if let Some(src) = source
                 && peer_sid == src
@@ -29,7 +29,7 @@ impl SyncManager {
                 debug!(peer = %peer_sid.as_str(), "Skipping source peer (split-horizon)");
                 continue;
             }
-            
+
             let link: LinkState = entry.value().clone();
             if let Err(e) = link.tx.send(msg.clone()).await {
                 warn!(peer = %peer_sid.as_str(), error = %e, "Failed to send to peer");
@@ -43,11 +43,11 @@ impl SyncManager {
     fn build_sjoin_command(&self, channel: &ChannelCrdt) -> Command {
         // SJOIN timestamp channel modes [args] :[@user1 +user2 ...]
         let ts = chrono::Utc::now().timestamp() as u64;
-        
+
         // Collect modes
         let mut modes = String::new();
         let mut mode_args = Vec::new();
-        
+
         if *channel.modes.no_external.value() { modes.push('n'); }
         if *channel.modes.topic_ops_only.value() { modes.push('t'); }
         if *channel.modes.moderated.value() { modes.push('m'); }
@@ -58,7 +58,7 @@ impl SyncManager {
         if *channel.modes.no_colors.value() { modes.push('c'); }
         if *channel.modes.no_ctcp.value() { modes.push('C'); }
         if *channel.modes.ssl_only.value() { modes.push('z'); }
-        
+
         if let Some(key) = channel.key.value() {
             modes.push('k');
             mode_args.push(key.clone());
@@ -67,13 +67,13 @@ impl SyncManager {
             modes.push('l');
             mode_args.push(limit.to_string());
         }
-        
+
         if modes.is_empty() {
             modes.push('+');
         } else {
             modes.insert(0, '+');
         }
-        
+
         // Collect users with their modes
         let mut users = Vec::new();
         for uid in channel.members.iter() {
@@ -87,7 +87,7 @@ impl SyncManager {
                 users.push((prefix, uid.clone()));
             }
         }
-        
+
         Command::SJOIN(ts, channel.name.clone(), modes, mode_args, users)
     }
 
@@ -96,7 +96,7 @@ impl SyncManager {
         // UID nick hopcount ts user host uid modes :realname
         let ts = chrono::Utc::now().timestamp().to_string();
         let hopcount = "1".to_string();
-        
+
         // Build mode string
         let mut modes = "+".to_string();
         if *user.modes.invisible.value() { modes.push('i'); }
@@ -105,7 +105,7 @@ impl SyncManager {
         if *user.modes.wallops.value() { modes.push('w'); }
         if *user.modes.secure.value() { modes.push('Z'); }
         if *user.modes.bot.value() { modes.push('B'); }
-        
+
         Command::UID(
             user.nick.value().clone(),
             hopcount,
@@ -138,10 +138,10 @@ impl StateObserver for SyncManager {
         }
 
         info!(uid = %user.uid, nick = %user.nick.value(), "Broadcasting user update to peers");
-        
+
         let msg = Message::from(self.build_uid_command(user));
         let links = self.links.clone();
-        
+
         // Spawn async broadcast (we can't await in a sync trait method)
         tokio::spawn(async move {
             for entry in links.iter() {
@@ -160,16 +160,16 @@ impl StateObserver for SyncManager {
         }
 
         info!(uid = %uid, reason = %reason, "Broadcasting QUIT to peers");
-        
+
         // Build QUIT message with UID prefix
         let quit_msg = Message {
             tags: None,
             prefix: Some(slirc_proto::Prefix::new_from_str(uid)),
             command: Command::QUIT(Some(reason.to_string())),
         };
-        
+
         let links = self.links.clone();
-        
+
         tokio::spawn(async move {
             for entry in links.iter() {
                 let link: LinkState = entry.value().clone();
@@ -187,10 +187,10 @@ impl StateObserver for SyncManager {
         }
 
         info!(channel = %channel.name, members = channel.members.len(), "Broadcasting channel update to peers");
-        
+
         let msg = Message::from(self.build_sjoin_command(channel));
         let links = self.links.clone();
-        
+
         tokio::spawn(async move {
             for entry in links.iter() {
                 let link: LinkState = entry.value().clone();

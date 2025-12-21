@@ -12,7 +12,7 @@ use tracing::{debug, warn};
 impl ChannelActor {
     pub(crate) async fn handle_broadcast(&mut self, message: Message, exclude: Option<Uid>) {
         let msg = Arc::new(message);
-        
+
         // Broadcast to local users
         for (uid, sender) in &self.senders {
             if exclude.as_ref() == Some(uid) {
@@ -25,7 +25,7 @@ impl ChannelActor {
                 }
             }
         }
-        
+
         // Forward to peer servers
         self.forward_to_peers(&msg, exclude.as_ref()).await;
     }
@@ -38,12 +38,12 @@ impl ChannelActor {
         let Some(matrix) = self.matrix.upgrade() else {
             return;
         };
-        
+
         // Skip if no peers connected
         if matrix.sync_manager.links.is_empty() {
             return;
         }
-        
+
         // Convert to S2S format: :SourceUID PRIVMSG #channel :text
         let s2s_msg = match &msg.command {
             Command::PRIVMSG(target, text) => {
@@ -59,9 +59,9 @@ impl ChannelActor {
                         Prefix::ServerName(name) => name.clone(),
                     })
                     .or_else(|| exclude_uid.cloned());
-                
+
                 let source = source_uid.unwrap_or_else(|| "unknown".to_string());
-                
+
                 Message {
                     tags: msg.tags.clone(),
                     prefix: Some(Prefix::new_from_str(&source)),
@@ -79,9 +79,9 @@ impl ChannelActor {
                         Prefix::ServerName(name) => name.clone(),
                     })
                     .or_else(|| exclude_uid.cloned());
-                
+
                 let source = source_uid.unwrap_or_else(|| "unknown".to_string());
-                
+
                 Message {
                     tags: msg.tags.clone(),
                     prefix: Some(Prefix::new_from_str(&source)),
@@ -90,16 +90,16 @@ impl ChannelActor {
             }
             _ => return, // Only forward PRIVMSG and NOTICE
         };
-        
+
         // Get source server ID to avoid echo
         let source_sid = exclude_uid
             .filter(|uid| uid.len() >= 3)
             .map(|uid| &uid[0..3]);
-        
+
         // Broadcast to all peers except source
         for entry in matrix.sync_manager.links.iter() {
             let peer_sid = entry.key();
-            
+
             // Don't echo back to the source server
             if let Some(src_sid) = source_sid
                 && peer_sid.as_str() == src_sid
@@ -107,7 +107,7 @@ impl ChannelActor {
                 debug!(peer = %peer_sid.as_str(), "Skipping source peer for channel message");
                 continue;
             }
-            
+
             let link = entry.value().clone();
             if let Err(e) = link.tx.send(s2s_msg.clone()).await {
                 warn!(peer = %peer_sid.as_str(), error = %e, "Failed to forward channel message");

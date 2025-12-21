@@ -61,22 +61,22 @@ fn test_handshake_flow() {
 #[tokio::test]
 async fn test_sync_manager_peer_registration() {
     use super::SyncManager;
-    
+
     let sid = ServerId::new("001".to_string());
     let sync = SyncManager::new(sid, "test.server".to_string(), "Test Server".to_string(), vec![]);
-    
+
     // Register a peer
     let peer_sid = ServerId::new("002".to_string());
     let _rx = sync.register_peer(peer_sid.clone(), "peer.server".to_string(), 1, "Peer Server".to_string()).await;
-    
+
     // Verify peer is registered
     assert!(sync.links.contains_key(&peer_sid));
     assert!(sync.topology.servers.contains_key(&peer_sid));
-    
+
     // Verify we can find the peer
     let link = sync.get_peer_for_server(&peer_sid);
     assert!(link.is_some());
-    
+
     // Remove peer
     sync.remove_peer(&peer_sid).await;
     assert!(!sync.links.contains_key(&peer_sid));
@@ -89,17 +89,17 @@ async fn test_state_observer_split_horizon() {
     use slirc_crdt::channel::{ChannelCrdt, ChannelModesCrdt, MembershipCrdt};
     use slirc_crdt::traits::AwSet;
     use slirc_crdt::clock::HybridTimestamp;
-    
+
     let sid = ServerId::new("001".to_string());
     let sync = SyncManager::new(sid.clone(), "test.server".to_string(), "Test Server".to_string(), vec![]);
-    
+
     // Register two peers
     let peer1_sid = ServerId::new("002".to_string());
     let mut rx1 = sync.register_peer(peer1_sid.clone(), "peer1.server".to_string(), 1, "Peer 1".to_string()).await;
-    
+
     let peer2_sid = ServerId::new("003".to_string());
     let mut rx2 = sync.register_peer(peer2_sid.clone(), "peer2.server".to_string(), 1, "Peer 2".to_string()).await;
-    
+
     // Create a channel update
     let ts = HybridTimestamp::new(1, 0, &sid);
     let channel = ChannelCrdt {
@@ -114,19 +114,19 @@ async fn test_state_observer_split_horizon() {
         excepts: AwSet::new(),
         invites: AwSet::new(),
     };
-    
+
     // Notify with NO source (local change) - should broadcast to all peers
     sync.on_channel_update(&channel, None);
-    
+
     // Give async task time to send
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-    
+
     // Both peers should receive
     let msg1 = rx1.try_recv();
     let msg2 = rx2.try_recv();
     assert!(msg1.is_ok(), "Peer 1 should receive channel update");
     assert!(msg2.is_ok(), "Peer 2 should receive channel update");
-    
+
     // Verify SJOIN command was sent
     let m1 = msg1.unwrap();
     assert!(matches!(m1.command, Command::SJOIN(..)), "Should be SJOIN command");
@@ -139,14 +139,14 @@ async fn test_state_observer_skip_source() {
     use slirc_crdt::channel::{ChannelCrdt, ChannelModesCrdt, MembershipCrdt};
     use slirc_crdt::traits::AwSet;
     use slirc_crdt::clock::HybridTimestamp;
-    
+
     let sid = ServerId::new("001".to_string());
     let sync = SyncManager::new(sid.clone(), "test.server".to_string(), "Test Server".to_string(), vec![]);
-    
+
     // Register a peer
     let peer_sid = ServerId::new("002".to_string());
     let mut rx = sync.register_peer(peer_sid.clone(), "peer.server".to_string(), 1, "Peer".to_string()).await;
-    
+
     // Create a channel update from the peer (source = Some(peer_sid))
     let ts = HybridTimestamp::new(1, 0, &sid);
     let channel = ChannelCrdt {
@@ -161,13 +161,13 @@ async fn test_state_observer_skip_source() {
         excepts: AwSet::new(),
         invites: AwSet::new(),
     };
-    
+
     // Notify WITH source (remote change) - should NOT broadcast back
     sync.on_channel_update(&channel, Some(peer_sid));
-    
+
     // Give async task time to send (if it were to)
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-    
+
     // Peer should NOT receive (split horizon)
     let msg = rx.try_recv();
     assert!(msg.is_err(), "Peer should NOT receive update from itself (split-horizon)");
