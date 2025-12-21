@@ -3,6 +3,7 @@
 //! Applies mode changes with privilege validation and broadcasts results.
 
 use super::{ChannelActor, ChannelError, ChannelMode, ClearTarget, ModeParams, Uid};
+use slirc_crdt::clock::HybridTimestamp;
 use slirc_proto::mode::{ChannelMode as ProtoChannelMode, Mode};
 use slirc_proto::{Command, Message, Prefix};
 use tokio::sync::mpsc::error::TrySendError;
@@ -58,6 +59,15 @@ impl ChannelActor {
                 }
                 ProtoChannelMode::InviteOnly => self.set_flag_mode(ChannelMode::InviteOnly, adding),
                 ProtoChannelMode::Moderated => self.set_flag_mode(ChannelMode::Moderated, adding),
+                ProtoChannelMode::ModeratedUnreg => {
+                    self.set_flag_mode(ChannelMode::ModeratedUnreg, adding)
+                }
+                ProtoChannelMode::OpModerated => {
+                    self.set_flag_mode(ChannelMode::OpModerated, adding)
+                }
+                ProtoChannelMode::Auditorium => {
+                    self.set_flag_mode(ChannelMode::Auditorium, adding)
+                }
                 ProtoChannelMode::Secret => self.set_flag_mode(ChannelMode::Secret, adding),
                 ProtoChannelMode::RegisteredOnly => {
                     self.set_flag_mode(ChannelMode::RegisteredOnly, adding)
@@ -109,14 +119,14 @@ impl ChannelActor {
                     if adding {
                         if let Some(key) = arg {
                             self.replace_param_mode(
-                                |mode| matches!(mode, ChannelMode::Key(_)),
-                                Some(ChannelMode::Key(key.to_string())),
+                                |mode| matches!(mode, ChannelMode::Key(_, _)),
+                                Some(ChannelMode::Key(key.to_string(), HybridTimestamp::now(&self.server_id))),
                             )
                         } else {
                             false
                         }
                     } else {
-                        self.replace_param_mode(|mode| matches!(mode, ChannelMode::Key(_)), None)
+                        self.replace_param_mode(|mode| matches!(mode, ChannelMode::Key(_, _)), None)
                     }
                 }
 
@@ -124,12 +134,12 @@ impl ChannelActor {
                     if adding {
                         parse_channel_limit(arg).is_some_and(|limit| {
                             self.replace_param_mode(
-                                |mode| matches!(mode, ChannelMode::Limit(_)),
-                                Some(ChannelMode::Limit(limit)),
+                                |mode| matches!(mode, ChannelMode::Limit(_, _)),
+                                Some(ChannelMode::Limit(limit, HybridTimestamp::now(&self.server_id))),
                             )
                         })
                     } else {
-                        self.replace_param_mode(|mode| matches!(mode, ChannelMode::Limit(_)), None)
+                        self.replace_param_mode(|mode| matches!(mode, ChannelMode::Limit(_, _)), None)
                     }
                 }
                 ProtoChannelMode::Founder => {
@@ -213,6 +223,7 @@ impl ChannelActor {
                     }
                 }
             }
+            self.notify_observer(None);
         }
 
         let _ = reply_tx.send(Ok(applied_modes));
@@ -290,6 +301,7 @@ impl ChannelActor {
              }
         }
 
+        self.notify_observer(None);
         let _ = reply_tx.send(Ok(()));
     }
 }

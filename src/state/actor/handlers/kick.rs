@@ -73,6 +73,7 @@ impl ChannelActor {
         // Update channel member count metric (Innovation 3)
         crate::metrics::set_channel_members(&self.name, self.members.len() as i64);
 
+        self.notify_observer(None);
         let _ = reply_tx.send(Ok(()));
     }
 }

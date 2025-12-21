@@ -5,6 +5,7 @@
 use super::super::validation::{create_user_mask, is_banned};
 use super::{ActorState, ChannelActor, ChannelError, ChannelMode, JoinParams, JoinSuccessData, MemberModes};
 use tokio::sync::oneshot;
+use tracing::debug;
 
 impl ChannelActor {
     pub(crate) async fn handle_join(
@@ -32,7 +33,7 @@ impl ChannelActor {
 
         // Validate that the user still exists and the session matches.
         let session_valid = if let Some(matrix) = self.matrix.upgrade() {
-            let user_arc = matrix.users.get(&uid).map(|u| u.value().clone());
+            let user_arc = matrix.user_manager.users.get(&uid).map(|u| u.value().clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.session_id == session_id
@@ -78,7 +79,7 @@ impl ChannelActor {
 
         // 3. Limit (+l)
         for mode in &self.modes {
-            if let ChannelMode::Limit(limit) = mode
+            if let ChannelMode::Limit(limit, _) = mode
                 && self.members.len() >= *limit
             {
                 let _ = reply_tx.send(Err(ChannelError::ChannelIsFull));
@@ -88,7 +89,7 @@ impl ChannelActor {
 
         // 4. Key (+k)
         for mode in &self.modes {
-            if let ChannelMode::Key(key) = mode
+            if let ChannelMode::Key(key, _) = mode
                 && key_arg.as_deref() != Some(key)
             {
                 let _ = reply_tx.send(Err(ChannelError::BadChannelKey));
@@ -151,9 +152,37 @@ impl ChannelActor {
         // Update channel member count metric (Innovation 3)
         crate::metrics::set_channel_members(&self.name, self.members.len() as i64);
 
+        // Determine visibility for Auditorium mode (+u)
+        let mut exclude = vec![uid.clone()];
+        let is_auditorium = self.modes.contains(&ChannelMode::Auditorium);
+
+        // Check if joiner is privileged
+        let joiner_privileged = self.members.get(&uid).map(|m|
+            m.voice || m.halfop || m.op || m.admin || m.owner
+        ).unwrap_or(false);
+
+        if is_auditorium && !joiner_privileged {
+            debug!("Auditorium mode active. Joiner {} is not privileged. Calculating exclusions.", uid);
+            // If +u and joiner is not privileged, only privileged members see the JOIN.
+            // So we exclude all non-privileged members.
+            for (member_uid, modes) in &self.members {
+                if !modes.voice && !modes.halfop && !modes.op && !modes.admin && !modes.owner {
+                    // Don't exclude the joiner again (already in exclude)
+                    if member_uid != &uid {
+                        debug!("Excluding non-privileged member {} from seeing join of {}", member_uid, uid);
+                        exclude.push(member_uid.clone());
+                    }
+                } else {
+                    debug!("Member {} is privileged (modes={:?}), allowing join visibility", member_uid, modes);
+                }
+            }
+        } else {
+            debug!("Auditorium check skipped. is_auditorium={}, joiner_privileged={}", is_auditorium, joiner_privileged);
+        }
+
         self.handle_broadcast_with_cap(
             join_msg_extended,
-            vec![uid.clone()],
+            exclude,
             Some("extended-join".to_string()),
             Some(join_msg_standard),
         )
@@ -167,6 +196,7 @@ impl ChannelActor {
             is_secret,
         };
 
+        self.notify_observer(None);
         let _ = reply_tx.send(Ok(data));
     }
 }

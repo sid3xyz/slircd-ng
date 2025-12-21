@@ -6,6 +6,7 @@ use super::{ChannelActor, Uid};
 use slirc_proto::Message;
 use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
+use tracing::debug;
 
 impl ChannelActor {
     pub(crate) async fn handle_broadcast(&mut self, message: Message, exclude: Option<Uid>) {
@@ -31,6 +32,7 @@ impl ChannelActor {
         fallback_msg: Option<Message>,
     ) {
         let msg = Arc::new(message);
+        debug!(tags = ?msg.tags, "Broadcasting message with cap");
         let fallback = fallback_msg.map(Arc::new);
 
         for (uid, sender) in &self.senders {

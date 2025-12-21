@@ -4,6 +4,7 @@
 
 use super::{ChannelActor, ChannelError, ChannelMode, TopicParams};
 use crate::state::Topic;
+use slirc_crdt::clock::HybridTimestamp;
 use slirc_proto::message::Tag;
 use slirc_proto::{Command, Message};
 use std::borrow::Cow;
@@ -42,6 +43,9 @@ impl ChannelActor {
             set_at: chrono::Utc::now().timestamp(),
         });
 
+        // Record timestamp for CRDT convergence
+        self.topic_timestamp = Some(HybridTimestamp::now(&self.server_id));
+
         // Build TOPIC message with time and msgid tags for event-playback (Innovation 5)
         let tags = Some(vec![
             Tag(Cow::Borrowed("time"), Some(timestamp)),
@@ -74,6 +78,7 @@ impl ChannelActor {
             }
         }
 
+        self.notify_observer(None);
         let _ = reply_tx.send(Ok(()));
     }
 }

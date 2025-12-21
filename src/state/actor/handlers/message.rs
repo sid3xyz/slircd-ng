@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
+use tracing::debug;
 
 /// Build tags for echo-message response based on sender capabilities.
 fn build_echo_tags(
@@ -110,6 +111,15 @@ impl ChannelActor {
             return;
         }
 
+        // Check +M (Moderated-Unregistered)
+        if modes.contains(&ChannelMode::ModeratedUnreg)
+            && !is_registered
+            && !self.member_has_voice_or_higher(&sender_uid)
+        {
+            let _ = reply_tx.send(ChannelRouteResult::BlockedRegisteredSpeak);
+            return;
+        }
+
         // Check +T (no notice)
         if is_notice
             && modes.contains(&ChannelMode::NoNotice)
@@ -137,6 +147,31 @@ impl ChannelActor {
             if is_banned(&user_mask, &user_context, &self.bans, &self.excepts) {
                 let _ = reply_tx.send(ChannelRouteResult::BlockedBanned);
                 return;
+            }
+
+            // Check m: extbans (mute)
+            // Voiced users are immune to m: bans
+            if !self.member_has_voice_or_higher(&sender_uid) {
+                for ban in &self.bans {
+                    #[allow(clippy::collapsible_if)]
+                    if let Some(mask) = ban.mask.strip_prefix("m:") {
+                        if crate::security::matches_ban_or_except(mask, &user_mask, &user_context) {
+                            let is_excepted = self.excepts.iter().any(|e| {
+                                if crate::security::matches_ban_or_except(&e.mask, &user_mask, &user_context) {
+                                    return true;
+                                }
+                                if let Some(e_mask) = e.mask.strip_prefix("m:") {
+                                    return crate::security::matches_ban_or_except(e_mask, &user_mask, &user_context);
+                                }
+                                false
+                            });
+                            if !is_excepted {
+                                let _ = reply_tx.send(ChannelRouteResult::BlockedBanned);
+                                return;
+                            }
+                        }
+                    }
+                }
             }
 
             for quiet in &self.quiets {
@@ -196,8 +231,20 @@ impl ChannelActor {
         let sender_caps = self.user_caps.get(&sender_uid);
         let sender_has_echo = has_caps(sender_caps, "echo-message");
 
+        // Check +U (Op Moderated)
+        let is_op_moderated = modes.contains(&ChannelMode::OpModerated);
+        let sender_is_privileged = self.member_has_voice_or_higher(&sender_uid);
+
         for (uid, sender) in &self.senders {
             let user_caps = self.user_caps.get(uid);
+
+            // If +U is set, and sender is NOT privileged, only send to privileged members
+            if is_op_moderated && !sender_is_privileged {
+                let recipient_privileged = self.member_has_voice_or_higher(uid);
+                if !recipient_privileged && uid != &sender_uid {
+                    continue;
+                }
+            }
 
             if uid == &sender_uid {
                 // Echo back to sender if they have echo-message capability
@@ -212,6 +259,7 @@ impl ChannelActor {
                 echo_msg.tags = build_echo_tags(&tags, &timestamp, &msgid, has_message_tags, has_server_time);
 
                 if let Err(err) = sender.try_send(echo_msg) {
+                    debug!("Failed to send echo to {}: {:?}", uid, err);
                     match err {
                         TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
                         TrySendError::Closed(_) => {}
@@ -296,6 +344,15 @@ impl ChannelActor {
                 recipient_tags.push(Tag(Cow::Borrowed("bot"), None));
             }
 
+            // Innovation 2: Routing tags for remote users
+            let is_remote = !uid.starts_with(self.server_id.as_str());
+            if is_remote {
+                recipient_tags.push(Tag(Cow::Owned("x-target-uid".to_string()), Some(uid.clone())));
+                if let Command::PRIVMSG(target, _) | Command::NOTICE(target, _) = &base_msg.command {
+                    recipient_tags.push(Tag(Cow::Owned("x-visible-target".to_string()), Some(target.clone())));
+                }
+            }
+
             // Note: label tag is NOT included for non-sender recipients
 
             recipient_msg.tags = if recipient_tags.is_empty() {
@@ -305,6 +362,7 @@ impl ChannelActor {
             };
 
             if let Err(err) = sender.try_send(recipient_msg) {
+                debug!("Failed to send message to {}: {:?}", uid, err);
                 match err {
                     TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
                     TrySendError::Closed(_) => {}

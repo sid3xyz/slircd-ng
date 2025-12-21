@@ -3,15 +3,56 @@
 //! Helpers for setting/clearing channel modes and converting to strings.
 
 use super::super::{ChannelActor, ChannelMode};
+use slirc_crdt::clock::HybridTimestamp;
 use std::collections::HashSet;
 
 impl ChannelActor {
+    /// Get the mode character for a `ChannelMode` variant for timestamp tracking.
+    pub(crate) fn mode_to_char(mode: &ChannelMode) -> Option<char> {
+        match mode {
+            ChannelMode::NoExternal => Some('n'),
+            ChannelMode::TopicLock => Some('t'),
+            ChannelMode::Moderated => Some('m'),
+            ChannelMode::ModeratedUnreg => Some('M'),
+            ChannelMode::OpModerated => Some('U'),
+            ChannelMode::NoNickChange => Some('N'),
+            ChannelMode::NoColors => Some('c'),
+            ChannelMode::TlsOnly => Some('z'),
+            ChannelMode::NoKnock => Some('K'),
+            ChannelMode::NoInvite => Some('V'),
+            ChannelMode::NoNotice => Some('T'),
+            ChannelMode::FreeInvite => Some('g'),
+            ChannelMode::OperOnly => Some('O'),
+            ChannelMode::AdminOnly => Some('A'),
+            ChannelMode::Auditorium => Some('u'),
+            ChannelMode::Registered => Some('r'),
+            ChannelMode::NoKicks => Some('Q'),
+            ChannelMode::Secret => Some('s'),
+            ChannelMode::Private => Some('p'),
+            ChannelMode::InviteOnly => Some('i'),
+            ChannelMode::NoCtcp => Some('C'),
+            ChannelMode::Permanent => Some('P'),
+            ChannelMode::RegisteredOnly => Some('R'),
+            ChannelMode::Key(_, _) | ChannelMode::Limit(_, _) => None, // Parametric modes use separate timestamp fields
+        }
+    }
+
+    #[allow(clippy::collapsible_if)]
     pub(crate) fn set_flag_mode(&mut self, flag: ChannelMode, adding: bool) -> bool {
-        if adding {
-            self.modes.insert(flag)
+        let changed = if adding {
+            self.modes.insert(flag.clone())
         } else {
             self.modes.remove(&flag)
+        };
+
+        // Record timestamp for boolean mode changes
+        if changed {
+            if let Some(mode_char) = Self::mode_to_char(&flag) {
+                self.mode_timestamps.insert(mode_char, HybridTimestamp::now(&self.server_id));
+            }
         }
+
+        changed
     }
 
     pub(crate) fn replace_param_mode<F>(
@@ -58,6 +99,9 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
     }
     if modes.contains(&ChannelMode::ModeratedUnreg) {
         flags.push('M');
+    }
+    if modes.contains(&ChannelMode::OpModerated) {
+        flags.push('U');
     }
     if modes.contains(&ChannelMode::NoNickChange) {
         flags.push('N');
@@ -117,13 +161,13 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
     // Param modes
     for mode in modes {
         match mode {
-            ChannelMode::Key(k) => {
+            ChannelMode::Key(k, _) => {
                 if !flags.contains('k') {
                     flags.push('k');
                     params.push(k.clone());
                 }
             }
-            ChannelMode::Limit(l) => {
+            ChannelMode::Limit(l, _) => {
                 if !flags.contains('l') {
                     flags.push('l');
                     params.push(l.to_string());

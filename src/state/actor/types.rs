@@ -137,6 +137,15 @@ pub enum ChannelEvent {
         requester_uid: Option<Uid>,
         reply_tx: oneshot::Sender<ChannelInfo>,
     },
+    /// Request CRDT representation of the channel (Innovation 2).
+    GetCrdt {
+        reply_tx: oneshot::Sender<slirc_crdt::channel::ChannelCrdt>,
+    },
+    /// Merge a CRDT representation into the channel (Innovation 2).
+    MergeCrdt {
+        crdt: Box<slirc_crdt::channel::ChannelCrdt>,
+        source: Option<slirc_crdt::clock::ServerId>,
+    },
     /// Request list (bans, excepts, etc).
     GetList {
         mode: char,
@@ -212,6 +221,13 @@ pub enum ChannelEvent {
         target: ClearTarget,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
+    /// Incoming SJOIN from a peer server.
+    SJoin {
+        ts: u64,
+        modes: String,
+        mode_args: Vec<String>,
+        users: Vec<(String, String)>, // (prefixes, uid)
+    },
 }
 
 /// Target for CLEAR command.
@@ -246,6 +262,8 @@ pub enum ChannelRouteResult {
     BlockedExternal,
     /// Sender is blocked by +m (moderated).
     BlockedModerated,
+    /// Sender is blocked by +M (registered-only speak).
+    BlockedRegisteredSpeak,
     /// Sender is blocked by +r (registered-only channel).
     BlockedRegisteredOnly,
     /// Blocked by +C (no CTCP except ACTION).
@@ -267,6 +285,8 @@ pub enum ChannelMode {
     Moderated,
     /// +M: Moderated-Unregistered (only registered users can speak in moderated channel)
     ModeratedUnreg,
+    /// +U: Op Moderated (messages from non-ops only go to ops)
+    OpModerated,
     /// +N: No Nick Change (users cannot change nick while in channel)
     NoNickChange,
     /// +c: No Colors/Formatting (strip mIRC color codes, bold, underline)
@@ -304,9 +324,9 @@ pub enum ChannelMode {
     /// +R: Registered-only (only identified users can join)
     RegisteredOnly,
     /// +k <key>: Channel key required to join
-    Key(String),
+    Key(String, slirc_crdt::clock::HybridTimestamp),
     /// +l <limit>: User limit
-    Limit(usize),
+    Limit(usize, slirc_crdt::clock::HybridTimestamp),
 }
 
 #[derive(Debug, Clone)]
