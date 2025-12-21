@@ -267,6 +267,14 @@ impl ChannelActor {
             } => {
                 self.handle_sjoin(ts, modes, mode_args, users).await;
             }
+            ChannelEvent::NetsplitQuit { uid, reply_tx } => {
+                // Silently remove user from channel (QUIT already broadcast by split.rs)
+                self.members.remove(&uid);
+                self.senders.remove(&uid);
+                self.user_nicks.remove(&uid);
+                self.user_caps.remove(&uid);
+                let _ = reply_tx.send(());
+            }
         }
     }
 

@@ -228,6 +228,11 @@ pub enum ChannelEvent {
         mode_args: Vec<String>,
         users: Vec<(String, String)>, // (prefixes, uid)
     },
+    /// Netsplit quit - remove user without broadcast (already handled by split.rs).
+    NetsplitQuit {
+        uid: Uid,
+        reply_tx: oneshot::Sender<()>,
+    },
 }
 
 /// Target for CLEAR command.
