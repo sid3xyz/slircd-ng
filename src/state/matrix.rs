@@ -1,7 +1,18 @@
 //! The Matrix - Central shared state for the IRC server.
 //!
-//! The Matrix holds all users, channels, and server state in concurrent
-//! data structures accessible from any async task.
+//! The Matrix acts as a central dependency injection container and coordinator
+//! for the various domain managers that hold the actual server state.
+//!
+//! # Architecture
+//!
+//! Following a major refactor to eliminate "God Object" patterns, the Matrix
+//! delegates state and behavior to specialized managers:
+//! - [`UserManager`]: Handles users, nicknames, and WHOWAS history.
+//! - [`ChannelManager`]: Handles channel actors and broadcasting.
+//! - [`SecurityManager`]: Handles bans, rate limiting, and spam detection.
+//! - [`ServiceManager`]: Handles internal services (NickServ, ChanServ) and history.
+//! - [`MonitorManager`]: Handles IRCv3 MONITOR lists.
+//! - [`LifecycleManager`]: Handles server shutdown and disconnect signaling.
 //!
 //! # Lock Order (Deadlock Prevention)
 //!
@@ -19,118 +30,54 @@
 //! - **Collect-then-mutate**: Collect UIDs/keys to Vec, release iteration, then mutate
 //! - **Lock-copy-release**: Acquire lock, copy needed data, release before next operation
 
-use super::user::{User, WhowasEntry};
+use crate::state::{Uid, UserManager, ChannelManager, SecurityManager, SecurityManagerParams, ServiceManager, MonitorManager, LifecycleManager, SyncManager};
 use crate::db::Database;
-use crate::services::{chanserv, nickserv};
-use crate::history::HistoryProvider;
+use slirc_crdt::clock::ServerId;
 
 use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
-use crate::db::Shun;
 use crate::handlers::{cleanup_monitors, notify_monitors_offline};
-use crate::security::{BanCache, RateLimitManager};
-use crate::security::ip_deny::IpDenyList;
-use crate::state::UidGenerator;
 use crate::state::actor::ChannelEvent;
-use dashmap::{DashMap, DashSet};
 use slirc_proto::Message;
-use std::collections::VecDeque;
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
-use std::time::Instant;
-use tokio::sync::{RwLock, broadcast, mpsc};
-
-/// Unique user identifier (TS6 format: 9 characters).
-pub type Uid = String;
-
-/// Maximum number of WHOWAS entries to keep per nickname.
-const MAX_WHOWAS_PER_NICK: usize = 10;
+use tokio::sync::mpsc;
 
 /// The Matrix - Central shared state container.
 ///
 /// This is the core state of the IRC server, holding all users, channels,
 /// and related data in thread-safe concurrent collections.
 pub struct Matrix {
-    /// All connected users, indexed by UID.
-    pub users: DashMap<Uid, Arc<RwLock<User>>>,
+    /// User management state.
+    pub user_manager: UserManager,
 
-    /// All channels, indexed by lowercase name.
-    pub channels: DashMap<String, mpsc::Sender<ChannelEvent>>,
+    /// Channel management state.
+    pub channel_manager: ChannelManager,
 
-    /// Nick to UID mapping for fast nick lookups.
-    pub nicks: DashMap<String, Uid>,
+    /// Security management state.
+    pub security_manager: SecurityManager,
 
-    /// UID to message sender mapping for routing.
-    pub senders: DashMap<Uid, mpsc::Sender<Message>>,
+    /// Service management state.
+    pub service_manager: ServiceManager,
 
-    /// Nick enforcement timers: UID -> deadline when they will be renamed.
-    pub enforce_timers: DashMap<Uid, Instant>,
+    /// Monitor management state.
+    pub monitor_manager: MonitorManager,
 
-    /// WHOWAS history: lowercase nick -> entries (most recent first).
-    pub whowas: DashMap<String, VecDeque<WhowasEntry>>,
+    /// Lifecycle management state.
+    pub lifecycle_manager: LifecycleManager,
+
+    /// Sync management state (Innovation 2: Distributed Server Linking).
+    pub sync_manager: SyncManager,
 
     /// This server's identity.
     pub server_info: ServerInfo,
 
-    /// UID generator for new connections.
-    pub uid_gen: UidGenerator,
+    /// Server ID for CRDT synchronization.
+    pub server_id: ServerId,
 
     /// Server configuration (for handlers to access).
     pub config: MatrixConfig,
 
-    /// Global rate limiter for flood protection.
-    pub rate_limiter: RateLimitManager,
-
-    /// Spam detection service for content analysis (wrapped in RwLock for runtime config).
-    pub spam_detector: Option<Arc<tokio::sync::RwLock<crate::security::spam::SpamDetectionService>>>,
-
-    /// Set of registered channel names (lowercase) for fast lookup.
-    pub registered_channels: DashSet<String>,
-
-    /// Active shuns cached in memory for fast lookup.
-    /// Key is the mask pattern, value is the Shun record.
-    pub shuns: DashMap<String, Shun>,
-
-    /// MONITOR: Nicknames being monitored by each UID.
-    /// Key is UID, value is set of lowercase nicknames.
-    pub monitors: DashMap<Uid, DashSet<String>>,
-
-    /// MONITOR: Reverse mapping - who is monitoring each nickname.
-    /// Key is lowercase nickname, value is set of UIDs monitoring it.
-    pub monitoring: DashMap<String, DashSet<Uid>>,
-
-    /// In-memory ban cache for fast connection-time ban checks.
-    pub ban_cache: BanCache,
-
-    /// Message history provider (Opt-In Hybrid Architecture).
-    pub history: Arc<dyn HistoryProvider>,
-
-    /// High-performance IP deny list (Roaring Bitmap engine).
-    /// Used for nanosecond-scale IP rejection in the gateway accept loop.
-    pub ip_deny_list: std::sync::RwLock<IpDenyList>,
-
-    /// NickServ service singleton.
-    pub nickserv: nickserv::NickServ,
-
-    /// ChanServ service singleton.
-    pub chanserv: chanserv::ChanServ,
-
-    /// Extra services (dynamic).
-    pub extra_services: std::collections::HashMap<String, Box<dyn crate::services::Service>>,
-
-    /// Maximum local user count (historical peak).
-    pub max_local_users: AtomicUsize,
-
-    /// Maximum global user count (historical peak).
-    pub max_global_users: AtomicUsize,
-
-    /// Shutdown signal broadcaster.
-    /// When DIE command is issued, a message is sent on this channel.
-    pub shutdown_tx: broadcast::Sender<()>,
-
-    /// Disconnect request channel.
-    /// Channel actors use this to request disconnects without blocking.
-    /// Bounded channel provides backpressure to prevent memory exhaustion.
-    disconnect_tx: mpsc::Sender<(Uid, String)>,
+    /// Router channel for remote messages.
+    pub router_tx: mpsc::Sender<Message>,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -148,6 +95,8 @@ pub struct MatrixConfig {
     pub limits: crate::config::LimitsConfig,
     /// History configuration (Innovation 5: Event-Sourced History).
     pub history: crate::config::HistoryConfig,
+    /// Link blocks for server peering.
+    pub links: Vec<crate::config::LinkBlock>,
 }
 
 /// This server's identity information.
@@ -155,6 +104,7 @@ pub struct MatrixConfig {
 pub struct ServerInfo {
     pub name: String,
     pub network: String,
+    pub sid: String,
     pub description: String,
     pub created: i64,
     /// MOTD lines loaded from config file.
@@ -180,7 +130,7 @@ pub struct MatrixParams<'a> {
 
 impl Matrix {
     /// Create a new Matrix with the given server configuration.
-    pub fn new(params: MatrixParams<'_>) -> Self {
+    pub fn new(params: MatrixParams<'_>) -> (Self, mpsc::Receiver<Message>) {
         let MatrixParams {
             config,
             data_dir,
@@ -200,50 +150,54 @@ impl Matrix {
         let now = chrono::Utc::now().timestamp();
 
         // Build the registered channels set (lowercase for consistent lookup)
-        let registered_set = DashSet::with_capacity(registered_channels.len());
-        for name in registered_channels {
-            registered_set.insert(irc_to_lower(&name));
-        }
+        let registered_channel_names: Vec<String> = registered_channels
+            .into_iter()
+            .map(|name| irc_to_lower(&name))
+            .collect();
 
-        // Build the shuns map
-        let shuns_map = DashMap::with_capacity(shuns.len());
-        for shun in shuns {
-            shuns_map.insert(shun.mask.clone(), shun);
-        }
+        let server_id = ServerId::new(config.server.sid.clone());
+        let sync_manager = SyncManager::new(
+            server_id.clone(),
+            config.server.name.clone(),
+            config.server.description.clone(),
+            config.links.clone(),
+        );
+        let sync_manager_arc = Arc::new(sync_manager);
+        let mut user_manager = UserManager::new(config.server.sid.clone(), config.server.name.clone());
+        user_manager.set_observer(sync_manager_arc.clone());
 
-        // Load IP deny list from data directory
-        let ip_deny_path = data_dir
-            .map(|d| d.join("ip_bans.msgpack"))
-            .unwrap_or_else(|| std::path::PathBuf::from("ip_bans.msgpack"));
-        let mut ip_deny_list = IpDenyList::load(&ip_deny_path);
+        let mut channel_manager = ChannelManager::with_registered_channels(registered_channel_names);
+        channel_manager.set_observer(sync_manager_arc.clone());
 
-        // Sync IpDenyList with database D-lines and Z-lines
-        // This ensures any bans added via database admin tools are in the bitmap
-        ip_deny_list.sync_from_database_bans(&dlines, &zlines);
+        let (router_tx, router_rx) = mpsc::channel(1000);
 
-        // Build the ban cache (K-lines and G-lines only; IP bans handled by IpDenyList)
-        let ban_cache = BanCache::load(klines, glines);
-
-        // Create shutdown broadcast channel
-        // Capacity 16 provides buffer for multiple slow subscribers during shutdown
-        let (shutdown_tx, _) = broadcast::channel(16);
-
-        Self {
-            users: DashMap::new(),
-            channels: DashMap::new(),
-            nicks: DashMap::new(),
-            senders: DashMap::new(),
-            enforce_timers: DashMap::new(),
-            whowas: DashMap::new(),
+        (Self {
+            user_manager,
+            channel_manager,
+            security_manager: SecurityManager::new(SecurityManagerParams {
+                security_config: &config.security,
+                db: Some(db.clone()),
+                data_dir,
+                shuns,
+                klines,
+                dlines,
+                glines,
+                zlines,
+            }),
+            service_manager: ServiceManager::new(db, history),
+            monitor_manager: MonitorManager::new(),
+            lifecycle_manager: LifecycleManager::new(disconnect_tx),
+            sync_manager: Arc::try_unwrap(sync_manager_arc).unwrap_or_else(|arc| (*arc).clone()),
             server_info: ServerInfo {
                 name: config.server.name.clone(),
                 network: config.server.network.clone(),
+                sid: config.server.sid.clone(),
                 description: config.server.description.clone(),
                 created: now,
                 motd_lines: config.motd.load_lines(),
                 idle_timeouts: config.server.idle_timeouts.clone(),
             },
-            uid_gen: UidGenerator::new(config.server.sid.clone()),
+            server_id,
             config: MatrixConfig {
                 server: config.server.clone(),
                 oper_blocks: config.oper.clone(),
@@ -251,40 +205,21 @@ impl Matrix {
                 account_registration: config.account_registration.clone(),
                 limits: config.limits.clone(),
                 history: config.history.clone(),
+                links: config.links.clone(),
             },
-            rate_limiter: RateLimitManager::new(config.security.rate_limits.clone()),
-            spam_detector: if config.security.spam_detection_enabled {
-                Some(Arc::new(tokio::sync::RwLock::new(
-                    crate::security::spam::SpamDetectionService::new(
-                        Some(db.clone()),
-                        config.security.clone(),
-                    ),
-                )))
-            } else {
-                None
-            },
-            registered_channels: registered_set,
-            shuns: shuns_map,
-            monitors: DashMap::new(),
-            monitoring: DashMap::new(),
-            ban_cache,
-            history,
-            ip_deny_list: std::sync::RwLock::new(ip_deny_list),
-            nickserv: nickserv::NickServ::new(db.clone()),
-            chanserv: chanserv::ChanServ::new(db),
-            extra_services: std::collections::HashMap::new(),
-            max_local_users: AtomicUsize::new(0),
-            max_global_users: AtomicUsize::new(0),
-            shutdown_tx,
-            disconnect_tx,
-        }
+            router_tx,
+        }, router_rx)
     }
 
     /// Register a user's message sender for routing.
     pub fn register_sender(&self, uid: &str, sender: mpsc::Sender<Message>) {
-        self.senders.insert(uid.to_string(), sender);
+        self.user_manager.senders.insert(uid.to_string(), sender);
     }
 
+    /// Get the current hybrid timestamp for CRDT operations.
+    pub fn clock(&self) -> slirc_crdt::clock::HybridTimestamp {
+        slirc_crdt::clock::HybridTimestamp::now(&self.server_id)
+    }
 
     /// Request that a user be disconnected.
     ///
@@ -293,110 +228,7 @@ impl Matrix {
     /// the disconnect will be silently dropped (which is acceptable since the
     /// disconnect worker will catch up eventually).
     pub fn request_disconnect(&self, uid: &str, reason: &str) {
-        // Use try_send to maintain non-blocking behavior with bounded channel.
-        // If the channel is full, the disconnect request is dropped - this is
-        // acceptable as it indicates the disconnect worker is overwhelmed and
-        // will catch up.
-        let _ = self
-            .disconnect_tx
-            .try_send((uid.to_string(), reason.to_string()));
-    }
-
-    /// Broadcast a message to all members of a channel.
-    /// Send a server notice to all operators subscribed to the given snomask.
-    ///
-    /// # Arguments
-    /// - `mask`: The snomask character (e.g., 'c' for connect, 'k' for kill).
-    /// - `message`: The message text.
-    pub async fn send_snomask(&self, mask: char, message: &str) {
-        use slirc_proto::{Command, Message, Prefix};
-
-        let notice_msg = Message {
-            tags: None,
-            prefix: Some(Prefix::ServerName(self.server_info.name.clone())),
-            command: Command::NOTICE(
-                "*".to_string(), // Target is * for server notices
-                format!("*** Notice -- {}", message),
-            ),
-        };
-
-        for user_entry in self.users.iter() {
-            let user_guard = user_entry.value().read().await;
-            if user_guard.modes.has_snomask(mask)
-                && let Some(sender) = self.senders.get(&user_guard.uid)
-            {
-                let _ = sender.send(notice_msg.clone()).await;
-            }
-        }
-    }
-
-    /// Optionally exclude one UID (usually the sender).
-    /// Note: `channel_name` should already be lowercased by the caller.
-    ///
-    /// Uses `Arc<Message>` for efficient broadcasting to multiple recipients.
-    pub async fn broadcast_to_channel(
-        &self,
-        channel_name: &str,
-        msg: Message,
-        exclude: Option<&str>,
-    ) {
-        let channel_tx = self.channels.get(channel_name).map(|s| s.clone());
-        if let Some(channel_tx) = channel_tx {
-            let _ = channel_tx
-                .send(ChannelEvent::Broadcast {
-                    message: msg,
-                    exclude: exclude.map(|s| s.to_string()),
-                })
-                .await;
-        }
-    }
-
-    /// Broadcast to channel members filtered by IRCv3 capability.
-    ///
-    /// - If `required_cap` is Some, only sends `msg` to members who have that capability enabled
-    /// - If `fallback_msg` is Some, sends that to members without the capability
-    /// - If `fallback_msg` is None, members without the capability receive nothing
-    pub async fn broadcast_to_channel_with_cap(
-        &self,
-        channel_name: &str,
-        msg: Message,
-        exclude: Option<&str>,
-        required_cap: Option<&str>,
-        fallback_msg: Option<Message>,
-    ) {
-        let excludes: &[&str] = if let Some(e) = exclude { &[e] } else { &[] };
-        self.broadcast_to_channel_with_cap_exclude_users(
-            channel_name,
-            msg,
-            excludes,
-            required_cap,
-            fallback_msg,
-        )
-        .await
-    }
-
-    /// Broadcast a message to channel members, filtering by capability and excluding multiple users.
-    ///
-    /// Same as `broadcast_to_channel_with_cap` but allows excluding multiple users.
-    pub async fn broadcast_to_channel_with_cap_exclude_users(
-        &self,
-        channel_name: &str,
-        msg: Message,
-        exclude: &[&str],
-        required_cap: Option<&str>,
-        fallback_msg: Option<Message>,
-    ) {
-        let channel_tx = self.channels.get(channel_name).map(|s| s.clone());
-        if let Some(channel_tx) = channel_tx {
-            let _ = channel_tx
-                .send(ChannelEvent::BroadcastWithCap {
-                    message: Box::new(msg),
-                    exclude: exclude.iter().map(|s| s.to_string()).collect(),
-                    required_cap: required_cap.map(|s| s.to_string()),
-                    fallback_msg: fallback_msg.map(Box::new),
-                })
-                .await;
-        }
+        self.lifecycle_manager.request_disconnect(uid, reason);
     }
 
     /// Disconnect a user from the server.
@@ -419,7 +251,7 @@ impl Matrix {
 
         // Get user info before removal
         let (nick, user, host, realname, user_channels) = {
-            let user_arc = self.users.get(target_uid).map(|u| u.clone());
+            let user_arc = self.user_manager.users.get(target_uid).map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 (
@@ -435,7 +267,7 @@ impl Matrix {
         };
 
         // Record WHOWAS entry before user is removed
-        self.record_whowas(&nick, &user, &host, &realname);
+        self.user_manager.record_whowas(&nick, &user, &host, &realname);
 
         // Notify MONITOR watchers that this nick is going offline
         notify_monitors_offline(self, &nick).await;
@@ -452,7 +284,7 @@ impl Matrix {
 
         // Remove from channels and broadcast QUIT
         for channel_name in &user_channels {
-            let channel_tx = self.channels.get(channel_name).map(|s| s.clone());
+            let channel_tx = self.channel_manager.channels.get(channel_name).map(|s| s.clone());
             if let Some(channel_tx) = channel_tx {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 let _ = channel_tx
@@ -466,7 +298,7 @@ impl Matrix {
 
                     if let Ok(remaining) = rx.await
                         && remaining == 0
-                        && self.channels.remove(channel_name).is_some()
+                        && self.channel_manager.channels.remove(channel_name).is_some()
                     {
                         crate::metrics::ACTIVE_CHANNELS.dec();
                     }
@@ -475,62 +307,23 @@ impl Matrix {
 
         // Remove from nick mapping
         let nick_lower = slirc_proto::irc_to_lower(&nick);
-        self.nicks.remove(&nick_lower);
+        self.user_manager.nicks.remove(&nick_lower);
 
         // Remove user from matrix
-        self.users.remove(target_uid);
+        self.user_manager.users.remove(target_uid);
 
         // Remove enforcement timer if any
-        self.enforce_timers.remove(target_uid);
+        self.user_manager.enforce_timers.remove(target_uid);
 
         // Drop sender - this will cause the connection task to terminate
-        self.senders.remove(target_uid);
+        self.user_manager.senders.remove(target_uid);
 
         // Clean up rate limiter state
-        self.rate_limiter.remove_client(target_uid);
+        self.security_manager.rate_limiter.remove_client(target_uid);
 
         // Update connected user metric
         crate::metrics::CONNECTED_USERS.dec();
 
         user_channels
     }
-
-    /// Record a WHOWAS entry for a user who is disconnecting.
-    ///
-    /// Entries are stored per-nick (lowercase) with most recent first.
-    /// Old entries are pruned to keep only MAX_WHOWAS_PER_NICK entries.
-    pub fn record_whowas(&self, nick: &str, user: &str, host: &str, realname: &str) {
-        let nick_lower = slirc_proto::irc_to_lower(nick);
-        let entry = WhowasEntry {
-            nick: nick.to_string(),
-            user: user.to_string(),
-            host: host.to_string(),
-            realname: realname.to_string(),
-            server: self.server_info.name.clone(),
-            logout_time: chrono::Utc::now().timestamp_millis(),
-        };
-
-        self.whowas.entry(nick_lower).or_default().push_front(entry);
-
-        // Prune old entries if over the limit
-        if let Some(mut entries) = self.whowas.get_mut(&slirc_proto::irc_to_lower(nick)) {
-            while entries.len() > MAX_WHOWAS_PER_NICK {
-                entries.pop_back();
-            }
-        }
-    }
-
-    /// Clean up expired WHOWAS entries.
-    ///
-    /// Removes entries older than 7 days. Call this periodically from a
-    /// maintenance task to prevent unbounded growth.
-    pub fn cleanup_whowas(&self, max_age_days: i64) {
-        let cutoff = chrono::Utc::now().timestamp() - (max_age_days * 24 * 3600);
-
-        self.whowas.retain(|_, entries| {
-            entries.retain(|e| e.logout_time > cutoff);
-            !entries.is_empty()
-        });
-    }
-
 }
