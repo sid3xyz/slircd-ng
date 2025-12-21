@@ -10,13 +10,16 @@
 //! - **Concurrency**: Each channel runs on its own task, allowing the runtime to distribute load.
 
 use crate::state::{ListEntry, Matrix, MemberModes, Topic};
+use crate::state::observer::StateObserver;
 use chrono::Utc;
+use slirc_crdt::clock::HybridTimestamp;
 use slirc_proto::Message;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
+mod crdt;
 mod handlers;
 mod helpers;
 mod types;
@@ -41,6 +44,13 @@ pub struct ChannelActor {
     pub senders: HashMap<Uid, mpsc::Sender<Message>>,
     pub user_caps: HashMap<Uid, HashSet<String>>,
     pub modes: HashSet<ChannelMode>,
+    /// Timestamps for when each boolean mode was last changed.
+    /// Key is the mode character (e.g., 'n' for NoExternal).
+    pub mode_timestamps: HashMap<char, HybridTimestamp>,
+    /// Timestamp for the topic.
+    pub topic_timestamp: Option<HybridTimestamp>,
+    /// Server ID for generating hybrid timestamps.
+    pub server_id: slirc_crdt::ServerId,
     pub topic: Option<Topic>,
     pub created: i64,
 
@@ -55,6 +65,7 @@ pub struct ChannelActor {
     pub kicked_users: HashMap<Uid, Instant>,
     matrix: Weak<Matrix>,
     state: ActorState,
+    observer: Option<Arc<dyn StateObserver>>,
 }
 
 const MAX_INVITES_PER_CHANNEL: usize = 100;
@@ -75,6 +86,7 @@ impl ChannelActor {
         matrix: Weak<Matrix>,
         initial_topic: Option<Topic>,
         capacity: usize,
+        observer: Option<Arc<dyn StateObserver>>,
     ) -> mpsc::Sender<ChannelEvent> {
         let (tx, rx) = mpsc::channel(capacity);
 
@@ -83,6 +95,12 @@ impl ChannelActor {
         modes.insert(ChannelMode::NoExternal);
         modes.insert(ChannelMode::TopicLock);
 
+        // Get server_id from matrix (use default if matrix unavailable - shouldn't happen)
+        let server_id = matrix
+            .upgrade()
+            .map(|m| m.server_id.clone())
+            .unwrap_or_else(|| slirc_crdt::ServerId::new("000".to_string()));
+
         let actor = Self {
             name,
             members: im::HashMap::new(),
@@ -90,6 +108,9 @@ impl ChannelActor {
             senders: HashMap::new(),
             user_caps: HashMap::new(),
             modes,
+            mode_timestamps: HashMap::new(),
+            topic_timestamp: None,
+            server_id,
             topic: initial_topic,
             created: Utc::now().timestamp(),
             bans: Vec::new(),
@@ -100,12 +121,12 @@ impl ChannelActor {
             kicked_users: HashMap::new(),
             matrix,
             state: ActorState::Active,
+            observer,
         };
 
         tokio::spawn(async move {
             actor.run(rx).await;
         });
-
         tx
     }
 
@@ -181,6 +202,13 @@ impl ChannelActor {
                 };
                 let _ = reply_tx.send(info);
             }
+            ChannelEvent::GetCrdt { reply_tx } => {
+                let crdt = self.to_crdt();
+                let _ = reply_tx.send(crdt);
+            }
+            ChannelEvent::MergeCrdt { crdt, source } => {
+                self.handle_merge_crdt(*crdt, source).await;
+            }
             ChannelEvent::GetList { mode, reply_tx } => {
                 let list = match mode {
                     'b' => self.bans.clone(),
@@ -230,7 +258,16 @@ impl ChannelActor {
             } => {
                 self.handle_clear(sender_uid, sender_prefix, target, reply_tx)
                     .await;
-            }        }
+            }
+            ChannelEvent::SJoin {
+                ts,
+                modes,
+                mode_args,
+                users,
+            } => {
+                self.handle_sjoin(ts, modes, mode_args, users).await;
+            }
+        }
     }
 
     fn cleanup_if_empty(&mut self) {
@@ -245,9 +282,13 @@ impl ChannelActor {
             // Remove channel member metrics (Innovation 3)
             crate::metrics::remove_channel_metrics(&self.name);
 
+            if let Some(observer) = &self.observer {
+                observer.on_channel_destroy(&self.name, None);
+            }
+
             if let Some(matrix) = self.matrix.upgrade() {
                 let name_lower = self.name.to_lowercase();
-                if matrix.channels.remove(&name_lower).is_some() {
+                if matrix.channel_manager.channels.remove(&name_lower).is_some() {
                     crate::metrics::ACTIVE_CHANNELS.dec();
                 }
             }
@@ -275,6 +316,9 @@ mod tests {
             senders: HashMap::new(),
             user_caps: HashMap::new(),
             modes: HashSet::new(),
+            mode_timestamps: HashMap::new(),
+            topic_timestamp: None,
+            server_id: slirc_crdt::ServerId::new("000".to_string()),
             topic: None,
             created: 0,
             bans: Vec::new(),
@@ -285,6 +329,7 @@ mod tests {
             kicked_users: HashMap::new(),
             matrix: Weak::new(),
             state: ActorState::Active,
+            observer: None,
         }
     }
 
