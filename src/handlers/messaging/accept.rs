@@ -23,16 +23,24 @@ impl PostRegHandler for AcceptHandler {
             // List entries
             let user = user_arc.read().await;
             for nick in &user.accept_list {
-                let _ = ctx.sender.send(Response::rpl_acceptlist(&ctx.state.nick, nick)).await;
+                let _ = ctx
+                    .sender
+                    .send(Response::rpl_acceptlist(&ctx.state.nick, nick))
+                    .await;
             }
-            let _ = ctx.sender.send(Response::rpl_endofaccept(&ctx.state.nick)).await;
+            let _ = ctx
+                .sender
+                .send(Response::rpl_endofaccept(&ctx.state.nick))
+                .await;
             return Ok(());
         }
 
         let mut user = user_arc.write().await;
 
         for arg in args.split(',') {
-            if arg.is_empty() { continue; }
+            if arg.is_empty() {
+                continue;
+            }
 
             let (nick, remove) = if let Some(stripped) = arg.strip_prefix('-') {
                 (stripped, true)
@@ -44,12 +52,22 @@ impl PostRegHandler for AcceptHandler {
 
             if remove {
                 if !user.accept_list.remove(&nick_lower) {
-                    let _ = ctx.sender.send(Response::err_accept_not(&ctx.state.nick, nick)).await;
+                    let _ = ctx
+                        .sender
+                        .send(Response::err_accept_not(&ctx.state.nick, nick))
+                        .await;
                 }
             } else if user.accept_list.contains(&nick_lower) {
-                let _ = ctx.sender.send(Response::err_accept_exist(&ctx.state.nick, nick)).await;
-            } else if user.accept_list.len() >= 100 { // Limit
-                let _ = ctx.sender.send(Response::err_accept_full(&ctx.state.nick)).await;
+                let _ = ctx
+                    .sender
+                    .send(Response::err_accept_exist(&ctx.state.nick, nick))
+                    .await;
+            } else if user.accept_list.len() >= 100 {
+                // Limit
+                let _ = ctx
+                    .sender
+                    .send(Response::err_accept_full(&ctx.state.nick))
+                    .await;
             } else {
                 user.accept_list.insert(nick_lower);
             }

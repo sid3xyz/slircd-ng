@@ -79,7 +79,9 @@ pub trait SessionState: Send {
     fn is_server(&self) -> bool;
 
     /// Get batch routing decision (Server only).
-    fn batch_routing(&self) -> Option<&BatchRouting> { None }
+    fn batch_routing(&self) -> Option<&BatchRouting> {
+        None
+    }
 }
 
 // ============================================================================
@@ -289,7 +291,6 @@ impl SessionState for UnregisteredState {
 }
 
 impl UnregisteredState {
-
     /// Check if registration requirements are met.
     ///
     /// Requirements:

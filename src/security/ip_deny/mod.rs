@@ -553,12 +553,24 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     trait IpDenyListTestExt {
-        fn add_ban_ip(&mut self, ip: IpAddr, reason: String, duration: Option<Duration>, added_by: String) -> Result<(), std::io::Error>;
+        fn add_ban_ip(
+            &mut self,
+            ip: IpAddr,
+            reason: String,
+            duration: Option<Duration>,
+            added_by: String,
+        ) -> Result<(), std::io::Error>;
         fn remove_ban_ip(&mut self, ip: IpAddr) -> Result<bool, std::io::Error>;
     }
 
     impl IpDenyListTestExt for IpDenyList {
-        fn add_ban_ip(&mut self, ip: IpAddr, reason: String, duration: Option<Duration>, added_by: String) -> Result<(), std::io::Error> {
+        fn add_ban_ip(
+            &mut self,
+            ip: IpAddr,
+            reason: String,
+            duration: Option<Duration>,
+            added_by: String,
+        ) -> Result<(), std::io::Error> {
             let net = match ip {
                 IpAddr::V4(v4) => IpNet::V4(Ipv4Net::new(v4, 32).expect("prefix 32 is valid")),
                 IpAddr::V6(v6) => IpNet::V6(Ipv6Net::new(v6, 128).expect("prefix 128 is valid")),

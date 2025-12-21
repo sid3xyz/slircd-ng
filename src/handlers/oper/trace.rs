@@ -3,10 +3,7 @@
 //! Shows routing and connection information for debugging purposes.
 //! Operator-only command per RFC 2812.
 
-use super::super::{Context,
-    HandlerResult, PostRegHandler,
-    resolve_nick_to_uid, server_reply,
-};
+use super::super::{Context, HandlerResult, PostRegHandler, resolve_nick_to_uid, server_reply};
 use crate::require_oper_cap;
 use crate::state::RegisteredState;
 use async_trait::async_trait;
@@ -32,13 +29,20 @@ impl PostRegHandler for TraceHandler {
 
         // Request oper capability from authority (Innovation 4)
         // TRACE requires oper privileges (uses KillCap as a general oper check)
-        let Some(_cap) = require_oper_cap!(ctx, "TRACE", request_kill_cap) else { return Ok(()); };
+        let Some(_cap) = require_oper_cap!(ctx, "TRACE", request_kill_cap) else {
+            return Ok(());
+        };
 
         let target = msg.arg(0);
 
         if let Some(target_nick) = target {
             if let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) {
-                let user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.value().clone());
+                let user_arc = ctx
+                    .matrix
+                    .user_manager
+                    .users
+                    .get(&target_uid)
+                    .map(|u| u.value().clone());
                 if let Some(user_arc) = user_arc {
                     let (target_nick, is_oper) = {
                         let user = user_arc.read().await;

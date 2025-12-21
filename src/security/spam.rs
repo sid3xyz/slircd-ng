@@ -251,7 +251,13 @@ impl SpamDetectionService {
     }
 
     /// Check if message is spam using weighted scoring
-    pub async fn check_message(&self, uid: &str, _ip: &str, text: &str, is_private: bool) -> SpamVerdict {
+    pub async fn check_message(
+        &self,
+        uid: &str,
+        _ip: &str,
+        text: &str,
+        is_private: bool,
+    ) -> SpamVerdict {
         // 1. Reputation Check (Fast Path)
         // High trust users bypass spam checks
         if let Some(reputation) = &self.reputation {
@@ -280,15 +286,18 @@ impl SpamDetectionService {
         let total_risk = (heuristic_risk * 0.4) + (content_risk * 0.6);
 
         if total_risk > 0.7 {
-             // If content triggered it, return that reason
-             if let SpamVerdict::Spam { pattern, .. } = content_verdict {
-                 return SpamVerdict::Spam { pattern, confidence: total_risk };
-             }
-             // Otherwise return heuristic reason
-             return SpamVerdict::Spam {
-                 pattern: format!("heuristic_risk:{:.2}", heuristic_risk),
-                 confidence: total_risk
-             };
+            // If content triggered it, return that reason
+            if let SpamVerdict::Spam { pattern, .. } = content_verdict {
+                return SpamVerdict::Spam {
+                    pattern,
+                    confidence: total_risk,
+                };
+            }
+            // Otherwise return heuristic reason
+            return SpamVerdict::Spam {
+                pattern: format!("heuristic_risk:{:.2}", heuristic_risk),
+                confidence: total_risk,
+            };
         }
 
         SpamVerdict::Clean

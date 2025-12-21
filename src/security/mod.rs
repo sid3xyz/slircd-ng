@@ -22,21 +22,21 @@
 
 pub mod ban_cache;
 pub mod cloaking;
-pub mod ip_deny;
-pub mod rate_limit;
-pub mod spam;
-pub mod xlines;
-pub mod reputation;
 pub mod dnsbl;
 pub mod heuristics;
+pub mod ip_deny;
+pub mod rate_limit;
+pub mod reputation;
+pub mod spam;
+pub mod xlines;
 
 // Re-export primary types for convenience
 pub use ban_cache::BanCache;
-pub use rate_limit::RateLimitManager;
-pub use xlines::{ExtendedBan, RegistrationParams, UserContext, matches_extended_ban};
-pub use reputation::ReputationManager;
 pub use dnsbl::DnsblService;
 pub use heuristics::HeuristicsEngine;
+pub use rate_limit::RateLimitManager;
+pub use reputation::ReputationManager;
+pub use xlines::{ExtendedBan, RegistrationParams, UserContext, matches_extended_ban};
 
 // Re-export hostmask matching from proto for consistent IRC pattern matching
 pub use slirc_proto::matches_hostmask;

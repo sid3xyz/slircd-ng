@@ -16,7 +16,9 @@ use slirc_proto::{ChatHistorySubCommand, Command, Message, MessageRef, Response}
 use tracing::warn;
 
 use batch::send_history_batch;
-use helpers::{QueryParams, FAIL_NOT_IN_CHANNEL, FAIL_QUERY_ERROR, FAIL_UNKNOWN_SUBCOMMAND, MAX_HISTORY_LIMIT};
+use helpers::{
+    FAIL_NOT_IN_CHANNEL, FAIL_QUERY_ERROR, FAIL_UNKNOWN_SUBCOMMAND, MAX_HISTORY_LIMIT, QueryParams,
+};
 use queries::QueryExecutor;
 
 /// Handler for CHATHISTORY command.

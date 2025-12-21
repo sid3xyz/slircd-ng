@@ -22,12 +22,15 @@ pub struct UserHandler;
 
 #[async_trait]
 impl PreRegHandler for UserHandler {
-    async fn handle(&self, ctx: &mut Context<'_, UnregisteredState>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(
+        &self,
+        ctx: &mut Context<'_, UnregisteredState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // USER cannot be resent after already set
         if ctx.state.user.is_some() {
             let nick = ctx.state.nick.as_deref().unwrap_or("*");
-            let reply = Response::err_alreadyregistred(nick)
-                .with_prefix(ctx.server_prefix());
+            let reply = Response::err_alreadyregistred(nick).with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             return Ok(());
         }

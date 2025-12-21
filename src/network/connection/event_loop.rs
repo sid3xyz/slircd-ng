@@ -4,7 +4,9 @@ use super::helpers::{
     batch_end_msg, batch_start_msg, closing_link_error, excess_flood_error, flood_warning_notice,
     input_too_long_response,
 };
-use crate::handlers::{Context, ResponseMiddleware, labeled_ack, process_batch_message, with_label};
+use crate::handlers::{
+    Context, ResponseMiddleware, labeled_ack, process_batch_message, with_label,
+};
 use crate::state::RegisteredState;
 use slirc_proto::{Command, Message, generate_batch_ref};
 use std::time::{Duration, Instant};
@@ -66,9 +68,19 @@ pub async fn run_event_loop(
     channels: LifecycleChannels<'_>,
     reg_state: &mut RegisteredState,
 ) -> Option<String> {
-    let ConnectionContext { uid, transport, matrix, registry, db, addr, starttls_acceptor: _ } =
-        conn;
-    let LifecycleChannels { tx: outgoing_tx, rx: outgoing_rx } = channels;
+    let ConnectionContext {
+        uid,
+        transport,
+        matrix,
+        registry,
+        db,
+        addr,
+        starttls_acceptor: _,
+    } = conn;
+    let LifecycleChannels {
+        tx: outgoing_tx,
+        rx: outgoing_rx,
+    } = channels;
     let mut flood_violations = 0u8;
     let mut quit_message: Option<String> = None;
 

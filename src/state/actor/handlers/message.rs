@@ -24,7 +24,10 @@ fn build_echo_tags(
 
     // Add server-time if sender has the capability
     if has_server_time {
-        echo_tags.push(Tag(Cow::Owned("time".to_string()), Some(timestamp.to_string())));
+        echo_tags.push(Tag(
+            Cow::Owned("time".to_string()),
+            Some(timestamp.to_string()),
+        ));
     }
 
     // If sender has message-tags, include client-only tags and msgid
@@ -38,7 +41,10 @@ fn build_echo_tags(
             }
         }
         // Add msgid
-        echo_tags.push(Tag(Cow::Owned("msgid".to_string()), Some(msgid.to_string())));
+        echo_tags.push(Tag(
+            Cow::Owned("msgid".to_string()),
+            Some(msgid.to_string()),
+        ));
     }
 
     // Always preserve the label tag if present (for labeled-response)
@@ -51,7 +57,11 @@ fn build_echo_tags(
         }
     }
 
-    if echo_tags.is_empty() { None } else { Some(echo_tags) }
+    if echo_tags.is_empty() {
+        None
+    } else {
+        Some(echo_tags)
+    }
 }
 
 /// Check if user has required caps.
@@ -157,11 +167,19 @@ impl ChannelActor {
                     if let Some(mask) = ban.mask.strip_prefix("m:") {
                         if crate::security::matches_ban_or_except(mask, &user_mask, &user_context) {
                             let is_excepted = self.excepts.iter().any(|e| {
-                                if crate::security::matches_ban_or_except(&e.mask, &user_mask, &user_context) {
+                                if crate::security::matches_ban_or_except(
+                                    &e.mask,
+                                    &user_mask,
+                                    &user_context,
+                                ) {
                                     return true;
                                 }
                                 if let Some(e_mask) = e.mask.strip_prefix("m:") {
-                                    return crate::security::matches_ban_or_except(e_mask, &user_mask, &user_context);
+                                    return crate::security::matches_ban_or_except(
+                                        e_mask,
+                                        &user_mask,
+                                        &user_context,
+                                    );
                                 }
                                 false
                             });
@@ -256,7 +274,8 @@ impl ChannelActor {
                 let has_server_time = has_caps(user_caps, "server-time");
 
                 let mut echo_msg = base_msg.clone();
-                echo_msg.tags = build_echo_tags(&tags, &timestamp, &msgid, has_message_tags, has_server_time);
+                echo_msg.tags =
+                    build_echo_tags(&tags, &timestamp, &msgid, has_message_tags, has_server_time);
 
                 if let Err(err) = sender.try_send(echo_msg) {
                     debug!("Failed to send echo to {}: {:?}", uid, err);
@@ -347,9 +366,16 @@ impl ChannelActor {
             // Innovation 2: Routing tags for remote users
             let is_remote = !uid.starts_with(self.server_id.as_str());
             if is_remote {
-                recipient_tags.push(Tag(Cow::Owned("x-target-uid".to_string()), Some(uid.clone())));
-                if let Command::PRIVMSG(target, _) | Command::NOTICE(target, _) = &base_msg.command {
-                    recipient_tags.push(Tag(Cow::Owned("x-visible-target".to_string()), Some(target.clone())));
+                recipient_tags.push(Tag(
+                    Cow::Owned("x-target-uid".to_string()),
+                    Some(uid.clone()),
+                ));
+                if let Command::PRIVMSG(target, _) | Command::NOTICE(target, _) = &base_msg.command
+                {
+                    recipient_tags.push(Tag(
+                        Cow::Owned("x-visible-target".to_string()),
+                        Some(target.clone()),
+                    ));
                 }
             }
 

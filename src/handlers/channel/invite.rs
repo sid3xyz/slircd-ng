@@ -4,9 +4,9 @@
 //!
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
-use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler,
-    server_notice, server_reply, user_mask_from_state,
+use super::super::{
+    Context, HandlerError, HandlerResult, PostRegHandler, server_notice, server_reply,
+    user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
@@ -86,18 +86,28 @@ impl PostRegHandler for InviteHandler {
         let target_uid = match ctx.matrix.user_manager.nicks.get(&target_lower) {
             Some(uid) => uid.value().clone(),
             None => {
-                let reply = Response::err_nosuchnick(&nick, target_nick)
-                    .with_prefix(ctx.server_prefix());
+                let reply =
+                    Response::err_nosuchnick(&nick, target_nick).with_prefix(ctx.server_prefix());
                 ctx.send_error("INVITE", "ERR_NOSUCHNICK", reply).await?;
                 return Ok(());
             }
         };
 
         // Check if channel exists
-        let channel_tx = ctx.matrix.channel_manager.channels.get(&channel_lower).map(|c| c.clone());
+        let channel_tx = ctx
+            .matrix
+            .channel_manager
+            .channels
+            .get(&channel_lower)
+            .map(|c| c.clone());
         if let Some(channel_tx) = channel_tx {
             // Check if user is on channel
-            let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
+            let user_arc = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(ctx.uid)
+                .map(|u| u.clone());
             let user_in_channel = if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.channels.contains(&channel_lower)
@@ -120,9 +130,7 @@ impl PostRegHandler for InviteHandler {
 
             // Request INVITE capability from authority (Innovation 4)
             let authority = ctx.authority();
-            let invite_cap = authority
-                .request_invite_cap(ctx.uid, channel_name)
-                .await;
+            let invite_cap = authority.request_invite_cap(ctx.uid, channel_name).await;
 
             let event = ChannelEvent::Invite {
                 params: crate::state::actor::InviteParams {
@@ -146,10 +154,15 @@ impl PostRegHandler for InviteHandler {
 
                     // Record rate limit for this successful invite
                     ctx.state.invite_timestamps.insert(invite_key.clone(), now);
-                    ctx.state.invite_timestamps.retain(|_, t| now.duration_since(*t) < INVITE_COOLDOWN);
+                    ctx.state
+                        .invite_timestamps
+                        .retain(|_, t| now.duration_since(*t) < INVITE_COOLDOWN);
                     // Limit map size to prevent memory exhaustion
                     if ctx.state.invite_timestamps.len() > 50 {
-                        let oldest = ctx.state.invite_timestamps.iter()
+                        let oldest = ctx
+                            .state
+                            .invite_timestamps
+                            .iter()
                             .min_by_key(|(_, t)| *t)
                             .map(|(k, _)| k.clone());
                         if let Some(oldest_key) = oldest {
@@ -160,7 +173,12 @@ impl PostRegHandler for InviteHandler {
                     // Now send INVITE message to target user.
 
                     // Get sender's account for account-tag
-                    let sender_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
+                    let sender_arc = ctx
+                        .matrix
+                        .user_manager
+                        .users
+                        .get(ctx.uid)
+                        .map(|u| u.clone());
                     let sender_account: Option<String> = if let Some(sender_arc) = sender_arc {
                         let sender_user = sender_arc.read().await;
                         sender_user.account.clone()
@@ -172,8 +190,14 @@ impl PostRegHandler for InviteHandler {
                     let mut invite_tags: Option<Vec<slirc_proto::message::Tag>> = None;
 
                     // Check if target has account-tag capability
-                    let target_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
-                    if let (Some(account), Some(target_arc)) = (sender_account.as_ref(), target_arc) {
+                    let target_arc = ctx
+                        .matrix
+                        .user_manager
+                        .users
+                        .get(&target_uid)
+                        .map(|u| u.clone());
+                    if let (Some(account), Some(target_arc)) = (sender_account.as_ref(), target_arc)
+                    {
                         let target_user = target_arc.read().await;
                         if target_user.caps.contains("account-tag") {
                             invite_tags = Some(vec![slirc_proto::message::Tag(
@@ -193,7 +217,12 @@ impl PostRegHandler for InviteHandler {
                         },
                     };
 
-                    let target_sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|s| s.clone());
+                    let target_sender = ctx
+                        .matrix
+                        .user_manager
+                        .senders
+                        .get(&target_uid)
+                        .map(|s| s.clone());
                     if let Some(target_sender) = target_sender {
                         let _ = target_sender.send(invite_msg).await;
                     }
@@ -227,7 +256,12 @@ impl PostRegHandler for InviteHandler {
             let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user, host);
 
             // Get sender's account for account-tag
-            let sender_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
+            let sender_arc = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(ctx.uid)
+                .map(|u| u.clone());
             let sender_account: Option<String> = if let Some(sender_arc) = sender_arc {
                 let sender_user = sender_arc.read().await;
                 sender_user.account.clone()
@@ -237,7 +271,12 @@ impl PostRegHandler for InviteHandler {
 
             // Build invite tags with account if target has capability
             let mut invite_tags: Option<Vec<slirc_proto::message::Tag>> = None;
-            let target_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
+            let target_arc = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(&target_uid)
+                .map(|u| u.clone());
             if let (Some(account), Some(target_arc)) = (sender_account.as_ref(), target_arc) {
                 let target_user = target_arc.read().await;
                 if target_user.caps.contains("account-tag") {
@@ -259,7 +298,12 @@ impl PostRegHandler for InviteHandler {
                 },
             };
 
-            let target_sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|s| s.clone());
+            let target_sender = ctx
+                .matrix
+                .user_manager
+                .senders
+                .get(&target_uid)
+                .map(|s| s.clone());
             if let Some(target_sender) = target_sender {
                 let _ = target_sender.send(invite_msg).await;
             }

@@ -37,9 +37,9 @@ use server_loop::run_server_loop;
 
 use crate::db::Database;
 use crate::handlers::Registry;
-use crate::state::{Matrix, UnregisteredState, InitiatorData};
-use slirc_proto::transport::ZeroCopyTransportEnum;
+use crate::state::{InitiatorData, Matrix, UnregisteredState};
 use slirc_proto::Message;
+use slirc_proto::transport::ZeroCopyTransportEnum;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -223,7 +223,8 @@ impl Connection {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidData,
                             "Registration state mismatch",
-                        ).into());
+                        )
+                        .into());
                     }
                 };
 
@@ -307,7 +308,7 @@ impl Connection {
 
 #[cfg(test)]
 mod tests {
-    use super::error_handling::{classify_read_error, ReadErrorAction};
+    use super::error_handling::{ReadErrorAction, classify_read_error};
     use slirc_proto::error::{MessageParseError, ProtocolError};
     use slirc_proto::transport::TransportReadError;
 

@@ -7,13 +7,12 @@
 //! - SANICK: Force a user to change nick
 
 use super::{
-    Context, HandlerResult, PostRegHandler, TargetUser,
-    force_join_channel, force_part_channel,
+    Context, HandlerResult, PostRegHandler, TargetUser, force_join_channel, force_part_channel,
     format_modes_for_log, resolve_nick_to_uid, server_notice,
 };
-use crate::{require_admin_cap, require_arg_or_reply};
-use crate::state::RegisteredState;
 use crate::state::MemberModes;
+use crate::state::RegisteredState;
+use crate::{require_admin_cap, require_arg_or_reply};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower};
 
@@ -41,14 +40,20 @@ impl PostRegHandler for SajoinHandler {
         let server_name = ctx.server_name();
         let oper_nick = ctx.nick();
 
-        let Some(_cap) = require_admin_cap!(ctx, "SAJOIN") else { return Ok(()); };
-        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "SAJOIN") else { return Ok(()); };
-        let Some(channel_name) = require_arg_or_reply!(ctx, msg, 1, "SAJOIN") else { return Ok(()); };
+        let Some(_cap) = require_admin_cap!(ctx, "SAJOIN") else {
+            return Ok(());
+        };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "SAJOIN") else {
+            return Ok(());
+        };
+        let Some(channel_name) = require_arg_or_reply!(ctx, msg, 1, "SAJOIN") else {
+            return Ok(());
+        };
 
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                .with_prefix(ctx.server_prefix());
+            let reply =
+                Response::err_nosuchnick(oper_nick, target_nick).with_prefix(ctx.server_prefix());
             ctx.send_error("SAJOIN", "ERR_NOSUCHNICK", reply).await?;
             return Ok(());
         };
@@ -69,7 +74,12 @@ impl PostRegHandler for SajoinHandler {
         };
 
         // Get sender for the target user to send topic/names
-        let target_sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|r| r.clone());
+        let target_sender = ctx
+            .matrix
+            .user_manager
+            .senders
+            .get(&target_uid)
+            .map(|r| r.clone());
 
         // Use shared force_join_channel helper
         let target = TargetUser {
@@ -124,14 +134,20 @@ impl PostRegHandler for SapartHandler {
         let server_name = ctx.server_name();
         let oper_nick = ctx.nick();
 
-        let Some(_cap) = require_admin_cap!(ctx, "SAPART") else { return Ok(()); };
-        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "SAPART") else { return Ok(()); };
-        let Some(channel_name) = require_arg_or_reply!(ctx, msg, 1, "SAPART") else { return Ok(()); };
+        let Some(_cap) = require_admin_cap!(ctx, "SAPART") else {
+            return Ok(());
+        };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "SAPART") else {
+            return Ok(());
+        };
+        let Some(channel_name) = require_arg_or_reply!(ctx, msg, 1, "SAPART") else {
+            return Ok(());
+        };
 
         // Find target user
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                .with_prefix(ctx.server_prefix());
+            let reply =
+                Response::err_nosuchnick(oper_nick, target_nick).with_prefix(ctx.server_prefix());
             ctx.send_error("SAPART", "ERR_NOSUCHNICK", reply).await?;
             return Ok(());
         };
@@ -198,15 +214,21 @@ impl PostRegHandler for SanickHandler {
         let server_name = ctx.server_name();
         let oper_nick = ctx.nick();
 
-        let Some(_cap) = require_admin_cap!(ctx, "SANICK") else { return Ok(()); };
-        let Some(old_nick) = require_arg_or_reply!(ctx, msg, 0, "SANICK") else { return Ok(()); };
-        let Some(new_nick) = require_arg_or_reply!(ctx, msg, 1, "SANICK") else { return Ok(()); };
+        let Some(_cap) = require_admin_cap!(ctx, "SANICK") else {
+            return Ok(());
+        };
+        let Some(old_nick) = require_arg_or_reply!(ctx, msg, 0, "SANICK") else {
+            return Ok(());
+        };
+        let Some(new_nick) = require_arg_or_reply!(ctx, msg, 1, "SANICK") else {
+            return Ok(());
+        };
 
         // Find target user
         let old_lower = irc_to_lower(old_nick);
         let Some(target_uid) = resolve_nick_to_uid(ctx, old_nick) else {
-            let reply = Response::err_nosuchnick(oper_nick, old_nick)
-                .with_prefix(ctx.server_prefix());
+            let reply =
+                Response::err_nosuchnick(oper_nick, old_nick).with_prefix(ctx.server_prefix());
             ctx.send_error("SANICK", "ERR_NOSUCHNICK", reply).await?;
             return Ok(());
         };
@@ -228,7 +250,12 @@ impl PostRegHandler for SanickHandler {
 
         // Get target user info for NICK message
         let (target_user, target_host) = {
-            let user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
+            let user_arc = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(&target_uid)
+                .map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 (user.user.clone(), user.host.clone())
@@ -240,20 +267,24 @@ impl PostRegHandler for SanickHandler {
         // Build NICK message
         let nick_msg = Message {
             tags: None,
-            prefix: Some(Prefix::new(
-                old_nick.to_string(),
-                target_user,
-                target_host,
-            )),
+            prefix: Some(Prefix::new(old_nick.to_string(), target_user, target_host)),
             command: Command::NICK(new_nick.to_string()),
         };
 
         // Update nick mapping
         ctx.matrix.user_manager.nicks.remove(&old_lower);
-        ctx.matrix.user_manager.nicks.insert(new_lower, target_uid.clone());
+        ctx.matrix
+            .user_manager
+            .nicks
+            .insert(new_lower, target_uid.clone());
 
         // Update user's nick
-        let user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
+        let user_arc = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(&target_uid)
+            .map(|u| u.clone());
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
             user.nick = new_nick.to_string();
@@ -261,7 +292,12 @@ impl PostRegHandler for SanickHandler {
 
         // Broadcast NICK change to all channels the user is in
         let target_channels = {
-            let user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
+            let user_arc = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(&target_uid)
+                .map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.channels.iter().cloned().collect::<Vec<_>>()
@@ -271,12 +307,18 @@ impl PostRegHandler for SanickHandler {
         };
         for channel_name in &target_channels {
             ctx.matrix
-                .channel_manager.broadcast_to_channel(channel_name, nick_msg.clone(), None)
+                .channel_manager
+                .broadcast_to_channel(channel_name, nick_msg.clone(), None)
                 .await;
         }
 
         // Also send to the target user
-        let sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|s| s.clone());
+        let sender = ctx
+            .matrix
+            .user_manager
+            .senders
+            .get(&target_uid)
+            .map(|s| s.clone());
         if let Some(sender) = sender {
             let _ = sender.send(nick_msg).await;
         }
@@ -318,9 +360,15 @@ impl PostRegHandler for SamodeHandler {
         let server_name = ctx.server_name();
         let oper_nick = ctx.nick();
 
-        let Some(_cap) = require_admin_cap!(ctx, "SAMODE") else { return Ok(()); };
-        let Some(channel_name) = require_arg_or_reply!(ctx, msg, 0, "SAMODE") else { return Ok(()); };
-        let Some(modes_str) = require_arg_or_reply!(ctx, msg, 1, "SAMODE") else { return Ok(()); };
+        let Some(_cap) = require_admin_cap!(ctx, "SAMODE") else {
+            return Ok(());
+        };
+        let Some(channel_name) = require_arg_or_reply!(ctx, msg, 0, "SAMODE") else {
+            return Ok(());
+        };
+        let Some(modes_str) = require_arg_or_reply!(ctx, msg, 1, "SAMODE") else {
+            return Ok(());
+        };
 
         let channel_lower = irc_to_lower(channel_name);
 

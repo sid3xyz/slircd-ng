@@ -24,7 +24,7 @@ use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
-use crate::state::actor::{ChannelEvent, ChannelError};
+use crate::state::actor::{ChannelError, ChannelEvent};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
@@ -76,8 +76,8 @@ pub(super) async fn leave_channel_internal<S>(
     let channel_sender = match ctx.matrix.channel_manager.channels.get(channel_lower) {
         Some(c) => c.clone(),
         None => {
-            let reply = Response::err_nosuchchannel(nick, channel_lower)
-                .with_prefix(ctx.server_prefix());
+            let reply =
+                Response::err_nosuchchannel(nick, channel_lower).with_prefix(ctx.server_prefix());
             ctx.send_error("PART", "ERR_NOSUCHCHANNEL", reply).await?;
             return Ok(());
         }
@@ -123,11 +123,7 @@ pub(super) async fn leave_channel_internal<S>(
                 _ => server_reply(
                     ctx.server_name(),
                     Response::ERR_NOTONCHANNEL,
-                    vec![
-                        nick.to_string(),
-                        channel_lower.to_string(),
-                        e.to_string(),
-                    ],
+                    vec![nick.to_string(), channel_lower.to_string(), e.to_string()],
                 ),
             };
             ctx.sender.send(reply).await?;

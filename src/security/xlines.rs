@@ -81,7 +81,6 @@ impl ExtendedBan {
             _ => None,
         }
     }
-
 }
 
 /// User context for evaluating extended bans.
@@ -252,8 +251,6 @@ mod tests {
         assert!(ExtendedBan::parse("not-a-ban").is_none());
         assert!(ExtendedBan::parse("$x").is_none()); // Missing pattern
     }
-
-
 
     #[test]
     fn test_account_ban_match() {

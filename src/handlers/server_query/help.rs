@@ -252,32 +252,29 @@ impl PostRegHandler for HelpHandler {
                 let topic_upper = topic.to_ascii_uppercase();
                 if let Some((cmd, lines)) = HELP_TOPICS.iter().find(|(c, _)| *c == topic_upper) {
                     // RPL_HELPSTART (704)
-                    let reply = Response::rpl_helpstart(nick, cmd)
-                        .with_prefix(ctx.server_prefix());
+                    let reply = Response::rpl_helpstart(nick, cmd).with_prefix(ctx.server_prefix());
                     ctx.sender.send(reply).await?;
 
                     // RPL_HELPTXT (705) for additional lines
                     for line in &lines[1..] {
-                        let reply = Response::rpl_helptxt(nick, cmd, line)
-                            .with_prefix(ctx.server_prefix());
+                        let reply =
+                            Response::rpl_helptxt(nick, cmd, line).with_prefix(ctx.server_prefix());
                         ctx.sender.send(reply).await?;
                     }
 
                     // RPL_ENDOFHELP (706)
-                    let reply = Response::rpl_endofhelp(nick, cmd)
-                        .with_prefix(ctx.server_prefix());
+                    let reply = Response::rpl_endofhelp(nick, cmd).with_prefix(ctx.server_prefix());
                     ctx.sender.send(reply).await?;
                 } else {
                     // ERR_HELPNOTFOUND (524)
-                    let reply = Response::err_helpnotfound(nick, topic)
-                        .with_prefix(ctx.server_prefix());
+                    let reply =
+                        Response::err_helpnotfound(nick, topic).with_prefix(ctx.server_prefix());
                     ctx.sender.send(reply).await?;
                 }
             }
             None => {
                 // List all commands
-                let reply = Response::rpl_helpstart(nick, "index")
-                    .with_prefix(ctx.server_prefix());
+                let reply = Response::rpl_helpstart(nick, "index").with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
 
                 // Group commands into lines of ~10 each
@@ -289,8 +286,8 @@ impl PostRegHandler for HelpHandler {
                     ctx.sender.send(reply).await?;
                 }
 
-                let reply = Response::rpl_helptxt(nick, "index", " ")
-                    .with_prefix(ctx.server_prefix());
+                let reply =
+                    Response::rpl_helptxt(nick, "index", " ").with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
 
                 let reply = Response::rpl_helptxt(
@@ -301,8 +298,7 @@ impl PostRegHandler for HelpHandler {
                 .with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
 
-                let reply = Response::rpl_endofhelp(nick, "index")
-                    .with_prefix(ctx.server_prefix());
+                let reply = Response::rpl_endofhelp(nick, "index").with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
             }
         }

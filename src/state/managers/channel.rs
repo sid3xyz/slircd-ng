@@ -51,13 +51,8 @@ impl ChannelManager {
             tx.clone()
         } else {
             use crate::state::actor::ChannelActor;
-            let tx = ChannelActor::spawn_with_capacity(
-                name,
-                matrix,
-                None,
-                100,
-                self.observer.clone(),
-            );
+            let tx =
+                ChannelActor::spawn_with_capacity(name, matrix, None, 100, self.observer.clone());
             self.channels.insert(name_lower, tx.clone());
             crate::metrics::ACTIVE_CHANNELS.inc();
             tx
@@ -160,7 +155,10 @@ impl ChannelManager {
         for entry in self.channels.iter() {
             let channel_tx = entry.value();
             let (tx, rx) = tokio::sync::oneshot::channel();
-            if channel_tx.send(ChannelEvent::GetCrdt { reply_tx: tx }).await.is_ok()
+            if channel_tx
+                .send(ChannelEvent::GetCrdt { reply_tx: tx })
+                .await
+                .is_ok()
                 && let Ok(crdt) = rx.await
             {
                 crdts.push(crdt);

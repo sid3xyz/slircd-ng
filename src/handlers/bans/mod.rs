@@ -8,8 +8,8 @@
 //! - RLINE/UNRLINE: Ban by realname (GECOS)
 //! - SHUN/UNSHUN: Silently ignore commands from matching users
 
-use std::collections::HashMap;
 use crate::handlers::PostRegHandler;
+use std::collections::HashMap;
 
 mod common;
 mod shun;

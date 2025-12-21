@@ -21,7 +21,9 @@ pub async fn handle_ls<S: SessionState>(
     // CAP LS 302+ implicitly enables cap-notify per IRCv3 spec
     // https://ircv3.net/specs/extensions/capability-negotiation#cap-notify
     if version >= 302 {
-        ctx.state.capabilities_mut().insert("cap-notify".to_string());
+        ctx.state
+            .capabilities_mut()
+            .insert("cap-notify".to_string());
     }
 
     let server_name = ctx.server_name();
@@ -41,7 +43,11 @@ pub async fn handle_ls<S: SessionState>(
 
     for (i, caps_str) in cap_lines.iter().enumerate() {
         let has_more = i + 1 < cap_lines.len();
-        let more_marker = if has_more { Some("*".to_string()) } else { None };
+        let more_marker = if has_more {
+            Some("*".to_string())
+        } else {
+            None
+        };
 
         let reply = Message {
             tags: None,
@@ -161,7 +167,10 @@ pub async fn handle_req<S: SessionState>(
                 let (channels, new_caps) = {
                     let mut user = user_ref.write().await;
                     user.caps = ctx.state.capabilities().clone();
-                    (user.channels.iter().cloned().collect::<Vec<_>>(), user.caps.clone())
+                    (
+                        user.channels.iter().cloned().collect::<Vec<_>>(),
+                        user.caps.clone(),
+                    )
                 };
 
                 // Keep ChannelActor per-user capability caches in sync.

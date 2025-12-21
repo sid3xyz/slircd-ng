@@ -46,7 +46,11 @@ impl WebircHandler {
 
 #[async_trait]
 impl PreRegHandler for WebircHandler {
-    async fn handle(&self, ctx: &mut Context<'_, UnregisteredState>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(
+        &self,
+        ctx: &mut Context<'_, UnregisteredState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // WEBIRC must be sent before NICK/USER
         if ctx.state.nick.is_some() || ctx.state.user.is_some() {
             // Silently ignore WEBIRC after registration has started

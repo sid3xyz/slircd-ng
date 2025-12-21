@@ -3,33 +3,97 @@
 //! This module manages the distributed state of the IRC network.
 //! It handles server linking, handshake, and CRDT state replication.
 
-pub mod handshake;
-pub mod protocol;
 pub mod burst;
-pub mod topology;
-pub mod split;
+pub mod handshake;
 mod observer;
-#[cfg(test)]
-mod tests;
+pub mod protocol;
+pub mod split;
+pub mod stream;
 #[cfg(test)]
 mod test_protocol;
+#[cfg(test)]
+mod tests;
+pub mod topology;
 
+use crate::state::{ChannelManager, Matrix, UserManager};
+use crate::sync::handshake::{HandshakeMachine, HandshakeState};
+use crate::sync::stream::S2SStream;
 use dashmap::DashMap;
+use futures_util::{SinkExt, StreamExt};
 use slirc_crdt::clock::ServerId;
-use crate::state::{UserManager, ChannelManager, Matrix};
-use slirc_proto::{Message, Command};
+use slirc_proto::{Command, Message};
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tracing::info;
 use tokio_util::codec::{Framed, LinesCodec};
-use futures_util::{SinkExt, StreamExt};
-use crate::sync::handshake::{HandshakeMachine, HandshakeState};
+use tracing::info;
 
 use crate::config::LinkBlock;
 
 // Re-export topology types
-pub use topology::{TopologyGraph, ServerInfo};
+pub use topology::{ServerInfo, TopologyGraph};
+
+use std::time::{Duration, Instant};
+
+/// A certificate verifier that accepts all certificates.
+/// DANGEROUS: Only use for testing or self-signed certificates.
+#[derive(Debug)]
+struct DangerousNoVerifier;
+
+impl tokio_rustls::rustls::client::danger::ServerCertVerifier for DangerousNoVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[tokio_rustls::rustls::pki_types::CertificateDer<'_>],
+        _server_name: &tokio_rustls::rustls::pki_types::ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: tokio_rustls::rustls::pki_types::UnixTime,
+    ) -> Result<tokio_rustls::rustls::client::danger::ServerCertVerified, tokio_rustls::rustls::Error>
+    {
+        // Accept all certificates without verification
+        Ok(tokio_rustls::rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<tokio_rustls::rustls::SignatureScheme> {
+        // Support all common signature schemes
+        vec![
+            tokio_rustls::rustls::SignatureScheme::RSA_PKCS1_SHA256,
+            tokio_rustls::rustls::SignatureScheme::RSA_PKCS1_SHA384,
+            tokio_rustls::rustls::SignatureScheme::RSA_PKCS1_SHA512,
+            tokio_rustls::rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+            tokio_rustls::rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
+            tokio_rustls::rustls::SignatureScheme::ECDSA_NISTP521_SHA512,
+            tokio_rustls::rustls::SignatureScheme::RSA_PSS_SHA256,
+            tokio_rustls::rustls::SignatureScheme::RSA_PSS_SHA384,
+            tokio_rustls::rustls::SignatureScheme::RSA_PSS_SHA512,
+            tokio_rustls::rustls::SignatureScheme::ED25519,
+        ]
+    }
+}
 
 /// Represents the state of a link to a peer server.
 #[derive(Debug)]
@@ -40,6 +104,10 @@ pub struct LinkState {
     pub state: handshake::HandshakeState,
     /// The name of the peer server.
     pub name: String,
+    /// Last time we received a PONG (or any data) from this peer.
+    pub last_pong: Instant,
+    /// Last time we sent a PING to this peer.
+    pub last_ping: Instant,
 }
 
 impl Clone for LinkState {
@@ -48,6 +116,8 @@ impl Clone for LinkState {
             tx: self.tx.clone(),
             state: self.state.clone(),
             name: self.name.clone(),
+            last_pong: self.last_pong,
+            last_ping: self.last_ping,
         }
     }
 }
@@ -67,7 +137,12 @@ pub struct SyncManager {
 }
 
 impl SyncManager {
-    pub fn new(local_id: ServerId, local_name: String, local_desc: String, configured_links: Vec<LinkBlock>) -> Self {
+    pub fn new(
+        local_id: ServerId,
+        local_name: String,
+        local_desc: String,
+        configured_links: Vec<LinkBlock>,
+    ) -> Self {
         Self {
             local_id,
             local_name,
@@ -78,13 +153,112 @@ impl SyncManager {
         }
     }
 
+    /// Upgrades a TCP stream to TLS for outbound connections.
+    ///
+    /// # Arguments
+    /// * `tcp_stream` - The established TCP connection
+    /// * `hostname` - The remote hostname (used for SNI and certificate verification)
+    /// * `verify_cert` - Whether to verify the remote certificate
+    async fn upgrade_to_tls(
+        tcp_stream: TcpStream,
+        hostname: &str,
+        verify_cert: bool,
+    ) -> Result<tokio_rustls::client::TlsStream<TcpStream>, Box<dyn std::error::Error + Send + Sync>>
+    {
+        use tokio_rustls::TlsConnector;
+        use tokio_rustls::rustls::pki_types::ServerName;
+        use tokio_rustls::rustls::{ClientConfig, RootCertStore};
+
+        let root_store = if verify_cert {
+            // Load system root certificates
+            let mut roots = RootCertStore::empty();
+            let certs = rustls_native_certs::load_native_certs();
+            for cert in certs.certs {
+                if let Err(e) = roots.add(cert) {
+                    tracing::warn!("Failed to add root cert: {}", e);
+                }
+            }
+            if !certs.errors.is_empty() {
+                for e in &certs.errors {
+                    tracing::warn!("Error loading native certs: {}", e);
+                }
+            }
+            roots
+        } else {
+            // Empty root store with custom verifier that accepts all certs
+            RootCertStore::empty()
+        };
+
+        let config = if verify_cert {
+            ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth()
+        } else {
+            // Dangerous: Skip certificate verification (for testing/self-signed certs only)
+            ClientConfig::builder()
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(DangerousNoVerifier))
+                .with_no_client_auth()
+        };
+
+        let connector = TlsConnector::from(Arc::new(config));
+        let server_name = ServerName::try_from(hostname.to_string())?;
+
+        let tls_stream = connector.connect(server_name, tcp_stream).await?;
+        info!(hostname = %hostname, verify = verify_cert, "TLS handshake completed for S2S link");
+
+        Ok(tls_stream)
+    }
+
+    pub fn start_heartbeat(&self) {
+        let manager = self.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                let now = Instant::now();
+
+                // Collect SIDs to avoid holding lock while sending
+                let mut peers_to_ping = Vec::new();
+                let mut peers_to_drop = Vec::new();
+
+                {
+                    for entry in manager.links.iter() {
+                        let sid = entry.key().clone();
+                        let link = entry.value();
+
+                        if now.duration_since(link.last_pong) > Duration::from_secs(90) {
+                            info!("Peer {} timed out", sid.as_str());
+                            peers_to_drop.push(sid);
+                        } else {
+                            peers_to_ping.push(sid);
+                        }
+                    }
+                }
+
+                for sid in peers_to_drop {
+                    manager.links.remove(&sid);
+                }
+
+                for sid in peers_to_ping {
+                    if let Some(mut link) = manager.links.get_mut(&sid) {
+                        link.last_ping = now;
+                        let ping = Command::PING(manager.local_id.as_str().to_string(), None);
+                        let _ = link.tx.send(Message::from(ping)).await;
+                    }
+                }
+            }
+        });
+    }
+
     /// Spawns a handler for an incoming server link.
     #[allow(dead_code)]
-    pub fn handle_inbound_connection(&self, matrix: Arc<Matrix>, stream: TcpStream) {
+    pub fn handle_inbound_connection(&self, matrix: Arc<Matrix>, stream: S2SStream) {
         let manager = self.clone();
         let matrix = matrix.clone();
+        let is_tls = stream.is_tls();
         tokio::spawn(async move {
-            info!("Handling inbound server connection");
+            info!(tls = is_tls, "Handling inbound server connection");
             let mut framed = Framed::new(stream, LinesCodec::new());
 
             let mut machine = HandshakeMachine::new(
@@ -104,6 +278,24 @@ impl SyncManager {
                     Err(_) => continue,
                 };
 
+                // Loop detection for SERVER command
+                if let Command::SERVER(name, _, sid, _) = &msg.command {
+                    let sid_obj = ServerId::new(sid.clone());
+                    if manager.topology.servers.contains_key(&sid_obj) {
+                        tracing::error!("Loop detected during handshake: {} ({})", name, sid);
+                        let _ = framed
+                            .send(
+                                Message::from(Command::ERROR(format!(
+                                    "Loop detected: {} ({})",
+                                    name, sid
+                                )))
+                                .to_string(),
+                            )
+                            .await;
+                        return;
+                    }
+                }
+
                 match machine.step(msg.command, &manager.configured_links) {
                     Ok(responses) => {
                         for resp in responses {
@@ -114,21 +306,31 @@ impl SyncManager {
                         }
 
                         if machine.state == HandshakeState::Bursting {
-                            info!("Handshake complete (Inbound). Remote: {:?}", machine.remote_name);
+                            info!(
+                                "Handshake complete (Inbound). Remote: {:?}",
+                                machine.remote_name
+                            );
 
                             // Capture remote server info
                             remote_sid = machine.remote_sid.clone();
                             remote_name = machine.remote_name.clone();
 
                             // Generate Burst
-                            let burst = burst::generate_burst(&matrix, manager.local_id.as_str()).await;
+                            let burst =
+                                burst::generate_burst(&matrix, manager.local_id.as_str()).await;
                             for cmd in burst {
                                 if let Err(e) = framed.send(Message::from(cmd).to_string()).await {
                                     tracing::error!("Failed to send burst: {}", e);
                                     // Connection failed, handle netsplit if we had a peer
                                     if let Some(sid) = &remote_sid {
                                         let rn = remote_name.as_deref().unwrap_or("unknown");
-                                        split::handle_netsplit(&matrix, sid, &manager.local_name, rn).await;
+                                        split::handle_netsplit(
+                                            &matrix,
+                                            sid,
+                                            &manager.local_name,
+                                            rn,
+                                        )
+                                        .await;
                                     }
                                     return;
                                 }
@@ -144,19 +346,68 @@ impl SyncManager {
                 }
             }
 
-            let handler = protocol::IncomingCommandHandler::new(matrix.clone());
-            while let Some(Ok(line)) = framed.next().await {
-                let msg = match line.parse::<Message>() {
-                    Ok(m) => m,
-                    Err(e) => {
-                        tracing::warn!("Failed to parse inbound message: {}", e);
-                        continue;
-                    }
-                };
+            // Register link
+            let (tx, mut rx) = mpsc::channel(100);
+            if let Some(sid) = &remote_sid {
+                manager.links.insert(
+                    sid.clone(),
+                    LinkState {
+                        tx,
+                        state: handshake::HandshakeState::Synced,
+                        name: remote_name.clone().unwrap_or_default(),
+                        last_pong: Instant::now(),
+                        last_ping: Instant::now(),
+                    },
+                );
+            }
 
-                if let Err(e) = handler.handle_command(msg.command).await {
-                    tracing::error!("Protocol error from peer: {}", e);
-                    break;
+            let handler = protocol::IncomingCommandHandler::new(matrix.clone());
+
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Some(m) => {
+                                if let Err(e) = framed.send(m.to_string()).await {
+                                     tracing::error!("Failed to send message to peer: {}", e);
+                                     break;
+                                }
+                            }
+                            None => {
+                                info!("Link channel closed (timeout or removal), closing connection");
+                                break;
+                            }
+                        }
+                    }
+                    result = framed.next() => {
+                        match result {
+                            Some(Ok(line)) => {
+                                let msg = match line.parse::<Message>() {
+                                    Ok(m) => m,
+                                    Err(e) => {
+                                        tracing::warn!("Failed to parse inbound message: {}", e);
+                                        continue;
+                                    }
+                                };
+
+                                #[allow(clippy::collapsible_if)]
+                                if let Some(sid) = &remote_sid {
+                                    if let Err(e) = handler.handle_message(msg, &manager, sid).await {
+                                        tracing::error!("Protocol error from peer: {}", e);
+                                        break;
+                                    }
+                                }
+                            }
+                            Some(Err(e)) => {
+                                tracing::error!("Stream error: {}", e);
+                                break;
+                            }
+                            None => {
+                                info!("Connection closed by peer");
+                                break;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -174,13 +425,29 @@ impl SyncManager {
         let manager = self.clone();
         let matrix = matrix.clone();
         tokio::spawn(async move {
-            info!("Connecting to peer {}", config.hostname);
-            let stream = match TcpStream::connect(format!("{}:{}", config.hostname, config.port)).await {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!("Failed to connect to {}: {}", config.hostname, e);
-                    return;
+            info!(hostname = %config.hostname, port = config.port, tls = config.tls, "Connecting to peer");
+
+            // Establish TCP connection
+            let tcp_stream =
+                match TcpStream::connect(format!("{}:{}", config.hostname, config.port)).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!("Failed to connect to {}: {}", config.hostname, e);
+                        return;
+                    }
+                };
+
+            // Upgrade to TLS if configured
+            let stream: S2SStream = if config.tls {
+                match Self::upgrade_to_tls(tcp_stream, &config.hostname, config.verify_cert).await {
+                    Ok(tls_stream) => S2SStream::TlsClient(tls_stream),
+                    Err(e) => {
+                        tracing::error!("TLS handshake failed with {}: {}", config.hostname, e);
+                        return;
+                    }
                 }
+            } else {
+                S2SStream::Plain(tcp_stream)
             };
 
             let mut framed = Framed::new(stream, LinesCodec::new());
@@ -199,7 +466,11 @@ impl SyncManager {
             // Send initial PASS and SERVER
             let pass_cmd = Command::Raw(
                 "PASS".to_string(),
-                vec![config.password.clone(), "TS=6".to_string(), manager.local_id.as_str().to_string()]
+                vec![
+                    config.password.clone(),
+                    "TS=6".to_string(),
+                    manager.local_id.as_str().to_string(),
+                ],
             );
             let server_cmd = Command::SERVER(
                 manager.local_name.clone(),
@@ -209,12 +480,12 @@ impl SyncManager {
             );
 
             if let Err(e) = framed.send(Message::from(pass_cmd).to_string()).await {
-                 tracing::error!("Failed to send PASS: {}", e);
-                 return;
+                tracing::error!("Failed to send PASS: {}", e);
+                return;
             }
             if let Err(e) = framed.send(Message::from(server_cmd).to_string()).await {
-                 tracing::error!("Failed to send SERVER: {}", e);
-                 return;
+                tracing::error!("Failed to send SERVER: {}", e);
+                return;
             }
 
             let links = vec![config.clone()];
@@ -224,6 +495,24 @@ impl SyncManager {
                     Ok(m) => m,
                     Err(_) => continue,
                 };
+
+                // Loop detection for SERVER command
+                if let Command::SERVER(name, _, sid, _) = &msg.command {
+                    let sid_obj = ServerId::new(sid.clone());
+                    if manager.topology.servers.contains_key(&sid_obj) {
+                        tracing::error!("Loop detected during handshake: {} ({})", name, sid);
+                        let _ = framed
+                            .send(
+                                Message::from(Command::ERROR(format!(
+                                    "Loop detected: {} ({})",
+                                    name, sid
+                                )))
+                                .to_string(),
+                            )
+                            .await;
+                        return;
+                    }
+                }
 
                 match machine.step(msg.command, &links) {
                     Ok(responses) => {
@@ -235,21 +524,31 @@ impl SyncManager {
                         }
 
                         if machine.state == HandshakeState::Bursting {
-                            info!("Handshake complete (Outbound). Remote: {:?}", machine.remote_name);
+                            info!(
+                                "Handshake complete (Outbound). Remote: {:?}",
+                                machine.remote_name
+                            );
 
                             // Capture remote server info
                             remote_sid = machine.remote_sid.clone();
                             remote_name = machine.remote_name.clone();
 
                             // Generate Burst
-                            let burst = burst::generate_burst(&matrix, manager.local_id.as_str()).await;
+                            let burst =
+                                burst::generate_burst(&matrix, manager.local_id.as_str()).await;
                             for cmd in burst {
                                 if let Err(e) = framed.send(Message::from(cmd).to_string()).await {
                                     tracing::error!("Failed to send burst: {}", e);
                                     // Connection failed, handle netsplit if we had a peer
                                     if let Some(sid) = &remote_sid {
                                         let rn = remote_name.as_deref().unwrap_or("unknown");
-                                        split::handle_netsplit(&matrix, sid, &manager.local_name, rn).await;
+                                        split::handle_netsplit(
+                                            &matrix,
+                                            sid,
+                                            &manager.local_name,
+                                            rn,
+                                        )
+                                        .await;
                                     }
                                     return;
                                 }
@@ -265,19 +564,68 @@ impl SyncManager {
                 }
             }
 
-            let handler = protocol::IncomingCommandHandler::new(matrix.clone());
-            while let Some(Ok(line)) = framed.next().await {
-                let msg = match line.parse::<Message>() {
-                    Ok(m) => m,
-                    Err(e) => {
-                        tracing::warn!("Failed to parse inbound message: {}", e);
-                        continue;
-                    }
-                };
+            // Register link
+            let (tx, mut rx) = mpsc::channel(100);
+            if let Some(sid) = &remote_sid {
+                manager.links.insert(
+                    sid.clone(),
+                    LinkState {
+                        tx,
+                        state: handshake::HandshakeState::Synced,
+                        name: remote_name.clone().unwrap_or_default(),
+                        last_pong: Instant::now(),
+                        last_ping: Instant::now(),
+                    },
+                );
+            }
 
-                if let Err(e) = handler.handle_command(msg.command).await {
-                    tracing::error!("Protocol error from peer: {}", e);
-                    break;
+            let handler = protocol::IncomingCommandHandler::new(matrix.clone());
+
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Some(m) => {
+                                if let Err(e) = framed.send(m.to_string()).await {
+                                     tracing::error!("Failed to send message to peer: {}", e);
+                                     break;
+                                }
+                            }
+                            None => {
+                                info!("Link channel closed (timeout or removal), closing connection");
+                                break;
+                            }
+                        }
+                    }
+                    result = framed.next() => {
+                        match result {
+                            Some(Ok(line)) => {
+                                let msg = match line.parse::<Message>() {
+                                    Ok(m) => m,
+                                    Err(e) => {
+                                        tracing::warn!("Failed to parse inbound message: {}", e);
+                                        continue;
+                                    }
+                                };
+
+                                #[allow(clippy::collapsible_if)]
+                                if let Some(sid) = &remote_sid {
+                                    if let Err(e) = handler.handle_message(msg, &manager, sid).await {
+                                        tracing::error!("Protocol error from peer: {}", e);
+                                        break;
+                                    }
+                                }
+                            }
+                            Some(Err(e)) => {
+                                tracing::error!("Stream error: {}", e);
+                                break;
+                            }
+                            None => {
+                                info!("Connection closed by peer");
+                                break;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -296,24 +644,43 @@ impl SyncManager {
     }
 
     // Legacy/Stub methods to satisfy existing code
-    pub async fn register_peer(&self, sid: ServerId, name: String, hopcount: u32, info: String) -> mpsc::Receiver<Message> {
+    pub async fn register_peer(
+        &self,
+        sid: ServerId,
+        name: String,
+        hopcount: u32,
+        info: String,
+    ) -> mpsc::Receiver<Message> {
         let (tx, rx) = mpsc::channel(1000);
-        self.links.insert(sid.clone(), LinkState {
-            tx,
-            state: handshake::HandshakeState::Synced,
-            name: name.clone(),
-        });
-        self.topology.servers.insert(sid.clone(), ServerInfo {
-            sid,
-            name,
-            info,
-            hopcount,
-            via: None, // Direct peer
-        });
+        self.links.insert(
+            sid.clone(),
+            LinkState {
+                tx,
+                state: handshake::HandshakeState::Synced,
+                name: name.clone(),
+                last_pong: Instant::now(),
+                last_ping: Instant::now(),
+            },
+        );
+        self.topology.servers.insert(
+            sid.clone(),
+            ServerInfo {
+                sid,
+                name,
+                info,
+                hopcount,
+                via: None, // Direct peer
+            },
+        );
         rx
     }
 
-    pub async fn send_burst(&self, sid: &ServerId, _user_manager: &UserManager, _channel_manager: &ChannelManager) {
+    pub async fn send_burst(
+        &self,
+        sid: &ServerId,
+        _user_manager: &UserManager,
+        _channel_manager: &ChannelManager,
+    ) {
         info!("Sending burst to {}", sid.as_str());
     }
 

@@ -1,8 +1,8 @@
 //! BATCH command handler for server-to-server communication.
 
 use super::types::BatchState;
-use crate::handlers::{Context, HandlerResult};
 use crate::handlers::core::traits::ServerHandler;
+use crate::handlers::{Context, HandlerResult};
 use crate::state::{BatchRouting, ServerState};
 use async_trait::async_trait;
 use slirc_crdt::clock::ServerId;
@@ -61,7 +61,10 @@ impl ServerHandler for ServerBatchHandler {
                     // We should broadcast this to other peers
                     let msg_owned = msg.to_owned();
                     let sid = ServerId::new(ctx.state.sid.clone());
-                    ctx.matrix.sync_manager.broadcast(msg_owned, Some(&sid)).await;
+                    ctx.matrix
+                        .sync_manager
+                        .broadcast(msg_owned, Some(&sid))
+                        .await;
                     ctx.state.batch_routing = Some(BatchRouting::Broadcast);
                 }
                 "chathistory" => {
@@ -75,7 +78,10 @@ impl ServerHandler for ServerBatchHandler {
                             // Broadcast to all servers (simplest for now)
                             let msg_owned = msg.to_owned();
                             let sid = ServerId::new(ctx.state.sid.clone());
-                            ctx.matrix.sync_manager.broadcast(msg_owned, Some(&sid)).await;
+                            ctx.matrix
+                                .sync_manager
+                                .broadcast(msg_owned, Some(&sid))
+                                .await;
                             ctx.state.batch_routing = Some(BatchRouting::Broadcast);
                         } else {
                             // User target
@@ -94,26 +100,41 @@ impl ServerHandler for ServerBatchHandler {
                                     let sid_str = &uid[0..3];
                                     let target_sid = ServerId::new(sid_str.to_string());
 
-                                    if target_sid.as_str() == ctx.matrix.sync_manager.local_id.as_str() {
+                                    if target_sid.as_str()
+                                        == ctx.matrix.sync_manager.local_id.as_str()
+                                    {
                                         // Local user
-                                        debug!("Received CHATHISTORY batch for local user {}", target);
+                                        debug!(
+                                            "Received CHATHISTORY batch for local user {}",
+                                            target
+                                        );
                                         // Send batch start to local user
-                                        if let Some(sender) = ctx.matrix.user_manager.senders.get(&uid) {
+                                        if let Some(sender) =
+                                            ctx.matrix.user_manager.senders.get(&uid)
+                                        {
                                             let msg_owned = msg.to_owned();
                                             let _ = sender.send(msg_owned).await;
-                                            ctx.state.batch_routing = Some(BatchRouting::Local(uid));
+                                            ctx.state.batch_routing =
+                                                Some(BatchRouting::Local(uid));
                                         } else {
                                             debug!("Local user {} not found in senders", uid);
                                             ctx.state.batch_routing = Some(BatchRouting::None);
                                         }
                                     } else {
                                         // Remote user - Route it
-                                        if let Some(peer) = ctx.matrix.sync_manager.get_next_hop(&target_sid) {
+                                        if let Some(peer) =
+                                            ctx.matrix.sync_manager.get_next_hop(&target_sid)
+                                        {
                                             let msg_owned = msg.to_owned();
                                             let _ = peer.tx.send(msg_owned).await;
-                                            ctx.state.batch_routing = Some(BatchRouting::Routed(target_sid));
+                                            ctx.state.batch_routing =
+                                                Some(BatchRouting::Routed(target_sid));
                                         } else {
-                                            debug!("No route to server {} for user {}", target_sid.as_str(), target);
+                                            debug!(
+                                                "No route to server {} for user {}",
+                                                target_sid.as_str(),
+                                                target
+                                            );
                                             ctx.state.batch_routing = Some(BatchRouting::None);
                                         }
                                     }
@@ -137,7 +158,6 @@ impl ServerHandler for ServerBatchHandler {
                     ctx.state.batch_routing = Some(BatchRouting::None);
                 }
             }
-
         } else if let Some(stripped) = ref_tag.strip_prefix('-') {
             // End a batch
             debug!(
@@ -152,7 +172,10 @@ impl ServerHandler for ServerBatchHandler {
                     BatchRouting::Broadcast => {
                         let msg_owned = msg.to_owned();
                         let sid = ServerId::new(ctx.state.sid.clone());
-                        ctx.matrix.sync_manager.broadcast(msg_owned, Some(&sid)).await;
+                        ctx.matrix
+                            .sync_manager
+                            .broadcast(msg_owned, Some(&sid))
+                            .await;
                     }
                     BatchRouting::Routed(target_sid) => {
                         // Route to specific server

@@ -13,9 +13,9 @@ pub use channel::format_modes_for_log;
 
 use super::{Context, HandlerError, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;
+use crate::telemetry::spans;
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
-use crate::telemetry::spans;
 use tracing::Instrument;
 
 /// Handler for MODE command.

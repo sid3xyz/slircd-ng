@@ -180,14 +180,14 @@ impl<'a> ChannelRepository<'a> {
         .fetch_optional(self.pool)
         .await?;
 
-        Ok(row.map(
-            |(account_id, flags, added_by, added_at)| ChannelAccess {
+        Ok(
+            row.map(|(account_id, flags, added_by, added_at)| ChannelAccess {
                 account_id,
                 flags,
                 added_by,
                 added_at,
-            },
-        ))
+            }),
+        )
     }
 
     /// Get all access entries for a channel.
@@ -206,14 +206,12 @@ impl<'a> ChannelRepository<'a> {
 
         Ok(rows
             .into_iter()
-            .map(
-                |(account_id, flags, added_by, added_at)| ChannelAccess {
-                    account_id,
-                    flags,
-                    added_by,
-                    added_at,
-                },
-            )
+            .map(|(account_id, flags, added_by, added_at)| ChannelAccess {
+                account_id,
+                flags,
+                added_by,
+                added_at,
+            })
             .collect())
     }
 

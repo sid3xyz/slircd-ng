@@ -123,7 +123,8 @@ impl TopologyGraph {
             for entry in self.servers.iter() {
                 let info = entry.value();
                 if let Some(via) = &info.via
-                    && via == &current && !processed.contains(&info.sid)
+                    && via == &current
+                    && !processed.contains(&info.sid)
                 {
                     to_process.push(info.sid.clone());
                 }
@@ -173,16 +174,34 @@ mod tests {
     fn test_downstream_sids_linear() {
         // Linear topology: Local -> A -> B -> C
         let graph = TopologyGraph::new();
-        
+
         let local = ServerId::new("001".to_string());
         let a = ServerId::new("00A".to_string());
         let b = ServerId::new("00B".to_string());
         let c = ServerId::new("00C".to_string());
 
         graph.add_server(local.clone(), "local".to_string(), "".to_string(), 0, None);
-        graph.add_server(a.clone(), "serverA".to_string(), "".to_string(), 1, Some(local.clone()));
-        graph.add_server(b.clone(), "serverB".to_string(), "".to_string(), 2, Some(a.clone()));
-        graph.add_server(c.clone(), "serverC".to_string(), "".to_string(), 3, Some(b.clone()));
+        graph.add_server(
+            a.clone(),
+            "serverA".to_string(),
+            "".to_string(),
+            1,
+            Some(local.clone()),
+        );
+        graph.add_server(
+            b.clone(),
+            "serverB".to_string(),
+            "".to_string(),
+            2,
+            Some(a.clone()),
+        );
+        graph.add_server(
+            c.clone(),
+            "serverC".to_string(),
+            "".to_string(),
+            3,
+            Some(b.clone()),
+        );
 
         // If A disconnects, we lose A, B, and C
         let downstream = graph.get_downstream_sids(&a);
@@ -198,16 +217,34 @@ mod tests {
         // Tree topology: Local -> A -> B
         //                      -> C
         let graph = TopologyGraph::new();
-        
+
         let local = ServerId::new("001".to_string());
         let a = ServerId::new("00A".to_string());
         let b = ServerId::new("00B".to_string());
         let c = ServerId::new("00C".to_string());
 
         graph.add_server(local.clone(), "local".to_string(), "".to_string(), 0, None);
-        graph.add_server(a.clone(), "serverA".to_string(), "".to_string(), 1, Some(local.clone()));
-        graph.add_server(b.clone(), "serverB".to_string(), "".to_string(), 2, Some(a.clone()));
-        graph.add_server(c.clone(), "serverC".to_string(), "".to_string(), 1, Some(local.clone()));
+        graph.add_server(
+            a.clone(),
+            "serverA".to_string(),
+            "".to_string(),
+            1,
+            Some(local.clone()),
+        );
+        graph.add_server(
+            b.clone(),
+            "serverB".to_string(),
+            "".to_string(),
+            2,
+            Some(a.clone()),
+        );
+        graph.add_server(
+            c.clone(),
+            "serverC".to_string(),
+            "".to_string(),
+            1,
+            Some(local.clone()),
+        );
 
         // If A disconnects, we lose A and B, but not C
         let downstream = graph.get_downstream_sids(&a);
@@ -222,12 +259,18 @@ mod tests {
     fn test_downstream_sids_leaf() {
         // If we disconnect a leaf node, only that node is affected
         let graph = TopologyGraph::new();
-        
+
         let local = ServerId::new("001".to_string());
         let a = ServerId::new("00A".to_string());
 
         graph.add_server(local.clone(), "local".to_string(), "".to_string(), 0, None);
-        graph.add_server(a.clone(), "serverA".to_string(), "".to_string(), 1, Some(local.clone()));
+        graph.add_server(
+            a.clone(),
+            "serverA".to_string(),
+            "".to_string(),
+            1,
+            Some(local.clone()),
+        );
 
         let downstream = graph.get_downstream_sids(&a);
         assert_eq!(downstream.len(), 1);

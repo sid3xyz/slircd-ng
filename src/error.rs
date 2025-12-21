@@ -192,65 +192,123 @@ impl ChannelError {
         let (response, args) = match self {
             Self::NotOnChannel => (
                 Response::ERR_NOTONCHANNEL,
-                vec![nick.to_string(), channel.to_string(), "You're not on that channel".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "You're not on that channel".to_string(),
+                ],
             ),
             Self::ChanOpPrivsNeeded => (
                 Response::ERR_CHANOPRIVSNEEDED,
-                vec![nick.to_string(), channel.to_string(), "You're not channel operator".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "You're not channel operator".to_string(),
+                ],
             ),
             Self::UserNotInChannel(target) => (
                 Response::ERR_USERNOTINCHANNEL,
-                vec![nick.to_string(), target.clone(), channel.to_string(), "They aren't on that channel".to_string()],
+                vec![
+                    nick.to_string(),
+                    target.clone(),
+                    channel.to_string(),
+                    "They aren't on that channel".to_string(),
+                ],
             ),
             Self::UserOnChannel(target) => (
                 Response::ERR_USERONCHANNEL,
-                vec![nick.to_string(), target.clone(), channel.to_string(), "is already on channel".to_string()],
+                vec![
+                    nick.to_string(),
+                    target.clone(),
+                    channel.to_string(),
+                    "is already on channel".to_string(),
+                ],
             ),
             Self::BannedFromChan => (
                 Response::ERR_BANNEDFROMCHAN,
-                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+b)".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Cannot join channel (+b)".to_string(),
+                ],
             ),
             Self::InviteOnlyChan => (
                 Response::ERR_INVITEONLYCHAN,
-                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+i)".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Cannot join channel (+i)".to_string(),
+                ],
             ),
             Self::ChannelIsFull => (
                 Response::ERR_CHANNELISFULL,
-                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+l)".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Cannot join channel (+l)".to_string(),
+                ],
             ),
             Self::BadChannelKey => (
                 Response::ERR_BADCHANNELKEY,
-                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+k)".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Cannot join channel (+k)".to_string(),
+                ],
             ),
             Self::NeedReggedNick => (
                 // 477 is commonly used for "you need to register to join"
                 Response::ERR_NEEDREGGEDNICK,
-                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+R) - you need to be identified with services".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Cannot join channel (+R) - you need to be identified with services"
+                        .to_string(),
+                ],
             ),
             Self::SecureOnlyChan => (
                 Response::ERR_SECUREONLYCHAN,
-                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+z) - you need to be connected via TLS".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Cannot join channel (+z) - you need to be connected via TLS".to_string(),
+                ],
             ),
             Self::OperOnlyChan => (
                 Response::ERR_OPERONLY,
-                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+O) - you need to be an IRC operator".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Cannot join channel (+O) - you need to be an IRC operator".to_string(),
+                ],
             ),
             // AdminOnlyChan uses ERR_OPERONLY as well since there's no standard admin-only numeric
             Self::AdminOnlyChan => (
                 Response::ERR_OPERONLY,
-                vec![nick.to_string(), channel.to_string(), "Cannot join channel (+A) - you need to be a server administrator".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Cannot join channel (+A) - you need to be a server administrator".to_string(),
+                ],
             ),
             Self::NoKicksActive => (
                 Response::ERR_UNKNOWNERROR,
-                vec![nick.to_string(), channel.to_string(), "Kicks are disabled in this channel (+Q)".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Kicks are disabled in this channel (+Q)".to_string(),
+                ],
             ),
             Self::NoInviteActive => (
                 Response::ERR_UNKNOWNERROR,
-                vec![nick.to_string(), channel.to_string(), "Invites are disabled in this channel (+V)".to_string()],
+                vec![
+                    nick.to_string(),
+                    channel.to_string(),
+                    "Invites are disabled in this channel (+V)".to_string(),
+                ],
             ),
             // These don't have standard IRC numerics - use generic error
-            Self::CannotKnock | Self::ChanOpen | Self::ChannelTombstone
-            | Self::SessionInvalid => (
+            Self::CannotKnock | Self::ChanOpen | Self::ChannelTombstone | Self::SessionInvalid => (
                 Response::ERR_UNKNOWNERROR,
                 vec![nick.to_string(), channel.to_string(), self.to_string()],
             ),
@@ -277,9 +335,15 @@ mod tests {
 
     #[test]
     fn test_handler_error_codes() {
-        assert_eq!(HandlerError::NeedMoreParams.error_code(), "need_more_params");
+        assert_eq!(
+            HandlerError::NeedMoreParams.error_code(),
+            "need_more_params"
+        );
         assert_eq!(HandlerError::NotRegistered.error_code(), "not_registered");
-        assert_eq!(HandlerError::Internal("test".into()).error_code(), "internal_error");
+        assert_eq!(
+            HandlerError::Internal("test".into()).error_code(),
+            "internal_error"
+        );
     }
 
     #[test]
@@ -295,6 +359,9 @@ mod tests {
     #[test]
     fn test_channel_error_to_irc_reply() {
         let reply = ChannelError::NotOnChannel.to_irc_reply("server", "nick", "#test");
-        assert!(matches!(reply.command, Command::Response(Response::ERR_NOTONCHANNEL, _)));
+        assert!(matches!(
+            reply.command,
+            Command::Response(Response::ERR_NOTONCHANNEL, _)
+        ));
     }
 }

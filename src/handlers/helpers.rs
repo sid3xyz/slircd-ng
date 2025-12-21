@@ -70,8 +70,8 @@ macro_rules! require_arg_or_reply {
 #[macro_export]
 macro_rules! send_noprivileges {
     ($ctx:expr, $cmd:expr) => {{
-        let reply = slirc_proto::Response::err_noprivileges($ctx.nick())
-            .with_prefix($ctx.server_prefix());
+        let reply =
+            slirc_proto::Response::err_noprivileges($ctx.nick()).with_prefix($ctx.server_prefix());
         let _ = $ctx.sender.send(reply).await;
         $crate::metrics::record_command_error($cmd, "ERR_NOPRIVILEGES");
     }};
@@ -140,8 +140,6 @@ pub fn server_reply(server_name: &str, response: Response, params: Vec<String>) 
 pub fn server_notice<T: Into<String>>(server_name: &str, target: &str, text: T) -> Message {
     Message::notice(target, text).with_prefix(Prefix::ServerName(server_name.to_string()))
 }
-
-
 
 // ============================================================================
 // Labeled Response Helpers (IRCv3)

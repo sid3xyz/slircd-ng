@@ -65,9 +65,7 @@ impl ChannelActor {
                 ProtoChannelMode::OpModerated => {
                     self.set_flag_mode(ChannelMode::OpModerated, adding)
                 }
-                ProtoChannelMode::Auditorium => {
-                    self.set_flag_mode(ChannelMode::Auditorium, adding)
-                }
+                ProtoChannelMode::Auditorium => self.set_flag_mode(ChannelMode::Auditorium, adding),
                 ProtoChannelMode::Secret => self.set_flag_mode(ChannelMode::Secret, adding),
                 ProtoChannelMode::RegisteredOnly => {
                     self.set_flag_mode(ChannelMode::RegisteredOnly, adding)
@@ -89,28 +87,48 @@ impl ChannelActor {
                 ProtoChannelMode::TlsOnly => self.set_flag_mode(ChannelMode::TlsOnly, adding),
                 ProtoChannelMode::Ban => {
                     if let Some(mask) = arg {
-                        Self::apply_list_mode(&mut self.bans, mask, adding, &sender_prefix.to_string())
+                        Self::apply_list_mode(
+                            &mut self.bans,
+                            mask,
+                            adding,
+                            &sender_prefix.to_string(),
+                        )
                     } else {
                         false
                     }
                 }
                 ProtoChannelMode::Exception => {
                     if let Some(mask) = arg {
-                        Self::apply_list_mode(&mut self.excepts, mask, adding, &sender_prefix.to_string())
+                        Self::apply_list_mode(
+                            &mut self.excepts,
+                            mask,
+                            adding,
+                            &sender_prefix.to_string(),
+                        )
                     } else {
                         false
                     }
                 }
                 ProtoChannelMode::InviteException => {
                     if let Some(mask) = arg {
-                        Self::apply_list_mode(&mut self.invex, mask, adding, &sender_prefix.to_string())
+                        Self::apply_list_mode(
+                            &mut self.invex,
+                            mask,
+                            adding,
+                            &sender_prefix.to_string(),
+                        )
                     } else {
                         false
                     }
                 }
                 ProtoChannelMode::Quiet => {
                     if let Some(mask) = arg {
-                        Self::apply_list_mode(&mut self.quiets, mask, adding, &sender_prefix.to_string())
+                        Self::apply_list_mode(
+                            &mut self.quiets,
+                            mask,
+                            adding,
+                            &sender_prefix.to_string(),
+                        )
                     } else {
                         false
                     }
@@ -120,7 +138,10 @@ impl ChannelActor {
                         if let Some(key) = arg {
                             self.replace_param_mode(
                                 |mode| matches!(mode, ChannelMode::Key(_, _)),
-                                Some(ChannelMode::Key(key.to_string(), HybridTimestamp::now(&self.server_id))),
+                                Some(ChannelMode::Key(
+                                    key.to_string(),
+                                    HybridTimestamp::now(&self.server_id),
+                                )),
                             )
                         } else {
                             false
@@ -135,11 +156,17 @@ impl ChannelActor {
                         parse_channel_limit(arg).is_some_and(|limit| {
                             self.replace_param_mode(
                                 |mode| matches!(mode, ChannelMode::Limit(_, _)),
-                                Some(ChannelMode::Limit(limit, HybridTimestamp::now(&self.server_id))),
+                                Some(ChannelMode::Limit(
+                                    limit,
+                                    HybridTimestamp::now(&self.server_id),
+                                )),
                             )
                         })
                     } else {
-                        self.replace_param_mode(|mode| matches!(mode, ChannelMode::Limit(_, _)), None)
+                        self.replace_param_mode(
+                            |mode| matches!(mode, ChannelMode::Limit(_, _)),
+                            None,
+                        )
                     }
                 }
                 ProtoChannelMode::Founder => {
@@ -249,7 +276,10 @@ impl ChannelActor {
                 let msg = Message {
                     tags: None,
                     prefix: Some(sender_prefix.clone()),
-                    command: Command::NOTICE(self.name.clone(), "Channel modes cleared".to_string()),
+                    command: Command::NOTICE(
+                        self.name.clone(),
+                        "Channel modes cleared".to_string(),
+                    ),
                 };
                 self.handle_broadcast(msg, None).await;
             }
@@ -271,7 +301,7 @@ impl ChannelActor {
                     if modes.op {
                         modes.op = false;
                         if let Some(nick) = self.user_nicks.get(uid) {
-                             changes.push(Mode::minus(ProtoChannelMode::Oper, Some(nick.as_str())));
+                            changes.push(Mode::minus(ProtoChannelMode::Oper, Some(nick.as_str())));
                         }
                     }
                 }
@@ -281,7 +311,7 @@ impl ChannelActor {
                     if modes.voice {
                         modes.voice = false;
                         if let Some(nick) = self.user_nicks.get(uid) {
-                             changes.push(Mode::minus(ProtoChannelMode::Voice, Some(nick.as_str())));
+                            changes.push(Mode::minus(ProtoChannelMode::Voice, Some(nick.as_str())));
                         }
                     }
                 }
@@ -290,15 +320,15 @@ impl ChannelActor {
 
         // Broadcast changes if any
         if !changes.is_empty() {
-             // Batch into messages of max 12 modes (standard limit)
-             for chunk in changes.chunks(12) {
-                 let msg = Message {
-                     tags: None,
-                     prefix: Some(sender_prefix.clone()),
-                     command: Command::ChannelMODE(self.name.clone(), chunk.to_vec()),
-                 };
-                 self.handle_broadcast(msg, None).await;
-             }
+            // Batch into messages of max 12 modes (standard limit)
+            for chunk in changes.chunks(12) {
+                let msg = Message {
+                    tags: None,
+                    prefix: Some(sender_prefix.clone()),
+                    command: Command::ChannelMODE(self.name.clone(), chunk.to_vec()),
+                };
+                self.handle_broadcast(msg, None).await;
+            }
         }
 
         self.notify_observer(None);

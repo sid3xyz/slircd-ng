@@ -23,13 +23,13 @@
 //! - Stores TOPIC event in history for event-playback (Innovation 5)
 //! - Uses CapabilityAuthority (Innovation 4) for authorization
 
-use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler,
-    is_user_in_channel, server_reply, user_mask_from_state,
+use super::super::{
+    Context, HandlerError, HandlerResult, PostRegHandler, is_user_in_channel, server_reply,
+    user_mask_from_state,
 };
+use crate::history::{MessageEnvelope, StoredMessage};
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
-use crate::history::{StoredMessage, MessageEnvelope};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -67,8 +67,8 @@ impl PostRegHandler for TopicHandler {
 
         // Check if user is in channel
         if !is_user_in_channel(ctx, ctx.uid, &channel_lower).await {
-            let reply = Response::err_notonchannel(nick, channel_name)
-                .with_prefix(ctx.server_prefix());
+            let reply =
+                Response::err_notonchannel(nick, channel_name).with_prefix(ctx.server_prefix());
             ctx.send_error("TOPIC", "ERR_NOTONCHANNEL", reply).await?;
             return Ok(());
         }
@@ -135,7 +135,9 @@ impl PostRegHandler for TopicHandler {
                 // Generate msgid and timestamp for event-playback (Innovation 5)
                 let msgid = Uuid::new_v4().to_string();
                 let now = SystemTime::now();
-                let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+                let timestamp = chrono::Utc::now()
+                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string();
                 let nanotime = now
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_default()
@@ -143,9 +145,7 @@ impl PostRegHandler for TopicHandler {
 
                 // Request TOPIC capability from authority (Innovation 4)
                 let authority = ctx.authority();
-                let topic_cap = authority
-                    .request_topic_cap(ctx.uid, channel_name)
-                    .await;
+                let topic_cap = authority.request_topic_cap(ctx.uid, channel_name).await;
 
                 let event = ChannelEvent::SetTopic {
                     params: crate::state::actor::TopicParams {
@@ -187,32 +187,40 @@ impl PostRegHandler for TopicHandler {
                                 account: ctx.state.account.clone(),
                             };
 
-                            if let Err(e) = ctx.matrix.service_manager.history.store(channel_name, stored_msg).await {
+                            if let Err(e) = ctx
+                                .matrix
+                                .service_manager
+                                .history
+                                .store(channel_name, stored_msg)
+                                .await
+                            {
                                 debug!(error = %e, "Failed to store TOPIC in history");
                             }
                         }
 
                         // Persist topic to database for registered channels with keeptopic
-                        if let Some(channel_record) = ctx.db.channels().find_by_name(&channel_lower).await.ok().flatten()
+                        if let Some(channel_record) = ctx
+                            .db
+                            .channels()
+                            .find_by_name(&channel_lower)
+                            .await
+                            .ok()
+                            .flatten()
                             && channel_record.keeptopic
                         {
                             let set_at = chrono::Utc::now().timestamp();
-                            if let Err(e) = ctx.db.channels().save_topic(
-                                channel_record.id,
-                                topic_text,
-                                &set_by_string,
-                                set_at,
-                            ).await {
+                            if let Err(e) = ctx
+                                .db
+                                .channels()
+                                .save_topic(channel_record.id, topic_text, &set_by_string, set_at)
+                                .await
+                            {
                                 warn!(channel = %channel_name, error = %e, "Failed to persist topic");
                             }
                         }
                     }
                     Ok(Err(e)) => {
-                        let reply = e.to_irc_reply(
-                            ctx.server_name(),
-                            &nick,
-                            channel_name,
-                        );
+                        let reply = e.to_irc_reply(ctx.server_name(), &nick, channel_name);
                         ctx.sender.send(reply).await?;
                     }
                     Err(_) => {}

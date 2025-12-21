@@ -38,12 +38,15 @@ impl ChannelActor {
                 return false;
             }
 
-            if list.iter().any(|entry| irc_eq(&entry.mask, &normalized_mask)) {
+            if list
+                .iter()
+                .any(|entry| irc_eq(&entry.mask, &normalized_mask))
+            {
                 return false;
             }
 
             list.push(ListEntry {
-                mask: normalized_mask,  // Store normalized form for consistent lookups
+                mask: normalized_mask, // Store normalized form for consistent lookups
                 set_by: set_by.to_string(),
                 set_at: Utc::now().timestamp(),
             });

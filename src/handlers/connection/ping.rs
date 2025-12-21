@@ -18,8 +18,8 @@ impl<S: SessionState> UniversalHandler<S> for PingHandler {
             _ => {
                 // No token provided - return ERR_NEEDMOREPARAMS (461)
                 let nick = ctx.state.nick_or_star();
-                let reply = Response::err_needmoreparams(nick, "PING")
-                    .with_prefix(ctx.server_prefix());
+                let reply =
+                    Response::err_needmoreparams(nick, "PING").with_prefix(ctx.server_prefix());
                 let reply = with_label(reply, ctx.label.as_deref());
                 ctx.sender.send(reply).await?;
                 crate::metrics::record_command_error("PING", "ERR_NEEDMOREPARAMS");
@@ -29,8 +29,7 @@ impl<S: SessionState> UniversalHandler<S> for PingHandler {
         let server_name = ctx.server_name();
 
         // PONG must have server prefix for clients to properly match responses
-        let pong = Message::pong_with_token(server_name, token)
-            .with_prefix(ctx.server_prefix());
+        let pong = Message::pong_with_token(server_name, token).with_prefix(ctx.server_prefix());
         // Attach label for labeled-response capability
         let pong = with_label(pong, ctx.label.as_deref());
         ctx.sender.send(pong).await?;

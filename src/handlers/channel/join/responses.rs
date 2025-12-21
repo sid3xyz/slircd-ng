@@ -1,8 +1,8 @@
 //! JOIN response and reply sending logic.
 
+use super::super::super::{Context, HandlerResult, server_reply, user_prefix, with_label};
 use crate::error::ChannelError;
 use crate::state::RegisteredState;
-use super::super::super::{Context, HandlerResult, server_reply, user_prefix, with_label};
 use slirc_proto::{Command, Message, Response};
 
 /// Context for handling successful JOIN responses.
@@ -63,7 +63,8 @@ pub(super) async fn handle_join_success(
             command: Command::AWAY(Some(away_text.clone())),
         };
         ctx.matrix
-            .channel_manager.broadcast_to_channel_with_cap(
+            .channel_manager
+            .broadcast_to_channel_with_cap(
                 channel_lower,
                 away_msg,
                 Some(ctx.uid),

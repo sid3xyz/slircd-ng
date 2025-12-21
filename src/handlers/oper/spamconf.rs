@@ -11,8 +11,8 @@
 //! Requires oper privileges.
 
 use crate::handlers::{Context, HandlerResult, PostRegHandler};
-use crate::state::RegisteredState;
 use crate::require_oper_cap;
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -42,8 +42,13 @@ impl PostRegHandler for SpamConfHandler {
             "LIST" => {
                 let spam = spam_lock.read().await;
                 ctx.send_notice("*** Spam Detection Settings ***").await?;
-                ctx.send_notice(format!("Entropy threshold: {:.2}", spam.entropy_threshold())).await?;
-                ctx.send_notice("Use SPAMCONF ENTROPY/REPETITION/ADDKEYWORD").await?;
+                ctx.send_notice(format!(
+                    "Entropy threshold: {:.2}",
+                    spam.entropy_threshold()
+                ))
+                .await?;
+                ctx.send_notice("Use SPAMCONF ENTROPY/REPETITION/ADDKEYWORD")
+                    .await?;
             }
             "ENTROPY" => {
                 let Some(value_str) = msg.arg(1) else {
@@ -58,7 +63,8 @@ impl PostRegHandler for SpamConfHandler {
 
                 let mut spam = spam_lock.write().await;
                 spam.set_entropy_threshold(value);
-                ctx.send_notice(format!("Entropy threshold set to {:.2}", value)).await?;
+                ctx.send_notice(format!("Entropy threshold set to {:.2}", value))
+                    .await?;
             }
             "REPETITION" => {
                 let Some(value_str) = msg.arg(1) else {
@@ -78,7 +84,8 @@ impl PostRegHandler for SpamConfHandler {
 
                 let mut spam = spam_lock.write().await;
                 spam.set_max_repetition(value);
-                ctx.send_notice(format!("Max repetition set to {}", value)).await?;
+                ctx.send_notice(format!("Max repetition set to {}", value))
+                    .await?;
             }
             "ADDKEYWORD" => {
                 let Some(keyword) = msg.arg(1) else {
@@ -88,10 +95,12 @@ impl PostRegHandler for SpamConfHandler {
 
                 let mut spam = spam_lock.write().await;
                 spam.add_keyword(keyword.to_string());
-                ctx.send_notice(format!("Spam keyword '{}' added", keyword)).await?;
+                ctx.send_notice(format!("Spam keyword '{}' added", keyword))
+                    .await?;
             }
             _ => {
-                ctx.send_notice("Unknown subcommand. Use: LIST, ENTROPY, REPETITION, ADDKEYWORD").await?;
+                ctx.send_notice("Unknown subcommand. Use: LIST, ENTROPY, REPETITION, ADDKEYWORD")
+                    .await?;
             }
         }
 

@@ -3,10 +3,10 @@
 use crate::handlers::{Context, HandlerError};
 use crate::history::{HistoryQuery, MessageEnvelope, StoredMessage};
 use crate::state::RegisteredState;
-use slirc_proto::{parse_server_time, ChatHistorySubCommand, MessageRef, MessageReference};
+use slirc_proto::{ChatHistorySubCommand, MessageRef, MessageReference, parse_server_time};
 use tracing::debug;
 
-use super::helpers::{exclusivity_offset, resolve_dm_key, resolve_msgref, QueryParams};
+use super::helpers::{QueryParams, exclusivity_offset, resolve_dm_key, resolve_msgref};
 
 /// Implements all CHATHISTORY query operations.
 pub struct QueryExecutor;
@@ -25,11 +25,21 @@ impl QueryExecutor {
             msg,
         } = params;
         match subcommand {
-            ChatHistorySubCommand::LATEST => Self::handle_latest(ctx, target, nick, limit, is_dm, msg).await,
-            ChatHistorySubCommand::BEFORE => Self::handle_before(ctx, target, nick, limit, is_dm, msg).await,
-            ChatHistorySubCommand::AFTER => Self::handle_after(ctx, target, nick, limit, is_dm, msg).await,
-            ChatHistorySubCommand::AROUND => Self::handle_around(ctx, target, nick, limit, is_dm, msg).await,
-            ChatHistorySubCommand::BETWEEN => Self::handle_between(ctx, target, nick, limit, is_dm, msg).await,
+            ChatHistorySubCommand::LATEST => {
+                Self::handle_latest(ctx, target, nick, limit, is_dm, msg).await
+            }
+            ChatHistorySubCommand::BEFORE => {
+                Self::handle_before(ctx, target, nick, limit, is_dm, msg).await
+            }
+            ChatHistorySubCommand::AFTER => {
+                Self::handle_after(ctx, target, nick, limit, is_dm, msg).await
+            }
+            ChatHistorySubCommand::AROUND => {
+                Self::handle_around(ctx, target, nick, limit, is_dm, msg).await
+            }
+            ChatHistorySubCommand::BETWEEN => {
+                Self::handle_between(ctx, target, nick, limit, is_dm, msg).await
+            }
             ChatHistorySubCommand::TARGETS => Self::handle_targets(ctx, nick, limit, msg).await,
             _ => {
                 debug!("Unknown CHATHISTORY subcommand");

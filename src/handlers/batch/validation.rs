@@ -48,10 +48,7 @@ pub(super) fn validate_concat_content(has_concat: bool, content: &str) -> Result
 }
 
 /// Validate command type consistency within batch.
-pub(super) fn validate_command_type(
-    batch: &BatchState,
-    cmd_name: &str,
-) -> Result<(), String> {
+pub(super) fn validate_command_type(batch: &BatchState, cmd_name: &str) -> Result<(), String> {
     if let Some(ref existing_type) = batch.command_type
         && existing_type != cmd_name
     {

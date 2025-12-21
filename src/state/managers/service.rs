@@ -5,7 +5,7 @@
 
 use crate::db::Database;
 use crate::history::HistoryProvider;
-use crate::services::{chanserv, nickserv, Service};
+use crate::services::{Service, chanserv, nickserv};
 use std::collections::HashMap;
 use std::sync::Arc;
 

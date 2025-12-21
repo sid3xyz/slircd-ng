@@ -1,14 +1,14 @@
 //! History provider abstraction.
 
 use async_trait::async_trait;
-use thiserror::Error;
 use std::time::Duration;
+use thiserror::Error;
 
 pub mod noop;
 pub mod redb;
 pub mod types;
 
-pub use types::{StoredMessage, MessageEnvelope};
+pub use types::{MessageEnvelope, StoredMessage};
 
 #[derive(Debug, Error)]
 pub enum HistoryError {
@@ -41,8 +41,19 @@ pub trait HistoryProvider: Send + Sync {
     async fn prune(&self, retention: Duration) -> Result<usize, HistoryError>;
 
     /// Lookup timestamp for a message ID.
-    async fn lookup_timestamp(&self, target: &str, msgid: &str) -> Result<Option<i64>, HistoryError>;
+    async fn lookup_timestamp(
+        &self,
+        target: &str,
+        msgid: &str,
+    ) -> Result<Option<i64>, HistoryError>;
 
     /// Query targets with activity.
-    async fn query_targets(&self, start: i64, end: i64, limit: usize, nick: String, channels: Vec<String>) -> Result<Vec<(String, i64)>, HistoryError>;
+    async fn query_targets(
+        &self,
+        start: i64,
+        end: i64,
+        limit: usize,
+        nick: String,
+        channels: Vec<String>,
+    ) -> Result<Vec<(String, i64)>, HistoryError>;
 }

@@ -189,20 +189,28 @@ impl Database {
         }
 
         // 004_certfp.sql: adds accounts.certfp column (must not run twice).
-        if table_exists(pool, "accounts").await && !column_exists(pool, "accounts", "certfp").await {
+        if table_exists(pool, "accounts").await && !column_exists(pool, "accounts", "certfp").await
+        {
             Self::run_migration_file(pool, include_str!("../../migrations/004_certfp.sql")).await;
             info!("Database migrations applied (004_certfp)");
         }
 
         // 005_channel_topics.sql: adds topic columns to channels table.
-        if table_exists(pool, "channels").await && !column_exists(pool, "channels", "topic_text").await {
-            Self::run_migration_file(pool, include_str!("../../migrations/005_channel_topics.sql")).await;
+        if table_exists(pool, "channels").await
+            && !column_exists(pool, "channels", "topic_text").await
+        {
+            Self::run_migration_file(
+                pool,
+                include_str!("../../migrations/005_channel_topics.sql"),
+            )
+            .await;
             info!("Database migrations applied (005_channel_topics)");
         }
 
         // 006_reputation.sql: reputation tracking table.
         if !table_exists(pool, "reputation").await {
-            Self::run_migration_file(pool, include_str!("../../migrations/006_reputation.sql")).await;
+            Self::run_migration_file(pool, include_str!("../../migrations/006_reputation.sql"))
+                .await;
             info!("Database migrations applied (006_reputation)");
         }
 

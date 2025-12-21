@@ -9,11 +9,11 @@
 //! NOT here. This prevents double-checking which would consume tokens twice
 //! and create bypass opportunities.
 
+use super::common::SenderSnapshot;
 use crate::handlers::{Context, HandlerError, server_reply};
 use crate::state::RegisteredState;
 use slirc_proto::Response;
 use tracing::debug;
-use super::common::SenderSnapshot;
 
 /// Error handling strategy for message validation failures.
 #[derive(Debug, Clone, Copy)]
@@ -100,12 +100,11 @@ pub async fn validate_message_send(
     let is_trusted = snapshot.is_oper || snapshot.account.is_some();
     let is_private = !target.starts_with('#') && !target.starts_with('&');
 
-    if !is_trusted
-        && let Some(detector_lock) = &ctx.matrix.security_manager.spam_detector
-    {
+    if !is_trusted && let Some(detector_lock) = &ctx.matrix.security_manager.spam_detector {
         let detector = detector_lock.read().await;
-        if let crate::security::spam::SpamVerdict::Spam { pattern, .. } =
-            detector.check_message(&uid_string, &snapshot.ip, text, is_private).await
+        if let crate::security::spam::SpamVerdict::Spam { pattern, .. } = detector
+            .check_message(&uid_string, &snapshot.ip, text, is_private)
+            .await
         {
             // Record violation
             if let Ok(ip) = snapshot.ip.parse() {
@@ -138,7 +137,11 @@ pub async fn validate_message_send(
 
     // Rate-limit CTCP floods
     if slirc_proto::ctcp::Ctcp::is_ctcp(text)
-        && !ctx.matrix.security_manager.rate_limiter.check_ctcp_rate(&uid_string)
+        && !ctx
+            .matrix
+            .security_manager
+            .rate_limiter
+            .check_ctcp_rate(&uid_string)
     {
         match strategy {
             ErrorStrategy::SendError => {

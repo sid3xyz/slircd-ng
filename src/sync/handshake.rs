@@ -3,9 +3,9 @@
 //! Manages the transition from an unconnected socket to a fully synced server link.
 //! Implements the TS6-like handshake protocol defined in `docs/S2S_PROTOCOL.md`.
 
+use crate::config::LinkBlock;
 use slirc_crdt::clock::ServerId;
 use slirc_proto::Command;
-use crate::config::LinkBlock;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HandshakeState {
@@ -113,7 +113,10 @@ impl HandshakeMachine {
                 self.state = HandshakeState::Bursting;
                 Ok(vec![])
             }
-            _ => Err(HandshakeError::ProtocolError(format!("Unexpected command in OutboundInitiated: {:?}", command))),
+            _ => Err(HandshakeError::ProtocolError(format!(
+                "Unexpected command in OutboundInitiated: {:?}",
+                command
+            ))),
         }
     }
 
@@ -145,7 +148,11 @@ impl HandshakeMachine {
                     // PASS <password> TS=6 :<sid>
                     Command::Raw(
                         "PASS".to_string(),
-                        vec![link.password.clone(), "TS=6".to_string(), self.local_sid.as_str().to_string()]
+                        vec![
+                            link.password.clone(),
+                            "TS=6".to_string(),
+                            self.local_sid.as_str().to_string(),
+                        ],
                     ),
                     // SERVER <name> <hopcount> <description>
                     Command::SERVER(
@@ -153,21 +160,37 @@ impl HandshakeMachine {
                         1,
                         self.local_sid.as_str().to_string(),
                         self.local_desc.clone(),
-                    )
+                    ),
                 ];
 
                 self.state = HandshakeState::Bursting;
                 Ok(responses)
             }
-            _ => Err(HandshakeError::ProtocolError(format!("Unexpected command in InboundReceived: {:?}", command))),
+            _ => Err(HandshakeError::ProtocolError(format!(
+                "Unexpected command in InboundReceived: {:?}",
+                command
+            ))),
         }
     }
 
-    fn verify_credentials<'a>(&self, links: &'a [LinkBlock]) -> Result<&'a LinkBlock, HandshakeError> {
-        let name = self.remote_name.as_ref().ok_or(HandshakeError::ProtocolError("Missing SERVER name".to_string()))?;
-        let pass = self.remote_pass.as_ref().ok_or(HandshakeError::AuthenticationFailed)?;
+    fn verify_credentials<'a>(
+        &self,
+        links: &'a [LinkBlock],
+    ) -> Result<&'a LinkBlock, HandshakeError> {
+        let name = self
+            .remote_name
+            .as_ref()
+            .ok_or(HandshakeError::ProtocolError(
+                "Missing SERVER name".to_string(),
+            ))?;
+        let pass = self
+            .remote_pass
+            .as_ref()
+            .ok_or(HandshakeError::AuthenticationFailed)?;
 
-        let link = links.iter().find(|l| &l.name == name)
+        let link = links
+            .iter()
+            .find(|l| &l.name == name)
             .ok_or_else(|| HandshakeError::UnknownServer(name.clone()))?;
 
         if &link.password != pass {

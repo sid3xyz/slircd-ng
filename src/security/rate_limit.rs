@@ -28,10 +28,22 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 
 // Safe NonZeroU32 constants - these are compile-time verified non-zero values
-const NZ_1: NonZeroU32 = match NonZeroU32::new(1) { Some(v) => v, None => panic!("1 is non-zero") };
-const NZ_2: NonZeroU32 = match NonZeroU32::new(2) { Some(v) => v, None => panic!("2 is non-zero") };
-const NZ_3: NonZeroU32 = match NonZeroU32::new(3) { Some(v) => v, None => panic!("3 is non-zero") };
-const NZ_5: NonZeroU32 = match NonZeroU32::new(5) { Some(v) => v, None => panic!("5 is non-zero") };
+const NZ_1: NonZeroU32 = match NonZeroU32::new(1) {
+    Some(v) => v,
+    None => panic!("1 is non-zero"),
+};
+const NZ_2: NonZeroU32 = match NonZeroU32::new(2) {
+    Some(v) => v,
+    None => panic!("2 is non-zero"),
+};
+const NZ_3: NonZeroU32 = match NonZeroU32::new(3) {
+    Some(v) => v,
+    None => panic!("3 is non-zero"),
+};
+const NZ_5: NonZeroU32 = match NonZeroU32::new(5) {
+    Some(v) => v,
+    None => panic!("5 is non-zero"),
+};
 
 /// Type alias for governor's direct rate limiter.
 type DirectRateLimiter = governor::DefaultDirectRateLimiter;
@@ -62,7 +74,8 @@ impl TimedLimiter {
     }
 
     fn touch(&self) {
-        self.last_access.store(current_timestamp(), Ordering::Relaxed);
+        self.last_access
+            .store(current_timestamp(), Ordering::Relaxed);
     }
 
     fn check(&self) -> bool {
@@ -293,7 +306,12 @@ impl RateLimitManager {
         // We can't hold refs while removing, so collect keys and timestamps first
         let mut entries: Vec<(Uid, u64)> = map
             .iter()
-            .map(|entry| (entry.key().clone(), entry.value().last_access.load(Ordering::Relaxed)))
+            .map(|entry| {
+                (
+                    entry.key().clone(),
+                    entry.value().last_access.load(Ordering::Relaxed),
+                )
+            })
             .collect();
 
         // Sort by last access time (oldest first)
@@ -324,7 +342,12 @@ impl RateLimitManager {
         // Collect entries with their last access times
         let mut entries: Vec<(IpAddr, u64)> = map
             .iter()
-            .map(|entry| (*entry.key(), entry.value().last_access.load(Ordering::Relaxed)))
+            .map(|entry| {
+                (
+                    *entry.key(),
+                    entry.value().last_access.load(Ordering::Relaxed),
+                )
+            })
             .collect();
 
         // Sort by last access time (oldest first)

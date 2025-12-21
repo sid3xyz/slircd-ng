@@ -167,9 +167,18 @@ async fn handle_sasl_plain_data(
     match result {
         Ok((authzid, authcid, password)) => {
             // Validate against database (password is SecureString, zeroized on drop)
-            let account_name = if authzid.is_empty() { &authcid } else { &authzid };
+            let account_name = if authzid.is_empty() {
+                &authcid
+            } else {
+                &authzid
+            };
 
-            match ctx.db.accounts().identify(account_name, password.as_str()).await {
+            match ctx
+                .db
+                .accounts()
+                .identify(account_name, password.as_str())
+                .await
+            {
                 Ok(account) => {
                     info!(nick = %nick, account = %account.name, "SASL PLAIN authentication successful");
                     let user = ctx.state.user.clone().unwrap_or_else(|| "*".to_string());
@@ -211,9 +220,8 @@ fn validate_sasl_plain(data: &str) -> Result<(String, String, SecureString), &'s
 
     let authzid = String::from_utf8(parts[0].to_vec()).map_err(|_| "Invalid UTF-8")?;
     let authcid = String::from_utf8(parts[1].to_vec()).map_err(|_| "Invalid UTF-8")?;
-    let password = SecureString::new(
-        String::from_utf8(parts[2].to_vec()).map_err(|_| "Invalid UTF-8")?
-    );
+    let password =
+        SecureString::new(String::from_utf8(parts[2].to_vec()).map_err(|_| "Invalid UTF-8")?);
 
     // Zeroize the decoded buffer now that we've extracted what we need
     decoded.zeroize();
@@ -243,23 +251,24 @@ async fn send_sasl_success(
     let mask = format!("{}!{}@{}", nick, user, host);
 
     // RPL_LOGGEDIN (900)
-    let reply = Response::rpl_loggedin(nick, &mask, account)
-        .with_prefix(ctx.server_prefix());
+    let reply = Response::rpl_loggedin(nick, &mask, account).with_prefix(ctx.server_prefix());
     ctx.sender.send(reply).await?;
 
     // RPL_SASLSUCCESS (903)
-    let reply = Response::rpl_saslsuccess(nick)
-        .with_prefix(ctx.server_prefix());
+    let reply = Response::rpl_saslsuccess(nick).with_prefix(ctx.server_prefix());
     ctx.sender.send(reply).await?;
 
     Ok(())
 }
 
 /// Send SASL failure numerics.
-async fn send_sasl_fail(ctx: &mut Context<'_, UnregisteredState>, nick: &str, _reason: &str) -> HandlerResult {
+async fn send_sasl_fail(
+    ctx: &mut Context<'_, UnregisteredState>,
+    nick: &str,
+    _reason: &str,
+) -> HandlerResult {
     // ERR_SASLFAIL (904)
-    let reply = Response::err_saslfail(nick)
-        .with_prefix(ctx.server_prefix());
+    let reply = Response::err_saslfail(nick).with_prefix(ctx.server_prefix());
     ctx.sender.send(reply).await?;
 
     Ok(())

@@ -12,8 +12,8 @@ use super::middleware::ResponseMiddleware;
 use super::registry::Registry;
 use crate::caps::CapabilityAuthority;
 use crate::db::Database;
-use crate::state::{Matrix, RegisteredState};
 use crate::state::actor::ChannelEvent;
+use crate::state::{Matrix, RegisteredState};
 use slirc_proto::Prefix;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -141,7 +141,10 @@ impl<'a> Context<'a, RegisteredState> {
 
     /// Ensure the channel exists and return its sender.
     #[allow(clippy::result_large_err)]
-    pub fn require_channel_exists(&self, channel: &str) -> Result<mpsc::Sender<ChannelEvent>, HandlerError> {
+    pub fn require_channel_exists(
+        &self,
+        channel: &str,
+    ) -> Result<mpsc::Sender<ChannelEvent>, HandlerError> {
         let channel_lower = slirc_proto::irc_to_lower(channel);
         if let Some(sender) = self.matrix.channel_manager.channels.get(&channel_lower) {
             Ok(sender.clone())
@@ -155,11 +158,7 @@ impl<'a> Context<'a, RegisteredState> {
     /// Wraps `server_notice` and sends it.
     #[inline]
     pub async fn send_notice(&self, text: impl Into<String>) -> Result<(), HandlerError> {
-        let msg = crate::handlers::helpers::server_notice(
-            self.server_name(),
-            self.nick(),
-            text,
-        );
+        let msg = crate::handlers::helpers::server_notice(self.server_name(), self.nick(), text);
         self.sender.send(msg).await?;
         Ok(())
     }
@@ -174,12 +173,21 @@ impl<'a> Context<'a, RegisteredState> {
 /// Uses IRC case-folding for comparison.
 pub fn resolve_nick_to_uid<S>(ctx: &Context<'_, S>, nick: &str) -> Option<String> {
     let lower = slirc_proto::irc_to_lower(nick);
-    ctx.matrix.user_manager.nicks.get(&lower).map(|r| r.value().clone())
+    ctx.matrix
+        .user_manager
+        .nicks
+        .get(&lower)
+        .map(|r| r.value().clone())
 }
 
 /// Get the current user's nick, falling back to "*" if not found.
 pub async fn get_nick_or_star<S>(ctx: &Context<'_, S>) -> String {
-    let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone());
+    let user_arc = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(ctx.uid)
+        .map(|u| u.clone());
     if let Some(user_arc) = user_arc {
         user_arc.read().await.nick.clone()
     } else {
@@ -203,7 +211,12 @@ pub async fn user_mask_from_state<S>(
 
 /// Get the current user's nick and oper status. Returns None if user not found.
 pub async fn get_oper_info<S>(ctx: &Context<'_, S>) -> Option<(String, bool)> {
-    let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone())?;
+    let user_arc = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(ctx.uid)
+        .map(|u| u.clone())?;
     let user = user_arc.read().await;
     Some((user.nick.clone(), user.modes.oper))
 }

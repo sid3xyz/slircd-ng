@@ -24,11 +24,21 @@ impl ChannelActor {
                 };
                 let now = HybridTimestamp::now(&sid);
 
-                if updated.owner != member.owner { updated.owner_ts = Some(now); }
-                if updated.admin != member.admin { updated.admin_ts = Some(now); }
-                if updated.op != member.op { updated.op_ts = Some(now); }
-                if updated.halfop != member.halfop { updated.halfop_ts = Some(now); }
-                if updated.voice != member.voice { updated.voice_ts = Some(now); }
+                if updated.owner != member.owner {
+                    updated.owner_ts = Some(now);
+                }
+                if updated.admin != member.admin {
+                    updated.admin_ts = Some(now);
+                }
+                if updated.op != member.op {
+                    updated.op_ts = Some(now);
+                }
+                if updated.halfop != member.halfop {
+                    updated.halfop_ts = Some(now);
+                }
+                if updated.voice != member.voice {
+                    updated.voice_ts = Some(now);
+                }
 
                 self.members.insert(target_uid.clone(), updated);
                 return true;

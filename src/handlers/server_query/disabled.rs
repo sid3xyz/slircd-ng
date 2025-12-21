@@ -12,8 +12,7 @@ pub struct SummonHandler;
 impl<S: SessionState> UniversalHandler<S> for SummonHandler {
     async fn handle(&self, ctx: &mut Context<'_, S>, _msg: &MessageRef<'_>) -> HandlerResult {
         let nick = ctx.state.nick_or_star();
-        let reply = Response::err_summondisabled(nick)
-            .with_prefix(ctx.server_prefix());
+        let reply = Response::err_summondisabled(nick).with_prefix(ctx.server_prefix());
         ctx.sender.send(reply).await?;
         Ok(())
     }
@@ -26,8 +25,7 @@ pub struct UsersHandler;
 impl<S: SessionState> UniversalHandler<S> for UsersHandler {
     async fn handle(&self, ctx: &mut Context<'_, S>, _msg: &MessageRef<'_>) -> HandlerResult {
         let nick = ctx.state.nick_or_star();
-        let reply = Response::err_usersdisabled(nick)
-            .with_prefix(ctx.server_prefix());
+        let reply = Response::err_usersdisabled(nick).with_prefix(ctx.server_prefix());
         ctx.sender.send(reply).await?;
         Ok(())
     }

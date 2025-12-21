@@ -157,7 +157,11 @@ async fn handle_add(
 }
 
 /// Handle MONITOR - targets - remove nicknames from monitor list.
-async fn handle_remove(ctx: &mut Context<'_, RegisteredState>, msg: &MessageRef<'_>, _nick: &str) -> HandlerResult {
+async fn handle_remove(
+    ctx: &mut Context<'_, RegisteredState>,
+    msg: &MessageRef<'_>,
+    _nick: &str,
+) -> HandlerResult {
     let targets = match msg.arg(1) {
         Some(t) if !t.is_empty() => t,
         _ => return Ok(()),
@@ -191,7 +195,12 @@ fn handle_clear(ctx: &mut Context<'_, RegisteredState>) -> HandlerResult {
     if let Some((_, user_monitors)) = ctx.matrix.monitor_manager.monitors.remove(ctx.uid) {
         // Remove from all reverse mappings
         for target_lower in user_monitors.iter() {
-            if let Some(watchers) = ctx.matrix.monitor_manager.monitoring.get(target_lower.as_str()) {
+            if let Some(watchers) = ctx
+                .matrix
+                .monitor_manager
+                .monitoring
+                .get(target_lower.as_str())
+            {
                 watchers.remove(ctx.uid);
             }
         }
@@ -201,7 +210,11 @@ fn handle_clear(ctx: &mut Context<'_, RegisteredState>) -> HandlerResult {
 }
 
 /// Handle MONITOR L - list all monitored nicknames.
-async fn handle_list(ctx: &mut Context<'_, RegisteredState>, nick: &str, server_name: &str) -> HandlerResult {
+async fn handle_list(
+    ctx: &mut Context<'_, RegisteredState>,
+    nick: &str,
+    server_name: &str,
+) -> HandlerResult {
     if let Some(user_monitors) = ctx.matrix.monitor_manager.monitors.get(ctx.uid) {
         // Collect all monitored nicks
         let targets: Vec<String> = user_monitors.iter().map(|r| r.clone()).collect();
@@ -232,7 +245,11 @@ async fn handle_list(ctx: &mut Context<'_, RegisteredState>, nick: &str, server_
 }
 
 /// Handle MONITOR S - show status of all monitored nicknames.
-async fn handle_status(ctx: &mut Context<'_, RegisteredState>, nick: &str, server_name: &str) -> HandlerResult {
+async fn handle_status(
+    ctx: &mut Context<'_, RegisteredState>,
+    nick: &str,
+    server_name: &str,
+) -> HandlerResult {
     let mut online = Vec::with_capacity(16); // Status returns full monitor list
     let mut offline = Vec::with_capacity(16);
 
@@ -316,7 +333,11 @@ pub async fn notify_monitors_online(matrix: &Arc<Matrix>, nick: &str, user: &str
     );
 
     for watcher_uid in watcher_uids {
-        let sender = matrix.user_manager.senders.get(&watcher_uid).map(|s| s.clone());
+        let sender = matrix
+            .user_manager
+            .senders
+            .get(&watcher_uid)
+            .map(|s| s.clone());
         if let Some(sender) = sender {
             let _ = sender.send(reply.clone()).await;
         }
@@ -349,7 +370,11 @@ pub async fn notify_monitors_offline(matrix: &Arc<Matrix>, nick: &str) {
     );
 
     for watcher_uid in watcher_uids {
-        let sender = matrix.user_manager.senders.get(&watcher_uid).map(|s| s.clone());
+        let sender = matrix
+            .user_manager
+            .senders
+            .get(&watcher_uid)
+            .map(|s| s.clone());
         if let Some(sender) = sender {
             let _ = sender.send(reply.clone()).await;
         }

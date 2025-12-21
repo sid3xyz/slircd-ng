@@ -60,7 +60,11 @@ impl ChannelActor {
 
         for (uid, sender) in &self.senders {
             // Only send tags to clients that support message-tags
-            let out_msg = if self.user_caps.get(uid).is_some_and(|caps| caps.contains("message-tags")) {
+            let out_msg = if self
+                .user_caps
+                .get(uid)
+                .is_some_and(|caps| caps.contains("message-tags"))
+            {
                 msg.clone()
             } else {
                 // Strip tags for clients without message-tags capability

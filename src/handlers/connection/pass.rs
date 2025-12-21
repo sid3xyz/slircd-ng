@@ -22,11 +22,14 @@ pub struct PassHandler;
 
 #[async_trait]
 impl PreRegHandler for PassHandler {
-    async fn handle(&self, ctx: &mut Context<'_, UnregisteredState>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(
+        &self,
+        ctx: &mut Context<'_, UnregisteredState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // PASS must come before NICK/USER
         if ctx.state.nick.is_some() || ctx.state.user.is_some() {
-            let reply = Response::err_alreadyregistred("*")
-                .with_prefix(ctx.server_prefix());
+            let reply = Response::err_alreadyregistred("*").with_prefix(ctx.server_prefix());
             ctx.sender.send(reply).await?;
             return Ok(());
         }
@@ -35,8 +38,8 @@ impl PreRegHandler for PassHandler {
         let password = match msg.arg(0) {
             Some(p) if !p.is_empty() => p,
             _ => {
-                let reply = Response::err_needmoreparams("*", "PASS")
-                    .with_prefix(ctx.server_prefix());
+                let reply =
+                    Response::err_needmoreparams("*", "PASS").with_prefix(ctx.server_prefix());
                 ctx.sender.send(reply).await?;
                 return Ok(());
             }

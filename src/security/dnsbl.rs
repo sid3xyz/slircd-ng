@@ -3,8 +3,8 @@
 //! Checks incoming connections against industry-standard blocklists (DroneBL, EFnet RBL).
 //! Used during the connection handshake to reject known botnets.
 
-use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::TokioResolver;
+use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use std::net::IpAddr;
 use std::time::Duration;
@@ -78,7 +78,11 @@ impl DnsblService {
                 }
                 Err(_) => {
                     // Timeout - log and continue to next list
-                    warn!("DNSBL lookup timed out for {} ({}s)", list, DNSBL_TIMEOUT.as_secs());
+                    warn!(
+                        "DNSBL lookup timed out for {} ({}s)",
+                        list,
+                        DNSBL_TIMEOUT.as_secs()
+                    );
                 }
             }
         }

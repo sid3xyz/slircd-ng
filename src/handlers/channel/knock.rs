@@ -4,7 +4,7 @@
 
 use super::super::{Context, HandlerResult, PostRegHandler, server_reply};
 use crate::state::RegisteredState;
-use crate::state::actor::{ChannelEvent, ChannelError};
+use crate::state::actor::{ChannelError, ChannelEvent};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use std::time::Instant;
@@ -36,7 +36,13 @@ impl PostRegHandler for KnockHandler {
                 // ERR_NEEDMOREPARAMS (461)
                 let server_name = ctx.server_name();
                 let nick = {
-                    if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
+                    if let Some(user_arc) = ctx
+                        .matrix
+                        .user_manager
+                        .users
+                        .get(ctx.uid)
+                        .map(|u| u.value().clone())
+                    {
                         let user = user_arc.read().await;
                         user.nick.clone()
                     } else {
@@ -63,7 +69,13 @@ impl PostRegHandler for KnockHandler {
 
         // Get user info
         let (nick, user, host) = {
-            if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
+            if let Some(user_arc) = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(ctx.uid)
+                .map(|u| u.value().clone())
+            {
                 let u = user_arc.read().await;
                 (u.nick.clone(), u.user.clone(), u.host.clone())
             } else {
@@ -102,11 +114,16 @@ impl PostRegHandler for KnockHandler {
             }
         }
         // Record this knock attempt
-        ctx.state.knock_timestamps.insert(channel_lower.clone(), now);
+        ctx.state
+            .knock_timestamps
+            .insert(channel_lower.clone(), now);
 
         // Prune old entries to prevent unbounded growth (keep last 10 channels)
         if ctx.state.knock_timestamps.len() > 10 {
-            let mut entries: Vec<_> = ctx.state.knock_timestamps.iter()
+            let mut entries: Vec<_> = ctx
+                .state
+                .knock_timestamps
+                .iter()
                 .map(|(k, v)| (k.clone(), *v))
                 .collect();
             entries.sort_by_key(|(_, v)| std::cmp::Reverse(*v));

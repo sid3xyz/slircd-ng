@@ -50,7 +50,11 @@ impl PostRegHandler for NamesHandler {
             // Secret channels (+s) are not shown unless user is in them
 
             // Collect and sort channels alphabetically for deterministic output
-            let mut channel_names: Vec<_> = ctx.matrix.channel_manager.channels.iter()
+            let mut channel_names: Vec<_> = ctx
+                .matrix
+                .channel_manager
+                .channels
+                .iter()
                 .map(|entry| entry.key().clone())
                 .collect();
             channel_names.sort();
@@ -66,7 +70,8 @@ impl PostRegHandler for NamesHandler {
                     truncated = true;
                     break;
                 }
-                let Some(channel_arc) = ctx.matrix.channel_manager.channels.get(&channel_lower) else {
+                let Some(channel_arc) = ctx.matrix.channel_manager.channels.get(&channel_lower)
+                else {
                     continue;
                 };
                 let sender = channel_arc.value();
@@ -103,7 +108,9 @@ impl PostRegHandler for NamesHandler {
 
                 let mut names_list = Vec::with_capacity(members.len());
 
-                let is_auditorium = channel_info.modes.contains(&crate::state::actor::ChannelMode::Auditorium);
+                let is_auditorium = channel_info
+                    .modes
+                    .contains(&crate::state::actor::ChannelMode::Auditorium);
                 let requester_privileged = if let Some(modes) = members.get(&ctx.uid.to_string()) {
                     modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
                 } else {
@@ -114,7 +121,11 @@ impl PostRegHandler for NamesHandler {
                     // Auditorium filtering: if +u and requester is not privileged,
                     // they only see privileged users.
                     if is_auditorium && !requester_privileged {
-                        let is_target_privileged = member_modes.voice || member_modes.halfop || member_modes.op || member_modes.admin || member_modes.owner;
+                        let is_target_privileged = member_modes.voice
+                            || member_modes.halfop
+                            || member_modes.op
+                            || member_modes.admin
+                            || member_modes.owner;
 
                         if !is_target_privileged {
                             continue;
@@ -129,7 +140,8 @@ impl PostRegHandler for NamesHandler {
                 }
                 // Sort alphabetically by nick (case-insensitive) for deterministic output
                 names_list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-                let names_list: Vec<String> = names_list.into_iter().map(|(_, display)| display).collect();
+                let names_list: Vec<String> =
+                    names_list.into_iter().map(|(_, display)| display).collect();
 
                 let channel_symbol = if channel_info
                     .modes
@@ -187,131 +199,138 @@ impl PostRegHandler for NamesHandler {
         for (idx, chan) in channels.iter().enumerate() {
             let channel_lower = irc_to_lower(chan);
 
-        if let Some(channel_sender) = ctx.matrix.channel_manager.channels.get(&channel_lower) {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let _ = channel_sender
-                .send(crate::state::actor::ChannelEvent::GetInfo {
-                    requester_uid: Some(ctx.uid.to_string()),
-                    reply_tx: tx,
-                })
-                .await;
+            if let Some(channel_sender) = ctx.matrix.channel_manager.channels.get(&channel_lower) {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let _ = channel_sender
+                    .send(crate::state::actor::ChannelEvent::GetInfo {
+                        requester_uid: Some(ctx.uid.to_string()),
+                        reply_tx: tx,
+                    })
+                    .await;
 
-            let channel_info = match rx.await {
-                Ok(info) => info,
-                Err(_) => return Ok(()),
-            };
+                let channel_info = match rx.await {
+                    Ok(info) => info,
+                    Err(_) => return Ok(()),
+                };
 
-            // If channel is secret and user is not a member, treat as if it doesn't exist
-            if channel_info
-                .modes
-                .contains(&crate::state::actor::ChannelMode::Secret)
-                && !channel_info.is_member
-            {
-                let end_names = server_reply(
-                    ctx.server_name(),
-                    Response::RPL_ENDOFNAMES,
-                    vec![
-                        nick.to_string(),
-                        channel_name.to_string(),
-                        "End of /NAMES list".to_string(),
-                    ],
-                );
-                ctx.sender.send(end_names).await?;
-                return Ok(());
-            }
+                // If channel is secret and user is not a member, treat as if it doesn't exist
+                if channel_info
+                    .modes
+                    .contains(&crate::state::actor::ChannelMode::Secret)
+                    && !channel_info.is_member
+                {
+                    let end_names = server_reply(
+                        ctx.server_name(),
+                        Response::RPL_ENDOFNAMES,
+                        vec![
+                            nick.to_string(),
+                            channel_name.to_string(),
+                            "End of /NAMES list".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(end_names).await?;
+                    return Ok(());
+                }
 
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let _ = channel_sender
-                .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
-                .await;
-            let members = match rx.await {
-                Ok(m) => m,
-                Err(_) => return Ok(()),
-            };
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let _ = channel_sender
+                    .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
+                    .await;
+                let members = match rx.await {
+                    Ok(m) => m,
+                    Err(_) => return Ok(()),
+                };
 
-            let mut names_list = Vec::with_capacity(members.len());
+                let mut names_list = Vec::with_capacity(members.len());
 
-            let is_auditorium = channel_info.modes.contains(&crate::state::actor::ChannelMode::Auditorium);
-            let requester_privileged = if let Some(modes) = members.get(&ctx.uid.to_string()) {
-                modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
-            } else {
-                false
-            };
+                let is_auditorium = channel_info
+                    .modes
+                    .contains(&crate::state::actor::ChannelMode::Auditorium);
+                let requester_privileged = if let Some(modes) = members.get(&ctx.uid.to_string()) {
+                    modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
+                } else {
+                    false
+                };
 
-            for (uid, member_modes) in &members {
-                // Auditorium filtering: if +u and requester is not privileged,
-                // they only see privileged users.
-                if is_auditorium && !requester_privileged {
-                    let is_target_privileged = member_modes.voice || member_modes.halfop || member_modes.op || member_modes.admin || member_modes.owner;
+                for (uid, member_modes) in &members {
+                    // Auditorium filtering: if +u and requester is not privileged,
+                    // they only see privileged users.
+                    if is_auditorium && !requester_privileged {
+                        let is_target_privileged = member_modes.voice
+                            || member_modes.halfop
+                            || member_modes.op
+                            || member_modes.admin
+                            || member_modes.owner;
 
-                    if !is_target_privileged {
-                        continue;
+                        if !is_target_privileged {
+                            continue;
+                        }
+                    }
+
+                    if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
+                        let user = user.read().await;
+                        let prefix = get_member_prefix(member_modes, multi_prefix);
+                        names_list.push((user.nick.clone(), format!("{}{}", prefix, user.nick)));
                     }
                 }
+                // Sort alphabetically by nick (case-insensitive) for deterministic output
+                names_list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+                let names_list: Vec<String> =
+                    names_list.into_iter().map(|(_, display)| display).collect();
 
-                if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
-                    let user = user.read().await;
-                    let prefix = get_member_prefix(member_modes, multi_prefix);
-                    names_list.push((user.nick.clone(), format!("{}{}", prefix, user.nick)));
+                // Channel symbol per RFC 2812:
+                // @ = secret (+s)
+                // * = private (not used, some IRCds treat +p this way)
+                // = = public (default)
+                let channel_symbol = if channel_info
+                    .modes
+                    .contains(&crate::state::actor::ChannelMode::Secret)
+                {
+                    "@"
+                } else {
+                    "="
+                };
+
+                let names_reply = server_reply(
+                    ctx.server_name(),
+                    Response::RPL_NAMREPLY,
+                    vec![
+                        nick.to_string(),
+                        channel_symbol.to_string(),
+                        channel_info.name.clone(),
+                        names_list.join(" "),
+                    ],
+                );
+                ctx.sender.send(names_reply).await?;
+
+                // Only send RPL_ENDOFNAMES after the last channel
+                if idx == channels.len() - 1 {
+                    let end_names = server_reply(
+                        ctx.server_name(),
+                        Response::RPL_ENDOFNAMES,
+                        vec![
+                            nick.to_string(),
+                            channel_name.to_string(), // Original comma-separated list
+                            "End of /NAMES list".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(end_names).await?;
+                }
+            } else {
+                // Channel doesn't exist - only send RPL_ENDOFNAMES if it's the last channel
+                if idx == channels.len() - 1 {
+                    let end_names = server_reply(
+                        ctx.server_name(),
+                        Response::RPL_ENDOFNAMES,
+                        vec![
+                            nick.to_string(),
+                            channel_name.to_string(), // Original comma-separated list
+                            "End of /NAMES list".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(end_names).await?;
                 }
             }
-            // Sort alphabetically by nick (case-insensitive) for deterministic output
-            names_list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-            let names_list: Vec<String> = names_list.into_iter().map(|(_, display)| display).collect();
-
-            // Channel symbol per RFC 2812:
-            // @ = secret (+s)
-            // * = private (not used, some IRCds treat +p this way)
-            // = = public (default)
-            let channel_symbol = if channel_info
-                .modes
-                .contains(&crate::state::actor::ChannelMode::Secret)
-            {
-                "@"
-            } else {
-                "="
-            };
-
-            let names_reply = server_reply(
-                ctx.server_name(),
-                Response::RPL_NAMREPLY,
-                vec![
-                    nick.to_string(),
-                    channel_symbol.to_string(),
-                    channel_info.name.clone(),
-                    names_list.join(" "),
-                ],
-            );
-            ctx.sender.send(names_reply).await?;
-
-            // Only send RPL_ENDOFNAMES after the last channel
-            if idx == channels.len() - 1 {
-                let end_names = server_reply(
-                    ctx.server_name(),
-                    Response::RPL_ENDOFNAMES,
-                    vec![
-                        nick.to_string(),
-                        channel_name.to_string(),  // Original comma-separated list
-                        "End of /NAMES list".to_string(),
-                    ],
-                );
-                ctx.sender.send(end_names).await?;
-            }
-        } else {
-            // Channel doesn't exist - only send RPL_ENDOFNAMES if it's the last channel
-            if idx == channels.len() - 1 {
-                let end_names = server_reply(
-                    ctx.server_name(),
-                    Response::RPL_ENDOFNAMES,
-                    vec![
-                        nick.to_string(),
-                        channel_name.to_string(),  // Original comma-separated list
-                        "End of /NAMES list".to_string(),
-                    ],
-                );
-                ctx.sender.send(end_names).await?;
-            }
-        }
         } // end for loop
 
         Ok(())

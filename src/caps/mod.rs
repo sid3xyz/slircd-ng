@@ -55,5 +55,5 @@ mod tokens;
 
 // Re-export authority (used by 9 handler files)
 pub use authority::CapabilityAuthority;
-pub use tokens::Cap;
 pub use irc::*;
+pub use tokens::Cap;

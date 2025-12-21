@@ -53,8 +53,19 @@ pub async fn run_handshake_loop(
     channels: LifecycleChannels<'_>,
     unreg_state: &mut UnregisteredState,
 ) -> Result<HandshakeSuccess, HandshakeExit> {
-    let ConnectionContext { uid, transport, matrix, registry, db, addr, starttls_acceptor } = conn;
-    let LifecycleChannels { tx: handshake_tx, rx: handshake_rx } = channels;
+    let ConnectionContext {
+        uid,
+        transport,
+        matrix,
+        registry,
+        db,
+        addr,
+        starttls_acceptor,
+    } = conn;
+    let LifecycleChannels {
+        tx: handshake_tx,
+        rx: handshake_rx,
+    } = channels;
     // Registration timeout from config
     let registration_timeout = Duration::from_secs(matrix.server_info.idle_timeouts.registration);
     let handshake_start = Instant::now();
@@ -73,19 +84,25 @@ pub async fn run_handshake_loop(
                 "TS".to_string(),
                 "6".to_string(),
                 matrix.server_info.sid.clone(),
-            ]
+            ],
         );
         let pass_msg = Message::from(pass_cmd);
-        transport.write_message(&pass_msg).await.map_err(|_| HandshakeExit::WriteError(None))?;
+        transport
+            .write_message(&pass_msg)
+            .await
+            .map_err(|_| HandshakeExit::WriteError(None))?;
 
         // Send CAP LS
         let cap_ls = Message::from(Command::CAP(
             None,
             slirc_proto::CapSubCommand::LS,
             Some("302".to_string()),
-            None
+            None,
         ));
-        transport.write_message(&cap_ls).await.map_err(|_| HandshakeExit::WriteError(None))?;
+        transport
+            .write_message(&cap_ls)
+            .await
+            .map_err(|_| HandshakeExit::WriteError(None))?;
 
         // Send SERVER
         // Format: SERVER <name> <hopcount> <sid> <info>
@@ -96,10 +113,13 @@ pub async fn run_handshake_loop(
                 "1".to_string(),
                 matrix.server_info.sid.clone(),
                 matrix.server_info.description.clone(),
-            ]
+            ],
         );
         let server_msg = Message::from(server_cmd);
-        transport.write_message(&server_msg).await.map_err(|_| HandshakeExit::WriteError(None))?;
+        transport
+            .write_message(&server_msg)
+            .await
+            .map_err(|_| HandshakeExit::WriteError(None))?;
 
         // Mark as server handshake
         unreg_state.is_server_handshake = true;
@@ -198,8 +218,11 @@ pub async fn run_handshake_loop(
                         let Some(acceptor) = starttls_acceptor else {
                             // No TLS configured - send error
                             let nick = unreg_state.nick.as_deref().unwrap_or("*");
-                            let reply = Response::err_starttls(nick, "TLS not configured on this server")
-                                .with_prefix(Prefix::ServerName(matrix.server_info.name.clone()));
+                            let reply =
+                                Response::err_starttls(nick, "TLS not configured on this server")
+                                    .with_prefix(Prefix::ServerName(
+                                        matrix.server_info.name.clone(),
+                                    ));
                             let _ = transport.write_message(&reply).await;
                             continue;
                         };

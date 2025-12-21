@@ -3,15 +3,15 @@
 //! This module contains the `UserManager` struct, which isolates all
 //! user-related state and logic from the main Matrix struct.
 
-use crate::state::{User, WhowasEntry, Uid, UidGenerator, observer::StateObserver};
+use crate::state::{Uid, UidGenerator, User, WhowasEntry, observer::StateObserver};
 use dashmap::DashMap;
-use slirc_proto::{Command, Message, Prefix};
 use slirc_crdt::clock::ServerId;
+use slirc_proto::{Command, Message, Prefix};
 use std::collections::VecDeque;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use std::time::Instant;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
 /// Maximum number of WHOWAS entries to keep per nickname.
 const MAX_WHOWAS_PER_NICK: usize = 10;
@@ -99,7 +99,11 @@ impl UserManager {
     }
 
     /// Merge a UserCrdt into the local state.
-    pub async fn merge_user_crdt(&self, crdt: slirc_crdt::user::UserCrdt, source: Option<ServerId>) {
+    pub async fn merge_user_crdt(
+        &self,
+        crdt: slirc_crdt::user::UserCrdt,
+        source: Option<ServerId>,
+    ) {
         let uid = crdt.uid.clone();
         let incoming_nick = crdt.nick.value().clone();
         let incoming_nick_lower = slirc_proto::irc_to_lower(&incoming_nick);
@@ -126,7 +130,8 @@ impl UserManager {
             // We have a collision. Resolve it using TS rules.
             if incoming_ts < existing_ts {
                 // Incoming is older (Winner). Kill existing.
-                self.kill_user(&existing_uid, "Nick collision (older wins)").await;
+                self.kill_user(&existing_uid, "Nick collision (older wins)")
+                    .await;
                 crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL
                     .with_label_values(&["nick", "kill_existing"])
                     .inc();
@@ -246,7 +251,10 @@ impl UserManager {
             logout_time: chrono::Utc::now().timestamp_millis(),
         };
 
-        self.whowas.entry(nick_lower.clone()).or_default().push_front(entry);
+        self.whowas
+            .entry(nick_lower.clone())
+            .or_default()
+            .push_front(entry);
 
         // Prune old entries if over the limit
         if let Some(mut entries) = self.whowas.get_mut(&nick_lower) {
@@ -273,8 +281,8 @@ impl UserManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slirc_crdt::user::UserCrdt;
     use slirc_crdt::clock::HybridTimestamp;
+    use slirc_crdt::user::UserCrdt;
 
     fn create_user(uid: &str, nick: &str, ts: HybridTimestamp) -> UserCrdt {
         let mut user = UserCrdt::new(
@@ -309,8 +317,14 @@ mod tests {
         manager.merge_user_crdt(user_b, Some(sid_b)).await;
 
         // Verify A remains, B is gone
-        assert!(manager.users.contains_key("00A000001"), "User A should remain");
-        assert!(!manager.users.contains_key("00B000001"), "User B should be killed");
+        assert!(
+            manager.users.contains_key("00A000001"),
+            "User A should remain"
+        );
+        assert!(
+            !manager.users.contains_key("00B000001"),
+            "User B should be killed"
+        );
         assert_eq!(*manager.nicks.get("alice").unwrap(), "00A000001");
     }
 
@@ -332,8 +346,14 @@ mod tests {
         manager.merge_user_crdt(user_b, Some(sid_b)).await;
 
         // Verify B remains, A is gone
-        assert!(!manager.users.contains_key("00A000001"), "User A should be killed");
-        assert!(manager.users.contains_key("00B000001"), "User B should remain");
+        assert!(
+            !manager.users.contains_key("00A000001"),
+            "User A should be killed"
+        );
+        assert!(
+            manager.users.contains_key("00B000001"),
+            "User B should remain"
+        );
         assert_eq!(*manager.nicks.get("alice").unwrap(), "00B000001");
     }
 
@@ -356,8 +376,14 @@ mod tests {
         manager.merge_user_crdt(user_b, Some(sid_b)).await;
 
         // Verify both gone
-        assert!(!manager.users.contains_key("00A000001"), "User A should be killed");
-        assert!(!manager.users.contains_key("00B000001"), "User B should be killed");
+        assert!(
+            !manager.users.contains_key("00A000001"),
+            "User A should be killed"
+        );
+        assert!(
+            !manager.users.contains_key("00B000001"),
+            "User B should be killed"
+        );
         assert!(!manager.nicks.contains_key("alice"));
     }
 }

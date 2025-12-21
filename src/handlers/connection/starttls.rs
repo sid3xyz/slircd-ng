@@ -58,8 +58,7 @@ impl PreRegHandler for StarttlsHandler {
         info!(nick = nick, "STARTTLS upgrade requested");
 
         // Send RPL_STARTTLS before upgrade
-        let reply = Response::rpl_starttls(nick)
-            .with_prefix(ctx.server_prefix());
+        let reply = Response::rpl_starttls(nick).with_prefix(ctx.server_prefix());
         ctx.sender.send(reply).await?;
 
         // Signal to handshake loop that TLS upgrade is needed

@@ -31,8 +31,7 @@ pub(super) fn save(
     let file = File::create(&temp_path)?;
     let writer = BufWriter::new(file);
 
-    rmp_serde::encode::write(&mut BufWriter::new(writer), &state)
-        .map_err(std::io::Error::other)?;
+    rmp_serde::encode::write(&mut BufWriter::new(writer), &state).map_err(std::io::Error::other)?;
 
     // Atomic rename
     fs::rename(&temp_path, persist_path)?;

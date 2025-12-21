@@ -10,8 +10,8 @@
 //! This prevents memory exhaustion from clients that don't read their data.
 
 use slirc_proto::Message;
-use tokio::sync::{Mutex, mpsc};
 use std::time::Duration;
+use tokio::sync::{Mutex, mpsc};
 
 /// Timeout for attempting to send to a slow consumer before giving up.
 /// 5 seconds is generous - a healthy client should never hit this.
@@ -39,7 +39,10 @@ impl<'a> ResponseMiddleware<'a> {
                     Ok(result) => result,
                     Err(_timeout) => {
                         // Slow consumer - SendQ overflow
-                        tracing::warn!("SendQ overflow: client not reading (timeout after {:?})", SEND_TIMEOUT);
+                        tracing::warn!(
+                            "SendQ overflow: client not reading (timeout after {:?})",
+                            SEND_TIMEOUT
+                        );
                         Err(mpsc::error::SendError(msg))
                     }
                 }

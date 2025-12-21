@@ -53,22 +53,12 @@ impl PostRegHandler for BatchHandler {
             if batch_type.eq_ignore_ascii_case("draft/multiline") {
                 // Check if client has the capability
                 if !ctx.state.capabilities.contains("draft/multiline") {
-                    send_fail(
-                        ctx,
-                        "MULTILINE_INVALID",
-                        "Capability not negotiated",
-                    )
-                    .await?;
+                    send_fail(ctx, "MULTILINE_INVALID", "Capability not negotiated").await?;
                     return Ok(());
                 }
 
                 if target.is_empty() {
-                    send_fail(
-                        ctx,
-                        "MULTILINE_INVALID",
-                        "No target specified",
-                    )
-                    .await?;
+                    send_fail(ctx, "MULTILINE_INVALID", "No target specified").await?;
                     return Ok(());
                 }
 
@@ -112,12 +102,7 @@ impl PostRegHandler for BatchHandler {
             // End a batch
             if let Some(ref active_ref) = ctx.state.active_batch_ref {
                 if active_ref != stripped {
-                    send_fail(
-                        ctx,
-                        "MULTILINE_INVALID",
-                        "Batch reference mismatch",
-                    )
-                    .await?;
+                    send_fail(ctx, "MULTILINE_INVALID", "Batch reference mismatch").await?;
                     return Ok(());
                 }
             } else {
@@ -179,7 +164,12 @@ async fn process_multiline_batch(
     let target = &batch.target;
 
     // Get sender info for prefix
-    let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone());
+    let user_arc = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(ctx.uid)
+        .map(|u| u.value().clone());
     let prefix = if let Some(user_arc) = user_arc {
         let user = user_arc.read().await;
         Prefix::new(
@@ -215,7 +205,12 @@ async fn deliver_multiline_to_channel(
 ) -> HandlerResult {
     let channel_lower = batch.target.to_lowercase();
 
-    let channel_tx = ctx.matrix.channel_manager.channels.get(&channel_lower).map(|c| c.clone());
+    let channel_tx = ctx
+        .matrix
+        .channel_manager
+        .channels
+        .get(&channel_lower)
+        .map(|c| c.clone());
     let Some(channel_tx) = channel_tx else {
         // Channel doesn't exist - send error
         let reply = Response::err_nosuchchannel(&ctx.state.nick, &batch.target)
@@ -246,7 +241,12 @@ async fn deliver_multiline_to_channel(
     }
     let mut members: Vec<(String, MemberCaps)> = Vec::with_capacity(member_uids.len());
     for uid in member_uids {
-        let user_arc = ctx.matrix.user_manager.users.get(&uid).map(|u| u.value().clone());
+        let user_arc = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(&uid)
+            .map(|u| u.value().clone());
         if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             members.push((
@@ -368,8 +368,8 @@ async fn deliver_multiline_to_user(
 
     let Some(target_uid) = target_uid else {
         // User not found
-        let reply = Response::err_nosuchnick(&ctx.state.nick, target_nick)
-            .with_prefix(ctx.server_prefix());
+        let reply =
+            Response::err_nosuchnick(&ctx.state.nick, target_nick).with_prefix(ctx.server_prefix());
         ctx.send_error("BATCH", "ERR_NOSUCHNICK", reply).await?;
         return Ok(());
     };
@@ -382,7 +382,12 @@ async fn deliver_multiline_to_user(
     drop(target_sender_ref);
 
     // Check if target has draft/multiline capability
-    let target_user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.value().clone());
+    let target_user_arc = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(&target_uid)
+        .map(|u| u.value().clone());
     let target_has_multiline = if let Some(target_user_arc) = target_user_arc {
         let user = target_user_arc.read().await;
         user.caps.contains("draft/multiline")
@@ -391,7 +396,12 @@ async fn deliver_multiline_to_user(
     };
 
     // Pre-fetch sender capabilities for echo (single read vs 2 reads)
-    let sender_user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone());
+    let sender_user_arc = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(ctx.uid)
+        .map(|u| u.value().clone());
     let (sender_has_echo, sender_has_multiline) = if let Some(sender_user_arc) = sender_user_arc {
         let user = sender_user_arc.read().await;
         (
@@ -602,11 +612,7 @@ async fn send_multiline_fallback(
 }
 
 /// Send a FAIL message for batch errors.
-async fn send_fail<S>(
-    ctx: &mut Context<'_, S>,
-    code: &str,
-    message: &str,
-) -> HandlerResult {
+async fn send_fail<S>(ctx: &mut Context<'_, S>, code: &str, message: &str) -> HandlerResult {
     let reply = Message {
         tags: None,
         prefix: Some(ctx.server_prefix()),

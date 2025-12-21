@@ -5,11 +5,9 @@
 //! automated abuse.
 
 use crate::db::Shun;
-use crate::handlers::{Context,
-    HandlerResult, PostRegHandler, server_notice,
-};
-use crate::{require_arg_or_reply, require_oper_cap};
+use crate::handlers::{Context, HandlerResult, PostRegHandler, server_notice};
 use crate::state::RegisteredState;
+use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -30,17 +28,16 @@ impl PostRegHandler for ShunHandler {
         let server_name = ctx.server_name();
         let nick = ctx.nick();
 
-        let Some(_cap) = require_oper_cap!(ctx, "SHUN", request_shun_cap) else { return Ok(()); };
-        let Some(mask) = require_arg_or_reply!(ctx, msg, 0, "SHUN") else { return Ok(()); };
+        let Some(_cap) = require_oper_cap!(ctx, "SHUN", request_shun_cap) else {
+            return Ok(());
+        };
+        let Some(mask) = require_arg_or_reply!(ctx, msg, 0, "SHUN") else {
+            return Ok(());
+        };
         let reason = msg.arg(1).unwrap_or("Shunned");
 
         // Store shun in database
-        if let Err(e) = ctx
-            .db
-            .bans()
-            .add_shun(mask, Some(reason), nick, None)
-            .await
-        {
+        if let Err(e) = ctx.db.bans().add_shun(mask, Some(reason), nick, None).await {
             tracing::error!(error = %e, "Failed to add shun to database");
         } else {
             // Also add to in-memory cache for fast lookup
@@ -97,8 +94,7 @@ impl PostRegHandler for UnshunHandler {
         let nick = ctx.nick();
         let authority = ctx.authority();
         let Some(_cap) = authority.request_shun_cap(ctx.uid).await else {
-            let reply = Response::err_noprivileges(nick)
-                .with_prefix(ctx.server_prefix());
+            let reply = Response::err_noprivileges(nick).with_prefix(ctx.server_prefix());
             ctx.send_error("UNSHUN", "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         };
@@ -107,9 +103,10 @@ impl PostRegHandler for UnshunHandler {
         let mask = match msg.arg(0) {
             Some(m) if !m.is_empty() => m,
             _ => {
-                let reply = Response::err_needmoreparams(nick, "UNSHUN")
-                    .with_prefix(ctx.server_prefix());
-                ctx.send_error("UNSHUN", "ERR_NEEDMOREPARAMS", reply).await?;
+                let reply =
+                    Response::err_needmoreparams(nick, "UNSHUN").with_prefix(ctx.server_prefix());
+                ctx.send_error("UNSHUN", "ERR_NEEDMOREPARAMS", reply)
+                    .await?;
                 return Ok(());
             }
         };

@@ -195,7 +195,10 @@ pub fn is_default_secret(secret: &str) -> bool {
     let has_upper = secret.chars().any(|c| c.is_ascii_uppercase());
     let has_digit = secret.chars().any(|c| c.is_ascii_digit());
     let has_special = secret.chars().any(|c| !c.is_alphanumeric());
-    let unique_chars = secret.chars().collect::<std::collections::HashSet<_>>().len();
+    let unique_chars = secret
+        .chars()
+        .collect::<std::collections::HashSet<_>>()
+        .len();
 
     // Require at least 3 character classes and 8 unique characters
     let char_classes = [has_lower, has_upper, has_digit, has_special]

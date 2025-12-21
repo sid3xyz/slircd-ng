@@ -135,7 +135,12 @@ impl<'a> WelcomeBurstWriter<'a> {
         }
 
         // Check BanCache for user@host bans (G-lines, K-lines)
-        if let Some(ban_result) = self.matrix.security_manager.ban_cache.check_user_host(user, &host) {
+        if let Some(ban_result) = self
+            .matrix
+            .security_manager
+            .ban_cache
+            .check_user_host(user, &host)
+        {
             let ban_reason = format!("{}: {}", ban_result.ban_type, ban_result.reason);
             let reply = Response::err_yourebannedcreep(nick)
                 .with_prefix(Prefix::ServerName(server_name.to_string()));
@@ -216,10 +221,7 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         let cloaked_host = user_obj.visible_host.clone();
 
-        self.matrix
-            .user_manager
-            .add_local_user(user_obj)
-            .await;
+        self.matrix.user_manager.add_local_user(user_obj).await;
 
         crate::metrics::CONNECTED_USERS.inc();
 
@@ -267,7 +269,10 @@ impl<'a> WelcomeBurstWriter<'a> {
         let created = server_reply(
             server_name,
             Response::RPL_CREATED,
-            vec![nick.clone(), "This server was created at startup".to_string()],
+            vec![
+                nick.clone(),
+                "This server was created at startup".to_string(),
+            ],
         );
         self.write(created).await?;
 
@@ -384,7 +389,13 @@ impl<'a> WelcomeBurstWriter<'a> {
         notify_monitors_online(self.matrix, nick, user, &cloaked_host).await;
 
         // Send snomask 'c' (Connect)
-        self.matrix.user_manager.send_snomask('c', &format!("Client connecting: {} ({}) [{}]", nick, user, ban_host)).await;
+        self.matrix
+            .user_manager
+            .send_snomask(
+                'c',
+                &format!("Client connecting: {} ({}) [{}]", nick, user, ban_host),
+            )
+            .await;
 
         Ok(())
     }

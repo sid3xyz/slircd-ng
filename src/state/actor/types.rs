@@ -3,9 +3,9 @@
 //! Contains [`ChannelEvent`] variants and related types used for
 //! message passing to [`ChannelActor`](super::ChannelActor) instances.
 
+use crate::caps::{Cap, InviteCap, KickCap, TopicCap};
 use crate::security::UserContext;
 use crate::state::{ListEntry, MemberModes, Topic};
-use crate::caps::{Cap, KickCap, TopicCap, InviteCap};
 use slirc_proto::{Message, Prefix};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -205,15 +205,9 @@ pub enum ChannelEvent {
     /// Channel actors keep a cached `user_caps` map for fast capability-gated broadcasts.
     /// This event keeps that cache in sync when a registered client performs mid-session
     /// `CAP REQ` changes.
-    UpdateCaps {
-        uid: Uid,
-        caps: HashSet<String>,
-    },
+    UpdateCaps { uid: Uid, caps: HashSet<String> },
     /// User nickname change.
-    NickChange {
-        uid: Uid,
-        new_nick: String,
-    },
+    NickChange { uid: Uid, new_nick: String },
     /// Clear channel state (modes, bans, etc).
     Clear {
         sender_uid: Uid,
@@ -227,6 +221,25 @@ pub enum ChannelEvent {
         modes: String,
         mode_args: Vec<String>,
         users: Vec<(String, String)>, // (prefixes, uid)
+    },
+    /// Incoming TMODE from a peer server.
+    RemoteMode {
+        ts: u64,
+        setter: String,
+        modes: String,
+        args: Vec<String>,
+    },
+    /// Incoming TOPIC from a peer server.
+    RemoteTopic {
+        ts: u64,
+        setter: String,
+        topic: String,
+    },
+    /// Incoming KICK from a peer server.
+    RemoteKick {
+        sender: String,
+        target: String,
+        reason: String,
     },
     /// Netsplit quit - remove user without broadcast (already handled by split.rs).
     NetsplitQuit {

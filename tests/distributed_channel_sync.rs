@@ -18,11 +18,21 @@ fn test_crdt_channel_mode_convergence() {
 
     // A sets +o at T1
     let t1 = HybridTimestamp::new(101, 0, &sid_a);
-    chan_a.members.get_modes_mut(uid).unwrap().op.update(true, t1);
+    chan_a
+        .members
+        .get_modes_mut(uid)
+        .unwrap()
+        .op
+        .update(true, t1);
 
     // B sets +v at T2
     let t2 = HybridTimestamp::new(102, 0, &sid_b);
-    chan_b.members.get_modes_mut(uid).unwrap().voice.update(true, t2);
+    chan_b
+        .members
+        .get_modes_mut(uid)
+        .unwrap()
+        .voice
+        .update(true, t2);
 
     // Merge B into A
     chan_a.merge(&chan_b);
@@ -53,7 +63,7 @@ fn test_crdt_user_convergence_lww() {
         "Real Name".to_string(),
         "host".to_string(),
         "host".to_string(),
-        t0
+        t0,
     );
     let mut user_b = UserCrdt::new(
         "user1".to_string(),
@@ -62,7 +72,7 @@ fn test_crdt_user_convergence_lww() {
         "Real Name".to_string(),
         "host".to_string(),
         "host".to_string(),
-        t0
+        t0,
     );
 
     // A sets nick to "Alice" at T1
@@ -95,19 +105,25 @@ fn test_crdt_topic_convergence_lww() {
 
     // A sets topic at T1
     let t1 = HybridTimestamp::new(101, 0, &sid_a);
-    chan_a.topic.update(Some(TopicCrdt {
-        text: "Topic A".to_string(),
-        set_by: "A".to_string(),
-        set_at: 100,
-    }), t1);
+    chan_a.topic.update(
+        Some(TopicCrdt {
+            text: "Topic A".to_string(),
+            set_by: "A".to_string(),
+            set_at: 100,
+        }),
+        t1,
+    );
 
     // B sets topic at T2
     let t2 = HybridTimestamp::new(102, 0, &sid_b);
-    chan_b.topic.update(Some(TopicCrdt {
-        text: "Topic B".to_string(),
-        set_by: "B".to_string(),
-        set_at: 200,
-    }), t2);
+    chan_b.topic.update(
+        Some(TopicCrdt {
+            text: "Topic B".to_string(),
+            set_by: "B".to_string(),
+            set_at: 200,
+        }),
+        t2,
+    );
 
     // Merge B into A (B should win)
     chan_a.merge(&chan_b);

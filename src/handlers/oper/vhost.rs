@@ -2,13 +2,10 @@
 //!
 //! Allows operators to set custom virtual hostnames on users.
 
-use super::super::{Context,
-    HandlerResult, PostRegHandler,
-    resolve_nick_to_uid, server_notice,
-};
-use crate::{require_arg_or_reply, require_oper_cap};
-use crate::state::RegisteredState;
+use super::super::{Context, HandlerResult, PostRegHandler, resolve_nick_to_uid, server_notice};
 use super::is_valid_hostname;
+use crate::state::RegisteredState;
+use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
@@ -31,9 +28,15 @@ impl PostRegHandler for VhostHandler {
         let oper_nick = ctx.nick();
 
         // Request oper capability from authority (Innovation 4)
-        let Some(_cap) = require_oper_cap!(ctx, "VHOST", request_vhost_cap) else { return Ok(()); };
-        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "VHOST") else { return Ok(()); };
-        let Some(new_vhost) = require_arg_or_reply!(ctx, msg, 1, "VHOST") else { return Ok(()); };
+        let Some(_cap) = require_oper_cap!(ctx, "VHOST", request_vhost_cap) else {
+            return Ok(());
+        };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "VHOST") else {
+            return Ok(());
+        };
+        let Some(new_vhost) = require_arg_or_reply!(ctx, msg, 1, "VHOST") else {
+            return Ok(());
+        };
 
         if new_vhost.len() > 64 {
             let reply = server_notice(server_name, oper_nick, "Vhost too long (max 64 chars)");
@@ -93,7 +96,8 @@ impl PostRegHandler for VhostHandler {
 
             for channel_name in &channels {
                 ctx.matrix
-                    .channel_manager.broadcast_to_channel_with_cap(
+                    .channel_manager
+                    .broadcast_to_channel_with_cap(
                         channel_name,
                         chghost_msg.clone(),
                         None,

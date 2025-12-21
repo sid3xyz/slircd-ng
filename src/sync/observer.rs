@@ -48,16 +48,36 @@ impl SyncManager {
         let mut modes = String::new();
         let mut mode_args = Vec::new();
 
-        if *channel.modes.no_external.value() { modes.push('n'); }
-        if *channel.modes.topic_ops_only.value() { modes.push('t'); }
-        if *channel.modes.moderated.value() { modes.push('m'); }
-        if *channel.modes.invite_only.value() { modes.push('i'); }
-        if *channel.modes.secret.value() { modes.push('s'); }
-        if *channel.modes.private.value() { modes.push('p'); }
-        if *channel.modes.registered_only.value() { modes.push('R'); }
-        if *channel.modes.no_colors.value() { modes.push('c'); }
-        if *channel.modes.no_ctcp.value() { modes.push('C'); }
-        if *channel.modes.ssl_only.value() { modes.push('z'); }
+        if *channel.modes.no_external.value() {
+            modes.push('n');
+        }
+        if *channel.modes.topic_ops_only.value() {
+            modes.push('t');
+        }
+        if *channel.modes.moderated.value() {
+            modes.push('m');
+        }
+        if *channel.modes.invite_only.value() {
+            modes.push('i');
+        }
+        if *channel.modes.secret.value() {
+            modes.push('s');
+        }
+        if *channel.modes.private.value() {
+            modes.push('p');
+        }
+        if *channel.modes.registered_only.value() {
+            modes.push('R');
+        }
+        if *channel.modes.no_colors.value() {
+            modes.push('c');
+        }
+        if *channel.modes.no_ctcp.value() {
+            modes.push('C');
+        }
+        if *channel.modes.ssl_only.value() {
+            modes.push('z');
+        }
 
         if let Some(key) = channel.key.value() {
             modes.push('k');
@@ -79,11 +99,21 @@ impl SyncManager {
         for uid in channel.members.iter() {
             if let Some(modes_crdt) = channel.members.get_modes(uid) {
                 let mut prefix = String::new();
-                if *modes_crdt.owner.value() { prefix.push('~'); }
-                if *modes_crdt.admin.value() { prefix.push('&'); }
-                if *modes_crdt.op.value() { prefix.push('@'); }
-                if *modes_crdt.halfop.value() { prefix.push('%'); }
-                if *modes_crdt.voice.value() { prefix.push('+'); }
+                if *modes_crdt.owner.value() {
+                    prefix.push('~');
+                }
+                if *modes_crdt.admin.value() {
+                    prefix.push('&');
+                }
+                if *modes_crdt.op.value() {
+                    prefix.push('@');
+                }
+                if *modes_crdt.halfop.value() {
+                    prefix.push('%');
+                }
+                if *modes_crdt.voice.value() {
+                    prefix.push('+');
+                }
                 users.push((prefix, uid.clone()));
             }
         }
@@ -99,12 +129,24 @@ impl SyncManager {
 
         // Build mode string
         let mut modes = "+".to_string();
-        if *user.modes.invisible.value() { modes.push('i'); }
-        if *user.modes.oper.value() { modes.push('o'); }
-        if *user.modes.registered.value() { modes.push('r'); }
-        if *user.modes.wallops.value() { modes.push('w'); }
-        if *user.modes.secure.value() { modes.push('Z'); }
-        if *user.modes.bot.value() { modes.push('B'); }
+        if *user.modes.invisible.value() {
+            modes.push('i');
+        }
+        if *user.modes.oper.value() {
+            modes.push('o');
+        }
+        if *user.modes.registered.value() {
+            modes.push('r');
+        }
+        if *user.modes.wallops.value() {
+            modes.push('w');
+        }
+        if *user.modes.secure.value() {
+            modes.push('Z');
+        }
+        if *user.modes.bot.value() {
+            modes.push('B');
+        }
 
         Command::UID(
             user.nick.value().clone(),
@@ -122,10 +164,7 @@ impl SyncManager {
     #[allow(dead_code)] // Will be used when quit propagation uses Command enum
     fn build_quit_command(&self, _uid: &str, reason: &str) -> Command {
         // QUIT is sent with UID prefix
-        Command::Raw(
-            "QUIT".to_string(),
-            vec![format!(":{}", reason)],
-        )
+        Command::Raw("QUIT".to_string(), vec![format!(":{}", reason)])
     }
 }
 

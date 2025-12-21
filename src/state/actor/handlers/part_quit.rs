@@ -21,18 +21,28 @@ impl ChannelActor {
 
         // Determine visibility for Auditorium mode (+u)
         let mut exclude = Vec::new();
-        let is_auditorium = self.modes.contains(&crate::state::actor::ChannelMode::Auditorium);
+        let is_auditorium = self
+            .modes
+            .contains(&crate::state::actor::ChannelMode::Auditorium);
 
         // Check if parter is privileged
-        let parter_privileged = self.members.get(&uid).map(|m|
-            m.voice || m.halfop || m.op || m.admin || m.owner
-        ).unwrap_or(false);
+        let parter_privileged = self
+            .members
+            .get(&uid)
+            .map(|m| m.voice || m.halfop || m.op || m.admin || m.owner)
+            .unwrap_or(false);
 
         if is_auditorium && !parter_privileged {
             // If +u and parter is not privileged, only privileged members see the PART.
             // So we exclude all non-privileged members, EXCEPT the parter themselves (so they see their own PART).
             for (member_uid, modes) in &self.members {
-                if !modes.voice && !modes.halfop && !modes.op && !modes.admin && !modes.owner && member_uid != &uid {
+                if !modes.voice
+                    && !modes.halfop
+                    && !modes.op
+                    && !modes.admin
+                    && !modes.owner
+                    && member_uid != &uid
+                {
                     exclude.push(member_uid.clone());
                 }
             }
@@ -44,7 +54,8 @@ impl ChannelActor {
             prefix: Some(prefix),
             command: Command::PART(self.name.clone(), reason),
         };
-        self.handle_broadcast_with_cap(part_msg, exclude, None, None).await;
+        self.handle_broadcast_with_cap(part_msg, exclude, None, None)
+            .await;
 
         // Remove member
         self.members.remove(&uid);
@@ -70,12 +81,16 @@ impl ChannelActor {
         if self.members.contains_key(&uid) {
             // Determine visibility for Auditorium mode (+u)
             let mut exclude = Vec::new();
-            let is_auditorium = self.modes.contains(&crate::state::actor::ChannelMode::Auditorium);
+            let is_auditorium = self
+                .modes
+                .contains(&crate::state::actor::ChannelMode::Auditorium);
 
             // Check if quitter is privileged
-            let quitter_privileged = self.members.get(&uid).map(|m|
-                m.voice || m.halfop || m.op || m.admin || m.owner
-            ).unwrap_or(false);
+            let quitter_privileged = self
+                .members
+                .get(&uid)
+                .map(|m| m.voice || m.halfop || m.op || m.admin || m.owner)
+                .unwrap_or(false);
 
             if is_auditorium && !quitter_privileged {
                 // If +u and quitter is not privileged, only privileged members see the QUIT.
@@ -87,7 +102,8 @@ impl ChannelActor {
                 }
             }
 
-            self.handle_broadcast_with_cap(quit_msg, exclude, None, None).await;
+            self.handle_broadcast_with_cap(quit_msg, exclude, None, None)
+                .await;
             self.members.remove(&uid);
             self.senders.remove(&uid);
             self.user_caps.remove(&uid);

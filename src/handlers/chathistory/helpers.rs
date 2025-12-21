@@ -4,7 +4,7 @@
 
 use crate::handlers::{Context, HandlerError};
 use crate::state::RegisteredState;
-use slirc_proto::{parse_server_time, MessageRef, MessageReference};
+use slirc_proto::{MessageRef, MessageReference, parse_server_time};
 
 /// Maximum messages per CHATHISTORY request.
 pub const MAX_HISTORY_LIMIT: u32 = 100;

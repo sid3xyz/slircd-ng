@@ -12,9 +12,7 @@
 use super::common::{BanType, disconnect_matching_ban};
 use crate::caps::CapabilityAuthority;
 use crate::db::{Database, DbError};
-use crate::handlers::{Context,
-    HandlerResult, PostRegHandler, server_notice,
-};
+use crate::handlers::{Context, HandlerResult, PostRegHandler, server_notice};
 use crate::state::{Matrix, RegisteredState};
 use async_trait::async_trait;
 use ipnet::IpNet;
@@ -93,8 +91,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
         // Check capability via trait
         let authority = ctx.authority();
         if !self.config.check_capability(&authority, ctx.uid).await {
-            let reply = Response::err_noprivileges(nick)
-                .with_prefix(ctx.server_prefix());
+            let reply = Response::err_noprivileges(nick).with_prefix(ctx.server_prefix());
             ctx.send_error(cmd_name, "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         }
@@ -104,9 +101,10 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
         let target = match msg.arg(0) {
             Some(t) if !t.is_empty() => t,
             _ => {
-                let reply = Response::err_needmoreparams(nick, cmd_name)
-                    .with_prefix(ctx.server_prefix());
-                ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply).await?;
+                let reply =
+                    Response::err_needmoreparams(nick, cmd_name).with_prefix(ctx.server_prefix());
+                ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply)
+                    .await?;
                 return Ok(());
             }
         };
@@ -175,8 +173,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
         let nick = ctx.nick();
         let authority = ctx.authority();
         if !self.config.check_capability(&authority, ctx.uid).await {
-            let reply = Response::err_noprivileges(nick)
-                .with_prefix(ctx.server_prefix());
+            let reply = Response::err_noprivileges(nick).with_prefix(ctx.server_prefix());
             ctx.send_error(cmd_name, "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         }
@@ -185,9 +182,10 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
         let target = match msg.arg(0) {
             Some(t) if !t.is_empty() => t,
             _ => {
-                let reply = Response::err_needmoreparams(nick, cmd_name)
-                    .with_prefix(ctx.server_prefix());
-                ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply).await?;
+                let reply =
+                    Response::err_needmoreparams(nick, cmd_name).with_prefix(ctx.server_prefix());
+                ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply)
+                    .await?;
                 return Ok(());
             }
         };

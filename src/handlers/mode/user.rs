@@ -31,7 +31,12 @@ pub async fn handle_user_mode(
     }
 
     // Get current user modes
-    let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone());
+    let user_arc = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(ctx.uid)
+        .map(|u| u.value().clone());
     let Some(user) = user_arc else {
         return Ok(());
     };
@@ -58,11 +63,7 @@ pub async fn handle_user_mode(
             // Echo the change back using typed Command::UserMODE
             let mode_msg = Message {
                 tags: None,
-                prefix: Some(user_prefix(
-                    nick,
-                    ctx.user(),
-                    &host,
-                )),
+                prefix: Some(user_prefix(nick, ctx.user(), &host)),
                 command: Command::UserMODE(nick.to_string(), applied.clone()),
             };
             ctx.sender.send(mode_msg.clone()).await?;

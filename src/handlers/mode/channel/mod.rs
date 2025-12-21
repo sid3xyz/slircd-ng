@@ -112,8 +112,8 @@ pub async fn handle_channel_mode(
     let channel = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
         Some(c) => c.clone(),
         None => {
-            let reply = Response::err_nosuchchannel(&nick, channel_name)
-                .with_prefix(ctx.server_prefix());
+            let reply =
+                Response::err_nosuchchannel(&nick, channel_name).with_prefix(ctx.server_prefix());
             ctx.send_error("MODE", "ERR_NOSUCHCHANNEL", reply).await?;
             return Ok(());
         }
@@ -171,11 +171,7 @@ pub async fn handle_channel_mode(
         }
 
         let reply = with_label(
-            server_reply(
-                ctx.server_name(),
-                Response::RPL_CHANNELMODEIS,
-                params,
-            ),
+            server_reply(ctx.server_name(), Response::RPL_CHANNELMODEIS, params),
             ctx.label.as_deref(),
         );
         ctx.sender.send(reply).await?;
@@ -184,7 +180,11 @@ pub async fn handle_channel_mode(
         let time_reply = server_reply(
             ctx.server_name(),
             Response::RPL_CREATIONTIME,
-            vec![nick.to_string(), canonical_name.to_string(), info.created.to_string()],
+            vec![
+                nick.to_string(),
+                canonical_name.to_string(),
+                info.created.to_string(),
+            ],
         );
         ctx.sender.send(time_reply).await?;
     } else {
@@ -220,9 +220,7 @@ pub async fn handle_channel_mode(
                     validate_status_mode(ctx, mode, &info, &nick, &canonical_name).await?
                 }
                 // Channel key validation
-                ChannelMode::Key => {
-                    validate_key_mode(ctx, mode, &nick, &canonical_name).await?
-                }
+                ChannelMode::Key => validate_key_mode(ctx, mode, &nick, &canonical_name).await?,
                 // All other modes pass through
                 _ => ModeValidation::Valid,
             };
@@ -234,7 +232,12 @@ pub async fn handle_channel_mode(
 
         if !valid_modes.is_empty() {
             // MLOCK enforcement: filter out modes that conflict with registered channel's MLOCK
-            let mlock_filtered_modes = if ctx.matrix.channel_manager.registered_channels.contains(&channel_lower) {
+            let mlock_filtered_modes = if ctx
+                .matrix
+                .channel_manager
+                .registered_channels
+                .contains(&channel_lower)
+            {
                 apply_mlock_filter(ctx, &channel_lower, valid_modes).await
             } else {
                 valid_modes
@@ -246,7 +249,8 @@ pub async fn handle_channel_mode(
             }
 
             // Resolve target UIDs for user modes
-            let mut target_uids = std::collections::HashMap::with_capacity(mlock_filtered_modes.len());
+            let mut target_uids =
+                std::collections::HashMap::with_capacity(mlock_filtered_modes.len());
             for mode in &mlock_filtered_modes {
                 match mode.mode() {
                     ChannelMode::Oper | ChannelMode::Voice => {
@@ -261,7 +265,12 @@ pub async fn handle_channel_mode(
                 }
             }
 
-            let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone());
+            let user_arc = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(ctx.uid)
+                .map(|u| u.value().clone());
             let (nick, user, host) = if let Some(user_arc) = user_arc {
                 let u = user_arc.read().await;
                 (u.nick.clone(), u.user.clone(), u.host.clone())
@@ -307,11 +316,7 @@ pub async fn handle_channel_mode(
                         _ => server_reply(
                             ctx.server_name(),
                             Response::ERR_UNKNOWNERROR,
-                            vec![
-                                nick.to_string(),
-                                canonical_name.to_string(),
-                                e.to_string(),
-                            ],
+                            vec![nick.to_string(), canonical_name.to_string(), e.to_string()],
                         ),
                     };
                     ctx.sender.send(reply).await?;

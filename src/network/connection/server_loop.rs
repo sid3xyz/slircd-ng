@@ -1,6 +1,6 @@
 use super::context::ConnectionContext;
-use crate::handlers::{Context, ResponseMiddleware};
 use crate::handlers::batch::process_batch_message;
+use crate::handlers::{Context, ResponseMiddleware};
 use crate::state::ServerState;
 use slirc_crdt::clock::ServerId;
 use slirc_proto::{Command, Message};
@@ -45,8 +45,14 @@ pub async fn run_server_loop(
         info!("Sending server handshake to {}", server_state.name);
 
         // Find the link block for this server to get the password
-        let link_block = matrix.config.links.iter().find(|l| l.name == server_state.name);
-        let password = link_block.map(|l| l.password.clone()).unwrap_or_else(|| "password".to_string());
+        let link_block = matrix
+            .config
+            .links
+            .iter()
+            .find(|l| l.name == server_state.name);
+        let password = link_block
+            .map(|l| l.password.clone())
+            .unwrap_or_else(|| "password".to_string());
 
         // Send PASS
         let pass_cmd = Command::Raw(
@@ -56,7 +62,7 @@ pub async fn run_server_loop(
                 "TS".to_string(),
                 "6".to_string(),
                 matrix.server_info.sid.clone(),
-            ]
+            ],
         );
         let _ = transport.write_message(&Message::from(pass_cmd)).await;
 
@@ -65,7 +71,7 @@ pub async fn run_server_loop(
             None,
             slirc_proto::CapSubCommand::LS,
             Some("302".to_string()),
-            None
+            None,
         ));
         let _ = transport.write_message(&cap_ls).await;
 
@@ -77,7 +83,7 @@ pub async fn run_server_loop(
                 "1".to_string(),
                 matrix.server_info.sid.clone(),
                 matrix.server_info.description.clone(),
-            ]
+            ],
         );
         let _ = transport.write_message(&Message::from(server_cmd)).await;
     }

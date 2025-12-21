@@ -68,7 +68,12 @@ pub async fn handle_ghost(
 
     // Find the target user
     let target_nick_lower = slirc_proto::irc_to_lower(target_nick);
-    if let Some(target_uid) = matrix.user_manager.nicks.get(&target_nick_lower).map(|r| r.clone()) {
+    if let Some(target_uid) = matrix
+        .user_manager
+        .nicks
+        .get(&target_nick_lower)
+        .map(|r| r.clone())
+    {
         if target_uid == uid {
             return reply_effects(uid, vec!["You cannot ghost yourself."]);
         }

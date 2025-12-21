@@ -3,12 +3,9 @@
 //! Sends a message to all users with +w (wallops) mode set.
 //! Typically used for important server announcements.
 
-use super::super::{Context,
-    HandlerResult, PostRegHandler,
-    user_mask_from_state,
-};
-use crate::{require_arg_or_reply, require_oper_cap};
+use super::super::{Context, HandlerResult, PostRegHandler, user_mask_from_state};
 use crate::state::RegisteredState;
+use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
 
@@ -33,7 +30,9 @@ impl PostRegHandler for WallopsHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let Some(wallops_text) = require_arg_or_reply!(ctx, msg, 0, "WALLOPS") else { return Ok(()); };
+        let Some(wallops_text) = require_arg_or_reply!(ctx, msg, 0, "WALLOPS") else {
+            return Ok(());
+        };
 
         // Get sender's identity
         let Some((sender_nick, sender_user, sender_host)) =
@@ -43,7 +42,9 @@ impl PostRegHandler for WallopsHandler {
         };
 
         // Request GlobalNotice capability from authority (Innovation 4)
-        let Some(_wallops_cap) = require_oper_cap!(ctx, "WALLOPS", request_wallops_cap) else { return Ok(()); };
+        let Some(_wallops_cap) = require_oper_cap!(ctx, "WALLOPS", request_wallops_cap) else {
+            return Ok(());
+        };
 
         let wallops_msg = Message {
             tags: None,

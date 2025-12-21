@@ -250,7 +250,10 @@ impl PostRegHandler for StatsHandler {
                 if stats.is_empty() {
                     ctx.send_reply(
                         Response::RPL_STATSCOMMANDS,
-                        vec![nick.to_string(), "No commands have been used yet".to_string()],
+                        vec![
+                            nick.to_string(),
+                            "No commands have been used yet".to_string(),
+                        ],
                     )
                     .await?;
                 } else {
@@ -274,25 +277,40 @@ impl PostRegHandler for StatsHandler {
             'i' | 'I' => {
                 // IP deny list statistics (in-memory bitmap)
                 // Collect data synchronously to avoid holding lock across await
-                let ban_data = ctx.matrix.security_manager.ip_deny_list.read().ok().map(|deny_list| {
-                    let count = deny_list.len();
-                    let entries: Vec<_> = deny_list
-                        .iter()
-                        .take(51)
-                        .map(|(key, meta)| {
-                            let expires = meta.expiry
-                                .map(|e| format!("expires {}", e))
-                                .unwrap_or_else(|| "permanent".to_string());
-                            (key.clone(), expires, meta.added_by.clone(), meta.reason.clone())
-                        })
-                        .collect();
-                    (count, entries)
-                });
+                let ban_data =
+                    ctx.matrix
+                        .security_manager
+                        .ip_deny_list
+                        .read()
+                        .ok()
+                        .map(|deny_list| {
+                            let count = deny_list.len();
+                            let entries: Vec<_> = deny_list
+                                .iter()
+                                .take(51)
+                                .map(|(key, meta)| {
+                                    let expires = meta
+                                        .expiry
+                                        .map(|e| format!("expires {}", e))
+                                        .unwrap_or_else(|| "permanent".to_string());
+                                    (
+                                        key.clone(),
+                                        expires,
+                                        meta.added_by.clone(),
+                                        meta.reason.clone(),
+                                    )
+                                })
+                                .collect();
+                            (count, entries)
+                        });
 
                 if let Some((count, entries)) = ban_data {
                     ctx.send_reply(
                         Response::RPL_STATSDLINE,
-                        vec![nick.to_string(), format!("IP deny list: {} active bans", count)],
+                        vec![
+                            nick.to_string(),
+                            format!("IP deny list: {} active bans", count),
+                        ],
                     )
                     .await?;
 
@@ -300,21 +318,30 @@ impl PostRegHandler for StatsHandler {
                         if i >= 50 {
                             ctx.send_reply(
                                 Response::RPL_STATSDLINE,
-                                vec![nick.to_string(), format!("... and {} more (truncated)", count - 50)],
+                                vec![
+                                    nick.to_string(),
+                                    format!("... and {} more (truncated)", count - 50),
+                                ],
                             )
                             .await?;
                             break;
                         }
                         ctx.send_reply(
                             Response::RPL_STATSDLINE,
-                            vec![nick.to_string(), format!("I {} {} [{}] :{}", key, expires, added_by, reason)],
+                            vec![
+                                nick.to_string(),
+                                format!("I {} {} [{}] :{}", key, expires, added_by, reason),
+                            ],
                         )
                         .await?;
                     }
                 } else {
                     ctx.send_reply(
                         Response::RPL_STATSDLINE,
-                        vec![nick.to_string(), "IP deny list: unavailable (locked)".to_string()],
+                        vec![
+                            nick.to_string(),
+                            "IP deny list: unavailable (locked)".to_string(),
+                        ],
                     )
                     .await?;
                 }
@@ -327,7 +354,10 @@ impl PostRegHandler for StatsHandler {
                         Response::RPL_STATSDLINE,
                         vec![
                             nick.to_string(),
-                            format!("Spam detection: entropy_threshold={:.1}", spam.entropy_threshold()),
+                            format!(
+                                "Spam detection: entropy_threshold={:.1}",
+                                spam.entropy_threshold()
+                            ),
                         ],
                     )
                     .await?;

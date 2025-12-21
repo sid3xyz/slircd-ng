@@ -1,19 +1,59 @@
-//! Configuration type definitions.
-//!
-//! All the sub-config structs used by the main Config.
+//! Configuration loading and management.
 
+use rand::Rng;
+use rand::distributions::Alphanumeric;
 use serde::Deserialize;
 use std::net::SocketAddr;
+use std::path::Path;
+use thiserror::Error;
 
-use super::defaults::{
-    default_channel_mailbox_capacity, default_history_backend, default_history_path,
-    default_max_list_channels, default_max_names_channels, default_max_who_results,
-    default_ping_interval, default_ping_timeout, default_registration_timeout, default_true,
-};
+/// Configuration errors.
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("failed to read config file: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("failed to parse config: {0}")]
+    Parse(#[from] toml::de::Error),
+}
 
-// =============================================================================
-// Link Configuration (S2S)
-// =============================================================================
+/// Server configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Config {
+    /// Server information.
+    pub server: ServerConfig,
+    /// Network listen configuration.
+    pub listen: ListenConfig,
+    /// Optional TLS listen configuration.
+    pub tls: Option<TlsConfig>,
+    /// Optional WebSocket listen configuration.
+    pub websocket: Option<WebSocketConfig>,
+    /// Operator blocks.
+    #[serde(default)]
+    pub oper: Vec<OperBlock>,
+    /// WEBIRC blocks for trusted gateway clients.
+    #[serde(default)]
+    pub webirc: Vec<WebircBlock>,
+    /// Database configuration.
+    pub database: Option<DatabaseConfig>,
+    /// History configuration.
+    #[serde(default)]
+    pub history: HistoryConfig,
+    /// Security configuration (cloaking, rate limiting, anti-abuse).
+    #[serde(default)]
+    pub security: SecurityConfig,
+    /// Account registration (draft/account-registration) configuration.
+    #[serde(default)]
+    pub account_registration: AccountRegistrationConfig,
+    /// Message of the Day configuration.
+    #[serde(default)]
+    pub motd: MotdConfig,
+    /// Command output limits (WHO, LIST, NAMES result caps).
+    #[serde(default)]
+    pub limits: LimitsConfig,
+    /// Link blocks for server peering.
+    #[serde(default)]
+    pub links: Vec<LinkBlock>,
+}
 
 /// Link block configuration for server-to-server connections.
 #[derive(Debug, Clone, Deserialize)]
@@ -23,25 +63,23 @@ pub struct LinkBlock {
     /// Remote server IP/hostname to connect to.
     pub hostname: String,
     /// Remote server port.
-    #[allow(dead_code)]
     pub port: u16,
     /// Password for authentication (must match remote's password).
     pub password: String,
     /// Whether to use TLS for this link.
     #[serde(default)]
-    #[allow(dead_code)]
     pub tls: bool,
+    /// Whether to verify the remote certificate (only applies when tls = true).
+    /// Defaults to true for security. Set to false only for testing or self-signed certs.
+    #[serde(default = "default_true")]
+    pub verify_cert: bool,
     /// Whether to initiate connection to this server automatically.
     #[serde(default)]
     pub autoconnect: bool,
     /// Expected remote SID (optional, for validation).
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Will be used for SID validation in handshake
     pub sid: Option<String>,
 }
-
-// =============================================================================
-// Account Registration
-// =============================================================================
 
 /// Account registration configuration (draft/account-registration).
 #[derive(Debug, Clone, Deserialize)]
@@ -67,9 +105,9 @@ impl Default for AccountRegistrationConfig {
     }
 }
 
-// =============================================================================
-// MOTD Configuration
-// =============================================================================
+fn default_true() -> bool {
+    true
+}
 
 /// Message of the Day (MOTD) configuration.
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -107,20 +145,12 @@ impl MotdConfig {
     }
 }
 
-// =============================================================================
-// Database Configuration
-// =============================================================================
-
 /// Database configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DatabaseConfig {
     /// Path to SQLite database file.
     pub path: String,
 }
-
-// =============================================================================
-// History Configuration
-// =============================================================================
 
 /// History configuration (Innovation 5: Event-Sourced History).
 #[derive(Debug, Clone, Deserialize)]
@@ -204,9 +234,13 @@ impl Default for HistoryConfig {
     }
 }
 
-// =============================================================================
-// Operator Configuration
-// =============================================================================
+fn default_history_backend() -> String {
+    "none".to_string()
+}
+
+fn default_history_path() -> String {
+    "history.db".to_string()
+}
 
 /// Operator block configuration.
 #[derive(Debug, Clone, Deserialize)]
@@ -234,10 +268,6 @@ impl OperBlock {
     }
 }
 
-// =============================================================================
-// WEBIRC Configuration
-// =============================================================================
-
 /// WEBIRC block configuration for trusted gateway clients.
 ///
 /// WEBIRC allows trusted proxies (web clients, bouncers) to forward
@@ -250,10 +280,6 @@ pub struct WebircBlock {
     #[serde(default)]
     pub hosts: Vec<String>,
 }
-
-// =============================================================================
-// Server Configuration
-// =============================================================================
 
 /// Server identity configuration.
 #[derive(Debug, Clone, Deserialize)]
@@ -320,9 +346,17 @@ impl Default for IdleTimeoutsConfig {
     }
 }
 
-// =============================================================================
-// Network Listener Configuration
-// =============================================================================
+fn default_ping_interval() -> u64 {
+    90
+}
+
+fn default_ping_timeout() -> u64 {
+    120
+}
+
+fn default_registration_timeout() -> u64 {
+    60
+}
 
 /// Network listener configuration.
 #[derive(Debug, Clone, Deserialize)]
@@ -375,9 +409,136 @@ pub struct WebSocketConfig {
     pub allow_origins: Vec<String>,
 }
 
-// =============================================================================
-// Limits Configuration
-// =============================================================================
+/// Security configuration for cloaking, rate limiting, and anti-abuse.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SecurityConfig {
+    /// Secret key for HMAC-based host cloaking.
+    /// MUST be kept private and should be at least 32 characters.
+    #[serde(default = "default_cloak_secret")]
+    pub cloak_secret: String,
+    /// Suffix for cloaked IP addresses (default: "ip").
+    #[serde(default = "default_cloak_suffix")]
+    pub cloak_suffix: String,
+    /// Enable spam detection for message content (default: true).
+    #[serde(default = "default_spam_detection_enabled")]
+    pub spam_detection_enabled: bool,
+    /// Spam detection configuration.
+    #[serde(default)]
+    pub spam: SpamConfig,
+    /// Rate limiting configuration.
+    #[serde(default)]
+    pub rate_limits: RateLimitConfig,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            cloak_secret: default_cloak_secret(),
+            cloak_suffix: default_cloak_suffix(),
+            spam_detection_enabled: default_spam_detection_enabled(),
+            spam: SpamConfig::default(),
+            rate_limits: RateLimitConfig::default(),
+        }
+    }
+}
+
+/// Spam detection configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SpamConfig {
+    /// Enable DNS Blocklist checks (default: true).
+    #[serde(default = "default_true")]
+    pub dnsbl_enabled: bool,
+    /// Enable Reputation system (default: true).
+    #[serde(default = "default_true")]
+    pub reputation_enabled: bool,
+    /// Heuristics configuration.
+    #[serde(default)]
+    pub heuristics: HeuristicsConfig,
+}
+
+impl Default for SpamConfig {
+    fn default() -> Self {
+        Self {
+            dnsbl_enabled: true,
+            reputation_enabled: true,
+            heuristics: HeuristicsConfig::default(),
+        }
+    }
+}
+
+/// Configuration for behavioral heuristics
+#[derive(Debug, Clone, Deserialize)]
+pub struct HeuristicsConfig {
+    /// Enable heuristics engine (default: true).
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Window size for velocity tracking (seconds)
+    #[serde(default = "default_velocity_window")]
+    pub velocity_window: u64,
+    /// Max messages allowed in velocity window before penalty
+    #[serde(default = "default_max_velocity")]
+    pub max_velocity: usize,
+    /// Window size for fan-out tracking (seconds)
+    #[serde(default = "default_fanout_window")]
+    pub fanout_window: u64,
+    /// Max unique recipients allowed in fan-out window before penalty
+    #[serde(default = "default_max_fanout")]
+    pub max_fanout: usize,
+    /// Decay factor for repetition score (0.0 - 1.0)
+    #[serde(default = "default_repetition_decay")]
+    pub repetition_decay: f32,
+}
+
+impl Default for HeuristicsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            velocity_window: default_velocity_window(),
+            max_velocity: default_max_velocity(),
+            fanout_window: default_fanout_window(),
+            max_fanout: default_max_fanout(),
+            repetition_decay: default_repetition_decay(),
+        }
+    }
+}
+
+fn default_velocity_window() -> u64 {
+    10
+}
+fn default_max_velocity() -> usize {
+    5
+}
+fn default_fanout_window() -> u64 {
+    60
+}
+fn default_max_fanout() -> usize {
+    10
+}
+fn default_repetition_decay() -> f32 {
+    0.8
+}
+
+fn default_cloak_secret() -> String {
+    let secret: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+    tracing::warn!(
+        "No cloak_secret configured - using ephemeral random secret. \
+         Cloaked hostnames will NOT be consistent across server restarts. \
+         Set [security].cloak_secret in config.toml for production use."
+    );
+    secret
+}
+
+fn default_cloak_suffix() -> String {
+    "ip".to_string()
+}
+
+fn default_spam_detection_enabled() -> bool {
+    true
+}
 
 /// Command output limits configuration.
 ///
@@ -410,5 +571,96 @@ impl Default for LimitsConfig {
             max_names_channels: default_max_names_channels(),
             channel_mailbox_capacity: default_channel_mailbox_capacity(),
         }
+    }
+}
+
+fn default_max_who_results() -> usize {
+    500
+}
+
+fn default_max_list_channels() -> usize {
+    1000
+}
+
+fn default_max_names_channels() -> usize {
+    50
+}
+
+fn default_channel_mailbox_capacity() -> usize {
+    500
+}
+
+/// Rate limiting configuration for anti-flood protection.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RateLimitConfig {
+    /// Messages allowed per client per second (default: 2).
+    #[serde(default = "default_message_rate")]
+    pub message_rate_per_second: u32,
+    /// Connection burst allowed per IP in 10 seconds (default: 3).
+    #[serde(default = "default_connection_burst")]
+    pub connection_burst_per_ip: u32,
+    /// Channel join burst allowed per client in 10 seconds (default: 5).
+    #[serde(default = "default_join_burst")]
+    pub join_burst_per_client: u32,
+    /// CTCP messages allowed per client per second (default: 1).
+    #[serde(default = "default_ctcp_rate")]
+    pub ctcp_rate_per_second: u32,
+    /// CTCP burst allowed per client (default: 2).
+    #[serde(default = "default_ctcp_burst")]
+    pub ctcp_burst_per_client: u32,
+    /// Maximum concurrent connections allowed per IP (default: 10).
+    #[serde(default = "default_max_connections")]
+    pub max_connections_per_ip: u32,
+    /// IP addresses exempt from all rate limiting and connection limits.
+    /// These IPs get unlimited connections and no flood protection.
+    /// Use sparingly - only for trusted operators/bots.
+    #[serde(default)]
+    pub exempt_ips: Vec<String>,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            message_rate_per_second: default_message_rate(),
+            connection_burst_per_ip: default_connection_burst(),
+            join_burst_per_client: default_join_burst(),
+            ctcp_rate_per_second: default_ctcp_rate(),
+            ctcp_burst_per_client: default_ctcp_burst(),
+            max_connections_per_ip: default_max_connections(),
+            exempt_ips: Vec::new(),
+        }
+    }
+}
+
+fn default_message_rate() -> u32 {
+    2
+}
+
+fn default_connection_burst() -> u32 {
+    3
+}
+
+fn default_join_burst() -> u32 {
+    5
+}
+
+fn default_ctcp_rate() -> u32 {
+    1
+}
+
+fn default_ctcp_burst() -> u32 {
+    2
+}
+
+fn default_max_connections() -> u32 {
+    10
+}
+
+impl Config {
+    /// Load configuration from a TOML file.
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
+        let content = std::fs::read_to_string(path)?;
+        let config: Config = toml::from_str(&content)?;
+        Ok(config)
     }
 }

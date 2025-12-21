@@ -24,12 +24,11 @@ impl ReputationManager {
     /// Get the trust score for an entity (0-100).
     /// Returns 0 if entity is unknown.
     pub async fn get_trust_score(&self, entity: &str) -> i32 {
-        let result = sqlx::query_scalar::<_, i32>(
-            "SELECT trust_score FROM reputation WHERE entity = ?"
-        )
-        .bind(entity)
-        .fetch_optional(&self.pool)
-        .await;
+        let result =
+            sqlx::query_scalar::<_, i32>("SELECT trust_score FROM reputation WHERE entity = ?")
+                .bind(entity)
+                .fetch_optional(&self.pool)
+                .await;
 
         match result {
             Ok(Some(score)) => score,
@@ -101,7 +100,10 @@ impl ReputationManager {
             .await
         {
             Ok(new_score) => {
-                debug!("Reputation penalty for {}: -{} (New Score: {})", entity, penalty, new_score);
+                debug!(
+                    "Reputation penalty for {}: -{} (New Score: {})",
+                    entity, penalty, new_score
+                );
                 new_score
             }
             Err(e) => {

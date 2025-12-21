@@ -7,8 +7,8 @@ use slirc_proto::MessageRef;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-pub mod routing;
 pub mod delta;
+pub mod routing;
 
 /// Handler for the SERVER command (server-to-server handshake).
 pub struct ServerHandshakeHandler;
@@ -73,8 +73,8 @@ impl ServerHandler for BurstHandler {
 
         match burst_type {
             "USER" => {
-                let user_crdt: slirc_crdt::user::UserCrdt = serde_json::from_str(payload)
-                    .map_err(|e| {
+                let user_crdt: slirc_crdt::user::UserCrdt =
+                    serde_json::from_str(payload).map_err(|e| {
                         warn!(error = %e, "Failed to parse USER BURST payload");
                         HandlerError::ProtocolError("Invalid USER BURST payload".to_string())
                     })?;
@@ -124,8 +124,8 @@ impl ServerHandler for DeltaHandler {
 
         match delta_type {
             "USER" => {
-                let user_crdt: slirc_crdt::user::UserCrdt = serde_json::from_str(payload)
-                    .map_err(|e| {
+                let user_crdt: slirc_crdt::user::UserCrdt =
+                    serde_json::from_str(payload).map_err(|e| {
                         warn!(error = %e, "Failed to parse USER DELTA payload");
                         HandlerError::ProtocolError("Invalid USER DELTA payload".to_string())
                     })?;
@@ -175,7 +175,10 @@ impl ServerHandler for ServerPropagationHandler {
     ) -> HandlerResult {
         // SERVER <name> <hopcount> <sid> <info>
         let name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let hopcount = msg.arg(1).and_then(|s| s.parse::<u32>().ok()).ok_or(HandlerError::NeedMoreParams)?;
+        let hopcount = msg
+            .arg(1)
+            .and_then(|s| s.parse::<u32>().ok())
+            .ok_or(HandlerError::NeedMoreParams)?;
         let sid_str = msg.arg(2).ok_or(HandlerError::NeedMoreParams)?;
         let info = msg.arg(3).unwrap_or("");
 
@@ -192,7 +195,9 @@ impl ServerHandler for ServerPropagationHandler {
         // The peer we received this from is the next hop
         let peer_sid = ServerId::new(ctx.state.sid.clone());
 
-        ctx.matrix.sync_manager.register_route(sid.clone(), peer_sid.clone());
+        ctx.matrix
+            .sync_manager
+            .register_route(sid.clone(), peer_sid.clone());
 
         // 3. Update Topology
         let server_info = crate::sync::ServerInfo {
@@ -202,17 +207,32 @@ impl ServerHandler for ServerPropagationHandler {
             info: info.to_string(),
             via: Some(peer_sid.clone()),
         };
-        ctx.matrix.sync_manager.topology.servers.insert(sid.clone(), server_info);
+        ctx.matrix
+            .sync_manager
+            .topology
+            .servers
+            .insert(sid.clone(), server_info);
 
-        info!("Learned about new server {} ({}) via {}", name, sid_str, ctx.state.name);
+        info!(
+            "Learned about new server {} ({}) via {}",
+            name, sid_str, ctx.state.name
+        );
 
         // 4. Propagate to other peers (Split Horizon)
         // We increment hopcount
         let new_hopcount = hopcount + 1;
-        let cmd = slirc_proto::Command::SERVER(name.to_string(), new_hopcount, sid_str.to_string(), info.to_string());
+        let cmd = slirc_proto::Command::SERVER(
+            name.to_string(),
+            new_hopcount,
+            sid_str.to_string(),
+            info.to_string(),
+        );
         let out_msg = slirc_proto::Message::from(cmd);
 
-        ctx.matrix.sync_manager.broadcast(out_msg, Some(&peer_sid)).await;
+        ctx.matrix
+            .sync_manager
+            .broadcast(out_msg, Some(&peer_sid))
+            .await;
 
         Ok(())
     }

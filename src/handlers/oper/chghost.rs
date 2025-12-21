@@ -2,12 +2,9 @@
 //!
 //! Allows operators to change a user's visible hostname (vhost).
 
-use super::super::{Context,
-    HandlerResult, PostRegHandler,
-    resolve_nick_to_uid, server_notice,
-};
-use crate::{require_arg_or_reply, require_oper_cap};
+use super::super::{Context, HandlerResult, PostRegHandler, resolve_nick_to_uid, server_notice};
 use crate::state::RegisteredState;
+use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
@@ -31,14 +28,22 @@ impl PostRegHandler for ChghostHandler {
         let oper_nick = ctx.nick();
 
         // Request oper capability from authority (Innovation 4)
-        let Some(_cap) = require_oper_cap!(ctx, "CHGHOST", request_chghost_cap) else { return Ok(()); };
-        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "CHGHOST") else { return Ok(()); };
-        let Some(new_user) = require_arg_or_reply!(ctx, msg, 1, "CHGHOST") else { return Ok(()); };
-        let Some(new_host) = require_arg_or_reply!(ctx, msg, 2, "CHGHOST") else { return Ok(()); };
+        let Some(_cap) = require_oper_cap!(ctx, "CHGHOST", request_chghost_cap) else {
+            return Ok(());
+        };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "CHGHOST") else {
+            return Ok(());
+        };
+        let Some(new_user) = require_arg_or_reply!(ctx, msg, 1, "CHGHOST") else {
+            return Ok(());
+        };
+        let Some(new_host) = require_arg_or_reply!(ctx, msg, 2, "CHGHOST") else {
+            return Ok(());
+        };
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                .with_prefix(ctx.server_prefix());
+            let reply =
+                Response::err_nosuchnick(oper_nick, target_nick).with_prefix(ctx.server_prefix());
             ctx.send_error("CHGHOST", "ERR_NOSUCHNICK", reply).await?;
             return Ok(());
         };
@@ -75,7 +80,8 @@ impl PostRegHandler for ChghostHandler {
 
         for channel_name in &channels {
             ctx.matrix
-                .channel_manager.broadcast_to_channel_with_cap(
+                .channel_manager
+                .broadcast_to_channel_with_cap(
                     channel_name,
                     chghost_msg.clone(),
                     None,

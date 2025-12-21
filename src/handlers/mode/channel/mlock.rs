@@ -47,8 +47,11 @@ pub(super) async fn apply_mlock_filter(
             // Skip status modes (they're never MLOCKed)
             if matches!(
                 mode.mode(),
-                ChannelMode::Oper | ChannelMode::Voice | ChannelMode::Halfop |
-                ChannelMode::Admin | ChannelMode::Founder
+                ChannelMode::Oper
+                    | ChannelMode::Voice
+                    | ChannelMode::Halfop
+                    | ChannelMode::Admin
+                    | ChannelMode::Founder
             ) {
                 return true;
             }
@@ -77,12 +80,36 @@ pub(super) fn parse_mlock_inline(mlock: &str) -> Vec<Mode<ChannelMode>> {
         match ch {
             '+' => is_plus = true,
             '-' => is_plus = false,
-            'n' => modes.push(if is_plus { Mode::Plus(ChannelMode::NoExternalMessages, None) } else { Mode::Minus(ChannelMode::NoExternalMessages, None) }),
-            't' => modes.push(if is_plus { Mode::Plus(ChannelMode::ProtectedTopic, None) } else { Mode::Minus(ChannelMode::ProtectedTopic, None) }),
-            'i' => modes.push(if is_plus { Mode::Plus(ChannelMode::InviteOnly, None) } else { Mode::Minus(ChannelMode::InviteOnly, None) }),
-            'm' => modes.push(if is_plus { Mode::Plus(ChannelMode::Moderated, None) } else { Mode::Minus(ChannelMode::Moderated, None) }),
-            's' => modes.push(if is_plus { Mode::Plus(ChannelMode::Secret, None) } else { Mode::Minus(ChannelMode::Secret, None) }),
-            'r' => modes.push(if is_plus { Mode::Plus(ChannelMode::RegisteredOnly, None) } else { Mode::Minus(ChannelMode::RegisteredOnly, None) }),
+            'n' => modes.push(if is_plus {
+                Mode::Plus(ChannelMode::NoExternalMessages, None)
+            } else {
+                Mode::Minus(ChannelMode::NoExternalMessages, None)
+            }),
+            't' => modes.push(if is_plus {
+                Mode::Plus(ChannelMode::ProtectedTopic, None)
+            } else {
+                Mode::Minus(ChannelMode::ProtectedTopic, None)
+            }),
+            'i' => modes.push(if is_plus {
+                Mode::Plus(ChannelMode::InviteOnly, None)
+            } else {
+                Mode::Minus(ChannelMode::InviteOnly, None)
+            }),
+            'm' => modes.push(if is_plus {
+                Mode::Plus(ChannelMode::Moderated, None)
+            } else {
+                Mode::Minus(ChannelMode::Moderated, None)
+            }),
+            's' => modes.push(if is_plus {
+                Mode::Plus(ChannelMode::Secret, None)
+            } else {
+                Mode::Minus(ChannelMode::Secret, None)
+            }),
+            'r' => modes.push(if is_plus {
+                Mode::Plus(ChannelMode::RegisteredOnly, None)
+            } else {
+                Mode::Minus(ChannelMode::RegisteredOnly, None)
+            }),
             _ => {} // Skip unknown modes
         }
     }

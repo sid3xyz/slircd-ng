@@ -4,7 +4,7 @@ use super::types::BatchLine;
 use super::validation::{
     validate_command_type, validate_concat_content, validate_content_size, validate_line_count,
 };
-use crate::state::{SessionState, BatchRouting};
+use crate::state::{BatchRouting, SessionState};
 use slirc_proto::MessageRef;
 
 /// Process a message within an active batch.

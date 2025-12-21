@@ -21,15 +21,15 @@ use slirc_crdt::clock::HybridTimestamp;
 /// Member modes (op, voice, etc.).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct MemberModes {
-    pub owner: bool,  // +q (~)
+    pub owner: bool, // +q (~)
     pub owner_ts: Option<HybridTimestamp>,
-    pub admin: bool,  // +a (&)
+    pub admin: bool, // +a (&)
     pub admin_ts: Option<HybridTimestamp>,
-    pub op: bool,     // +o (@)
+    pub op: bool, // +o (@)
     pub op_ts: Option<HybridTimestamp>,
     pub halfop: bool, // +h (%)
     pub halfop_ts: Option<HybridTimestamp>,
-    pub voice: bool,  // +v (+)
+    pub voice: bool, // +v (+)
     pub voice_ts: Option<HybridTimestamp>,
     /// Timestamp when user joined the channel (for +J enforcement)
     pub join_time: Option<i64>,

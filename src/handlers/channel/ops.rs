@@ -73,27 +73,36 @@ pub async fn force_join_channel<S>(
         .clone();
 
     // Get user data
-    let (caps, user_context, sender, session_id) =
-        if let Some(user_arc) = ctx.matrix.user_manager.users.get(target.uid).map(|u| u.value().clone()) {
-            let user = user_arc.read().await;
-            let context = crate::security::UserContext::for_registration(
-                crate::security::RegistrationParams {
-                    hostname: user.host.clone(),
-                    nickname: user.nick.clone(),
-                    username: user.user.clone(),
-                    realname: user.realname.clone(),
-                    server: ctx.server_name().to_string(),
-                    account: user.account.clone(),
-                    is_tls: user.modes.secure,
-                    is_oper: user.modes.oper,
-                    oper_type: user.modes.oper_type.clone(),
-                },
-            );
-            let sender = ctx.matrix.user_manager.senders.get(target.uid).map(|s| s.clone());
-            (user.caps.clone(), context, sender, user.session_id)
-        } else {
-            return Ok(());
-        };
+    let (caps, user_context, sender, session_id) = if let Some(user_arc) = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(target.uid)
+        .map(|u| u.value().clone())
+    {
+        let user = user_arc.read().await;
+        let context =
+            crate::security::UserContext::for_registration(crate::security::RegistrationParams {
+                hostname: user.host.clone(),
+                nickname: user.nick.clone(),
+                username: user.user.clone(),
+                realname: user.realname.clone(),
+                server: ctx.server_name().to_string(),
+                account: user.account.clone(),
+                is_tls: user.modes.secure,
+                is_oper: user.modes.oper,
+                oper_type: user.modes.oper_type.clone(),
+            });
+        let sender = ctx
+            .matrix
+            .user_manager
+            .senders
+            .get(target.uid)
+            .map(|s| s.clone());
+        (user.caps.clone(), context, sender, user.session_id)
+    } else {
+        return Ok(());
+    };
 
     let Some(sender) = sender else {
         return Ok(());
@@ -152,7 +161,13 @@ pub async fn force_join_channel<S>(
     };
 
     // Add channel to user's list
-    if let Some(user_arc) = ctx.matrix.user_manager.users.get(target.uid).map(|u| u.value().clone()) {
+    if let Some(user_arc) = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(target.uid)
+        .map(|u| u.value().clone())
+    {
         let mut user = user_arc.write().await;
         user.channels.insert(channel_lower.clone());
     }
@@ -192,7 +207,13 @@ pub async fn force_join_channel<S>(
             let mut names_list = Vec::with_capacity(members.len());
 
             for (uid, member_modes) in members {
-                if let Some(user_arc) = ctx.matrix.user_manager.users.get(&uid).map(|u| u.value().clone()) {
+                if let Some(user_arc) = ctx
+                    .matrix
+                    .user_manager
+                    .users
+                    .get(&uid)
+                    .map(|u| u.value().clone())
+                {
                     let user = user_arc.read().await;
                     let nick_with_prefix = if let Some(prefix) = member_modes.prefix_char() {
                         format!("{}{}", prefix, user.nick)

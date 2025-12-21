@@ -7,10 +7,10 @@
 //!
 //! Used by the spam detection service to trigger rate limiting or bans.
 
-use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crate::config::HeuristicsConfig;
 
@@ -82,7 +82,10 @@ impl HeuristicsEngine {
     /// * `is_private_msg`: True if this is a PRIVMSG to a user (affects fan-out)
     pub fn analyze(&self, key: &str, content: &str, is_private_msg: bool) -> f32 {
         let now = Instant::now();
-        let mut metrics = self.metrics.entry(key.to_string()).or_insert_with(UserMetrics::new);
+        let mut metrics = self
+            .metrics
+            .entry(key.to_string())
+            .or_insert_with(UserMetrics::new);
 
         // 1. Prune old data
         metrics.prune(now, self.config.velocity_window, self.config.fanout_window);

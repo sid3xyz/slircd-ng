@@ -8,8 +8,8 @@ mod whois;
 pub use who::WhoHandler;
 pub use whois::{IsonHandler, UserhostHandler, WhoisHandler, WhowasHandler};
 
-use std::collections::HashMap;
 use crate::handlers::PostRegHandler;
+use std::collections::HashMap;
 
 pub fn register(map: &mut HashMap<&'static str, Box<dyn PostRegHandler>>) {
     map.insert("WHO", Box::new(WhoHandler));

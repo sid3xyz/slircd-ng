@@ -167,11 +167,8 @@ impl PostRegHandler for AdminHandler {
             .admin_info1
             .clone()
             .unwrap_or_else(|| ctx.matrix.server_info.description.clone());
-        ctx.send_reply(
-            Response::RPL_ADMINLOC1,
-            vec![nick.to_string(), admin_info1],
-        )
-        .await?;
+        ctx.send_reply(Response::RPL_ADMINLOC1, vec![nick.to_string(), admin_info1])
+            .await?;
 
         // RPL_ADMINLOC2 (258): :<admin info> - location/network
         let admin_info2 = ctx
@@ -181,11 +178,8 @@ impl PostRegHandler for AdminHandler {
             .admin_info2
             .clone()
             .unwrap_or_else(|| ctx.matrix.server_info.network.clone());
-        ctx.send_reply(
-            Response::RPL_ADMINLOC2,
-            vec![nick.to_string(), admin_info2],
-        )
-        .await?;
+        ctx.send_reply(Response::RPL_ADMINLOC2, vec![nick.to_string(), admin_info2])
+            .await?;
 
         // RPL_ADMINEMAIL (259): :<admin email>
         let admin_email = ctx
@@ -204,10 +198,6 @@ impl PostRegHandler for AdminHandler {
         Ok(())
     }
 }
-
-
-
-
 
 /// Handler for INFO command.
 ///
@@ -239,7 +229,8 @@ impl PostRegHandler for InfoHandler {
             let is_match = target_lower == server_lower
                 || target_lower == nick_lower
                 || target == "*"
-                || (target.ends_with('*') && server_lower.starts_with(&target_lower[..target_lower.len()-1]));
+                || (target.ends_with('*')
+                    && server_lower.starts_with(&target_lower[..target_lower.len() - 1]));
 
             if !is_match {
                 // ERR_NOSUCHSERVER (402)
@@ -305,7 +296,13 @@ impl PostRegHandler for LusersHandler {
 
         // Count users and channels
         // Collect user refs first to avoid holding DashMap shard lock across await points
-        let user_refs: Vec<_> = ctx.matrix.user_manager.users.iter().map(|r| r.value().clone()).collect();
+        let user_refs: Vec<_> = ctx
+            .matrix
+            .user_manager
+            .users
+            .iter()
+            .map(|r| r.value().clone())
+            .collect();
         let total_users = user_refs.len();
         let mut invisible_count = 0;
         let mut oper_count = 0;

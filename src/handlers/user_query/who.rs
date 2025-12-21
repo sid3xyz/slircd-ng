@@ -21,19 +21,19 @@ pub struct WhoHandler;
 /// WHOX field request parsed from %fields string.
 #[derive(Default, Clone)]
 struct WhoxFields {
-    token: bool,          // t
-    channel: bool,        // c
-    username: bool,       // u
-    ip: bool,             // i
-    hostname: bool,       // h
-    server: bool,         // s
-    nick: bool,           // n
-    flags: bool,          // f
-    hopcount: bool,       // d
-    idle: bool,           // l
-    account: bool,        // a
-    oplevel: bool,        // o
-    realname: bool,       // r
+    token: bool,                 // t
+    channel: bool,               // c
+    username: bool,              // u
+    ip: bool,                    // i
+    hostname: bool,              // h
+    server: bool,                // s
+    nick: bool,                  // n
+    flags: bool,                 // f
+    hopcount: bool,              // d
+    idle: bool,                  // l
+    account: bool,               // a
+    oplevel: bool,               // o
+    realname: bool,              // r
     query_token: Option<String>, // The token value if provided
 }
 
@@ -290,13 +290,7 @@ async fn handle_channel_who(
             channel_prefixes: get_member_prefixes(&member_modes, multi_prefix),
         };
 
-        let reply = build_who_reply(
-            server_name,
-            nick,
-            &channel_info.name,
-            &user_info,
-            whox,
-        );
+        let reply = build_who_reply(server_name, nick, &channel_info.name, &user_info, whox);
         ctx.sender.send(reply).await?;
         result_count += 1;
     }
@@ -334,7 +328,11 @@ async fn handle_mask_who(
     let is_exact_query = !mask_str.contains('*') && !mask_str.contains('?');
 
     // Get requester's operator status for invisible visibility
-    let requester_is_oper = ctx.matrix.user_manager.users.get(ctx.uid)
+    let requester_is_oper = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(ctx.uid)
         .map(|u| u.clone())
         .map(|arc| {
             // We need to check synchronously - use try_read
@@ -343,7 +341,11 @@ async fn handle_mask_who(
         .unwrap_or(false);
 
     // Pre-collect requester's channel memberships for invisible checking
-    let requester_channels: Vec<String> = ctx.matrix.user_manager.users.get(ctx.uid)
+    let requester_channels: Vec<String> = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(ctx.uid)
         .map(|u| u.clone())
         .map(|arc| {
             arc.try_read()
@@ -379,13 +381,12 @@ async fn handle_mask_who(
         }
 
         // Check invisible user visibility
-        if user.modes.invisible
-            && !requester_is_oper
-            && target_uid != ctx.uid
-            && !is_exact_query
-        {
+        if user.modes.invisible && !requester_is_oper && target_uid != ctx.uid && !is_exact_query {
             // Check if they share any channel
-            let shares_channel = user.channels.iter().any(|ch| requester_channels.contains(ch));
+            let shares_channel = user
+                .channels
+                .iter()
+                .any(|ch| requester_channels.contains(ch));
             if !shares_channel {
                 continue;
             }
@@ -448,7 +449,9 @@ impl PostRegHandler for WhoHandler {
         // Parse WHOX fields if present, otherwise check for 'o' flag
         let whox = second_arg.and_then(WhoxFields::parse);
         let operators_only = if whox.is_none() {
-            second_arg.map(|s| s.eq_ignore_ascii_case("o")).unwrap_or(false)
+            second_arg
+                .map(|s| s.eq_ignore_ascii_case("o"))
+                .unwrap_or(false)
         } else {
             false // WHOX doesn't use 'o' flag
         };
@@ -456,16 +459,25 @@ impl PostRegHandler for WhoHandler {
         let nick = ctx.state.nick.clone();
 
         // Check if the user has multi-prefix CAP enabled
-        let multi_prefix = ctx.matrix.user_manager.users.get(ctx.uid)
+        let multi_prefix = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(ctx.uid)
             .map(|u| u.clone())
-            .map(|arc| arc.try_read().map(|u| u.caps.contains("multi-prefix")).unwrap_or(false))
+            .map(|arc| {
+                arc.try_read()
+                    .map(|u| u.caps.contains("multi-prefix"))
+                    .unwrap_or(false)
+            })
             .unwrap_or(false);
 
         // Determine query type
         if let Some(mask_str) = mask {
             if mask_str.is_channel_name() {
                 // Channel WHO - list channel members
-                handle_channel_who(ctx, mask_str, whox.as_ref(), operators_only, multi_prefix).await?;
+                handle_channel_who(ctx, mask_str, whox.as_ref(), operators_only, multi_prefix)
+                    .await?;
             } else {
                 // Mask-based WHO - search all users
                 handle_mask_who(ctx, mask_str, whox.as_ref(), operators_only, multi_prefix).await?;
@@ -491,7 +503,6 @@ impl PostRegHandler for WhoHandler {
         Ok(())
     }
 }
-
 
 /// Simple wildcard matching for WHO masks.
 /// Supports * (match any) and ? (match single char).

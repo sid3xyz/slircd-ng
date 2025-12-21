@@ -19,10 +19,10 @@ pub use starttls::StarttlsHandler;
 pub use user::UserHandler;
 pub use webirc::WebircHandler;
 
-use std::collections::HashMap;
+use crate::config::WebircBlock;
 use crate::handlers::PreRegHandler;
 use crate::handlers::core::traits::DynUniversalHandler;
-use crate::config::WebircBlock;
+use std::collections::HashMap;
 
 pub fn register(
     pre_reg: &mut HashMap<&'static str, Box<dyn PreRegHandler>>,

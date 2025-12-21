@@ -3,8 +3,8 @@
 //! Implements the CYCLE command (Part + Join in one command).
 
 use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_mask_from_state};
-use crate::state::RegisteredState;
 use super::part::leave_channel_internal;
+use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, irc_to_lower};
 

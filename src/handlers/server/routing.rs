@@ -25,10 +25,16 @@ impl ServerHandler for RoutedMessageHandler {
                     // If it's a server prefix, it might be in host
                     host
                 } else {
-                    return Err(HandlerError::ProtocolError("Invalid source prefix".to_string()));
+                    return Err(HandlerError::ProtocolError(
+                        "Invalid source prefix".to_string(),
+                    ));
                 }
             }
-            None => return Err(HandlerError::ProtocolError("Missing source prefix".to_string())),
+            None => {
+                return Err(HandlerError::ProtocolError(
+                    "Missing source prefix".to_string(),
+                ));
+            }
         };
 
         let target_uid = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
@@ -62,9 +68,14 @@ impl ServerHandler for RoutedMessageHandler {
             // But wait, the client expects :Nick!User@Host PRIVMSG TargetNick :text
 
             // We need to resolve the source UID to a full mask
-            let source_mask = if let Some(user_arc) = ctx.matrix.user_manager.users.get(source_uid) {
+            let source_mask = if let Some(user_arc) = ctx.matrix.user_manager.users.get(source_uid)
+            {
                 let user = user_arc.read().await;
-                Prefix::Nickname(user.nick.clone(), user.user.clone(), user.visible_host.clone())
+                Prefix::Nickname(
+                    user.nick.clone(),
+                    user.user.clone(),
+                    user.visible_host.clone(),
+                )
             } else {
                 // Unknown source user? Maybe it's a server message?
                 // Or we haven't received the UID burst yet?
@@ -73,7 +84,8 @@ impl ServerHandler for RoutedMessageHandler {
             };
 
             // Resolve target UID to Nickname for the command
-            let target_nick = if let Some(user_arc) = ctx.matrix.user_manager.users.get(target_uid) {
+            let target_nick = if let Some(user_arc) = ctx.matrix.user_manager.users.get(target_uid)
+            {
                 let user = user_arc.read().await;
                 user.nick.clone()
             } else {
@@ -85,7 +97,9 @@ impl ServerHandler for RoutedMessageHandler {
             let tags = if let Some(tags_str) = msg.tags {
                 let mut parsed_tags = Vec::new();
                 for tag_part in tags_str.split(';') {
-                    if tag_part.is_empty() { continue; }
+                    if tag_part.is_empty() {
+                        continue;
+                    }
                     let (key, value) = if let Some((k, v)) = tag_part.split_once('=') {
                         (k, Some(v.to_string()))
                     } else {
@@ -99,7 +113,8 @@ impl ServerHandler for RoutedMessageHandler {
             };
 
             // Check for x-visible-target tag (Innovation 2: Channel routing)
-            let visible_target = tags.as_ref()
+            let visible_target = tags
+                .as_ref()
                 .and_then(|t| t.iter().find(|tag| tag.0 == "x-visible-target"))
                 .and_then(|tag| tag.1.as_ref())
                 .cloned();
@@ -149,7 +164,9 @@ impl ServerHandler for RoutedMessageHandler {
                         let tags = if let Some(tags_str) = msg.tags {
                             let mut parsed_tags = Vec::new();
                             for tag_part in tags_str.split(';') {
-                                if tag_part.is_empty() { continue; }
+                                if tag_part.is_empty() {
+                                    continue;
+                                }
                                 let (key, value) = if let Some((k, v)) = tag_part.split_once('=') {
                                     (k, Some(v.to_string()))
                                 } else {
@@ -209,7 +226,9 @@ mod tests {
         let tags_str = "time=12345;account=test";
         let mut parsed_tags = Vec::new();
         for tag_part in tags_str.split(';') {
-            if tag_part.is_empty() { continue; }
+            if tag_part.is_empty() {
+                continue;
+            }
             let (key, value) = if let Some((k, v)) = tag_part.split_once('=') {
                 (k, Some(v.to_string()))
             } else {

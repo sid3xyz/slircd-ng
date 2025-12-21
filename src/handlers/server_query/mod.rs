@@ -3,13 +3,14 @@
 //! RFC 2812 §3.4 - Server queries and commands
 //! RFC 2812 §3.5 - Service queries (SERVLIST, SQUERY)
 
+mod disabled;
 mod help;
 mod info;
 mod server_info;
 mod service;
 mod stats;
-mod disabled;
 
+pub use disabled::{SummonHandler, UsersHandler};
 pub use help::HelpHandler;
 pub use info::{LinksHandler, MapHandler, RulesHandler, UseripHandler};
 pub use server_info::{
@@ -17,10 +18,9 @@ pub use server_info::{
 };
 pub use service::{ServiceHandler, ServlistHandler, SqueryHandler};
 pub use stats::StatsHandler;
-pub use disabled::{SummonHandler, UsersHandler};
 
-use std::collections::HashMap;
 use crate::handlers::PostRegHandler;
+use std::collections::HashMap;
 
 pub fn register(map: &mut HashMap<&'static str, Box<dyn PostRegHandler>>) {
     map.insert("HELP", Box::new(HelpHandler));

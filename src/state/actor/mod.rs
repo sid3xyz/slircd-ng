@@ -9,8 +9,8 @@
 //! - **Message Passing**: All interactions happen via `ChannelEvent` messages sent to the actor.
 //! - **Concurrency**: Each channel runs on its own task, allowing the runtime to distribute load.
 
-use crate::state::{ListEntry, Matrix, MemberModes, Topic};
 use crate::state::observer::StateObserver;
+use crate::state::{ListEntry, Matrix, MemberModes, Topic};
 use chrono::Utc;
 use slirc_crdt::clock::HybridTimestamp;
 use slirc_proto::Message;
@@ -245,12 +245,10 @@ impl ChannelActor {
             } => {
                 self.handle_knock(sender_uid, sender_prefix, reply_tx).await;
             }
-            ChannelEvent::NickChange {
-                uid,
-                new_nick,
-            } => {
+            ChannelEvent::NickChange { uid, new_nick } => {
                 self.handle_nick_change(uid, new_nick).await;
-            }            ChannelEvent::Clear {
+            }
+            ChannelEvent::Clear {
                 sender_uid,
                 sender_prefix,
                 target,
@@ -266,6 +264,24 @@ impl ChannelActor {
                 users,
             } => {
                 self.handle_sjoin(ts, modes, mode_args, users).await;
+            }
+            ChannelEvent::RemoteMode {
+                ts,
+                setter,
+                modes,
+                args,
+            } => {
+                self.handle_remote_mode(ts, setter, modes, args).await;
+            }
+            ChannelEvent::RemoteTopic { ts, setter, topic } => {
+                self.handle_remote_topic(ts, setter, topic).await;
+            }
+            ChannelEvent::RemoteKick {
+                sender,
+                target,
+                reason,
+            } => {
+                self.handle_remote_kick(sender, target, Some(reason)).await;
             }
             ChannelEvent::NetsplitQuit { uid, reply_tx } => {
                 // Silently remove user from channel (QUIT already broadcast by split.rs)
@@ -296,7 +312,12 @@ impl ChannelActor {
 
             if let Some(matrix) = self.matrix.upgrade() {
                 let name_lower = self.name.to_lowercase();
-                if matrix.channel_manager.channels.remove(&name_lower).is_some() {
+                if matrix
+                    .channel_manager
+                    .channels
+                    .remove(&name_lower)
+                    .is_some()
+                {
                     crate::metrics::ACTIVE_CHANNELS.dec();
                 }
             }

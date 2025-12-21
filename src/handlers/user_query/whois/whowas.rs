@@ -71,10 +71,7 @@ impl PostRegHandler for WhowasHandler {
             let reply = server_reply(
                 ctx.server_name(),
                 Response::ERR_NONICKNAMEGIVEN,
-                vec![
-                    ctx.state.nick.clone(),
-                    "No nickname given".to_string(),
-                ],
+                vec![ctx.state.nick.clone(), "No nickname given".to_string()],
             );
             ctx.sender.send(reply).await?;
 
@@ -192,8 +189,8 @@ impl PostRegHandler for WhowasHandler {
         // For single-target wildcard queries, use the matched nick if found
         // For single-target exact queries, use the query string
         let is_multi_target = target_list.len() > 1;
-        let is_wildcard = target_list.len() == 1
-            && (targets.contains('*') || targets.contains('?'));
+        let is_wildcard =
+            target_list.len() == 1 && (targets.contains('*') || targets.contains('?'));
 
         let end_nick = if is_multi_target {
             // Multi-target: always use original query string
@@ -208,11 +205,7 @@ impl PostRegHandler for WhowasHandler {
         let reply = server_reply(
             server_name,
             Response::RPL_ENDOFWHOWAS,
-            vec![
-                nick.clone(),
-                end_nick,
-                "End of WHOWAS".to_string(),
-            ],
+            vec![nick.clone(), end_nick, "End of WHOWAS".to_string()],
         );
         ctx.sender.send(reply).await?;
 

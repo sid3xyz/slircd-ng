@@ -3,12 +3,11 @@
 //! Allows operators to forcibly disconnect a user from the server.
 //! Uses capability-based authorization (Innovation 4).
 
-use super::super::{Context,
-    HandlerResult, PostRegHandler,
-    resolve_nick_to_uid, user_mask_from_state,
+use super::super::{
+    Context, HandlerResult, PostRegHandler, resolve_nick_to_uid, user_mask_from_state,
 };
-use crate::{require_arg_or_reply, require_oper_cap};
 use crate::state::RegisteredState;
+use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 
@@ -34,7 +33,9 @@ impl PostRegHandler for KillHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "KILL") else { return Ok(()); };
+        let Some(target_nick) = require_arg_or_reply!(ctx, msg, 0, "KILL") else {
+            return Ok(());
+        };
         let reason = msg.arg(1).unwrap_or("No reason given");
 
         // Get killer's identity
@@ -45,7 +46,9 @@ impl PostRegHandler for KillHandler {
         };
 
         // Request KILL capability from authority (Innovation 4)
-        let Some(_kill_cap) = require_oper_cap!(ctx, "KILL", request_kill_cap) else { return Ok(()); };
+        let Some(_kill_cap) = require_oper_cap!(ctx, "KILL", request_kill_cap) else {
+            return Ok(());
+        };
 
         let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
             let reply = Response::err_nosuchnick(&killer_nick, target_nick)
@@ -56,7 +59,12 @@ impl PostRegHandler for KillHandler {
 
         let quit_reason = format!("Killed by {killer_nick} ({reason})");
 
-        let target_sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|s| s.clone());
+        let target_sender = ctx
+            .matrix
+            .user_manager
+            .senders
+            .get(&target_uid)
+            .map(|s| s.clone());
         if let Some(target_sender) = target_sender {
             let error_msg = Message {
                 tags: None,
@@ -71,15 +79,20 @@ impl PostRegHandler for KillHandler {
         tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
 
         // Send snomask 'k'
-        ctx.matrix.user_manager.send_snomask('k', &format!("Received KILL message for {}. From {} Path: {}!{}@{} ({})", target_nick, killer_nick, killer_nick, killer_user, killer_host, reason)).await;
+        ctx.matrix
+            .user_manager
+            .send_snomask(
+                'k',
+                &format!(
+                    "Received KILL message for {}. From {} Path: {}!{}@{} ({})",
+                    target_nick, killer_nick, killer_nick, killer_user, killer_host, reason
+                ),
+            )
+            .await;
 
         let kill_msg = Message {
             tags: None,
-            prefix: Some(Prefix::new(
-                killer_nick.clone(),
-                killer_user,
-                killer_host,
-            )),
+            prefix: Some(Prefix::new(killer_nick.clone(), killer_user, killer_host)),
             command: Command::KILL(target_nick.to_string(), quit_reason),
         };
 

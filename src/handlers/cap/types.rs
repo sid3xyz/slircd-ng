@@ -23,7 +23,9 @@ impl SecureString {
 impl std::fmt::Debug for SecureString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Never print actual content
-        f.debug_struct("SecureString").field("len", &self.0.len()).finish()
+        f.debug_struct("SecureString")
+            .field("len", &self.0.len())
+            .finish()
     }
 }
 

@@ -38,7 +38,11 @@ fn validate_connection(addr: &SocketAddr, matrix: &Matrix, listener_type: &str) 
     }
 
     // Check connection rate limit before accepting
-    if !matrix.security_manager.rate_limiter.check_connection_rate(addr.ip()) {
+    if !matrix
+        .security_manager
+        .rate_limiter
+        .check_connection_rate(addr.ip())
+    {
         warn!(%addr, "{} connection rate limit exceeded - rejecting", listener_type);
         return None;
     }
@@ -198,8 +202,15 @@ async fn handle_plaintext_connection(
         return;
     }
 
-    let connection =
-        Connection::new_plaintext(uid.clone(), stream, addr, matrix.clone(), registry, db, starttls_acceptor);
+    let connection = Connection::new_plaintext(
+        uid.clone(),
+        stream,
+        addr,
+        matrix.clone(),
+        registry,
+        db,
+        starttls_acceptor,
+    );
     if let Err(e) = connection.run().await {
         error!(%uid, %addr, error = %e, "Plaintext connection error");
     }

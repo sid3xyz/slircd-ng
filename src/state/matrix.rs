@@ -30,8 +30,11 @@
 //! - **Collect-then-mutate**: Collect UIDs/keys to Vec, release iteration, then mutate
 //! - **Lock-copy-release**: Acquire lock, copy needed data, release before next operation
 
-use crate::state::{Uid, UserManager, ChannelManager, SecurityManager, SecurityManagerParams, ServiceManager, MonitorManager, LifecycleManager, SyncManager};
 use crate::db::Database;
+use crate::state::{
+    ChannelManager, LifecycleManager, MonitorManager, SecurityManager, SecurityManagerParams,
+    ServiceManager, SyncManager, Uid, UserManager,
+};
 use slirc_crdt::clock::ServerId;
 
 use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
@@ -163,52 +166,58 @@ impl Matrix {
             config.links.clone(),
         );
         let sync_manager_arc = Arc::new(sync_manager);
-        let mut user_manager = UserManager::new(config.server.sid.clone(), config.server.name.clone());
+        let mut user_manager =
+            UserManager::new(config.server.sid.clone(), config.server.name.clone());
         user_manager.set_observer(sync_manager_arc.clone());
 
-        let mut channel_manager = ChannelManager::with_registered_channels(registered_channel_names);
+        let mut channel_manager =
+            ChannelManager::with_registered_channels(registered_channel_names);
         channel_manager.set_observer(sync_manager_arc.clone());
 
         let (router_tx, router_rx) = mpsc::channel(1000);
 
-        (Self {
-            user_manager,
-            channel_manager,
-            security_manager: SecurityManager::new(SecurityManagerParams {
-                security_config: &config.security,
-                db: Some(db.clone()),
-                data_dir,
-                shuns,
-                klines,
-                dlines,
-                glines,
-                zlines,
-            }),
-            service_manager: ServiceManager::new(db, history),
-            monitor_manager: MonitorManager::new(),
-            lifecycle_manager: LifecycleManager::new(disconnect_tx),
-            sync_manager: Arc::try_unwrap(sync_manager_arc).unwrap_or_else(|arc| (*arc).clone()),
-            server_info: ServerInfo {
-                name: config.server.name.clone(),
-                network: config.server.network.clone(),
-                sid: config.server.sid.clone(),
-                description: config.server.description.clone(),
-                created: now,
-                motd_lines: config.motd.load_lines(),
-                idle_timeouts: config.server.idle_timeouts.clone(),
+        (
+            Self {
+                user_manager,
+                channel_manager,
+                security_manager: SecurityManager::new(SecurityManagerParams {
+                    security_config: &config.security,
+                    db: Some(db.clone()),
+                    data_dir,
+                    shuns,
+                    klines,
+                    dlines,
+                    glines,
+                    zlines,
+                }),
+                service_manager: ServiceManager::new(db, history),
+                monitor_manager: MonitorManager::new(),
+                lifecycle_manager: LifecycleManager::new(disconnect_tx),
+                sync_manager: Arc::try_unwrap(sync_manager_arc)
+                    .unwrap_or_else(|arc| (*arc).clone()),
+                server_info: ServerInfo {
+                    name: config.server.name.clone(),
+                    network: config.server.network.clone(),
+                    sid: config.server.sid.clone(),
+                    description: config.server.description.clone(),
+                    created: now,
+                    motd_lines: config.motd.load_lines(),
+                    idle_timeouts: config.server.idle_timeouts.clone(),
+                },
+                server_id,
+                config: MatrixConfig {
+                    server: config.server.clone(),
+                    oper_blocks: config.oper.clone(),
+                    security: config.security.clone(),
+                    account_registration: config.account_registration.clone(),
+                    limits: config.limits.clone(),
+                    history: config.history.clone(),
+                    links: config.links.clone(),
+                },
+                router_tx,
             },
-            server_id,
-            config: MatrixConfig {
-                server: config.server.clone(),
-                oper_blocks: config.oper.clone(),
-                security: config.security.clone(),
-                account_registration: config.account_registration.clone(),
-                limits: config.limits.clone(),
-                history: config.history.clone(),
-                links: config.links.clone(),
-            },
-            router_tx,
-        }, router_rx)
+            router_rx,
+        )
     }
 
     /// Register a user's message sender for routing.
@@ -267,7 +276,8 @@ impl Matrix {
         };
 
         // Record WHOWAS entry before user is removed
-        self.user_manager.record_whowas(&nick, &user, &host, &realname);
+        self.user_manager
+            .record_whowas(&nick, &user, &host, &realname);
 
         // Notify MONITOR watchers that this nick is going offline
         notify_monitors_offline(self, &nick).await;
@@ -284,7 +294,11 @@ impl Matrix {
 
         // Remove from channels and broadcast QUIT
         for channel_name in &user_channels {
-            let channel_tx = self.channel_manager.channels.get(channel_name).map(|s| s.clone());
+            let channel_tx = self
+                .channel_manager
+                .channels
+                .get(channel_name)
+                .map(|s| s.clone());
             if let Some(channel_tx) = channel_tx {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 let _ = channel_tx
@@ -295,13 +309,12 @@ impl Matrix {
                     })
                     .await;
 
-
-                    if let Ok(remaining) = rx.await
-                        && remaining == 0
-                        && self.channel_manager.channels.remove(channel_name).is_some()
-                    {
-                        crate::metrics::ACTIVE_CHANNELS.dec();
-                    }
+                if let Ok(remaining) = rx.await
+                    && remaining == 0
+                    && self.channel_manager.channels.remove(channel_name).is_some()
+                {
+                    crate::metrics::ACTIVE_CHANNELS.dec();
+                }
             }
         }
 

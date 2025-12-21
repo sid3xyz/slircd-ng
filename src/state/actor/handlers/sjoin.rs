@@ -15,7 +15,10 @@ impl ChannelActor {
 
         if ts < current_ts {
             // Remote is older (winner). We adopt their TS and modes.
-            info!("Channel {} SJOIN: Remote TS {} < Local TS {}. Adopting remote state.", self.name, ts, current_ts);
+            info!(
+                "Channel {} SJOIN: Remote TS {} < Local TS {}. Adopting remote state.",
+                self.name, ts, current_ts
+            );
             self.created = ts as i64;
 
             // Clear current modes and apply remote modes
@@ -24,14 +27,19 @@ impl ChannelActor {
             // For now, we will just accept the users.
             // Implementing full mode parsing here is complex.
             // We should probably use a helper or just accept that we might be desynced on modes until we implement full parsing.
-
         } else if ts > current_ts {
             // Remote is newer (loser). We keep our TS and modes.
             // We still accept the users, but we ignore their modes.
-            info!("Channel {} SJOIN: Remote TS {} > Local TS {}. Ignoring remote modes.", self.name, ts, current_ts);
+            info!(
+                "Channel {} SJOIN: Remote TS {} > Local TS {}. Ignoring remote modes.",
+                self.name, ts, current_ts
+            );
         } else {
             // Equal TS. Merge modes.
-            info!("Channel {} SJOIN: Remote TS {} == Local TS {}. Merging modes.", self.name, ts, current_ts);
+            info!(
+                "Channel {} SJOIN: Remote TS {} == Local TS {}. Merging modes.",
+                self.name, ts, current_ts
+            );
         }
 
         // 2. Add Users
@@ -67,11 +75,21 @@ impl ChannelActor {
                 // Or just merge?
                 // For now, let's just merge flags.
                 if let Some(existing) = self.members.get_mut(&uid) {
-                    if member_modes.owner { existing.owner = true; }
-                    if member_modes.admin { existing.admin = true; }
-                    if member_modes.op { existing.op = true; }
-                    if member_modes.halfop { existing.halfop = true; }
-                    if member_modes.voice { existing.voice = true; }
+                    if member_modes.owner {
+                        existing.owner = true;
+                    }
+                    if member_modes.admin {
+                        existing.admin = true;
+                    }
+                    if member_modes.op {
+                        existing.op = true;
+                    }
+                    if member_modes.halfop {
+                        existing.halfop = true;
+                    }
+                    if member_modes.voice {
+                        existing.voice = true;
+                    }
                 }
             }
         }

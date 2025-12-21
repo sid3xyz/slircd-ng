@@ -14,26 +14,25 @@
 //!
 //! See: <https://modern.ircdocs.horse/ctcp.html>
 
-use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, user_prefix,
-};
-use crate::state::RegisteredState;
+use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_prefix};
 use super::common::{
-    ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult, route_to_channel_with_snapshot,
-    route_to_user_with_snapshot, send_cannot_send, send_no_such_channel, send_no_such_nick,
+    ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult,
+    route_to_channel_with_snapshot, route_to_user_with_snapshot, send_cannot_send,
+    send_no_such_channel, send_no_such_nick,
 };
 use super::errors::*;
 use super::validation::{ErrorStrategy, validate_message_send};
-use crate::history::{StoredMessage, MessageEnvelope};
 use crate::history::types::MessageTag as HistoryTag;
+use crate::history::{MessageEnvelope, StoredMessage};
 use crate::services::route_service_message;
+use crate::state::RegisteredState;
+use crate::telemetry::spans;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
 use std::time::{SystemTime, UNIX_EPOCH};
-use chrono::{DateTime, Utc};
-use tracing::debug;
-use crate::telemetry::spans;
 use tracing::Instrument;
+use tracing::debug;
 use uuid::Uuid;
 
 // ============================================================================
@@ -97,10 +96,15 @@ fn prepare_message(
     let history_tags: Option<Vec<HistoryTag>> = if preserved_tags.is_empty() {
         None
     } else {
-        Some(preserved_tags.iter().map(|t| HistoryTag {
-            key: t.0.to_string(),
-            value: t.1.as_ref().map(|v| v.to_string()),
-        }).collect())
+        Some(
+            preserved_tags
+                .iter()
+                .map(|t| HistoryTag {
+                    key: t.0.to_string(),
+                    value: t.1.as_ref().map(|v| v.to_string()),
+                })
+                .collect(),
+        )
     };
 
     // Build the outgoing message with preserved tags
@@ -110,11 +114,18 @@ fn prepare_message(
         } else {
             Some(preserved_tags)
         },
-        prefix: Some(user_prefix(&snapshot.nick, &snapshot.user, &snapshot.visible_host)),
+        prefix: Some(user_prefix(
+            &snapshot.nick,
+            &snapshot.user,
+            &snapshot.visible_host,
+        )),
         command: Command::PRIVMSG(target.to_string(), text.to_string()),
     };
 
-    let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+    let prefix = format!(
+        "{}!{}@{}",
+        snapshot.nick, snapshot.user, snapshot.visible_host
+    );
 
     PreparedMessage {
         out_msg,
@@ -194,10 +205,20 @@ impl PostRegHandler for PrivmsgHandler {
                 }
 
                 // Use shared validation (shun, rate limiting, spam detection)
-                validate_message_send(ctx, target, text, ErrorStrategy::SendError, &snapshot).await?;
+                validate_message_send(ctx, target, text, ErrorStrategy::SendError, &snapshot)
+                    .await?;
 
                 // Check if this is a service message (NickServ, ChanServ, etc.)
-                if route_service_message(ctx.matrix, ctx.uid, &snapshot.nick, target, text, &ctx.sender).await {
+                if route_service_message(
+                    ctx.matrix,
+                    ctx.uid,
+                    &snapshot.nick,
+                    target,
+                    text,
+                    &ctx.sender,
+                )
+                .await
+                {
                     continue;
                 }
 
@@ -209,9 +230,11 @@ impl PostRegHandler for PrivmsgHandler {
                 let routing_target = actual_target.unwrap_or(target);
 
                 if routing_target.is_channel_name() {
-                    route_to_channel_target(ctx, target, text, &snapshot, &prepared, status_prefix).await?;
+                    route_to_channel_target(ctx, target, text, &snapshot, &prepared, status_prefix)
+                        .await?;
                 } else {
-                    route_to_user_target(ctx, target, text, &snapshot, &prepared, routing_target).await?;
+                    route_to_user_target(ctx, target, text, &snapshot, &prepared, routing_target)
+                        .await?;
                 }
             }
 
@@ -250,7 +273,8 @@ async fn route_to_channel_target(
                 msgid: Some(prepared.msgid.clone()),
                 snapshot,
             },
-        ).await?;
+        )
+        .await?;
         debug!(from = %snapshot.nick, to = %target, prefix = %prefix_char, "PRIVMSG STATUSMSG");
         suppress_labeled_ack_if_echo(ctx);
     } else {
@@ -268,14 +292,23 @@ async fn route_to_channel_target(
             Some(prepared.timestamp_iso.clone()),
             Some(prepared.msgid.clone()),
             snapshot,
-        ).await {
+        )
+        .await
+        {
             ChannelRouteResult::Sent => {
                 debug!(from = %snapshot.nick, to = %target, "PRIVMSG to channel");
                 suppress_labeled_ack_if_echo(ctx);
 
                 // Store message in history for CHATHISTORY support
-                let stored_msg = create_stored_message(prepared, target, text, snapshot, &ctx.state.account);
-                if let Err(e) = ctx.matrix.service_manager.history.store(target, stored_msg).await {
+                let stored_msg =
+                    create_stored_message(prepared, target, text, snapshot, &ctx.state.account);
+                if let Err(e) = ctx
+                    .matrix
+                    .service_manager
+                    .history
+                    .store(target, stored_msg)
+                    .await
+                {
                     debug!(error = %e, "Failed to store message in history");
                 }
             }
@@ -339,15 +372,24 @@ async fn route_to_user_target(
         Some(prepared.timestamp_iso.clone()),
         Some(prepared.msgid.clone()),
         snapshot,
-    ).await {
+    )
+    .await
+    {
         UserRouteResult::Sent => {
             debug!(from = %snapshot.nick, to = %target, "PRIVMSG to user");
 
             // Store DM in history with canonical key
-            let stored_msg = create_stored_message(prepared, target, text, snapshot, &ctx.state.account);
+            let stored_msg =
+                create_stored_message(prepared, target, text, snapshot, &ctx.state.account);
             let dm_key = compute_dm_key(ctx, &target_lower, snapshot).await;
 
-            if let Err(e) = ctx.matrix.service_manager.history.store(&dm_key, stored_msg).await {
+            if let Err(e) = ctx
+                .matrix
+                .service_manager
+                .history
+                .store(&dm_key, stored_msg)
+                .await
+            {
                 debug!(error = %e, "Failed to store DM");
             }
         }
@@ -355,10 +397,7 @@ async fn route_to_user_target(
             send_no_such_nick(ctx, &snapshot.nick, target).await?;
         }
         UserRouteResult::BlockedRegisteredOnly => {
-            let reply = slirc_proto::Response::err_needreggednick(
-                &snapshot.nick,
-                target,
-            );
+            let reply = slirc_proto::Response::err_needreggednick(&snapshot.nick, target);
             ctx.sender.send(reply).await?;
         }
         UserRouteResult::BlockedSilence | UserRouteResult::BlockedCtcp => {
@@ -483,7 +522,10 @@ pub(super) async fn route_statusmsg(
         status_prefix: Some(prefix_char),
     };
 
-    if route_to_channel_with_snapshot(ctx, channel_lower, msg, &opts, timestamp, msgid, snapshot).await == ChannelRouteResult::NoSuchChannel {
+    if route_to_channel_with_snapshot(ctx, channel_lower, msg, &opts, timestamp, msgid, snapshot)
+        .await
+        == ChannelRouteResult::NoSuchChannel
+    {
         send_no_such_channel(ctx, &snapshot.nick, original_target).await?;
     }
 

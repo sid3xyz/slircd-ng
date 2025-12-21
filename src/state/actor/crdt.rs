@@ -12,11 +12,7 @@ use super::{ChannelActor, ChannelMode};
 
 impl ChannelActor {
     /// Merge a CRDT representation into the channel state.
-    pub async fn handle_merge_crdt(
-        &mut self,
-        crdt: ChannelCrdt,
-        source: Option<ServerId>,
-    ) {
+    pub async fn handle_merge_crdt(&mut self, crdt: ChannelCrdt, source: Option<ServerId>) {
         use slirc_crdt::traits::Crdt;
         let mut current_crdt = self.to_crdt();
         current_crdt.merge(&crdt);
@@ -233,43 +229,83 @@ impl ChannelActor {
         for mode in &self.modes {
             match mode {
                 ChannelMode::NoExternal => {
-                    let ts = self.mode_timestamps.get(&'n').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'n')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.no_external.update(true, ts);
                 }
                 ChannelMode::TopicLock => {
-                    let ts = self.mode_timestamps.get(&'t').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'t')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.topic_ops_only.update(true, ts);
                 }
                 ChannelMode::Moderated => {
-                    let ts = self.mode_timestamps.get(&'m').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'m')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.moderated.update(true, ts);
                 }
                 ChannelMode::InviteOnly => {
-                    let ts = self.mode_timestamps.get(&'i').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'i')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.invite_only.update(true, ts);
                 }
                 ChannelMode::Secret => {
-                    let ts = self.mode_timestamps.get(&'s').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'s')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.secret.update(true, ts);
                 }
                 ChannelMode::Private => {
-                    let ts = self.mode_timestamps.get(&'p').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'p')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.private.update(true, ts);
                 }
                 ChannelMode::RegisteredOnly => {
-                    let ts = self.mode_timestamps.get(&'R').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'R')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.registered_only.update(true, ts);
                 }
                 ChannelMode::NoColors => {
-                    let ts = self.mode_timestamps.get(&'c').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'c')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.no_colors.update(true, ts);
                 }
                 ChannelMode::NoCtcp => {
-                    let ts = self.mode_timestamps.get(&'C').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'C')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.no_ctcp.update(true, ts);
                 }
                 ChannelMode::TlsOnly => {
-                    let ts = self.mode_timestamps.get(&'z').copied().unwrap_or(fallback_ts);
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'z')
+                        .copied()
+                        .unwrap_or(fallback_ts);
                     crdt.modes.ssl_only.update(true, ts);
                 }
                 ChannelMode::Key(k, ts) => {

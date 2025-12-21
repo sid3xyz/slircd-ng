@@ -1,6 +1,15 @@
+//! State Burst Generation for S2S Synchronization.
+//!
+//! When a new server link is established, both sides exchange a "burst"
+//! containing their complete state. This module generates the burst commands:
+//! - `UID` for each user
+//! - `SJOIN` for each channel (with members, modes, topic)
+//!
+//! The burst is sent after handshake completion and before operational messages.
+
 use crate::state::Matrix;
-use slirc_proto::Command;
 use crate::state::actor::ChannelEvent;
+use slirc_proto::Command;
 use tokio::sync::oneshot;
 use tracing::error;
 
@@ -33,17 +42,18 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
         // But wait, `User` struct doesn't store hopcount directly?
         // We might need to infer it or store it.
         // For now, let's assume 1 for everyone as we are likely a leaf or single server.
-        // TODO: Handle hopcounts correctly for multi-hop.
+        // TODO(Phase2): Handle hopcounts correctly for multi-hop topology.
 
         let hopcount = "1".to_string(); // Placeholder
         let timestamp = "0".to_string(); // Placeholder: User struct needs creation TS?
         // User struct has `last_modified` (HybridTimestamp), but not creation TS?
         // Let's check User struct again.
+        // TODO(Phase2): Store and use user creation timestamp for proper TS6 burst.
 
         commands.push(Command::UID(
             user.nick.clone(),
             hopcount,
-            timestamp, // TODO: Fix timestamp
+            timestamp,
             user.user.clone(),
             user.visible_host.clone(),
             user.uid.clone(),
@@ -59,10 +69,13 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
 
         // Get Channel Info (Modes, Topic, TS)
         let (info_tx, info_rx) = oneshot::channel();
-        if let Err(e) = tx.send(ChannelEvent::GetInfo {
-            requester_uid: None,
-            reply_tx: info_tx,
-        }).await {
+        if let Err(e) = tx
+            .send(ChannelEvent::GetInfo {
+                requester_uid: None,
+                reply_tx: info_tx,
+            })
+            .await
+        {
             error!("Failed to request info for channel {}: {}", channel_name, e);
             continue;
         }
@@ -77,17 +90,26 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
 
         // Get Members (UIDs and Prefixes)
         let (members_tx, members_rx) = oneshot::channel();
-        if let Err(e) = tx.send(ChannelEvent::GetMembers {
-            reply_tx: members_tx,
-        }).await {
-            error!("Failed to request members for channel {}: {}", channel_name, e);
+        if let Err(e) = tx
+            .send(ChannelEvent::GetMembers {
+                reply_tx: members_tx,
+            })
+            .await
+        {
+            error!(
+                "Failed to request members for channel {}: {}",
+                channel_name, e
+            );
             continue;
         }
 
         let members = match members_rx.await {
             Ok(m) => m,
             Err(e) => {
-                error!("Failed to receive members for channel {}: {}", channel_name, e);
+                error!(
+                    "Failed to receive members for channel {}: {}",
+                    channel_name, e
+                );
                 continue;
             }
         };

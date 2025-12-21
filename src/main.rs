@@ -122,7 +122,9 @@ async fn main() -> anyhow::Result<()> {
         match config.history.backend.as_str() {
             "redb" => {
                 info!(path = %config.history.path, "Initializing Redb history backend");
-                Arc::new(crate::history::redb::RedbProvider::new(&config.history.path)?)
+                Arc::new(crate::history::redb::RedbProvider::new(
+                    &config.history.path,
+                )?)
             }
             _ => {
                 info!("History backend 'none' or unknown. Using NoOp.");
@@ -143,7 +145,8 @@ async fn main() -> anyhow::Result<()> {
     // disconnect storms. 1024 slots should handle burst disconnects while
     // preventing unbounded memory growth.
     const DISCONNECT_CHANNEL_SIZE: usize = 1024;
-    let (disconnect_tx, mut disconnect_rx) = tokio::sync::mpsc::channel::<(String, String)>(DISCONNECT_CHANNEL_SIZE);
+    let (disconnect_tx, mut disconnect_rx) =
+        tokio::sync::mpsc::channel::<(String, String)>(DISCONNECT_CHANNEL_SIZE);
     let (matrix_struct, mut router_rx) = Matrix::new(crate::state::MatrixParams {
         config: &config,
         data_dir,
@@ -165,7 +168,9 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move {
             while let Some(mut msg) = router_rx.recv().await {
                 // Check for x-target-uid tag
-                let target_uid = msg.tags.as_ref()
+                let target_uid = msg
+                    .tags
+                    .as_ref()
                     .and_then(|tags| tags.iter().find(|t| t.0 == "x-target-uid"))
                     .and_then(|t| t.1.as_ref())
                     .cloned();
@@ -351,9 +356,14 @@ async fn main() -> anyhow::Result<()> {
     // Start outgoing connections
     for link in &config.links {
         if link.autoconnect {
-            matrix.sync_manager.connect_to_peer(matrix.clone(), link.clone());
+            matrix
+                .sync_manager
+                .connect_to_peer(matrix.clone(), link.clone());
         }
     }
+
+    // Start S2S heartbeat
+    matrix.sync_manager.start_heartbeat();
 
     gateway.run().await?;
 

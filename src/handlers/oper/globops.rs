@@ -2,11 +2,9 @@
 //!
 //! Sends a message to all operators with +g (globops) mode set.
 
-use super::super::{Context,
-    HandlerResult, PostRegHandler,
-};
-use crate::{require_arg_or_reply, send_noprivileges};
+use super::super::{Context, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;
+use crate::{require_arg_or_reply, send_noprivileges};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
 
@@ -38,7 +36,10 @@ impl PostRegHandler for GlobOpsHandler {
 
         // Send via snomask 'g'
         // Format: "From <nick>: <message>"
-        ctx.matrix.user_manager.send_snomask('g', &format!("From {}: {}", sender_nick, globops_text)).await;
+        ctx.matrix
+            .user_manager
+            .send_snomask('g', &format!("From {}: {}", sender_nick, globops_text))
+            .await;
 
         Ok(())
     }

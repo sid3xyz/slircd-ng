@@ -1,10 +1,10 @@
 //! User-related types and state.
 
+use slirc_crdt::clock::HybridTimestamp;
+use slirc_crdt::traits::LwwRegister;
+use slirc_crdt::user::{UserCrdt, UserModesCrdt};
 use std::collections::HashSet;
 use uuid::Uuid;
-use slirc_crdt::clock::HybridTimestamp;
-use slirc_crdt::user::{UserCrdt, UserModesCrdt};
-use slirc_crdt::traits::LwwRegister;
 
 /// A connected user.
 #[derive(Debug)]
@@ -175,7 +175,11 @@ impl User {
 
         // Try to parse as IP for proper cloaking, fall back to hostname cloaking
         let visible_host = if let Ok(addr) = ip.parse::<std::net::IpAddr>() {
-            crate::security::cloaking::cloak_ip_hmac_with_suffix(&addr, &cloak_secret, &cloak_suffix)
+            crate::security::cloaking::cloak_ip_hmac_with_suffix(
+                &addr,
+                &cloak_secret,
+                &cloak_suffix,
+            )
         } else {
             crate::security::cloaking::cloak_hostname(&host, &cloak_secret)
         };

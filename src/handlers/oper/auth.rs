@@ -3,10 +3,7 @@
 //! Authenticates users as IRC operators using password verification
 //! and hostmask matching from the server configuration.
 
-use super::super::{Context,
-    HandlerResult, PostRegHandler, matches_hostmask,
-    server_reply,
-};
+use super::super::{Context, HandlerResult, PostRegHandler, matches_hostmask, server_reply};
 use crate::require_arg_or_reply;
 use crate::state::RegisteredState;
 use crate::state::actor::validation::format_user_mask;
@@ -38,8 +35,12 @@ impl PostRegHandler for OperHandler {
     ) -> HandlerResult {
         let server_name = ctx.server_name().to_string();
 
-        let Some(name) = require_arg_or_reply!(ctx, msg, 0, "OPER") else { return Ok(()); };
-        let Some(password) = require_arg_or_reply!(ctx, msg, 1, "OPER") else { return Ok(()); };
+        let Some(name) = require_arg_or_reply!(ctx, msg, 0, "OPER") else {
+            return Ok(());
+        };
+        let Some(password) = require_arg_or_reply!(ctx, msg, 1, "OPER") else {
+            return Ok(());
+        };
 
         let nick = ctx.nick().to_string();
 
@@ -137,7 +138,10 @@ impl PostRegHandler for OperHandler {
             let reply = server_reply(
                 &server_name,
                 Response::ERR_NOOPERHOST,
-                vec![nick, "TLS connection required for this oper block".to_string()],
+                vec![
+                    nick,
+                    "TLS connection required for this oper block".to_string(),
+                ],
             );
             ctx.sender.send(reply).await?;
             return Ok(());
@@ -164,15 +168,20 @@ impl PostRegHandler for OperHandler {
         }
 
         if let Some(ref required_mask) = oper_block.hostmask {
-            let (user_nick, user_user, user_host) =
-                if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
-                    let user = user_arc.read().await;
-                    (user.nick.clone(), user.user.clone(), user.host.clone())
-                } else {
-                    let hs_nick = ctx.state.nick.clone();
-                    let hs_user = ctx.state.user.clone();
-                    (hs_nick, hs_user, ctx.remote_addr.ip().to_string())
-                };
+            let (user_nick, user_user, user_host) = if let Some(user_arc) = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(ctx.uid)
+                .map(|u| u.value().clone())
+            {
+                let user = user_arc.read().await;
+                (user.nick.clone(), user.user.clone(), user.host.clone())
+            } else {
+                let hs_nick = ctx.state.nick.clone();
+                let hs_user = ctx.state.user.clone();
+                (hs_nick, hs_user, ctx.remote_addr.ip().to_string())
+            };
             let user_mask = format_user_mask(&user_nick, &user_user, &user_host);
 
             if !matches_hostmask(required_mask, &user_mask) {
@@ -204,19 +213,30 @@ impl PostRegHandler for OperHandler {
 
         ctx.state.failed_oper_attempts = 0;
 
-        let (user_nick, user_user, user_host) =
-            if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
-                let user = user_arc.read().await;
-                (user.nick.clone(), user.user.clone(), user.host.clone())
-            } else {
-                (
-                    nick.clone(),
-                    "unknown".to_string(),
-                    ctx.remote_addr.ip().to_string(),
-                )
-            };
+        let (user_nick, user_user, user_host) = if let Some(user_arc) = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(ctx.uid)
+            .map(|u| u.value().clone())
+        {
+            let user = user_arc.read().await;
+            (user.nick.clone(), user.user.clone(), user.host.clone())
+        } else {
+            (
+                nick.clone(),
+                "unknown".to_string(),
+                ctx.remote_addr.ip().to_string(),
+            )
+        };
 
-        if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.value().clone()) {
+        if let Some(user_arc) = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(ctx.uid)
+            .map(|u| u.value().clone())
+        {
             let mut user = user_arc.write().await;
             user.modes.oper = true;
         }
@@ -227,7 +247,13 @@ impl PostRegHandler for OperHandler {
         tracing::info!(nick = %nick, oper_name = %name, "OPER successful");
 
         // Send snomask 'o'
-        ctx.matrix.user_manager.send_snomask('o', &format!("OPER: {} ({}) is now an IRC operator", nick, name)).await;
+        ctx.matrix
+            .user_manager
+            .send_snomask(
+                'o',
+                &format!("OPER: {} ({}) is now an IRC operator", nick, name),
+            )
+            .await;
 
         let reply = server_reply(
             &server_name,

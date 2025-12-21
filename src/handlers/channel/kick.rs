@@ -1,8 +1,7 @@
 //! KICK command handler.
 
-use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler,
-    user_mask_from_state, resolve_nick_to_uid,
+use super::super::{
+    Context, HandlerError, HandlerResult, PostRegHandler, resolve_nick_to_uid, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
@@ -57,7 +56,10 @@ impl PostRegHandler for KickHandler {
         // We'll support both: if N channels, pair with N nicks (or repeat last channel)
         let pairs: Vec<(&str, &str)> = if channel_names.len() == 1 {
             // Single channel, multiple nicks
-            target_nicks.iter().map(|&nick| (channel_names[0], nick)).collect()
+            target_nicks
+                .iter()
+                .map(|&nick| (channel_names[0], nick))
+                .collect()
         } else if channel_names.len() == target_nicks.len() {
             // Equal counts: pair them 1:1
             channel_names.into_iter().zip(target_nicks).collect()
@@ -98,9 +100,7 @@ impl PostRegHandler for KickHandler {
 
             // Request KICK capability from authority (Innovation 4)
             let authority = ctx.authority();
-            let kick_cap = authority
-                .request_kick_cap(ctx.uid, channel_name)
-                .await;
+            let kick_cap = authority.request_kick_cap(ctx.uid, channel_name).await;
 
             // If capability granted, pass it to actor.
             // The actor will verify either the capability OR internal op status.

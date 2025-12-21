@@ -24,7 +24,11 @@ pub fn closing_link_error(addr: &SocketAddr, quit_msg: Option<&str>) -> Message 
         Some(msg) => format!("Closing Link: {} (Quit: {})", addr.ip(), msg),
         None => format!("Closing Link: {} (Client Quit)", addr.ip()),
     };
-    Message { tags: None, prefix: None, command: Command::ERROR(text) }
+    Message {
+        tags: None,
+        prefix: None,
+        command: Command::ERROR(text),
+    }
 }
 
 /// Build an input too long error response.
@@ -46,7 +50,9 @@ pub fn batch_start_msg(server_name: &str, batch_ref: &str) -> Message {
         prefix: Some(Prefix::ServerName(server_name.to_string())),
         command: Command::BATCH(
             format!("+{}", batch_ref),
-            Some(slirc_proto::BatchSubCommand::CUSTOM("labeled-response".to_string())),
+            Some(slirc_proto::BatchSubCommand::CUSTOM(
+                "labeled-response".to_string(),
+            )),
             None,
         ),
     }

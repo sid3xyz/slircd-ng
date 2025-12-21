@@ -37,7 +37,7 @@ pub fn extract_msgid(msg: &slirc_proto::MessageRef<'_>) -> Option<String> {
 /// Standardized span constructors for IRC observability.
 #[allow(dead_code)]
 pub mod spans {
-    use tracing::{info_span, Span};
+    use tracing::{Span, info_span};
 
     /// Create a span for a client connection.
     pub fn connection(uid: &str, ip: &str) -> Span {

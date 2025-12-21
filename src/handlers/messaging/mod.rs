@@ -8,32 +8,32 @@
 //! - Service integration (NickServ, ChanServ)
 //! - Event-sourced history (Innovation 5)
 
+mod accept;
 mod common;
 mod errors;
 mod notice;
 mod privmsg;
-mod accept;
 mod validation;
 
+pub use accept::AcceptHandler;
 pub use notice::NoticeHandler;
 pub use privmsg::PrivmsgHandler;
-pub use accept::AcceptHandler;
 
 use super::{HandlerError, HandlerResult, user_prefix};
-use crate::history::{StoredMessage, MessageEnvelope};
 use crate::history::types::MessageTag as HistoryTag;
+use crate::history::{MessageEnvelope, StoredMessage};
 use async_trait::async_trait;
+use errors::*;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Tag, irc_to_lower};
 use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 use uuid::Uuid;
-use errors::*;
 
 use common::{
-    ChannelRouteResult, RouteOptions, SenderSnapshot, is_shunned_with_snapshot,
-    route_to_channel_with_snapshot, route_to_user_with_snapshot, UserRouteResult,
-    send_cannot_send, send_no_such_channel, send_no_such_nick,
+    ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult, is_shunned_with_snapshot,
+    route_to_channel_with_snapshot, route_to_user_with_snapshot, send_cannot_send,
+    send_no_such_channel, send_no_such_nick,
 };
 
 // ============================================================================
@@ -125,7 +125,11 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         // Build the outgoing TAGMSG using snapshot
         let out_msg = Message {
             tags,
-            prefix: Some(user_prefix(&snapshot.nick, &snapshot.user, &snapshot.visible_host)),
+            prefix: Some(user_prefix(
+                &snapshot.nick,
+                &snapshot.user,
+                &snapshot.visible_host,
+            )),
             command: Command::TAGMSG(target.to_string()),
         };
 
@@ -138,7 +142,17 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         if target.is_channel_name() {
             let channel_lower = irc_to_lower(target);
             // Pass msgid to route function to ensure consistency between echo and history
-            match route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, None, Some(msgid.clone()), &snapshot).await {
+            match route_to_channel_with_snapshot(
+                ctx,
+                &channel_lower,
+                out_msg,
+                &opts,
+                None,
+                Some(msgid.clone()),
+                &snapshot,
+            )
+            .await
+            {
                 ChannelRouteResult::Sent => {
                     debug!(from = %snapshot.nick, to = %target, "TAGMSG to channel");
                     // Suppress ACK for echo-message with labels (echo IS the response)
@@ -148,17 +162,25 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
 
                     // Store TAGMSG in history if +draft/persist tag is present (Innovation 5)
                     if has_persist_tag && ctx.matrix.config.history.should_store_event("TAGMSG") {
-                        let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                        let prefix = format!(
+                            "{}!{}@{}",
+                            snapshot.nick, snapshot.user, snapshot.visible_host
+                        );
                         let nanotime = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_nanos() as i64;
 
                         let history_tags: Option<Vec<HistoryTag>> = if !persist_tags.is_empty() {
-                            Some(persist_tags.iter().map(|t| HistoryTag {
-                                key: t.0.to_string(),
-                                value: t.1.clone(),
-                            }).collect())
+                            Some(
+                                persist_tags
+                                    .iter()
+                                    .map(|t| HistoryTag {
+                                        key: t.0.to_string(),
+                                        value: t.1.clone(),
+                                    })
+                                    .collect(),
+                            )
                         } else {
                             None
                         };
@@ -180,7 +202,13 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                             account: ctx.state.account.clone(),
                         };
 
-                        if let Err(e) = ctx.matrix.service_manager.history.store(target, stored_msg).await {
+                        if let Err(e) = ctx
+                            .matrix
+                            .service_manager
+                            .history
+                            .store(target, stored_msg)
+                            .await
+                        {
                             debug!(error = %e, "Failed to store TAGMSG in history");
                         }
                     }
@@ -189,17 +217,20 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                     send_no_such_channel(ctx, &snapshot.nick, target).await?;
                 }
                 ChannelRouteResult::BlockedExternal => {
-                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_NOT_IN_CHANNEL).await?;
+                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_NOT_IN_CHANNEL)
+                        .await?;
                 }
                 ChannelRouteResult::BlockedModerated => {
                     // TAGMSG doesn't check +m, so this shouldn't happen
                     unreachable!("TAGMSG should not check moderated mode");
                 }
                 ChannelRouteResult::BlockedRegisteredOnly => {
-                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_REGISTERED_ONLY).await?;
+                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_REGISTERED_ONLY)
+                        .await?;
                 }
                 ChannelRouteResult::BlockedRegisteredSpeak => {
-                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_REGISTERED_SPEAK).await?;
+                    send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_REGISTERED_SPEAK)
+                        .await?;
                 }
                 ChannelRouteResult::BlockedCTCP => {
                     // TAGMSG has no CTCP, so this shouldn't happen
@@ -216,22 +247,41 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         } else {
             let target_lower = irc_to_lower(target);
             // Pass msgid to route function to ensure consistency between echo and history
-            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, None, Some(msgid.clone()), &snapshot).await == UserRouteResult::Sent {
+            if route_to_user_with_snapshot(
+                ctx,
+                &target_lower,
+                out_msg,
+                &opts,
+                None,
+                Some(msgid.clone()),
+                &snapshot,
+            )
+            .await
+                == UserRouteResult::Sent
+            {
                 debug!(from = %snapshot.nick, to = %target, "TAGMSG to user");
 
                 // Store TAGMSG in history for DMs if +draft/persist tag is present (Innovation 5)
                 if has_persist_tag && ctx.matrix.config.history.should_store_event("TAGMSG") {
-                    let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                    let prefix = format!(
+                        "{}!{}@{}",
+                        snapshot.nick, snapshot.user, snapshot.visible_host
+                    );
                     let nanotime = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_nanos() as i64;
 
                     let history_tags: Option<Vec<HistoryTag>> = if !persist_tags.is_empty() {
-                        Some(persist_tags.iter().map(|t| HistoryTag {
-                            key: t.0.to_string(),
-                            value: t.1.clone(),
-                        }).collect())
+                        Some(
+                            persist_tags
+                                .iter()
+                                .map(|t| HistoryTag {
+                                    key: t.0.to_string(),
+                                    value: t.1.clone(),
+                                })
+                                .collect(),
+                        )
                     } else {
                         None
                     };
@@ -260,17 +310,18 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                         format!("u:{}", irc_to_lower(&snapshot.nick))
                     };
 
-                    let target_account = if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(&target_lower) {
-                        let uid = uid_ref.value();
-                        if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
-                            let u = user.read().await;
-                            u.account.clone()
+                    let target_account =
+                        if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(&target_lower) {
+                            let uid = uid_ref.value();
+                            if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
+                                let u = user.read().await;
+                                u.account.clone()
+                            } else {
+                                None
+                            }
                         } else {
                             None
-                        }
-                    } else {
-                        None
-                    };
+                        };
 
                     let target_key_part = if let Some(acct) = target_account {
                         format!("a:{}", irc_to_lower(&acct))
@@ -282,7 +333,13 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                     users.sort();
                     let dm_key = format!("dm:{}:{}", users[0], users[1]);
 
-                    if let Err(e) = ctx.matrix.service_manager.history.store(&dm_key, stored_msg).await {
+                    if let Err(e) = ctx
+                        .matrix
+                        .service_manager
+                        .history
+                        .store(&dm_key, stored_msg)
+                        .await
+                    {
                         debug!(error = %e, "Failed to store TAGMSG DM in history");
                     }
                 }

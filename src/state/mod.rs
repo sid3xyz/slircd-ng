@@ -16,21 +16,23 @@ pub mod session;
 mod uid;
 mod user;
 
+pub use crate::sync::SyncManager;
 pub use channel::{ListEntry, MemberModes, Topic};
-pub use matrix::{Matrix, MatrixParams};
-pub use managers::user::UserManager;
 pub use managers::channel::ChannelManager;
+pub use managers::lifecycle::LifecycleManager;
+pub use managers::monitor::MonitorManager;
 pub use managers::security::{SecurityManager, SecurityManagerParams};
 pub use managers::service::ServiceManager;
-pub use managers::monitor::MonitorManager;
-pub use managers::lifecycle::LifecycleManager;
-pub use crate::sync::SyncManager;
+pub use managers::user::UserManager;
+pub use matrix::{Matrix, MatrixParams};
 pub use user::WhowasEntry;
 pub mod actor;
 pub use user::{User, UserModes, UserParams};
 
 // Session state types (Innovation 1: Typestate pattern)
-pub use session::{BatchRouting, RegisteredState, ServerState, SessionState, UnregisteredState, InitiatorData};
+pub use session::{
+    BatchRouting, InitiatorData, RegisteredState, ServerState, SessionState, UnregisteredState,
+};
 
 // Internal re-exports
 pub use uid::Uid;

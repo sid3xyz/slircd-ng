@@ -6,7 +6,7 @@
 use super::super::{Context, HandlerResult, server_reply};
 use crate::security::UserContext;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
-use slirc_proto::{Command, Message, Response, Prefix};
+use slirc_proto::{Command, Message, Prefix, Response};
 use tracing::debug;
 
 // ============================================================================
@@ -48,7 +48,12 @@ impl SenderSnapshot {
     ///
     /// Returns None if the user is not found (shouldn't happen for registered users).
     pub async fn build<S>(ctx: &Context<'_, S>) -> Option<Self> {
-        let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).map(|u| u.clone())?;
+        let user_arc = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(ctx.uid)
+            .map(|u| u.clone())?;
         let user = user_arc.read().await;
         Some(Self {
             nick: user.nick.clone(),
@@ -160,7 +165,12 @@ pub async fn route_to_channel_with_snapshot(
     msgid: Option<String>,
     snapshot: &SenderSnapshot,
 ) -> ChannelRouteResult {
-    let channel_tx = ctx.matrix.channel_manager.channels.get(channel_lower).map(|c| c.clone());
+    let channel_tx = ctx
+        .matrix
+        .channel_manager
+        .channels
+        .get(channel_lower)
+        .map(|c| c.clone());
     let Some(channel_tx) = channel_tx else {
         return ChannelRouteResult::NoSuchChannel;
     };
@@ -226,7 +236,11 @@ pub async fn route_to_user_with_snapshot(
     let target_uid = if let Some(uid) = ctx.matrix.user_manager.nicks.get(target_lower) {
         uid.clone()
     } else {
-        debug!("Target nick '{}' not found in nicks map. Map size: {}", target_lower, ctx.matrix.user_manager.nicks.len());
+        debug!(
+            "Target nick '{}' not found in nicks map. Map size: {}",
+            target_lower,
+            ctx.matrix.user_manager.nicks.len()
+        );
         return UserRouteResult::NoSuchNick;
     };
 
@@ -235,7 +249,12 @@ pub async fn route_to_user_with_snapshot(
 
     // Check away status and notify sender if requested
     if opts.send_away_reply {
-        let target_user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
+        let target_user_arc = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(&target_uid)
+            .map(|u| u.clone());
         if let Some(target_user_arc) = target_user_arc {
             let (target_nick, away_msg) = {
                 let target_user = target_user_arc.read().await;
@@ -246,11 +265,7 @@ pub async fn route_to_user_with_snapshot(
                 let reply = server_reply(
                     ctx.server_name(),
                     Response::RPL_AWAY,
-                    vec![
-                        snapshot.nick.clone(),
-                        target_nick,
-                        away_msg,
-                    ],
+                    vec![snapshot.nick.clone(), target_nick, away_msg],
                 );
                 let _ = ctx.sender.send(reply).await;
             }
@@ -258,10 +273,18 @@ pub async fn route_to_user_with_snapshot(
     }
 
     // Check +R (registered-only PMs) - target only accepts PMs from identified users
-    let target_user_arc = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone());
+    let target_user_arc = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(&target_uid)
+        .map(|u| u.clone());
     if let Some(target_user_arc) = target_user_arc {
         let target_user = target_user_arc.read().await;
-        debug!("Checking +R for target {}: registered_only={}, sender_registered={}", target_user.nick, target_user.modes.registered_only, snapshot.is_registered);
+        debug!(
+            "Checking +R for target {}: registered_only={}, sender_registered={}",
+            target_user.nick, target_user.modes.registered_only, snapshot.is_registered
+        );
         if target_user.modes.registered_only {
             // Use pre-fetched registered status from snapshot
             if !snapshot.is_registered {
@@ -330,11 +353,22 @@ pub async fn route_to_user_with_snapshot(
     let sender_account = snapshot.account.as_ref();
 
     // Check if target is local or remote
-    let target_sender = ctx.matrix.user_manager.senders.get(&target_uid).map(|s| s.clone());
+    let target_sender = ctx
+        .matrix
+        .user_manager
+        .senders
+        .get(&target_uid)
+        .map(|s| s.clone());
 
     if let Some(target_sender) = target_sender {
         // LOCAL USER: Check target's capabilities and build appropriate message
-        let msg_for_target = if let Some(user_arc) = ctx.matrix.user_manager.users.get(&target_uid).map(|u| u.clone()) {
+        let msg_for_target = if let Some(user_arc) = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(&target_uid)
+            .map(|u| u.clone())
+        {
             let user = user_arc.read().await;
             let has_message_tags = user.caps.contains("message-tags");
             let has_server_time = user.caps.contains("server-time");
@@ -464,7 +498,7 @@ pub async fn route_to_user_with_snapshot(
                 };
 
                 let mut routed_msg = Message {
-                    tags: msg.tags.clone(), // Preserve tags
+                    tags: msg.tags.clone(),                      // Preserve tags
                     prefix: Some(Prefix::new_from_str(ctx.uid)), // Use UID as source
                     command: cmd,
                 };
@@ -508,17 +542,20 @@ pub async fn send_cannot_send<S>(
 }
 
 /// Send ERR_NOSUCHCHANNEL.
-pub async fn send_no_such_channel<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
-    let reply = Response::err_nosuchchannel(nick, target)
-        .with_prefix(ctx.server_prefix());
-    ctx.send_error("PRIVMSG", "ERR_NOSUCHCHANNEL", reply).await?;
+pub async fn send_no_such_channel<S>(
+    ctx: &Context<'_, S>,
+    nick: &str,
+    target: &str,
+) -> HandlerResult {
+    let reply = Response::err_nosuchchannel(nick, target).with_prefix(ctx.server_prefix());
+    ctx.send_error("PRIVMSG", "ERR_NOSUCHCHANNEL", reply)
+        .await?;
     Ok(())
 }
 
 /// Send ERR_NOSUCHNICK.
 pub async fn send_no_such_nick<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
-    let reply = Response::err_nosuchnick(nick, target)
-        .with_prefix(ctx.server_prefix());
+    let reply = Response::err_nosuchnick(nick, target).with_prefix(ctx.server_prefix());
     ctx.send_error("PRIVMSG", "ERR_NOSUCHNICK", reply).await?;
     Ok(())
 }

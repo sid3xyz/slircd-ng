@@ -3,8 +3,8 @@
 //! Used when history storage is disabled or unavailable.
 //! All operations succeed but store nothing.
 
+use super::{HistoryError, HistoryProvider, HistoryQuery, StoredMessage};
 use async_trait::async_trait;
-use super::{HistoryProvider, HistoryError, HistoryQuery, StoredMessage};
 use std::time::Duration;
 
 pub struct NoOpProvider;
@@ -23,11 +23,22 @@ impl HistoryProvider for NoOpProvider {
         Ok(0)
     }
 
-    async fn lookup_timestamp(&self, _target: &str, _msgid: &str) -> Result<Option<i64>, HistoryError> {
+    async fn lookup_timestamp(
+        &self,
+        _target: &str,
+        _msgid: &str,
+    ) -> Result<Option<i64>, HistoryError> {
         Ok(None)
     }
 
-    async fn query_targets(&self, _start: i64, _end: i64, _limit: usize, _nick: String, _channels: Vec<String>) -> Result<Vec<(String, i64)>, HistoryError> {
+    async fn query_targets(
+        &self,
+        _start: i64,
+        _end: i64,
+        _limit: usize,
+        _nick: String,
+        _channels: Vec<String>,
+    ) -> Result<Vec<(String, i64)>, HistoryError> {
         Ok(vec![])
     }
 }

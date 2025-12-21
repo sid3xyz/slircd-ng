@@ -1,8 +1,8 @@
 //! Channel access enforcement and auto-mode application.
 
+use super::super::super::Context;
 use crate::db::ChannelRepository;
 use crate::state::{MemberModes, RegisteredState};
-use super::super::super::Context;
 
 /// Check if user should receive auto-op or auto-voice on a registered channel.
 /// Returns Some(MemberModes) if the user has access, None otherwise.

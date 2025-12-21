@@ -153,8 +153,6 @@ impl BanType for Kline {
         }
     }
 
-
-
     fn matches(&self, user_host: &str) -> bool {
         wildcard_match(&self.mask, user_host)
     }
@@ -180,8 +178,6 @@ impl BanType for Dline {
             expires_at,
         }
     }
-
-
 
     fn matches(&self, ip: &str) -> bool {
         wildcard_match(&self.mask, ip) || cidr_match(&self.mask, ip)
@@ -209,8 +205,6 @@ impl BanType for Gline {
         }
     }
 
-
-
     fn matches(&self, user_host: &str) -> bool {
         wildcard_match(&self.mask, user_host)
     }
@@ -236,8 +230,6 @@ impl BanType for Zline {
             expires_at,
         }
     }
-
-
 
     fn matches(&self, ip: &str) -> bool {
         wildcard_match(&self.mask, ip) || cidr_match(&self.mask, ip)
@@ -265,8 +257,6 @@ impl BanType for Rline {
         }
     }
 
-
-
     fn matches(&self, realname: &str) -> bool {
         wildcard_match(&self.mask, realname)
     }
@@ -292,8 +282,6 @@ impl BanType for Shun {
             expires_at,
         }
     }
-
-
 
     fn matches(&self, user_host: &str) -> bool {
         wildcard_match(&self.mask, user_host)

@@ -24,8 +24,8 @@ pub use ops::{TargetUser, force_join_channel, force_part_channel};
 pub use part::PartHandler;
 pub use topic::TopicHandler;
 
-use std::collections::HashMap;
 use crate::handlers::PostRegHandler;
+use std::collections::HashMap;
 
 pub fn register(map: &mut HashMap<&'static str, Box<dyn PostRegHandler>>) {
     map.insert("CYCLE", Box::new(CycleHandler));

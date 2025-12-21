@@ -140,7 +140,13 @@ impl<S: SessionState> UniversalHandler<S> for RegisterHandler {
         }
 
         // Check if account already exists (using NickServ)
-        if ctx.matrix.service_manager.nickserv.account_exists(&target_account).await {
+        if ctx
+            .matrix
+            .service_manager
+            .nickserv
+            .account_exists(&target_account)
+            .await
+        {
             let reply = fail_response(
                 server_name,
                 "ACCOUNT_EXISTS",

@@ -9,7 +9,7 @@
 use crate::state::Matrix;
 use slirc_crdt::clock::ServerId;
 use slirc_proto::{Command, Message, Prefix};
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 /// Handle a netsplit when a server link drops.
 ///
@@ -36,10 +36,16 @@ pub async fn handle_netsplit(
     );
 
     // 1. Calculate all SIDs that are now unreachable
-    let affected_sids = matrix.sync_manager.topology.get_downstream_sids(dead_link_sid);
-    
+    let affected_sids = matrix
+        .sync_manager
+        .topology
+        .get_downstream_sids(dead_link_sid);
+
     if affected_sids.is_empty() {
-        debug!("No servers affected by netsplit from {}", dead_link_sid.as_str());
+        debug!(
+            "No servers affected by netsplit from {}",
+            dead_link_sid.as_str()
+        );
         return;
     }
 
@@ -54,11 +60,11 @@ pub async fn handle_netsplit(
 
     // 2. Mass quit: Find and remove all users from affected servers
     let mut affected_users = Vec::new();
-    
+
     // Collect affected users (users whose UID starts with an affected SID)
     for entry in matrix.user_manager.users.iter() {
         let uid = entry.key();
-        
+
         // Extract SID from UID (first 3 characters)
         if uid.len() >= 3 {
             let user_sid = ServerId::new(uid[0..3].to_string());
@@ -100,11 +106,13 @@ pub async fn handle_netsplit(
         if let Some((_, _)) = matrix.user_manager.users.remove(uid) {
             // Clean up nicks map
             // We need to find the nick to remove
-            let nick_to_remove: Option<String> = matrix.user_manager.nicks
+            let nick_to_remove: Option<String> = matrix
+                .user_manager
+                .nicks
                 .iter()
                 .find(|e| e.value() == uid)
                 .map(|e| e.key().clone());
-            
+
             if let Some(nick) = nick_to_remove {
                 matrix.user_manager.nicks.remove(&nick);
             }
@@ -147,10 +155,10 @@ async fn remove_user_from_channels(matrix: &Matrix, uid: &str) {
     // Send PART event to each channel actor
     for channel_name in channels {
         let channel_lower = slirc_proto::irc_to_lower(&channel_name);
-        
+
         if let Some(channel_tx) = matrix.channel_manager.channels.get(&channel_lower) {
             use crate::state::actor::ChannelEvent;
-            
+
             // Send a netsplit removal event
             // Using the PART event structure but could also be a dedicated event
             let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
@@ -158,7 +166,7 @@ async fn remove_user_from_channels(matrix: &Matrix, uid: &str) {
                 uid: uid.to_string(),
                 reply_tx,
             };
-            
+
             // Send and don't wait for response (async cleanup)
             let _ = channel_tx.send(event).await;
         }

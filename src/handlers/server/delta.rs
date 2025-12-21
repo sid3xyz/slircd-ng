@@ -23,14 +23,17 @@ impl ServerHandler for DeltaHandler {
         match delta_type {
             "USER" => {
                 tracing::info!(from = %ctx.state.name, "Processing USER DELTA");
-                let user_crdt: slirc_crdt::user::UserCrdt = serde_json::from_str(payload)
-                    .map_err(|e| {
+                let user_crdt: slirc_crdt::user::UserCrdt =
+                    serde_json::from_str(payload).map_err(|e| {
                         warn!(error = %e, "Failed to parse USER DELTA payload");
                         HandlerError::ProtocolError("Invalid USER DELTA payload".to_string())
                     })?;
                 ctx.matrix
                     .user_manager
-                    .merge_user_crdt(user_crdt, Some(slirc_crdt::clock::ServerId::new(ctx.state.sid.clone())))
+                    .merge_user_crdt(
+                        user_crdt,
+                        Some(slirc_crdt::clock::ServerId::new(ctx.state.sid.clone())),
+                    )
                     .await;
             }
             "CHANNEL" => {

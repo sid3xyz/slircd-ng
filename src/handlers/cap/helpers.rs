@@ -33,12 +33,10 @@ pub fn build_cap_list_tokens(
                             Some("sasl=PLAIN".to_string())
                         }
                     }
-                    Capability::Multiline => {
-                        Some(format!(
-                            "draft/multiline=max-bytes={},max-lines={}",
-                            MULTILINE_MAX_BYTES, MULTILINE_MAX_LINES
-                        ))
-                    }
+                    Capability::Multiline => Some(format!(
+                        "draft/multiline=max-bytes={},max-lines={}",
+                        MULTILINE_MAX_BYTES, MULTILINE_MAX_LINES
+                    )),
                     Capability::AccountRegistration => {
                         // Build flags based on server configuration
                         let mut flags = Vec::with_capacity(3);

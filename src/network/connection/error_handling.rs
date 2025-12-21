@@ -3,9 +3,9 @@
 //! Provides classification and conversion of transport and handler errors
 //! into appropriate IRC protocol responses.
 
+use slirc_proto::Message;
 use slirc_proto::error::ProtocolError;
 use slirc_proto::transport::TransportReadError;
-use slirc_proto::Message;
 
 use crate::error::HandlerError;
 

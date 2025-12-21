@@ -3,9 +3,9 @@
 //! These commands require operator privileges and use capability-based
 //! authorization (Innovation 4) for access control.
 
-use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, get_nick_or_star,
-    server_notice, server_reply,
+use super::super::{
+    Context, HandlerError, HandlerResult, PostRegHandler, get_nick_or_star, server_notice,
+    server_reply,
 };
 use crate::state::RegisteredState;
 use async_trait::async_trait;
@@ -30,8 +30,7 @@ impl PostRegHandler for DieHandler {
         let _die_cap = match authority.request_die_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
-                let reply = Response::err_noprivileges(&nick)
-                    .with_prefix(ctx.server_prefix());
+                let reply = Response::err_noprivileges(&nick).with_prefix(ctx.server_prefix());
                 ctx.send_error("DIE", "ERR_NOPRIVILEGES", reply).await?;
                 return Ok(());
             }
@@ -47,13 +46,17 @@ impl PostRegHandler for DieHandler {
 
         tracing::warn!(oper = %nick, "DIE command issued - initiating shutdown");
 
-        ctx.matrix.lifecycle_manager.shutdown_tx.send(()).map_err(|_| {
-            tracing::error!("Failed to send shutdown signal - no receivers");
-            HandlerError::Send(mpsc::error::SendError(slirc_proto::Message::notice(
-                "*",
-                "Shutdown signal failed",
-            )))
-        })?;
+        ctx.matrix
+            .lifecycle_manager
+            .shutdown_tx
+            .send(())
+            .map_err(|_| {
+                tracing::error!("Failed to send shutdown signal - no receivers");
+                HandlerError::Send(mpsc::error::SendError(slirc_proto::Message::notice(
+                    "*",
+                    "Shutdown signal failed",
+                )))
+            })?;
 
         Ok(())
     }
@@ -77,8 +80,7 @@ impl PostRegHandler for RehashHandler {
         let _rehash_cap = match authority.request_rehash_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
-                let reply = Response::err_noprivileges(&nick)
-                    .with_prefix(ctx.server_prefix());
+                let reply = Response::err_noprivileges(&nick).with_prefix(ctx.server_prefix());
                 ctx.send_error("REHASH", "ERR_NOPRIVILEGES", reply).await?;
                 return Ok(());
             }
@@ -156,8 +158,7 @@ impl PostRegHandler for RestartHandler {
         let _restart_cap = match authority.request_restart_cap(ctx.uid).await {
             Some(cap) => cap,
             None => {
-                let reply = Response::err_noprivileges(&nick)
-                    .with_prefix(ctx.server_prefix());
+                let reply = Response::err_noprivileges(&nick).with_prefix(ctx.server_prefix());
                 ctx.send_error("RESTART", "ERR_NOPRIVILEGES", reply).await?;
                 return Ok(());
             }
@@ -173,13 +174,17 @@ impl PostRegHandler for RestartHandler {
 
         tracing::warn!(oper = %nick, "RESTART command issued - exec restarting");
 
-        ctx.matrix.lifecycle_manager.shutdown_tx.send(()).map_err(|_| {
-            tracing::error!("Failed to send shutdown signal - no receivers");
-            HandlerError::Send(mpsc::error::SendError(slirc_proto::Message::notice(
-                "*",
-                "Shutdown signal failed",
-            )))
-        })?;
+        ctx.matrix
+            .lifecycle_manager
+            .shutdown_tx
+            .send(())
+            .map_err(|_| {
+                tracing::error!("Failed to send shutdown signal - no receivers");
+                HandlerError::Send(mpsc::error::SendError(slirc_proto::Message::notice(
+                    "*",
+                    "Shutdown signal failed",
+                )))
+            })?;
 
         tracing::info!("RESTART: Shutting down (use process supervisor for automatic restart)");
 

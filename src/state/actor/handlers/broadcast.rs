@@ -48,11 +48,16 @@ impl ChannelActor {
         let s2s_msg = match &msg.command {
             Command::PRIVMSG(target, text) => {
                 // Get source UID from prefix or excluded UID
-                let source_uid = msg.prefix.as_ref()
+                let source_uid = msg
+                    .prefix
+                    .as_ref()
                     .map(|p| match p {
                         Prefix::Nickname(nick, _, _) => {
                             // Try to resolve nick to UID
-                            matrix.user_manager.nicks.get(nick)
+                            matrix
+                                .user_manager
+                                .nicks
+                                .get(nick)
                                 .map(|uid| uid.clone())
                                 .unwrap_or_else(|| nick.clone())
                         }
@@ -69,13 +74,16 @@ impl ChannelActor {
                 }
             }
             Command::NOTICE(target, text) => {
-                let source_uid = msg.prefix.as_ref()
+                let source_uid = msg
+                    .prefix
+                    .as_ref()
                     .map(|p| match p {
-                        Prefix::Nickname(nick, _, _) => {
-                            matrix.user_manager.nicks.get(nick)
-                                .map(|uid| uid.clone())
-                                .unwrap_or_else(|| nick.clone())
-                        }
+                        Prefix::Nickname(nick, _, _) => matrix
+                            .user_manager
+                            .nicks
+                            .get(nick)
+                            .map(|uid| uid.clone())
+                            .unwrap_or_else(|| nick.clone()),
                         Prefix::ServerName(name) => name.clone(),
                     })
                     .or_else(|| exclude_uid.cloned());

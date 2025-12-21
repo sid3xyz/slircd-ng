@@ -33,8 +33,6 @@ impl ChanServ {
             return self.error_reply(uid, "Channel name must start with #");
         }
 
-
-
         let reason = if args.len() > 2 {
             args[2..].join(" ")
         } else {
@@ -89,7 +87,10 @@ impl ChanServ {
         let channel_sender = if let Some(c) = matrix.channel_manager.channels.get(&channel_lower) {
             c.clone()
         } else {
-             return self.error_reply(uid, &format!("Channel \x02{}\x02 does not exist.", channel_name));
+            return self.error_reply(
+                uid,
+                &format!("Channel \x02{}\x02 does not exist.", channel_name),
+            );
         };
 
         let sender_prefix = slirc_proto::Prefix::new(

@@ -3,7 +3,9 @@
 //! Processes channel join requests with ban/invite/key validation.
 
 use super::super::validation::{create_user_mask, is_banned};
-use super::{ActorState, ChannelActor, ChannelError, ChannelMode, JoinParams, JoinSuccessData, MemberModes};
+use super::{
+    ActorState, ChannelActor, ChannelError, ChannelMode, JoinParams, JoinSuccessData, MemberModes,
+};
 use tokio::sync::oneshot;
 use tracing::debug;
 
@@ -33,7 +35,11 @@ impl ChannelActor {
 
         // Validate that the user still exists and the session matches.
         let session_valid = if let Some(matrix) = self.matrix.upgrade() {
-            let user_arc = matrix.user_manager.users.get(&uid).map(|u| u.value().clone());
+            let user_arc = matrix
+                .user_manager
+                .users
+                .get(&uid)
+                .map(|u| u.value().clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.session_id == session_id
@@ -56,13 +62,15 @@ impl ChannelActor {
         let is_invited = self.is_invited(&uid);
 
         // Check for invite exceptions (+I mode)
-        let is_invex = self.invex.iter().any(|i| {
-            crate::security::matches_ban_or_except(&i.mask, &user_mask, &user_context)
-        });
+        let is_invex = self
+            .invex
+            .iter()
+            .any(|i| crate::security::matches_ban_or_except(&i.mask, &user_mask, &user_context));
 
         // 1. Bans (+b) - invites and invex exempt from ban
         // CRITICAL FIX: is_invited MUST exempt from bans (RFC 2812, irctest testInviteExemptsFromBan)
-        if !is_invex && !is_invited
+        if !is_invex
+            && !is_invited
             && is_banned(&user_mask, &user_context, &self.bans, &self.excepts)
         {
             let _ = reply_tx.send(Err(ChannelError::BannedFromChan));
@@ -70,9 +78,7 @@ impl ChannelActor {
         }
 
         // 2. Invite Only (+i)
-        if self.modes.contains(&ChannelMode::InviteOnly)
-            && !is_invited && !is_invex
-        {
+        if self.modes.contains(&ChannelMode::InviteOnly) && !is_invited && !is_invex {
             let _ = reply_tx.send(Err(ChannelError::InviteOnlyChan));
             return;
         }
@@ -157,27 +163,41 @@ impl ChannelActor {
         let is_auditorium = self.modes.contains(&ChannelMode::Auditorium);
 
         // Check if joiner is privileged
-        let joiner_privileged = self.members.get(&uid).map(|m|
-            m.voice || m.halfop || m.op || m.admin || m.owner
-        ).unwrap_or(false);
+        let joiner_privileged = self
+            .members
+            .get(&uid)
+            .map(|m| m.voice || m.halfop || m.op || m.admin || m.owner)
+            .unwrap_or(false);
 
         if is_auditorium && !joiner_privileged {
-            debug!("Auditorium mode active. Joiner {} is not privileged. Calculating exclusions.", uid);
+            debug!(
+                "Auditorium mode active. Joiner {} is not privileged. Calculating exclusions.",
+                uid
+            );
             // If +u and joiner is not privileged, only privileged members see the JOIN.
             // So we exclude all non-privileged members.
             for (member_uid, modes) in &self.members {
                 if !modes.voice && !modes.halfop && !modes.op && !modes.admin && !modes.owner {
                     // Don't exclude the joiner again (already in exclude)
                     if member_uid != &uid {
-                        debug!("Excluding non-privileged member {} from seeing join of {}", member_uid, uid);
+                        debug!(
+                            "Excluding non-privileged member {} from seeing join of {}",
+                            member_uid, uid
+                        );
                         exclude.push(member_uid.clone());
                     }
                 } else {
-                    debug!("Member {} is privileged (modes={:?}), allowing join visibility", member_uid, modes);
+                    debug!(
+                        "Member {} is privileged (modes={:?}), allowing join visibility",
+                        member_uid, modes
+                    );
                 }
             }
         } else {
-            debug!("Auditorium check skipped. is_auditorium={}, joiner_privileged={}", is_auditorium, joiner_privileged);
+            debug!(
+                "Auditorium check skipped. is_auditorium={}, joiner_privileged={}",
+                is_auditorium, joiner_privileged
+            );
         }
 
         self.handle_broadcast_with_cap(

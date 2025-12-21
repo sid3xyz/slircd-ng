@@ -2,20 +2,21 @@
 //!
 //! Per RFC 2812, NOTICE errors are silently ignored (no error replies).
 
-use super::super::{Context,
-    HandlerError, HandlerResult, PostRegHandler, user_prefix,
+use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_prefix};
+use super::common::{
+    ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult,
+    route_to_channel_with_snapshot, route_to_user_with_snapshot,
 };
-use crate::state::RegisteredState;
-use super::common::{ChannelRouteResult, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot, route_to_user_with_snapshot, UserRouteResult};
 use super::validation::{ErrorStrategy, validate_message_send};
-use crate::history::{StoredMessage, MessageEnvelope};
 use crate::history::types::MessageTag as HistoryTag;
+use crate::history::{MessageEnvelope, StoredMessage};
+use crate::state::RegisteredState;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, irc_to_lower};
 use std::time::{SystemTime, UNIX_EPOCH};
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
 use tracing::debug;
+use uuid::Uuid;
 
 // ============================================================================
 // NOTICE Handler
@@ -78,7 +79,8 @@ impl PostRegHandler for NoticeHandler {
         let millis = duration.as_millis() as i64;
         let nanotime = millis * 1_000_000;
 
-        let dt = DateTime::<Utc>::from_timestamp(millis / 1000, (millis % 1000) as u32 * 1_000_000).unwrap_or_default();
+        let dt = DateTime::<Utc>::from_timestamp(millis / 1000, (millis % 1000) as u32 * 1_000_000)
+            .unwrap_or_default();
         let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let msgid = Uuid::new_v4().to_string();
 
@@ -86,10 +88,15 @@ impl PostRegHandler for NoticeHandler {
         let history_tags: Option<Vec<HistoryTag>> = if preserved_tags.is_empty() {
             None
         } else {
-            Some(preserved_tags.iter().map(|t| HistoryTag {
-                key: t.0.to_string(),
-                value: t.1.as_ref().map(|v| v.to_string()),
-            }).collect())
+            Some(
+                preserved_tags
+                    .iter()
+                    .map(|t| HistoryTag {
+                        key: t.0.to_string(),
+                        value: t.1.as_ref().map(|v| v.to_string()),
+                    })
+                    .collect(),
+            )
         };
 
         // Build the outgoing message with preserved tags (client tags + label)
@@ -99,7 +106,11 @@ impl PostRegHandler for NoticeHandler {
             } else {
                 Some(preserved_tags)
             },
-            prefix: Some(user_prefix(&snapshot.nick, &snapshot.user, &snapshot.visible_host)),
+            prefix: Some(user_prefix(
+                &snapshot.nick,
+                &snapshot.user,
+                &snapshot.visible_host,
+            )),
             command: Command::NOTICE(target.to_string(), text.to_string()),
         };
 
@@ -137,8 +148,16 @@ impl PostRegHandler for NoticeHandler {
                 if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                     ctx.suppress_labeled_ack = true;
                 }
-            } else if let ChannelRouteResult::Sent =
-                route_to_channel_with_snapshot(ctx, &channel_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await
+            } else if let ChannelRouteResult::Sent = route_to_channel_with_snapshot(
+                ctx,
+                &channel_lower,
+                out_msg,
+                &opts,
+                Some(timestamp_iso.clone()),
+                Some(msgid.clone()),
+                &snapshot,
+            )
+            .await
             {
                 debug!(from = %snapshot.nick, to = %target, "NOTICE to channel");
                 // Suppress ACK for echo-message with labels (echo IS the response)
@@ -147,7 +166,10 @@ impl PostRegHandler for NoticeHandler {
                 }
 
                 // Store message in history
-                let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                let prefix = format!(
+                    "{}!{}@{}",
+                    snapshot.nick, snapshot.user, snapshot.visible_host
+                );
                 let envelope = MessageEnvelope {
                     command: "NOTICE".to_string(),
                     prefix: prefix.clone(),
@@ -163,18 +185,38 @@ impl PostRegHandler for NoticeHandler {
                     nanotime,
                     account: ctx.state.account.clone(),
                 };
-                if let Err(e) = ctx.matrix.service_manager.history.store(target, stored_msg).await {
+                if let Err(e) = ctx
+                    .matrix
+                    .service_manager
+                    .history
+                    .store(target, stored_msg)
+                    .await
+                {
                     debug!(error = %e, "Failed to store NOTICE in history");
                 }
             }
             // All errors silently ignored for NOTICE
         } else {
             let target_lower = irc_to_lower(routing_target);
-            if route_to_user_with_snapshot(ctx, &target_lower, out_msg, &opts, Some(timestamp_iso.clone()), Some(msgid.clone()), &snapshot).await == UserRouteResult::Sent {
+            if route_to_user_with_snapshot(
+                ctx,
+                &target_lower,
+                out_msg,
+                &opts,
+                Some(timestamp_iso.clone()),
+                Some(msgid.clone()),
+                &snapshot,
+            )
+            .await
+                == UserRouteResult::Sent
+            {
                 debug!(from = %snapshot.nick, to = %target, "NOTICE to user");
 
                 // Store message in history (DMs)
-                let prefix = format!("{}!{}@{}", snapshot.nick, snapshot.user, snapshot.visible_host);
+                let prefix = format!(
+                    "{}!{}@{}",
+                    snapshot.nick, snapshot.user, snapshot.visible_host
+                );
                 let envelope = MessageEnvelope {
                     command: "NOTICE".to_string(),
                     prefix: prefix.clone(),
@@ -192,11 +234,23 @@ impl PostRegHandler for NoticeHandler {
                 };
 
                 // Store for recipient
-                if let Err(e) = ctx.matrix.service_manager.history.store(target, stored_msg.clone()).await {
+                if let Err(e) = ctx
+                    .matrix
+                    .service_manager
+                    .history
+                    .store(target, stored_msg.clone())
+                    .await
+                {
                     debug!(error = %e, "Failed to store NOTICE DM for recipient");
                 }
                 // Store for sender
-                if let Err(e) = ctx.matrix.service_manager.history.store(&snapshot.nick, stored_msg).await {
+                if let Err(e) = ctx
+                    .matrix
+                    .service_manager
+                    .history
+                    .store(&snapshot.nick, stored_msg)
+                    .await
+                {
                     debug!(error = %e, "Failed to store NOTICE DM for sender");
                 }
             }

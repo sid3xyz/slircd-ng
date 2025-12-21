@@ -3,9 +3,9 @@
 //! This module defines the `StateObserver` trait, which allows the `SyncManager`
 //! to hook into local state changes and broadcast them as `DELTA` updates.
 
-use slirc_crdt::user::UserCrdt;
 use slirc_crdt::channel::ChannelCrdt;
 use slirc_crdt::clock::ServerId;
+use slirc_crdt::user::UserCrdt;
 
 /// Trait for observing local state changes.
 ///

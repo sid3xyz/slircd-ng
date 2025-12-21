@@ -32,8 +32,8 @@ use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, MessageRef, Response};
 
-use creation::join_channel;
 use crate::telemetry::spans;
+use creation::join_channel;
 use tracing::Instrument;
 
 pub struct JoinHandler;
@@ -61,7 +61,12 @@ impl PostRegHandler for JoinHandler {
 
             // Check join rate limit before processing any channels
             let uid_string = ctx.uid.to_string();
-            if !ctx.matrix.security_manager.rate_limiter.check_join_rate(&uid_string) {
+            if !ctx
+                .matrix
+                .security_manager
+                .rate_limiter
+                .check_join_rate(&uid_string)
+            {
                 let nick = ctx.state.nick.clone();
                 let reply = server_reply(
                     ctx.server_name(),
@@ -132,7 +137,11 @@ impl PostRegHandler for JoinHandler {
 async fn leave_all_channels(ctx: &mut Context<'_, RegisteredState>) -> HandlerResult {
     // Single user read for both mask and channel list
     let (nick, user_name, host, channels): (String, String, String, Vec<String>) = {
-        let user_ref = ctx.matrix.user_manager.users.get(ctx.uid)
+        let user_ref = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(ctx.uid)
             .ok_or(HandlerError::NickOrUserMissing)?;
         let user = user_ref.read().await;
         (

@@ -2,10 +2,7 @@
 //!
 //! Additional server query commands for network information.
 
-use super::super::{
-    Context, HandlerResult, PostRegHandler,
-    get_oper_info,
-};
+use super::super::{Context, HandlerResult, PostRegHandler, get_oper_info};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -140,17 +137,17 @@ impl PostRegHandler for UseripHandler {
         };
 
         if !is_oper {
-            let reply = Response::err_noprivileges(nick)
-                .with_prefix(ctx.server_prefix());
+            let reply = Response::err_noprivileges(nick).with_prefix(ctx.server_prefix());
             ctx.send_error("USERIP", "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         }
 
         // Need at least one nickname
         if msg.arg(0).is_none() {
-            let reply = Response::err_needmoreparams(nick, "USERIP")
-                .with_prefix(ctx.server_prefix());
-            ctx.send_error("USERIP", "ERR_NEEDMOREPARAMS", reply).await?;
+            let reply =
+                Response::err_needmoreparams(nick, "USERIP").with_prefix(ctx.server_prefix());
+            ctx.send_error("USERIP", "ERR_NEEDMOREPARAMS", reply)
+                .await?;
             return Ok(());
         }
 
@@ -167,7 +164,12 @@ impl PostRegHandler for UseripHandler {
             let lower_nick = slirc_proto::irc_to_lower(target_nick);
             if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(&lower_nick) {
                 let uid = uid_ref.value();
-                let user_arc = ctx.matrix.user_manager.users.get(uid).map(|u| u.value().clone());
+                let user_arc = ctx
+                    .matrix
+                    .user_manager
+                    .users
+                    .get(uid)
+                    .map(|u| u.value().clone());
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
                     // Format: nick[*]=+user@host

@@ -48,7 +48,8 @@ impl ChannelActor {
         // Record timestamp for boolean mode changes
         if changed {
             if let Some(mode_char) = Self::mode_to_char(&flag) {
-                self.mode_timestamps.insert(mode_char, HybridTimestamp::now(&self.server_id));
+                self.mode_timestamps
+                    .insert(mode_char, HybridTimestamp::now(&self.server_id));
             }
         }
 

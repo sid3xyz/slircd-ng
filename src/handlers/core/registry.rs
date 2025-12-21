@@ -16,8 +16,6 @@
 
 use super::context::{Context, HandlerResult};
 use super::traits::{DynUniversalHandler, PostRegHandler, PreRegHandler, ServerHandler};
-use crate::state::{RegisteredState, ServerState, UnregisteredState};
-use slirc_proto::{Response};
 use crate::handlers::{
     account::RegisterHandler,
     admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler},
@@ -28,11 +26,16 @@ use crate::handlers::{
     messaging::{AcceptHandler, NoticeHandler, PrivmsgHandler, TagmsgHandler},
     mode::ModeHandler,
     monitor::MonitorHandler,
-    server::{BurstHandler, delta::DeltaHandler, ServerHandshakeHandler, ServerPropagationHandler, routing::RoutedMessageHandler},
+    server::{
+        BurstHandler, ServerHandshakeHandler, ServerPropagationHandler, delta::DeltaHandler,
+        routing::RoutedMessageHandler,
+    },
     service_aliases::{CsHandler, NsHandler},
     user_status::{AwayHandler, SetnameHandler, SilenceHandler},
 };
+use crate::state::{RegisteredState, ServerState, UnregisteredState};
 use crate::telemetry::CommandTimer;
+use slirc_proto::Response;
 use slirc_proto::{ChannelExt, MessageRef};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -84,7 +87,11 @@ impl Registry {
         pre_reg_handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
 
         // Connection handlers (Universal + Pre-reg)
-        crate::handlers::connection::register(&mut pre_reg_handlers, &mut universal_handlers, webirc_blocks);
+        crate::handlers::connection::register(
+            &mut pre_reg_handlers,
+            &mut universal_handlers,
+            webirc_blocks,
+        );
 
         // Server-to-server handshake
         pre_reg_handlers.insert("SERVER", Box::new(ServerHandshakeHandler));
@@ -97,7 +104,10 @@ impl Registry {
         server_handlers.insert("SERVER", Box::new(ServerPropagationHandler));
         server_handlers.insert("PRIVMSG", Box::new(RoutedMessageHandler));
         server_handlers.insert("NOTICE", Box::new(RoutedMessageHandler));
-        server_handlers.insert("BATCH", Box::new(crate::handlers::batch::server::ServerBatchHandler));
+        server_handlers.insert(
+            "BATCH",
+            Box::new(crate::handlers::batch::server::ServerBatchHandler),
+        );
 
         // ====================================================================
         // Post-registration handlers (require completed registration)
@@ -245,7 +255,9 @@ impl Registry {
             crate::metrics::record_command_error(&cmd_name, "not_registered");
             Err(super::context::HandlerError::NotRegistered)
         } else {
-            Err(super::context::HandlerError::UnknownCommand(cmd_name.clone()))
+            Err(super::context::HandlerError::UnknownCommand(
+                cmd_name.clone(),
+            ))
         };
 
         // Copy values needed for error handling before passing ctx as mutable
@@ -253,7 +265,8 @@ impl Registry {
         let nick = ctx.state.nick.clone();
 
         // Record errors for metrics
-        self.handle_dispatch_result(&uid, nick.as_deref(), &cmd_name, result, ctx).await
+        self.handle_dispatch_result(&uid, nick.as_deref(), &cmd_name, result, ctx)
+            .await
     }
 
     /// Dispatch a message to a post-registration handler.
@@ -314,7 +327,9 @@ impl Registry {
             crate::metrics::record_command_error(&cmd_name, "already_registered");
             Err(super::context::HandlerError::AlreadyRegistered)
         } else {
-            Err(super::context::HandlerError::UnknownCommand(cmd_name.clone()))
+            Err(super::context::HandlerError::UnknownCommand(
+                cmd_name.clone(),
+            ))
         };
 
         // Copy values needed for error handling before passing ctx as mutable
@@ -322,7 +337,8 @@ impl Registry {
         let nick = ctx.state.nick.clone();
 
         // Record errors for metrics
-        self.handle_dispatch_result(&uid, Some(&nick), &cmd_name, result, ctx).await
+        self.handle_dispatch_result(&uid, Some(&nick), &cmd_name, result, ctx)
+            .await
     }
 
     /// Dispatch a message to the appropriate handler for server-to-server connections.
@@ -371,7 +387,8 @@ impl Registry {
         .await;
 
         // Record errors for metrics
-        self.handle_dispatch_result(ctx.uid, None, &cmd_name, result, ctx).await
+        self.handle_dispatch_result(ctx.uid, None, &cmd_name, result, ctx)
+            .await
     }
 
     /// Common result handling for both dispatch methods.
