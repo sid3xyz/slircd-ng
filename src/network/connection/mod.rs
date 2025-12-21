@@ -23,14 +23,21 @@
 //!    └─────────────────────────────────────────────────────┘
 //! ```
 
+mod context;
 mod error_handling;
-mod lifecycle;
+mod event_loop;
+mod handshake;
+mod helpers;
+mod server_loop;
 
-use lifecycle::{run_handshake_loop, run_event_loop, ConnectionContext, LifecycleChannels};
+use context::{ConnectionContext, LifecycleChannels};
+use event_loop::run_event_loop;
+use handshake::{HandshakeSuccess, run_handshake_loop};
+use server_loop::run_server_loop;
 
 use crate::db::Database;
 use crate::handlers::Registry;
-use crate::state::{Matrix, UnregisteredState};
+use crate::state::{Matrix, UnregisteredState, InitiatorData};
 use slirc_proto::transport::ZeroCopyTransportEnum;
 use slirc_proto::Message;
 use std::net::SocketAddr;
@@ -52,6 +59,8 @@ pub struct Connection {
     db: Database,
     /// TLS acceptor for STARTTLS upgrade (only available on plaintext connections).
     starttls_acceptor: Option<TlsAcceptor>,
+    /// Data for initiating a server connection.
+    initiator_data: Option<InitiatorData>,
 }
 
 impl Connection {
@@ -68,14 +77,20 @@ impl Connection {
         db: Database,
         starttls_acceptor: Option<TlsAcceptor>,
     ) -> Self {
+        let mut transport = ZeroCopyTransportEnum::tcp(stream);
+        // Enforce RFC 1459/2812 512-byte limit for client connections.
+        // IRCv3 tags are handled separately by the transport validator.
+        transport.set_max_line_len(512);
+
         Self {
             uid,
             addr,
             matrix,
             registry,
-            transport: ZeroCopyTransportEnum::tcp(stream),
+            transport,
             db,
             starttls_acceptor,
+            initiator_data: None,
         }
     }
 
@@ -88,15 +103,27 @@ impl Connection {
         registry: Arc<Registry>,
         db: Database,
     ) -> Self {
+        let mut transport = ZeroCopyTransportEnum::tls(stream);
+        // Enforce RFC 1459/2812 512-byte limit for client connections.
+        transport.set_max_line_len(512);
+
         Self {
             uid,
             addr,
             matrix,
             registry,
-            transport: ZeroCopyTransportEnum::tls(stream),
+            transport,
             db,
             starttls_acceptor: None, // Already TLS, no STARTTLS needed
+            initiator_data: None,
         }
+    }
+
+    /// Set initiator data for outgoing server connections.
+    #[allow(dead_code)]
+    pub fn with_initiator_data(mut self, data: InitiatorData) -> Self {
+        self.initiator_data = Some(data);
+        self
     }
 
     /// Create a new WebSocket connection handler.
@@ -116,6 +143,7 @@ impl Connection {
             transport: ZeroCopyTransportEnum::websocket(stream),
             db,
             starttls_acceptor: None, // WebSocket doesn't support STARTTLS
+            initiator_data: None,
         }
     }
 
@@ -145,7 +173,10 @@ impl Connection {
         let (handshake_tx, mut handshake_rx) = mpsc::channel::<Message>(64);
 
         // Unregistered state for this connection
-        let mut unreg_state = UnregisteredState::default();
+        let mut unreg_state = UnregisteredState {
+            initiator_data: self.initiator_data,
+            ..Default::default()
+        };
 
         // Set +Z mode if TLS connection
         if is_tls {
@@ -153,7 +184,7 @@ impl Connection {
         }
 
         // Phase 1: Handshake
-        if let Err(exit) = run_handshake_loop(
+        let success = match run_handshake_loop(
             ConnectionContext {
                 uid: &self.uid,
                 transport: &mut self.transport,
@@ -171,55 +202,100 @@ impl Connection {
         )
         .await
         {
-            exit.release_nick(&self.matrix);
-            return Ok(());
-        }
-
-        // Transition: UnregisteredState -> RegisteredState
-        // At this point, the user is registered and exists in Matrix.
-        // Convert the state for Phase 2.
-        let mut reg_state = match unreg_state.try_register() {
-            Ok(state) => state,
-            Err(_unreg) => {
-                // This should not happen if handshake loop exited correctly,
-                // but handle gracefully rather than panicking the connection task.
-                error!(uid = %self.uid, "Registration state mismatch - closing connection");
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Registration state mismatch",
-                ).into());
+            Ok(s) => s,
+            Err(exit) => {
+                exit.release_nick(&self.matrix);
+                return Ok(());
             }
         };
 
-        // Phase 2: Unified Event Loop
-        let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<Message>(32);
-        self.matrix.register_sender(&self.uid, outgoing_tx.clone());
+        match success {
+            HandshakeSuccess::User => {
+                // Transition: UnregisteredState -> RegisteredState
+                // At this point, the user is registered and exists in Matrix.
+                // Convert the state for Phase 2.
+                let mut reg_state = match unreg_state.try_register() {
+                    Ok(state) => state,
+                    Err(_unreg) => {
+                        // This should not happen if handshake loop exited correctly,
+                        // but handle gracefully rather than panicking the connection task.
+                        error!(uid = %self.uid, "Registration state mismatch - closing connection");
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "Registration state mismatch",
+                        ).into());
+                    }
+                };
 
-        let quit_message = run_event_loop(
-            ConnectionContext {
-                uid: &self.uid,
-                transport: &mut self.transport,
-                matrix: &self.matrix,
-                registry: &self.registry,
-                db: &self.db,
-                addr: self.addr,
-                starttls_acceptor: None, // STARTTLS not available after registration
-            },
-            LifecycleChannels {
-                tx: &outgoing_tx,
-                rx: &mut outgoing_rx,
-            },
-            &mut reg_state,
-        )
-        .await;
+                // Phase 2: Unified Event Loop
+                let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<Message>(32);
+                self.matrix.register_sender(&self.uid, outgoing_tx.clone());
 
-        // Canonical cleanup for normal disconnects.
-        // If the user was already removed from the Matrix (KILL/enforcement/slow-consumer),
-        // this will no-op.
-        let quit_text = quit_message.unwrap_or_else(|| "Client Quit".to_string());
-        let _ = self.matrix.disconnect_user(&self.uid, &quit_text).await;
+                let quit_message = run_event_loop(
+                    ConnectionContext {
+                        uid: &self.uid,
+                        transport: &mut self.transport,
+                        matrix: &self.matrix,
+                        registry: &self.registry,
+                        db: &self.db,
+                        addr: self.addr,
+                        starttls_acceptor: None, // STARTTLS not available after registration
+                    },
+                    LifecycleChannels {
+                        tx: &outgoing_tx,
+                        rx: &mut outgoing_rx,
+                    },
+                    &mut reg_state,
+                )
+                .await;
 
-        info!("Client disconnected");
+                // Canonical cleanup for normal disconnects.
+                // If the user was already removed from the Matrix (KILL/enforcement/slow-consumer),
+                // this will no-op.
+                let quit_text = quit_message.unwrap_or_else(|| "Client Quit".to_string());
+                let _ = self.matrix.disconnect_user(&self.uid, &quit_text).await;
+
+                info!("Client disconnected");
+            }
+            HandshakeSuccess::Server => {
+                // Transition: UnregisteredState -> ServerState
+                // If we didn't initiate (initiator_data is None), we must send handshake now.
+                let send_handshake = unreg_state.initiator_data.is_none();
+
+                let server_state = match unreg_state.try_register_server() {
+                    Ok(state) => state,
+                    Err(_) => {
+                        error!(uid = %self.uid, "Server registration state mismatch");
+                        return Ok(());
+                    }
+                };
+
+                info!(
+                    name = %server_state.name,
+                    sid = %server_state.sid,
+                    "Server registered - starting sync loop"
+                );
+
+                // Phase 2: Server Sync Loop
+                if let Err(e) = run_server_loop(
+                    ConnectionContext {
+                        uid: &self.uid,
+                        transport: &mut self.transport,
+                        matrix: &self.matrix,
+                        registry: &self.registry,
+                        db: &self.db,
+                        addr: self.addr,
+                        starttls_acceptor: None,
+                    },
+                    server_state,
+                    send_handshake,
+                )
+                .await
+                {
+                    error!(uid = %self.uid, error = ?e, "Server sync loop error");
+                }
+            }
+        }
 
         Ok(())
     }
