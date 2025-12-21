@@ -69,7 +69,7 @@ pub trait ServiceBase {
         Self: Sync,
     {
         async move {
-            let user_arc = matrix.users.get(uid).map(|u| u.clone())?;
+            let user_arc = matrix.user_manager.users.get(uid).map(|u| u.clone())?;
             let user = user_arc.read().await;
 
             if !user.modes.registered {

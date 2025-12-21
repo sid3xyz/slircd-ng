@@ -86,7 +86,7 @@ impl ChanServ {
         let channel_lower = irc_to_lower(channel_name);
 
         // Common setup for all commands
-        let channel_sender = if let Some(c) = matrix.channels.get(&channel_lower) {
+        let channel_sender = if let Some(c) = matrix.channel_manager.channels.get(&channel_lower) {
             c.clone()
         } else {
              return self.error_reply(uid, &format!("Channel \x02{}\x02 does not exist.", channel_name));

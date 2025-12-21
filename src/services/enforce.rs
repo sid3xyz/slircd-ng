@@ -33,7 +33,7 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
     let mut expired: Vec<String> = Vec::new();
 
     // Collect expired UIDs (keeping lock short)
-    for entry in matrix.enforce_timers.iter() {
+    for entry in matrix.user_manager.enforce_timers.iter() {
         let uid = entry.key();
         let deadline = entry.value();
         if now >= *deadline {
@@ -44,11 +44,11 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
     // Process each expired user
     for uid in expired {
         // Remove the timer first
-        matrix.enforce_timers.remove(&uid);
+        matrix.user_manager.enforce_timers.remove(&uid);
 
         // Get user info
         let old_nick = {
-            let user_arc = matrix.users.get(&uid).map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get(&uid).map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.nick.clone()
@@ -69,7 +69,7 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
         );
 
         // Get sender for the user
-        let sender = if let Some(s) = matrix.senders.get(&uid) {
+        let sender = if let Some(s) = matrix.user_manager.senders.get(&uid) {
             s.clone()
         } else {
             debug!(uid = %uid, "No sender found for user, cannot send enforcement messages");
@@ -116,7 +116,7 @@ async fn generate_guest_nick(matrix: &Arc<Matrix>) -> String {
         let nick_lower = irc_to_lower(&nick);
 
         // Check if this nick is already in use
-        if !matrix.nicks.contains_key(&nick_lower) {
+        if !matrix.user_manager.nicks.contains_key(&nick_lower) {
             return nick;
         }
         // If taken, loop and try again

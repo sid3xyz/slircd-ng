@@ -21,7 +21,7 @@ pub async fn handle_ungroup(
     let target_nick = args[0];
 
     // Must be identified first
-    let user_arc = matrix.users.get(uid).map(|u| u.clone());
+    let user_arc = matrix.user_manager.users.get(uid).map(|u| u.clone());
     let (account_name, account_id) = if let Some(user_arc) = user_arc {
         let user = user_arc.read().await;
         if !user.modes.registered {

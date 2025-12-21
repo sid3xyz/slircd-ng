@@ -25,7 +25,7 @@ pub async fn handle_ghost(
     let password = args.get(1).copied();
 
     // Check if the user is already identified and get their account
-    let user_arc = matrix.users.get(uid).map(|u| u.clone());
+    let user_arc = matrix.user_manager.users.get(uid).map(|u| u.clone());
     let user_account = if let Some(user_arc) = user_arc {
         let user = user_arc.read().await;
         if user.modes.registered {
@@ -68,7 +68,7 @@ pub async fn handle_ghost(
 
     // Find the target user
     let target_nick_lower = slirc_proto::irc_to_lower(target_nick);
-    if let Some(target_uid) = matrix.nicks.get(&target_nick_lower).map(|r| r.clone()) {
+    if let Some(target_uid) = matrix.user_manager.nicks.get(&target_nick_lower).map(|r| r.clone()) {
         if target_uid == uid {
             return reply_effects(uid, vec!["You cannot ghost yourself."]);
         }
