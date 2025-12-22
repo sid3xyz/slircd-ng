@@ -10,6 +10,7 @@ use crate::state::RegisteredState;
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use std::sync::Arc;
 
 /// Handler for KILL command.
 ///
@@ -71,7 +72,7 @@ impl PostRegHandler for KillHandler {
                 prefix: None,
                 command: Command::ERROR(format!("Closing Link: {} ({})", target_nick, quit_reason)),
             };
-            let _ = target_sender.send(error_msg).await;
+            let _ = target_sender.send(Arc::new(error_msg)).await;
         }
 
         ctx.matrix.disconnect_user(&target_uid, &quit_reason).await;

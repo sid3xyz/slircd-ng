@@ -3,12 +3,13 @@
 //! Propagates local state changes to connected peer servers.
 //! This is the real-time delta propagation component of Innovation 2.
 
-use crate::state::observer::StateObserver;
+use crate::state::observer::{GlobalBanType, StateObserver};
 use crate::sync::LinkState;
 use slirc_crdt::channel::ChannelCrdt;
 use slirc_crdt::clock::ServerId;
 use slirc_crdt::user::UserCrdt;
 use slirc_proto::{Command, Message};
+use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use super::SyncManager;
@@ -18,7 +19,7 @@ impl SyncManager {
     ///
     /// This implements split-horizon: we never echo a message back to its origin.
     #[allow(dead_code)] // Will be used when full burst/sync is implemented
-    async fn broadcast_to_peers(&self, msg: Message, source: Option<&ServerId>) {
+    async fn broadcast_to_peers(&self, msg: Arc<Message>, source: Option<&ServerId>) {
         for entry in self.links.iter() {
             let peer_sid = entry.key();
 
@@ -178,7 +179,7 @@ impl StateObserver for SyncManager {
 
         info!(uid = %user.uid, nick = %user.nick.value(), "Broadcasting user update to peers");
 
-        let msg = Message::from(self.build_uid_command(user));
+        let msg = Arc::new(Message::from(self.build_uid_command(user)));
         let links = self.links.clone();
 
         // Spawn async broadcast (we can't await in a sync trait method)
@@ -201,11 +202,11 @@ impl StateObserver for SyncManager {
         info!(uid = %uid, reason = %reason, "Broadcasting QUIT to peers");
 
         // Build QUIT message with UID prefix
-        let quit_msg = Message {
+        let quit_msg = Arc::new(Message {
             tags: None,
             prefix: Some(slirc_proto::Prefix::new_from_str(uid)),
             command: Command::QUIT(Some(reason.to_string())),
-        };
+        });
 
         let links = self.links.clone();
 
@@ -227,7 +228,7 @@ impl StateObserver for SyncManager {
 
         info!(channel = %channel.name, members = channel.members.len(), "Broadcasting channel update to peers");
 
-        let msg = Message::from(self.build_sjoin_command(channel));
+        let msg = Arc::new(Message::from(self.build_sjoin_command(channel)));
         let links = self.links.clone();
 
         tokio::spawn(async move {
@@ -250,5 +251,116 @@ impl StateObserver for SyncManager {
         // The channel becomes empty and peers will clean up on their own.
         // However, we could send a "MODE #channel +P" removal or similar.
         info!(channel = %name, "Channel destroyed (no propagation needed)");
+    }
+
+    fn on_ban_add(
+        &self,
+        ban_type: GlobalBanType,
+        mask: &str,
+        reason: &str,
+        setter: &str,
+        duration: Option<i64>,
+        source: Option<ServerId>,
+    ) {
+        if source.is_some() {
+            debug!(ban_type = ?ban_type, mask = %mask, "Skipping ban add (remote origin)");
+            return;
+        }
+
+        info!(
+            ban_type = ?ban_type,
+            mask = %mask,
+            reason = %reason,
+            setter = %setter,
+            duration = ?duration,
+            "Broadcasting global ban to peers"
+        );
+
+        // Build the ban command: GLINE/ZLINE/RLINE/SHUN mask :reason
+        // Format: :<setter> GLINE <mask> :<reason>
+        // For timed bans, we could use extended syntax but keep it simple for now
+        let cmd_name = ban_type.command_name();
+        let msg = Arc::new(Message {
+            tags: None,
+            prefix: Some(slirc_proto::Prefix::ServerName(self.local_name.clone())),
+            command: Command::Raw(
+                cmd_name.to_string(),
+                vec![mask.to_string(), format!(":{}", reason)],
+            ),
+        });
+
+        let links = self.links.clone();
+
+        tokio::spawn(async move {
+            for entry in links.iter() {
+                let link: LinkState = entry.value().clone();
+                if let Err(e) = link.tx.send(msg.clone()).await {
+                    warn!(peer = %entry.key().as_str(), error = %e, "Failed to send ban");
+                }
+            }
+        });
+    }
+
+    fn on_ban_remove(&self, ban_type: GlobalBanType, mask: &str, source: Option<ServerId>) {
+        if source.is_some() {
+            debug!(ban_type = ?ban_type, mask = %mask, "Skipping ban remove (remote origin)");
+            return;
+        }
+
+        info!(ban_type = ?ban_type, mask = %mask, "Broadcasting ban removal to peers");
+
+        let cmd_name = ban_type.unset_command_name();
+        let msg = Arc::new(Message {
+            tags: None,
+            prefix: Some(slirc_proto::Prefix::ServerName(self.local_name.clone())),
+            command: Command::Raw(cmd_name.to_string(), vec![mask.to_string()]),
+        });
+
+        let links = self.links.clone();
+
+        tokio::spawn(async move {
+            for entry in links.iter() {
+                let link: LinkState = entry.value().clone();
+                if let Err(e) = link.tx.send(msg.clone()).await {
+                    warn!(peer = %entry.key().as_str(), error = %e, "Failed to send ban removal");
+                }
+            }
+        });
+    }
+
+    fn on_account_change(&self, uid: &str, account: Option<&str>, source: Option<ServerId>) {
+        if let Some(src) = &source {
+            debug!(uid = %uid, source = %src.as_str(), "Propagating account change from peer");
+        } else {
+            info!(uid = %uid, account = ?account, "Broadcasting local account change to peers");
+        }
+
+        let account_str = account.unwrap_or("*");
+
+        // Use ACCOUNT command: :<uid> ACCOUNT <account>
+        let msg = Arc::new(Message {
+            tags: None,
+            prefix: Some(slirc_proto::Prefix::new_from_str(uid)),
+            command: Command::ACCOUNT(account_str.to_string()),
+        });
+
+        let links = self.links.clone();
+
+        tokio::spawn(async move {
+            for entry in links.iter() {
+                let peer_sid = entry.key();
+                // Split-horizon: don't send back to source
+                if let Some(src) = &source
+                    && peer_sid == src
+                {
+                    continue;
+                }
+
+                let link: LinkState = entry.value().clone();
+                if let Err(e) = link.tx.send(msg.clone()).await {
+                    warn!(peer = %peer_sid.as_str(), error = %e, "Failed to send ACCOUNT");
+                }
+            }
+        });
     }
 }

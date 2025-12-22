@@ -9,6 +9,7 @@
 use crate::state::Matrix;
 use slirc_crdt::clock::ServerId;
 use slirc_proto::{Command, Message, Prefix};
+use std::sync::Arc;
 use tracing::{debug, info};
 
 /// Handle a netsplit when a server link drops.
@@ -175,9 +176,10 @@ async fn remove_user_from_channels(matrix: &Matrix, uid: &str) {
 
 /// Broadcast a message to all local users.
 async fn broadcast_to_local_users(matrix: &Matrix, msg: Message) {
+    let msg_arc = Arc::new(msg);
     for entry in matrix.user_manager.senders.iter() {
         let sender = entry.value();
-        let _ = sender.send(msg.clone()).await;
+        let _ = sender.send(msg_arc.clone()).await;
     }
 }
 

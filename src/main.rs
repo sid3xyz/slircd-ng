@@ -18,11 +18,11 @@ mod sync;
 mod telemetry;
 
 use crate::config::Config;
+use std::sync::Arc;
 use crate::db::Database;
 use crate::network::Gateway;
 use crate::services::enforce::spawn_enforcement_task;
 use crate::state::Matrix;
-use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -166,7 +166,8 @@ async fn main() -> anyhow::Result<()> {
     {
         let matrix = Arc::clone(&matrix);
         tokio::spawn(async move {
-            while let Some(mut msg) = router_rx.recv().await {
+            while let Some(msg_arc) = router_rx.recv().await {
+                let mut msg = (*msg_arc).clone();
                 // Check for x-target-uid tag
                 let target_uid = msg
                     .tags
@@ -206,7 +207,7 @@ async fn main() -> anyhow::Result<()> {
 
                     if let Some(peer) = matrix.sync_manager.get_peer_for_server(&target_sid) {
                         info!(target_sid = %target_sid.as_str(), "Routing message to peer");
-                        let _ = peer.tx.send(msg).await;
+                        let _ = peer.tx.send(Arc::new(msg)).await;
                     } else {
                         tracing::warn!(target_sid = %target_sid.as_str(), "No peer found for target server");
                     }

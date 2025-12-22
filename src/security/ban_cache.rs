@@ -250,6 +250,20 @@ impl BanCache {
 
         removed
     }
+
+    /// Iterate over all G-lines (mask, reason, expires_at).
+    ///
+    /// Used for BURST to synchronize bans with peers.
+    pub fn iter_glines(&self) -> impl Iterator<Item = (String, String, Option<i64>)> + '_ {
+        self.glines.iter().filter_map(|entry| {
+            let ban = entry.value();
+            if ban.is_expired() {
+                None
+            } else {
+                Some((ban.mask.clone(), ban.reason.clone(), ban.expires_at))
+            }
+        })
+    }
 }
 
 #[cfg(test)]

@@ -124,16 +124,25 @@ impl PostRegHandler for ChatHistoryHandler {
         };
         let limit = limit.min(MAX_HISTORY_LIMIT);
 
+        // Extract message reference arguments
+        let msgref = msg.arg(2).unwrap_or("*").to_string();
+        let msgref2 = match subcommand {
+            ChatHistorySubCommand::BETWEEN => Some(msg.arg(3).unwrap_or("*").to_string()),
+            ChatHistorySubCommand::TARGETS => Some(msg.arg(2).unwrap_or("*").to_string()),
+            _ => None,
+        };
+
         // Execute query based on subcommand
         let messages = QueryExecutor::execute(
             ctx,
             subcommand.clone(),
             QueryParams {
-                target: &target,
-                nick: &nick,
+                target: target.clone(),
+                nick: nick.clone(),
                 limit,
                 is_dm,
-                msg,
+                msgref,
+                msgref2,
             },
         )
         .await;

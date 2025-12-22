@@ -15,6 +15,7 @@ use crate::state::RegisteredState;
 use crate::{require_admin_cap, require_arg_or_reply};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Mode, Prefix, Response, irc_to_lower};
+use std::sync::Arc;
 
 /// Get user prefix info (user, host, nick) for message construction.
 async fn get_user_prefix<S>(ctx: &Context<'_, S>, uid: &str) -> Option<(String, String, String)> {
@@ -320,7 +321,7 @@ impl PostRegHandler for SanickHandler {
             .get(&target_uid)
             .map(|s| s.clone());
         if let Some(sender) = sender {
-            let _ = sender.send(nick_msg).await;
+            let _ = sender.send(Arc::new(nick_msg)).await;
         }
 
         tracing::info!(

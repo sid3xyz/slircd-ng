@@ -80,7 +80,7 @@ pub struct Matrix {
     pub config: MatrixConfig,
 
     /// Router channel for remote messages.
-    pub router_tx: mpsc::Sender<Message>,
+    pub router_tx: mpsc::Sender<Arc<Message>>,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -133,7 +133,7 @@ pub struct MatrixParams<'a> {
 
 impl Matrix {
     /// Create a new Matrix with the given server configuration.
-    pub fn new(params: MatrixParams<'_>) -> (Self, mpsc::Receiver<Message>) {
+    pub fn new(params: MatrixParams<'_>) -> (Self, mpsc::Receiver<Arc<Message>>) {
         let MatrixParams {
             config,
             data_dir,
@@ -174,6 +174,15 @@ impl Matrix {
             ChannelManager::with_registered_channels(registered_channel_names);
         channel_manager.set_observer(sync_manager_arc.clone());
 
+        // Create ServiceManager with server SID for service UIDs
+        let service_manager = ServiceManager::new(db.clone(), history, &config.server.sid);
+
+        // Register service pseudoclients in UserManager
+        let service_users = service_manager.create_service_users(&config.server.name, &server_id);
+        for user in service_users {
+            user_manager.register_service_user(user);
+        }
+
         let (router_tx, router_rx) = mpsc::channel(1000);
 
         (
@@ -190,7 +199,7 @@ impl Matrix {
                     glines,
                     zlines,
                 }),
-                service_manager: ServiceManager::new(db, history),
+                service_manager,
                 monitor_manager: MonitorManager::new(),
                 lifecycle_manager: LifecycleManager::new(disconnect_tx),
                 sync_manager: Arc::try_unwrap(sync_manager_arc)
@@ -221,7 +230,7 @@ impl Matrix {
     }
 
     /// Register a user's message sender for routing.
-    pub fn register_sender(&self, uid: &str, sender: mpsc::Sender<Message>) {
+    pub fn register_sender(&self, uid: &str, sender: mpsc::Sender<Arc<Message>>) {
         self.user_manager.senders.insert(uid.to_string(), sender);
     }
 

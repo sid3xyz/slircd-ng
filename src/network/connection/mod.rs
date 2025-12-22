@@ -78,9 +78,9 @@ impl Connection {
         starttls_acceptor: Option<TlsAcceptor>,
     ) -> Self {
         let mut transport = ZeroCopyTransportEnum::tcp(stream);
-        // Enforce RFC 1459/2812 512-byte limit for client connections.
-        // IRCv3 tags are handled separately by the transport validator.
-        transport.set_max_line_len(512);
+        // Enforce IRCv3 line length limit (8191 bytes) to support message-tags.
+        // RFC 1459/2812 specified 512, but modern IRC requires more for tags.
+        transport.set_max_line_len(slirc_proto::transport::MAX_IRC_LINE_LEN);
 
         Self {
             uid,
@@ -104,8 +104,8 @@ impl Connection {
         db: Database,
     ) -> Self {
         let mut transport = ZeroCopyTransportEnum::tls(stream);
-        // Enforce RFC 1459/2812 512-byte limit for client connections.
-        transport.set_max_line_len(512);
+        // Enforce IRCv3 line length limit (8191 bytes) to support message-tags.
+        transport.set_max_line_len(slirc_proto::transport::MAX_IRC_LINE_LEN);
 
         Self {
             uid,
@@ -170,7 +170,7 @@ impl Connection {
         );
 
         // Channel for outgoing messages during handshake
-        let (handshake_tx, mut handshake_rx) = mpsc::channel::<Message>(64);
+        let (handshake_tx, mut handshake_rx) = mpsc::channel::<Arc<Message>>(64);
 
         // Unregistered state for this connection
         let mut unreg_state = UnregisteredState {
@@ -229,7 +229,7 @@ impl Connection {
                 };
 
                 // Phase 2: Unified Event Loop
-                let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<Message>(32);
+                let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<Arc<Message>>(32);
                 self.matrix.register_sender(&self.uid, outgoing_tx.clone());
 
                 let quit_message = run_event_loop(

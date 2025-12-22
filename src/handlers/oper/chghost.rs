@@ -7,6 +7,7 @@ use crate::state::RegisteredState;
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use std::sync::Arc;
 
 /// Handler for CHGHOST command. Uses capability-based authorization (Innovation 4).
 ///
@@ -96,7 +97,7 @@ impl PostRegHandler for ChghostHandler {
         {
             let user = user_ref.read().await;
             if user.caps.contains("chghost") {
-                let _ = target_sender.send(chghost_msg).await;
+                let _ = target_sender.send(Arc::new(chghost_msg)).await;
             }
         }
 

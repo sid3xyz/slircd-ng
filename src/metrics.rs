@@ -166,6 +166,27 @@ lazy_static! {
         "slircd_distributed_peers_connected",
         "Number of connected distributed peers"
     ).expect("DISTRIBUTED_PEERS_CONNECTED metric creation failed");
+
+    /// S2S bytes sent.
+    /// Labels: peer_sid
+    pub static ref S2S_BYTES_SENT: IntCounterVec = IntCounterVec::new(
+        Opts::new("slircd_s2s_bytes_sent_total", "Bytes sent to peer servers"),
+        &["peer_sid"]
+    ).expect("S2S_BYTES_SENT metric creation failed");
+
+    /// S2S bytes received.
+    /// Labels: peer_sid
+    pub static ref S2S_BYTES_RECEIVED: IntCounterVec = IntCounterVec::new(
+        Opts::new("slircd_s2s_bytes_received_total", "Bytes received from peer servers"),
+        &["peer_sid"]
+    ).expect("S2S_BYTES_RECEIVED metric creation failed");
+
+    /// S2S commands processed.
+    /// Labels: peer_sid, command
+    pub static ref S2S_COMMANDS: IntCounterVec = IntCounterVec::new(
+        Opts::new("slircd_s2s_commands_total", "S2S commands processed"),
+        &["peer_sid", "command"]
+    ).expect("S2S_COMMANDS metric creation failed");
 }
 
 /// Initialize the Prometheus metrics registry.
@@ -230,6 +251,15 @@ pub fn init() {
     }
     if let Err(e) = REGISTRY.register(Box::new(DISTRIBUTED_PEERS_CONNECTED.clone())) {
         tracing::warn!(error = %e, "Failed to register metric slircd_distributed_peers_connected");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(S2S_BYTES_SENT.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric slircd_s2s_bytes_sent_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(S2S_BYTES_RECEIVED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric slircd_s2s_bytes_received_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(S2S_COMMANDS.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric slircd_s2s_commands_total");
     }
 }
 

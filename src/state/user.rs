@@ -52,6 +52,7 @@ pub struct UserModes {
     pub registered_only: bool, // +R (only registered users can PM)
     pub no_ctcp: bool,         // +T (block CTCP except ACTION)
     pub bot: bool,             // +B (marked as a bot)
+    pub service: bool,         // +S (network service - protected)
     /// +s - Server notices with granular snomasks (c, r, k, o, etc.)
     /// Empty set means no server notices
     pub snomasks: HashSet<char>,
@@ -89,6 +90,9 @@ impl UserModes {
         if self.bot {
             s.push('B');
         }
+        if self.service {
+            s.push('S');
+        }
         if !self.snomasks.is_empty() {
             s.push('s');
         }
@@ -113,6 +117,7 @@ impl UserModes {
             bot: *crdt.bot.value(),
             snomasks: crdt.snomasks.iter().cloned().collect(),
             oper_type: crdt.oper_type.value().clone(),
+            service: false, // Services are never remote users
         }
     }
 

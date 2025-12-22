@@ -8,6 +8,7 @@ use crate::state::RegisteredState;
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
+use std::sync::Arc;
 
 /// Handler for WALLOPS command. Uses capability-based authorization (Innovation 4).
 ///
@@ -66,7 +67,7 @@ impl PostRegHandler for WallopsHandler {
                 && (user.modes.wallops || user.modes.oper)
                 && let Some(sender) = ctx.matrix.user_manager.senders.get(&user.uid)
             {
-                let _ = sender.send(wallops_msg.clone()).await;
+                let _ = sender.send(Arc::new(wallops_msg.clone())).await;
             }
         }
 

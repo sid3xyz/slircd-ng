@@ -1,5 +1,5 @@
 use super::context::{ConnectionContext, LifecycleChannels};
-use super::error_handling::{ReadErrorAction, classify_read_error, handler_error_to_reply};
+use super::error_handling::{ReadErrorAction, classify_read_error, handler_error_to_reply_owned};
 use crate::handlers::{Context, ResponseMiddleware, WelcomeBurstWriter};
 use crate::state::{Matrix, UnregisteredState};
 use slirc_proto::{Command, Message, Prefix, Response, irc_to_lower};
@@ -146,36 +146,123 @@ pub async fn run_handshake_loop(
         // Calculate remaining time until timeout
         let remaining = registration_timeout.saturating_sub(elapsed);
 
-        // Wait for next message with timeout
-        let result = tokio::time::timeout(remaining, transport.next()).await;
+        // Result type for the select - pure data, no I/O inside select
+        enum HandshakeSelectResult {
+            /// Received a valid message to process (boxed to avoid large enum variant)
+            Message {
+                msg: Box<Message>,
+                label: Option<String>,
+            },
+            /// Read error occurred
+            ReadError(ReadErrorAction),
+            /// Client disconnected
+            Disconnected,
+            /// Timeout - just loop to check timeout at top
+            Timeout,
+        }
 
-        match result {
-            Ok(Some(Ok(msg_ref))) => {
-                debug!(raw = %msg_ref.raw.trim(), "Received message");
+        // Wait for next message with timeout - NO transport writes inside this block!
+        let select_result = {
+            let result = tokio::time::timeout(remaining, transport.next()).await;
 
-                let label = if unreg_state.capabilities.contains("labeled-response") {
-                    msg_ref
-                        .tags_iter()
-                        .find(|(k, _)| *k == "label")
-                        .map(|(_, v)| v.to_string())
+            match result {
+                Ok(Some(Ok(msg_ref))) => {
+                    debug!(raw = %msg_ref.raw.trim(), "Received message");
+
+                    // Convert to owned immediately to release the borrow
+                    let msg = msg_ref.to_owned();
+
+                    // Extract label while we have msg_ref
+                    let label = if unreg_state.capabilities.contains("labeled-response") {
+                        msg_ref
+                            .tags_iter()
+                            .find(|(k, _)| *k == "label")
+                            .map(|(_, v)| v.to_string())
+                    } else {
+                        None
+                    };
+
+                    // Drop msg_ref explicitly
+                    drop(msg_ref);
+
+                    HandshakeSelectResult::Message { msg: Box::new(msg), label }
+                }
+                Ok(Some(Err(e))) => {
+                    HandshakeSelectResult::ReadError(classify_read_error(&e))
+                }
+                Ok(None) => {
+                    info!("Client disconnected during handshake");
+                    HandshakeSelectResult::Disconnected
+                }
+                Err(_) => {
+                    // Timeout elapsed - loop will check at top and disconnect
+                    HandshakeSelectResult::Timeout
+                }
+            }
+        };
+
+        // Now process the result - we can use transport freely here
+        match select_result {
+            HandshakeSelectResult::Timeout => continue,
+            HandshakeSelectResult::Disconnected => {
+                return Err(HandshakeExit::Disconnected(unreg_state.nick.clone()));
+            }
+            HandshakeSelectResult::ReadError(action) => {
+                match action {
+                    ReadErrorAction::InputTooLong => {
+                        warn!("Input line too long during handshake");
+                        let nick = unreg_state.nick.as_deref().unwrap_or("*");
+                        let reply = Message {
+                            tags: None,
+                            prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
+                            command: Command::Response(
+                                Response::ERR_INPUTTOOLONG,
+                                vec![nick.to_string(), "Input line too long".to_string()],
+                            ),
+                        };
+                        let _ = transport.write_message(&reply).await;
+                        continue;
+                    }
+                    ReadErrorAction::FatalProtocolError { error_msg } => {
+                        warn!(error = %error_msg, "Protocol error during handshake");
+                        let error_reply = Message {
+                            tags: None,
+                            prefix: None,
+                            command: Command::ERROR(error_msg),
+                        };
+                        let _ = transport.write_message(&error_reply).await;
+                    }
+                    ReadErrorAction::IoError => {
+                        debug!("I/O error during handshake");
+                    }
+                }
+                return Err(HandshakeExit::ProtocolError(unreg_state.nick.clone()));
+            }
+            HandshakeSelectResult::Message { msg, label } => {
+                // Dispatch the command - we need a MessageRef for the dispatch
+                // Create a temporary one from the owned message
+                let raw_str = msg.to_string();
+                let dispatch_result = if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
+                    let mut ctx = Context {
+                        uid,
+                        matrix,
+                        sender: ResponseMiddleware::Direct(handshake_tx),
+                        state: unreg_state,
+                        db,
+                        remote_addr: addr,
+                        label,
+                        suppress_labeled_ack: false,
+                        active_batch_id: None,
+                        registry,
+                    };
+
+                    registry.dispatch_pre_reg(&mut ctx, &msg_ref).await
                 } else {
-                    None
+                    // Should not happen, but handle gracefully
+                    Ok(())
                 };
 
-                let mut ctx = Context {
-                    uid,
-                    matrix,
-                    sender: ResponseMiddleware::Direct(handshake_tx),
-                    state: unreg_state,
-                    db,
-                    remote_addr: addr,
-                    label,
-                    suppress_labeled_ack: false,
-                    active_batch_id: None,
-                    registry,
-                };
-
-                if let Err(e) = registry.dispatch_pre_reg(&mut ctx, &msg_ref).await {
+                if let Err(e) = dispatch_result {
                     debug!(error = ?e, "Handler error during handshake");
 
                     // Handle QUIT - disconnect pre-registration
@@ -244,10 +331,10 @@ pub async fn run_handshake_loop(
                         continue;
                     }
 
-                    // Send appropriate error reply
+                    // Send appropriate error reply using owned message
                     let nick = unreg_state.nick.as_deref().unwrap_or("*");
                     if let Some(reply) =
-                        handler_error_to_reply(&matrix.server_info.name, nick, &e, &msg_ref)
+                        handler_error_to_reply_owned(&matrix.server_info.name, nick, &e, &msg)
                     {
                         let _ = transport.write_message(&reply).await;
                     }
@@ -280,45 +367,6 @@ pub async fn run_handshake_loop(
                 if matrix.user_manager.users.contains_key(uid) {
                     return Ok(HandshakeSuccess::User);
                 }
-            }
-            Ok(Some(Err(e))) => {
-                match classify_read_error(&e) {
-                    ReadErrorAction::InputTooLong => {
-                        warn!("Input line too long during handshake");
-                        let nick = unreg_state.nick.as_deref().unwrap_or("*");
-                        let reply = Message {
-                            tags: None,
-                            prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
-                            command: Command::Response(
-                                Response::ERR_INPUTTOOLONG,
-                                vec![nick.to_string(), "Input line too long".to_string()],
-                            ),
-                        };
-                        let _ = transport.write_message(&reply).await;
-                        continue;
-                    }
-                    ReadErrorAction::FatalProtocolError { error_msg } => {
-                        warn!(error = %error_msg, "Protocol error during handshake");
-                        let error_reply = Message {
-                            tags: None,
-                            prefix: None,
-                            command: Command::ERROR(error_msg),
-                        };
-                        let _ = transport.write_message(&error_reply).await;
-                    }
-                    ReadErrorAction::IoError => {
-                        debug!(error = ?e, "I/O error during handshake");
-                    }
-                }
-                return Err(HandshakeExit::ProtocolError(unreg_state.nick.clone()));
-            }
-            Ok(None) => {
-                info!("Client disconnected during handshake");
-                return Err(HandshakeExit::Disconnected(unreg_state.nick.clone()));
-            }
-            Err(_) => {
-                // Timeout elapsed - loop will check at top and disconnect
-                continue;
             }
         }
     }

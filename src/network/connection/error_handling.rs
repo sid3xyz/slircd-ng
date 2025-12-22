@@ -53,16 +53,16 @@ pub(super) fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
     }
 }
 
-/// Convert a HandlerError to an appropriate IRC error reply.
+/// Convert a HandlerError to an appropriate IRC error reply using an owned Message.
 ///
-/// Returns None for errors that don't warrant a client-visible reply
-/// (e.g., internal errors, send failures).
-pub(super) fn handler_error_to_reply(
+/// This variant accepts an owned Message instead of MessageRef, for use when
+/// the MessageRef has already been dropped (e.g., after transport operations).
+pub(super) fn handler_error_to_reply_owned(
     server_name: &str,
     nick: &str,
     error: &HandlerError,
-    msg: &slirc_proto::MessageRef<'_>,
+    msg: &Message,
 ) -> Option<Message> {
-    let cmd_name = msg.command_name();
+    let cmd_name = msg.command.name();
     error.to_irc_reply(server_name, nick, cmd_name)
 }

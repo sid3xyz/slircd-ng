@@ -6,6 +6,7 @@ use super::{ChannelActor, ChannelError, ChannelMode, ClearTarget, ModeParams, Ui
 use slirc_crdt::clock::HybridTimestamp;
 use slirc_proto::mode::{ChannelMode as ProtoChannelMode, Mode};
 use slirc_proto::{Command, Message, Prefix};
+use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
@@ -237,11 +238,11 @@ impl ChannelActor {
         }
 
         if !applied_modes.is_empty() {
-            let msg = Message {
+            let msg = Arc::new(Message {
                 tags: None,
                 prefix: Some(sender_prefix),
                 command: Command::ChannelMODE(self.name.clone(), applied_modes.clone()),
-            };
+            });
             for (uid, sender) in &self.senders {
                 if let Err(err) = sender.try_send(msg.clone()) {
                     match err {

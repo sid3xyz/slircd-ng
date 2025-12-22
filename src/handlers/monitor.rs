@@ -339,7 +339,7 @@ pub async fn notify_monitors_online(matrix: &Arc<Matrix>, nick: &str, user: &str
             .get(&watcher_uid)
             .map(|s| s.clone());
         if let Some(sender) = sender {
-            let _ = sender.send(reply.clone()).await;
+            let _ = sender.send(Arc::new(reply.clone())).await;
         }
     }
 }
@@ -376,7 +376,7 @@ pub async fn notify_monitors_offline(matrix: &Arc<Matrix>, nick: &str) {
             .get(&watcher_uid)
             .map(|s| s.clone());
         if let Some(sender) = sender {
-            let _ = sender.send(reply.clone()).await;
+            let _ = sender.send(Arc::new(reply.clone())).await;
         }
     }
 }

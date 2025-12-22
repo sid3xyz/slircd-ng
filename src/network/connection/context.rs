@@ -32,7 +32,7 @@ pub struct ConnectionContext<'a> {
 /// Message channels for lifecycle phases.
 pub struct LifecycleChannels<'a> {
     /// Sender for queueing outgoing messages.
-    pub tx: &'a mpsc::Sender<Message>,
+    pub tx: &'a mpsc::Sender<Arc<Message>>,
     /// Receiver for draining outgoing messages.
-    pub rx: &'a mut mpsc::Receiver<Message>,
+    pub rx: &'a mut mpsc::Receiver<Arc<Message>>,
 }

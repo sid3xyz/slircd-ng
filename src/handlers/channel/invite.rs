@@ -12,6 +12,7 @@ use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Response, irc_to_lower};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
@@ -224,7 +225,7 @@ impl PostRegHandler for InviteHandler {
                         .get(&target_uid)
                         .map(|s| s.clone());
                     if let Some(target_sender) = target_sender {
-                        let _ = target_sender.send(invite_msg).await;
+                        let _ = target_sender.send(Arc::new(invite_msg)).await;
                     }
 
                     // RPL_INVITING (341)
@@ -305,7 +306,7 @@ impl PostRegHandler for InviteHandler {
                 .get(&target_uid)
                 .map(|s| s.clone());
             if let Some(target_sender) = target_sender {
-                let _ = target_sender.send(invite_msg).await;
+                let _ = target_sender.send(Arc::new(invite_msg)).await;
             }
 
             // Echo INVITE back to sender

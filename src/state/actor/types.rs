@@ -8,6 +8,7 @@ use crate::security::UserContext;
 use crate::state::{ListEntry, MemberModes, Topic};
 use slirc_proto::{Message, Prefix};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
@@ -34,7 +35,7 @@ pub struct JoinSuccessData {
 pub struct JoinParams {
     pub uid: Uid,
     pub nick: String,
-    pub sender: mpsc::Sender<Message>,
+    pub sender: mpsc::Sender<Arc<Message>>,
     pub caps: HashSet<String>,
     pub user_context: UserContext,
     pub key: Option<String>,

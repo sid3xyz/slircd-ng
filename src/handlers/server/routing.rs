@@ -3,6 +3,7 @@ use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::ServerState;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Tag};
+use std::sync::Arc;
 use tracing::{debug, warn};
 
 /// Handler for routed PRIVMSG/NOTICE from other servers.
@@ -133,7 +134,7 @@ impl ServerHandler for RoutedMessageHandler {
                 command: cmd,
             };
 
-            let _ = sender.send(out_msg).await;
+            let _ = sender.send(Arc::new(out_msg)).await;
         } else {
             // 2. Target is remote?
             // If we received it, and we are not the target, we should route it forward?
@@ -199,7 +200,7 @@ impl ServerHandler for RoutedMessageHandler {
                         };
 
                         debug!(to = %target_uid, via = %peer.name, "Forwarding routed message");
-                        let _ = peer.tx.send(out_msg).await;
+                        let _ = peer.tx.send(Arc::new(out_msg)).await;
                         crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
                             .with_label_values(&[source_sid, target_sid.as_str(), "forwarded"])
                             .inc();

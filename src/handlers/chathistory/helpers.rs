@@ -4,7 +4,7 @@
 
 use crate::handlers::{Context, HandlerError};
 use crate::state::RegisteredState;
-use slirc_proto::{MessageRef, MessageReference, parse_server_time};
+use slirc_proto::{MessageReference, parse_server_time};
 
 /// Maximum messages per CHATHISTORY request.
 pub const MAX_HISTORY_LIMIT: u32 = 100;
@@ -39,12 +39,15 @@ pub struct ResolvedTimestamp {
 }
 
 /// Parameters for execute_query (reduces argument count).
-pub struct QueryParams<'a> {
-    pub target: &'a str,
-    pub nick: &'a str,
+pub struct QueryParams {
+    pub target: String,
+    pub nick: String,
     pub limit: u32,
     pub is_dm: bool,
-    pub msg: &'a MessageRef<'a>,
+    /// Message reference argument (arg 2 for most subcommands)
+    pub msgref: String,
+    /// Second message reference (for BETWEEN, TARGETS)
+    pub msgref2: Option<String>,
 }
 
 /// Resolve a message reference string to a timestamp.

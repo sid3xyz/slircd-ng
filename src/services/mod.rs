@@ -10,8 +10,9 @@ pub mod traits;
 
 pub use traits::Service;
 
+use crate::state::observer::StateObserver;
 use crate::{handlers::ResponseMiddleware, state::Matrix};
-use slirc_proto::{ChannelMode, Command, Message, Mode, Prefix, irc_to_lower};
+use slirc_proto::{ChannelMode, Command, Message, Mode, Prefix, UserMode, irc_to_lower};
 use std::sync::Arc;
 use tracing::info;
 
@@ -150,6 +151,140 @@ pub async fn apply_effects(
     }
 }
 
+/// Apply a list of service effects without a ResponseMiddleware.
+///
+/// Used for handling remote service requests via S2S where we don't
+/// have a local sender connection.
+pub async fn apply_effects_no_sender(
+    matrix: &Arc<Matrix>,
+    nick: &str,
+    effects: Vec<ServiceEffect>,
+) {
+    for effect in effects {
+        apply_effect_no_sender(matrix, nick, effect).await;
+    }
+}
+
+/// Apply a single service effect without a ResponseMiddleware.
+///
+/// Handles effects for remote users where replies must be routed
+/// via S2S rather than a local sender channel.
+pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: ServiceEffect) {
+    match effect {
+        ServiceEffect::Reply {
+            target_uid,
+            mut msg,
+        } => {
+            // Resolve the target nickname for the NOTICE command
+            let target_nick = if let Some(user_arc) = matrix.user_manager.users.get(&target_uid) {
+                user_arc.read().await.nick.clone()
+            } else {
+                // User not found (disconnected?)
+                return;
+            };
+
+            // Try local sender first (for local users)
+            if let Some(target_tx) = matrix.user_manager.senders.get(&target_uid) {
+                if let Command::NOTICE(_, text) = msg.command {
+                    msg.command = Command::NOTICE(target_nick, text);
+                }
+                let _ = target_tx.send(Arc::new(msg)).await;
+            } else {
+                // Remote user - route via S2S
+                if let Command::NOTICE(_, text) = msg.command {
+                    msg.command = Command::NOTICE(target_nick, text);
+                }
+                let _ = matrix
+                    .sync_manager
+                    .route_to_remote_user(&target_uid, Arc::new(msg))
+                    .await;
+            }
+        }
+
+        // For other effects, delegate to apply_effect but we need to handle them inline
+        // since we don't have a sender. Most effects don't need the sender anyway.
+        ServiceEffect::AccountIdentify {
+            target_uid,
+            account,
+        } => {
+            let nick = {
+                let user_arc = matrix
+                    .user_manager
+                    .users
+                    .get(&target_uid)
+                    .map(|u| u.clone());
+                if let Some(user_arc) = user_arc {
+                    let user = user_arc.read().await;
+                    user.nick.clone()
+                } else {
+                    return;
+                }
+            };
+
+            info!(uid = %target_uid, account = %account, "Remote user identified to account");
+
+            let user_arc = matrix
+                .user_manager
+                .users
+                .get(&target_uid)
+                .map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
+                user.modes.registered = true;
+                user.account = Some(account.clone());
+            }
+
+            // Broadcast MODE +r to local users watching this user
+            let mode_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
+                command: Command::UserMODE(nick, vec![Mode::plus(UserMode::Registered, None)]),
+            };
+
+            for entry in matrix.user_manager.users.iter() {
+                let user = entry.value().read().await;
+                if user.caps.contains("account-notify")
+                    && let Some(tx) = matrix.user_manager.senders.get(&user.uid)
+                {
+                    let _ = tx.send(Arc::new(mode_msg.clone())).await;
+                }
+            }
+        }
+
+        ServiceEffect::AccountClear { target_uid } => {
+            let user_arc = matrix
+                .user_manager
+                .users
+                .get(&target_uid)
+                .map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
+                user.modes.registered = false;
+                user.account = None;
+            }
+        }
+
+        ServiceEffect::ClearEnforceTimer { target_uid } => {
+            matrix.user_manager.enforce_timers.remove(&target_uid);
+        }
+
+        ServiceEffect::Kill {
+            target_uid,
+            killer,
+            reason,
+        } => {
+            let _ = matrix
+                .disconnect_user(&target_uid, &format!("{}: {}", killer, reason))
+                .await;
+        }
+
+        _ => {
+            // Other effects (Kick, JoinChannel, etc.) can be added as needed
+            tracing::warn!("Unhandled service effect in no_sender context");
+        }
+    }
+}
+
 /// Apply a single service effect to Matrix state.
 ///
 /// This is the centralized effect application logic. All services return effects,
@@ -180,7 +315,16 @@ pub async fn apply_effect(
                 if let Command::NOTICE(_, text) = msg.command {
                     msg.command = Command::NOTICE(target_nick, text);
                 }
-                let _ = target_tx.send(msg).await;
+                let _ = target_tx.send(Arc::new(msg)).await;
+            } else {
+                // Remote user - route via S2S
+                if let Command::NOTICE(_, text) = msg.command {
+                    msg.command = Command::NOTICE(target_nick, text);
+                }
+                let _ = matrix
+                    .sync_manager
+                    .route_to_remote_user(&target_uid, Arc::new(msg))
+                    .await;
             }
         }
 
@@ -214,8 +358,13 @@ pub async fn apply_effect(
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.modes.registered = true;
-                user.account = Some(account);
+                user.account = Some(account.clone());
             }
+
+            // Broadcast to peers via S2S (Innovation 2)
+            matrix
+                .sync_manager
+                .on_account_change(&target_uid, Some(&account), None);
 
             // Clear any nick enforcement timer
             matrix.user_manager.enforce_timers.remove(&target_uid);
@@ -239,7 +388,7 @@ pub async fn apply_effect(
                 .get(&target_uid)
                 .map(|s| s.clone());
             if let Some(sender) = sender {
-                let _ = sender.send(mode_msg).await;
+                let _ = sender.send(Arc::new(mode_msg)).await;
             }
         }
 
@@ -271,6 +420,11 @@ pub async fn apply_effect(
                 user.account = None;
             }
 
+            // Broadcast to peers via S2S (Innovation 2)
+            matrix
+                .sync_manager
+                .on_account_change(&target_uid, None, None);
+
             // Send MODE -r directly to the user (user modes are not broadcast)
             let mode_msg = Message {
                 tags: None,
@@ -290,7 +444,7 @@ pub async fn apply_effect(
                 .get(&target_uid)
                 .map(|s| s.clone());
             if let Some(sender) = sender {
-                let _ = sender.send(mode_msg).await;
+                let _ = sender.send(Arc::new(mode_msg)).await;
             }
 
             info!(uid = %target_uid, "User account cleared");
@@ -506,7 +660,7 @@ pub async fn apply_effect(
                 .get(&target_uid)
                 .map(|s| s.clone());
             if let Some(sender) = sender {
-                let _ = sender.send(nick_msg).await;
+                let _ = sender.send(Arc::new(nick_msg)).await;
             }
 
             info!(uid = %target_uid, old = %old_nick, new = %new_nick, "Forced nick change");
@@ -564,8 +718,18 @@ pub async fn apply_effect(
                 .get(&target_uid)
                 .map(|s| s.clone());
             if let Some(sender) = sender {
-                let _ = sender.send(account_msg).await;
+                let _ = sender.send(Arc::new(account_msg)).await;
             }
+
+            // Broadcast to peers via S2S (Innovation 2)
+            let account_opt = if new_account == "*" {
+                None
+            } else {
+                Some(new_account.as_str())
+            };
+            matrix
+                .sync_manager
+                .on_account_change(&target_uid, account_opt, None);
 
             info!(uid = %target_uid, account = %new_account, "Broadcast account change");
         }

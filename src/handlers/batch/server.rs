@@ -7,6 +7,7 @@ use crate::state::{BatchRouting, ServerState};
 use async_trait::async_trait;
 use slirc_crdt::clock::ServerId;
 use slirc_proto::MessageRef;
+use std::sync::Arc;
 use tracing::debug;
 
 /// Handler for BATCH command from servers.
@@ -63,7 +64,7 @@ impl ServerHandler for ServerBatchHandler {
                     let sid = ServerId::new(ctx.state.sid.clone());
                     ctx.matrix
                         .sync_manager
-                        .broadcast(msg_owned, Some(&sid))
+                        .broadcast(Arc::new(msg_owned), Some(&sid))
                         .await;
                     ctx.state.batch_routing = Some(BatchRouting::Broadcast);
                 }
@@ -80,7 +81,7 @@ impl ServerHandler for ServerBatchHandler {
                             let sid = ServerId::new(ctx.state.sid.clone());
                             ctx.matrix
                                 .sync_manager
-                                .broadcast(msg_owned, Some(&sid))
+                                .broadcast(Arc::new(msg_owned), Some(&sid))
                                 .await;
                             ctx.state.batch_routing = Some(BatchRouting::Broadcast);
                         } else {
@@ -113,7 +114,7 @@ impl ServerHandler for ServerBatchHandler {
                                             ctx.matrix.user_manager.senders.get(&uid)
                                         {
                                             let msg_owned = msg.to_owned();
-                                            let _ = sender.send(msg_owned).await;
+                                            let _ = sender.send(Arc::new(msg_owned)).await;
                                             ctx.state.batch_routing =
                                                 Some(BatchRouting::Local(uid));
                                         } else {
@@ -126,7 +127,7 @@ impl ServerHandler for ServerBatchHandler {
                                             ctx.matrix.sync_manager.get_next_hop(&target_sid)
                                         {
                                             let msg_owned = msg.to_owned();
-                                            let _ = peer.tx.send(msg_owned).await;
+                                            let _ = peer.tx.send(Arc::new(msg_owned)).await;
                                             ctx.state.batch_routing =
                                                 Some(BatchRouting::Routed(target_sid));
                                         } else {
@@ -174,21 +175,21 @@ impl ServerHandler for ServerBatchHandler {
                         let sid = ServerId::new(ctx.state.sid.clone());
                         ctx.matrix
                             .sync_manager
-                            .broadcast(msg_owned, Some(&sid))
+                            .broadcast(Arc::new(msg_owned), Some(&sid))
                             .await;
                     }
                     BatchRouting::Routed(target_sid) => {
                         // Route to specific server
                         if let Some(peer) = ctx.matrix.sync_manager.get_next_hop(target_sid) {
                             let msg_owned = msg.to_owned();
-                            let _ = peer.tx.send(msg_owned).await;
+                            let _ = peer.tx.send(Arc::new(msg_owned)).await;
                         }
                     }
                     BatchRouting::Local(uid) => {
                         // Route to local user
                         if let Some(sender) = ctx.matrix.user_manager.senders.get(uid) {
                             let msg_owned = msg.to_owned();
-                            let _ = sender.send(msg_owned).await;
+                            let _ = sender.send(Arc::new(msg_owned)).await;
                         }
                     }
                     BatchRouting::None => {}

@@ -7,6 +7,7 @@
 use super::super::{Context, HandlerError, HandlerResult, server_reply, with_label};
 use crate::state::MemberModes;
 use slirc_proto::{Command, Message, Prefix, Response, irc_to_lower};
+use std::sync::Arc;
 use tracing::info;
 
 /// Target user information for channel operations.
@@ -48,7 +49,7 @@ pub async fn force_join_channel<S>(
     target: &TargetUser<'_>,
     channel_name: &str,
     modes: MemberModes,
-    send_topic_names_to: Option<&tokio::sync::mpsc::Sender<Message>>,
+    send_topic_names_to: Option<&tokio::sync::mpsc::Sender<std::sync::Arc<Message>>>,
 ) -> HandlerResult {
     let channel_lower = irc_to_lower(channel_name);
     let mailbox_capacity = ctx.matrix.config.limits.channel_mailbox_capacity;
@@ -191,7 +192,7 @@ pub async fn force_join_channel<S>(
                     topic.text,
                 ],
             );
-            sender.send(topic_reply).await?;
+            sender.send(Arc::new(topic_reply)).await?;
         }
 
         // Send NAMES using GetMembers (oneshot-based, no deadlock)
@@ -234,7 +235,7 @@ pub async fn force_join_channel<S>(
                     names_list.join(" "),
                 ],
             );
-            sender.send(names_reply).await?;
+            sender.send(Arc::new(names_reply)).await?;
         }
 
         let end_names = with_label(
@@ -249,7 +250,7 @@ pub async fn force_join_channel<S>(
             ),
             ctx.label.as_deref(),
         );
-        sender.send(end_names).await?;
+        sender.send(Arc::new(end_names)).await?;
     }
 
     Ok(())

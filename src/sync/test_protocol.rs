@@ -88,6 +88,7 @@ mod tests {
                 name: "peer.server".to_string(),
                 last_pong: Instant::now(),
                 last_ping: Instant::now(),
+                connected_at: Instant::now(),
             },
         );
 
@@ -176,6 +177,7 @@ mod tests {
                 name: "peer.server".to_string(),
                 last_pong: Instant::now(),
                 last_ping: Instant::now(),
+                connected_at: Instant::now(),
             },
         );
 
@@ -188,9 +190,9 @@ mod tests {
 
         // Expect PONG
         let msg = rx.recv().await.unwrap();
-        if let Command::PONG(origin, target) = msg.command {
+        if let Command::PONG(origin, target) = &msg.command {
             assert_eq!(origin, "001");
-            assert_eq!(target, Some("peer.server".to_string()));
+            assert_eq!(target, &Some("peer.server".to_string()));
         } else {
             panic!("Expected PONG");
         }
@@ -252,6 +254,7 @@ mod tests {
                 name: "peer.server".to_string(),
                 last_pong: Instant::now(),
                 last_ping: Instant::now(),
+                connected_at: Instant::now(),
             },
         );
 
@@ -284,7 +287,7 @@ mod tests {
 
         // Expect ERROR command sent to peer
         let msg = rx.recv().await.unwrap();
-        if let Command::ERROR(msg) = msg.command {
+        if let Command::ERROR(msg) = &msg.command {
             assert!(msg.contains("Loop detected"));
         } else {
             panic!("Expected ERROR command");
@@ -333,6 +336,7 @@ mod tests {
                 name: "peer.server".to_string(),
                 last_pong: Instant::now(),
                 last_ping: Instant::now(),
+                connected_at: Instant::now(),
             },
         );
 

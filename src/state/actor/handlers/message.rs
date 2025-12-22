@@ -8,6 +8,7 @@ use slirc_proto::message::Tag;
 use slirc_proto::{Command, Message};
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 use tracing::debug;
@@ -277,7 +278,7 @@ impl ChannelActor {
                 echo_msg.tags =
                     build_echo_tags(&tags, &timestamp, &msgid, has_message_tags, has_server_time);
 
-                if let Err(err) = sender.try_send(echo_msg) {
+                if let Err(err) = sender.try_send(Arc::new(echo_msg)) {
                     debug!("Failed to send echo to {}: {:?}", uid, err);
                     match err {
                         TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
@@ -387,7 +388,7 @@ impl ChannelActor {
                 Some(recipient_tags)
             };
 
-            if let Err(err) = sender.try_send(recipient_msg) {
+            if let Err(err) = sender.try_send(Arc::new(recipient_msg)) {
                 debug!("Failed to send message to {}: {:?}", uid, err);
                 match err {
                     TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),

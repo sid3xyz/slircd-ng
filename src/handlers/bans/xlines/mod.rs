@@ -19,6 +19,8 @@ use ipnet::IpNet;
 use slirc_proto::{MessageRef, Response};
 use std::sync::Arc;
 
+use crate::state::observer::GlobalBanType;
+
 // -----------------------------------------------------------------------------
 // BanConfig Trait
 // -----------------------------------------------------------------------------
@@ -36,6 +38,12 @@ pub trait BanConfig: Send + Sync + 'static {
 
     /// BanType for disconnect_matching_ban.
     fn ban_type(&self) -> BanType;
+
+    /// If this is a global ban type, return the GlobalBanType for S2S propagation.
+    /// Returns `None` for local-only bans (K-line, D-line).
+    fn global_ban_type(&self) -> Option<GlobalBanType> {
+        None
+    }
 
     /// Check if the user has the appropriate capability for this ban type.
     ///
@@ -119,6 +127,19 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
         self.config
             .add_to_cache(ctx.matrix, target, reason, nick)
             .await;
+
+        // Broadcast global bans to peer servers (Phase 3: Distributed Security)
+        if let Some(global_type) = self.config.global_ban_type() {
+            use crate::state::observer::StateObserver;
+            ctx.matrix.sync_manager.on_ban_add(
+                global_type,
+                target,
+                reason,
+                nick,
+                None, // TODO: Support timed bans
+                None, // Local origin
+            );
+        }
 
         // Disconnect matching users
         let disconnected =
@@ -205,6 +226,16 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
         let removed = db_removed || cache_removed;
         if removed {
             tracing::info!(oper = %nick, target = %target, cmd = cmd_name, "{} removed", cmd_name);
+
+            // Broadcast global ban removal to peer servers (Phase 3: Distributed Security)
+            if let Some(global_type) = self.config.global_ban_type() {
+                use crate::state::observer::StateObserver;
+                ctx.matrix.sync_manager.on_ban_remove(
+                    global_type,
+                    target,
+                    None, // Local origin
+                );
+            }
         }
 
         // Send confirmation
@@ -226,7 +257,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
 // -----------------------------------------------------------------------------
 
 /// Parse an IP address or CIDR string into an IpNet.
-fn parse_ip_or_cidr(ip: &str) -> Option<IpNet> {
+pub fn parse_ip_or_cidr(ip: &str) -> Option<IpNet> {
     ip.parse().ok().or_else(|| {
         // Try parsing as single IP and convert to /32 or /128
         // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are compile-time constants and always valid
@@ -250,6 +281,71 @@ fn parse_ip_or_cidr(ip: &str) -> Option<IpNet> {
 /// This eliminates ~100 lines of repetitive BanConfig implementations for
 /// ban types that use the standard BanCache pattern (K/G-lines).
 macro_rules! simple_ban_config {
+    // Variant with global_ban_type (for G-line, R-line)
+    (
+        $(#[$meta:meta])*
+        $config_name:ident {
+            command: $cmd:literal,
+            unset_command: $unset_cmd:literal,
+            ban_type: $ban_type:expr,
+            global_ban_type: $global_type:expr,
+            capability_check: |$auth:ident, $uid:ident| $cap_check:expr,
+            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident| $add_expr:expr,
+            db_remove: |$db_rem:ident, $target_rem:ident| $remove_expr:expr,
+            cache_add: |$cache_add:ident, $target_cache_add:ident, $reason_cache_add:ident| $cache_add_expr:expr,
+            cache_remove: |$cache_rem:ident, $target_cache_rem:ident| $cache_remove_expr:expr,
+        }
+    ) => {
+        $(#[$meta])*
+        pub struct $config_name;
+
+        #[async_trait]
+        impl BanConfig for $config_name {
+            fn command_name(&self) -> &'static str {
+                $cmd
+            }
+
+            fn unset_command_name(&self) -> &'static str {
+                $unset_cmd
+            }
+
+            fn ban_type(&self) -> BanType {
+                $ban_type
+            }
+
+            fn global_ban_type(&self) -> Option<GlobalBanType> {
+                Some($global_type)
+            }
+
+            async fn check_capability(&self, $auth: &CapabilityAuthority, $uid: &str) -> bool {
+                $cap_check
+            }
+
+            async fn add_to_db(
+                &self,
+                $db_add: &Database,
+                $target_add: &str,
+                $reason_add: &str,
+                $oper_add: &str,
+            ) -> Result<(), DbError> {
+                $add_expr
+            }
+
+            async fn remove_from_db(&self, $db_rem: &Database, $target_rem: &str) -> Result<bool, DbError> {
+                $remove_expr
+            }
+
+            async fn add_to_cache(&self, $cache_add: &Arc<Matrix>, $target_cache_add: &str, $reason_cache_add: &str, _oper: &str) {
+                $cache_add_expr
+            }
+
+            async fn remove_from_cache(&self, $cache_rem: &Arc<Matrix>, $target_cache_rem: &str) -> bool {
+                $cache_remove_expr;
+                true
+            }
+        }
+    };
+    // Variant without global_ban_type (for K-line - local only)
     (
         $(#[$meta:meta])*
         $config_name:ident {
@@ -329,7 +425,7 @@ simple_ban_config! {
 }
 
 // -----------------------------------------------------------------------------
-// G-line Config
+// G-line Config (GLOBAL - propagated to peers)
 // -----------------------------------------------------------------------------
 
 simple_ban_config! {
@@ -338,6 +434,7 @@ simple_ban_config! {
         command: "GLINE",
         unset_command: "UNGLINE",
         ban_type: BanType::Gline,
+        global_ban_type: GlobalBanType::Gline,
         capability_check: |authority, uid| authority.request_gline_cap(uid).await.is_some(),
         db_add: |db, target, reason, oper| db.bans().add_gline(target, Some(reason), oper, None).await,
         db_remove: |db, target| db.bans().remove_gline(target).await,
@@ -354,6 +451,82 @@ simple_ban_config! {
 ///
 /// D-lines and Z-lines use the IpDenyList (Roaring Bitmap) instead of BanCache.
 macro_rules! ip_ban_config {
+    // Variant with global_ban_type (for Z-line)
+    (
+        $(#[$meta:meta])*
+        $config_name:ident {
+            command: $cmd:literal,
+            unset_command: $unset_cmd:literal,
+            ban_type: $ban_type:expr,
+            global_ban_type: $global_type:expr,
+            capability_check: |$auth:ident, $uid:ident| $cap_check:expr,
+            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident| $add_expr:expr,
+            db_remove: |$db_rem:ident, $target_rem:ident| $remove_expr:expr,
+            log_prefix: $log_prefix:literal,
+        }
+    ) => {
+        $(#[$meta])*
+        pub struct $config_name;
+
+        #[async_trait]
+        impl BanConfig for $config_name {
+            fn command_name(&self) -> &'static str {
+                $cmd
+            }
+
+            fn unset_command_name(&self) -> &'static str {
+                $unset_cmd
+            }
+
+            fn ban_type(&self) -> BanType {
+                $ban_type
+            }
+
+            fn global_ban_type(&self) -> Option<GlobalBanType> {
+                Some($global_type)
+            }
+
+            async fn check_capability(&self, $auth: &CapabilityAuthority, $uid: &str) -> bool {
+                $cap_check
+            }
+
+            async fn add_to_db(
+                &self,
+                $db_add: &Database,
+                $target_add: &str,
+                $reason_add: &str,
+                $oper_add: &str,
+            ) -> Result<(), DbError> {
+                $add_expr
+            }
+
+            async fn remove_from_db(&self, $db_rem: &Database, $target_rem: &str) -> Result<bool, DbError> {
+                $remove_expr
+            }
+
+            async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str) {
+                if let Some(net) = parse_ip_or_cidr(target) {
+                    if let Ok(mut deny_list) = matrix.security_manager.ip_deny_list.write()
+                        && let Err(e) = deny_list.add_ban(net, reason.to_string(), None, oper.to_string())
+                    {
+                        tracing::error!(error = %e, concat!("Failed to add ", $log_prefix, " to IP deny list"));
+                    }
+                } else {
+                    tracing::warn!(ip = %target, concat!($log_prefix, " IP could not be parsed as IP/CIDR"));
+                }
+            }
+
+            async fn remove_from_cache(&self, matrix: &Arc<Matrix>, target: &str) -> bool {
+                if let Some(net) = parse_ip_or_cidr(target)
+                    && let Ok(mut deny_list) = matrix.security_manager.ip_deny_list.write()
+                {
+                    return deny_list.remove_ban(net).unwrap_or(false);
+                }
+                false
+            }
+        }
+    };
+    // Variant without global_ban_type (for D-line - local only)
     (
         $(#[$meta:meta])*
         $config_name:ident {
@@ -426,7 +599,7 @@ macro_rules! ip_ban_config {
 }
 
 // -----------------------------------------------------------------------------
-// D-line Config (IP-based with IpDenyList)
+// D-line Config (IP-based with IpDenyList, LOCAL only)
 // -----------------------------------------------------------------------------
 
 ip_ban_config! {
@@ -443,7 +616,7 @@ ip_ban_config! {
 }
 
 // -----------------------------------------------------------------------------
-// Z-line Config (IP-based with IpDenyList)
+// Z-line Config (GLOBAL IP ban - propagated to peers)
 // -----------------------------------------------------------------------------
 
 ip_ban_config! {
@@ -452,6 +625,7 @@ ip_ban_config! {
         command: "ZLINE",
         unset_command: "UNZLINE",
         ban_type: BanType::Zline,
+        global_ban_type: GlobalBanType::Zline,
         capability_check: |authority, uid| authority.request_zline_cap(uid).await.is_some(),
         db_add: |db, target, reason, oper| db.bans().add_zline(target, Some(reason), oper, None).await,
         db_remove: |db, target| db.bans().remove_zline(target).await,
@@ -460,7 +634,7 @@ ip_ban_config! {
 }
 
 // -----------------------------------------------------------------------------
-// R-line Config
+// R-line Config (GLOBAL realname ban - propagated to peers)
 // -----------------------------------------------------------------------------
 
 simple_ban_config! {
@@ -469,6 +643,7 @@ simple_ban_config! {
         command: "RLINE",
         unset_command: "UNRLINE",
         ban_type: BanType::Rline,
+        global_ban_type: GlobalBanType::Rline,
         capability_check: |authority, uid| authority.request_rline_cap(uid).await.is_some(),
         db_add: |db, target, reason, oper| db.bans().add_rline(target, Some(reason), oper, None).await,
         db_remove: |db, target| db.bans().remove_rline(target).await,

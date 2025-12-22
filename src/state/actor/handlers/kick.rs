@@ -4,6 +4,7 @@
 
 use super::{ChannelActor, ChannelError, ChannelMode, KickParams};
 use slirc_proto::{Command, Message};
+use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
@@ -48,11 +49,11 @@ impl ChannelActor {
             return;
         }
 
-        let msg = Message {
+        let msg = Arc::new(Message {
             tags: None,
             prefix: Some(sender_prefix),
             command: Command::KICK(self.name.clone(), target_nick, Some(reason)),
-        };
+        });
 
         for (uid, sender) in &self.senders {
             if let Err(err) = sender.try_send(msg.clone()) {

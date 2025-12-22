@@ -4,6 +4,7 @@ use crate::handlers::{Context, ResponseMiddleware};
 use crate::state::ServerState;
 use slirc_crdt::clock::ServerId;
 use slirc_proto::{Command, Message};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
@@ -98,69 +99,95 @@ pub async fn run_server_loop(
     let (reply_tx, mut reply_rx) = mpsc::channel(100);
 
     loop {
-        tokio::select! {
+        // Result type for the select - pure data, no I/O inside select
+        enum ServerSelectResult {
+            /// Received a valid message to process (boxed to avoid large enum variant)
+            Message(Box<Message>),
+            /// Read error occurred
+            ReadError,
+            /// Client disconnected
+            Disconnected,
+            /// Received a reply message to send
+            Reply(Arc<Message>),
+            /// Received an outgoing message to send
+            Outgoing(Arc<Message>),
+        }
+
+        let select_result = tokio::select! {
             // Messages from the peer server
             result = transport.next() => {
                 match result {
                     Some(Ok(msg_ref)) => {
                         debug!(raw = ?msg_ref, "Received message from peer server");
-
-                        // Process batch messages (if any)
-                        // If process_batch_message returns Ok(Some(_)), the message was buffered/consumed.
-                        // If it returns Ok(None), we proceed to normal dispatch.
-                        match process_batch_message(&mut state, &msg_ref, &matrix.server_info.name) {
-                            Ok(Some(_batch_ref)) => {
-                                // Message consumed by batch
-                                continue;
-                            }
-                            Ok(None) => {
-                                // Not a batch message, or streaming batch (NETSPLIT)
-                            }
-                            Err(e) => {
-                                warn!(error = %e, "Batch processing error");
-                                // We could send a FAIL here, but for server links we usually just warn
-                            }
-                        }
-
-                        let mut ctx = Context {
-                            uid: "server", // Placeholder UID for server connection
-                            matrix,
-                            sender: ResponseMiddleware::Direct(&reply_tx),
-                            state: &mut state,
-                            db,
-                            remote_addr: addr,
-                            label: None,
-                            suppress_labeled_ack: false,
-                            active_batch_id: None,
-                            registry,
-                        };
-
-                        if let Err(e) = registry.dispatch_server(&mut ctx, &msg_ref).await {
-                            warn!(error = ?e, "Error dispatching server command");
-                        }
+                        // Convert to owned immediately
+                        let msg = msg_ref.to_owned();
+                        drop(msg_ref);
+                        ServerSelectResult::Message(Box::new(msg))
                     }
                     Some(Err(e)) => {
                         warn!(error = ?e, "Read error from peer server");
-                        break;
+                        ServerSelectResult::ReadError
                     }
                     None => {
                         info!("Peer server disconnected");
-                        break;
+                        ServerSelectResult::Disconnected
                     }
                 }
             }
             // Replies from handlers (if any)
             Some(msg) = reply_rx.recv() => {
+                ServerSelectResult::Reply(msg)
+            }
+            // Messages to send to the peer server
+            Some(msg) = outgoing_rx.recv() => {
+                ServerSelectResult::Outgoing(msg)
+            }
+        };
+
+        // Now process the result - we can use transport freely here
+        match select_result {
+            ServerSelectResult::ReadError | ServerSelectResult::Disconnected => {
+                break;
+            }
+            ServerSelectResult::Reply(msg) | ServerSelectResult::Outgoing(msg) => {
                 if let Err(e) = transport.write_message(&msg).await {
                     warn!(error = ?e, "Write error to peer server");
                     break;
                 }
             }
-            // Messages to send to the peer server
-            Some(msg) = outgoing_rx.recv() => {
-                if let Err(e) = transport.write_message(&msg).await {
-                    warn!(error = ?e, "Write error to peer server");
-                    break;
+            ServerSelectResult::Message(msg) => {
+                // Process batch messages (if any) - need a MessageRef for this
+                let raw_str = msg.to_string();
+                if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
+                    match process_batch_message(&mut state, &msg_ref, &matrix.server_info.name) {
+                        Ok(Some(_batch_ref)) => {
+                            // Message consumed by batch
+                            continue;
+                        }
+                        Ok(None) => {
+                            // Not a batch message, or streaming batch (NETSPLIT)
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "Batch processing error");
+                        }
+                    }
+
+                    let mut ctx = Context {
+                        uid: "server", // Placeholder UID for server connection
+                        matrix,
+                        sender: ResponseMiddleware::Direct(&reply_tx),
+                        state: &mut state,
+                        db,
+                        remote_addr: addr,
+                        label: None,
+                        suppress_labeled_ack: false,
+                        active_batch_id: None,
+                        registry,
+                    };
+
+                    if let Err(e) = registry.dispatch_server(&mut ctx, &msg_ref).await {
+                        warn!(error = ?e, "Error dispatching server command");
+                    }
                 }
             }
         }

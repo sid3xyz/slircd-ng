@@ -102,7 +102,7 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
                 ),
             ),
         };
-        let _ = sender.send(notice).await;
+        let _ = sender.send(Arc::new(notice)).await;
     }
 }
 

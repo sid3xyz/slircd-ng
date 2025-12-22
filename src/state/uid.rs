@@ -9,17 +9,23 @@ pub type Uid = String;
 ///
 /// Format: SID (3 chars) + Client ID (6 chars base36) = 9 chars total.
 /// Example: "001AAAAAB"
+///
+/// Note: Counter starts at 2 because 0 (AAAAAA) and 1 (AAAAAB) are reserved
+/// for service pseudoclients (NickServ, ChanServ).
 pub struct UidGenerator {
     sid: String,
     counter: AtomicU64,
 }
+
+/// Start counter at 2 to skip reserved service UIDs (AAAAAA, AAAAAB).
+const UID_COUNTER_START: u64 = 2;
 
 impl UidGenerator {
     /// Create a new UID generator for the given server ID.
     pub fn new(sid: String) -> Self {
         Self {
             sid,
-            counter: AtomicU64::new(0),
+            counter: AtomicU64::new(UID_COUNTER_START),
         }
     }
 
@@ -50,9 +56,10 @@ mod tests {
     #[test]
     fn test_uid_generation() {
         let generator = UidGenerator::new("001".to_string());
-        assert_eq!(generator.next(), "001AAAAAA");
-        assert_eq!(generator.next(), "001AAAAAB");
+        // First UID is AAAAAC because AAAAAA/AAAAAB are reserved for services
         assert_eq!(generator.next(), "001AAAAAC");
+        assert_eq!(generator.next(), "001AAAAAD");
+        assert_eq!(generator.next(), "001AAAAAE");
     }
 
     #[test]

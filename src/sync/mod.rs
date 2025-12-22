@@ -15,6 +15,7 @@ mod test_protocol;
 mod tests;
 pub mod topology;
 
+use crate::metrics::{S2S_BYTES_RECEIVED, S2S_BYTES_SENT, S2S_COMMANDS};
 use crate::state::{ChannelManager, Matrix, UserManager};
 use crate::sync::handshake::{HandshakeMachine, HandshakeState};
 use crate::sync::stream::S2SStream;
@@ -99,7 +100,7 @@ impl tokio_rustls::rustls::client::danger::ServerCertVerifier for DangerousNoVer
 #[derive(Debug)]
 pub struct LinkState {
     /// The channel to send messages to this peer.
-    pub tx: mpsc::Sender<Message>,
+    pub tx: mpsc::Sender<Arc<Message>>,
     /// The current handshake state.
     pub state: handshake::HandshakeState,
     /// The name of the peer server.
@@ -108,6 +109,8 @@ pub struct LinkState {
     pub last_pong: Instant,
     /// Last time we sent a PING to this peer.
     pub last_ping: Instant,
+    /// Time when the connection was established.
+    pub connected_at: Instant,
 }
 
 impl Clone for LinkState {
@@ -118,6 +121,7 @@ impl Clone for LinkState {
             name: self.name.clone(),
             last_pong: self.last_pong,
             last_ping: self.last_ping,
+            connected_at: self.connected_at,
         }
     }
 }
@@ -210,6 +214,44 @@ impl SyncManager {
         Ok(tls_stream)
     }
 
+    /// Route a message to a remote user.
+    ///
+    /// Resolves the target server from the UID, finds the next hop,
+    /// and sends the message via the appropriate link.
+    pub async fn route_to_remote_user(&self, target_uid: &str, msg: Arc<Message>) -> bool {
+        // 1. Extract Server ID from UID (first 3 chars)
+        if target_uid.len() < 3 {
+            tracing::warn!("Cannot route to invalid UID: {}", target_uid);
+            return false;
+        }
+        let target_sid_str = &target_uid[0..3];
+        let target_sid = ServerId::new(target_sid_str.to_string());
+
+        // 2. Check if target is local
+        if target_sid == self.local_id {
+            tracing::warn!("Attempted to route local user {} via S2S", target_uid);
+            return false;
+        }
+
+        // 3. Find next hop
+        let next_hop = self.topology.get_route(&target_sid).unwrap_or(target_sid.clone());
+
+        // 4. Send to link
+        if let Some(link) = self.links.get(&next_hop) {
+            let _ = link.tx.send(msg).await;
+            crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
+                .with_label_values(&[self.local_id.as_str(), target_sid.as_str(), "success"])
+                .inc();
+            true
+        } else {
+            tracing::warn!("No route to server {} (for user {})", target_sid.as_str(), target_uid);
+            crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
+                .with_label_values(&[self.local_id.as_str(), target_sid.as_str(), "no_route"])
+                .inc();
+            false
+        }
+    }
+
     pub fn start_heartbeat(&self) {
         let manager = self.clone();
         tokio::spawn(async move {
@@ -244,7 +286,7 @@ impl SyncManager {
                     if let Some(mut link) = manager.links.get_mut(&sid) {
                         link.last_ping = now;
                         let ping = Command::PING(manager.local_id.as_str().to_string(), None);
-                        let _ = link.tx.send(Message::from(ping)).await;
+                        let _ = link.tx.send(Arc::new(Message::from(ping))).await;
                     }
                 }
             }
@@ -347,7 +389,7 @@ impl SyncManager {
             }
 
             // Register link
-            let (tx, mut rx) = mpsc::channel(100);
+            let (tx, mut rx) = mpsc::channel::<Arc<Message>>(100);
             if let Some(sid) = &remote_sid {
                 manager.links.insert(
                     sid.clone(),
@@ -357,6 +399,7 @@ impl SyncManager {
                         name: remote_name.clone().unwrap_or_default(),
                         last_pong: Instant::now(),
                         last_ping: Instant::now(),
+                        connected_at: Instant::now(),
                     },
                 );
             }
@@ -368,7 +411,11 @@ impl SyncManager {
                     msg = rx.recv() => {
                         match msg {
                             Some(m) => {
-                                if let Err(e) = framed.send(m.to_string()).await {
+                                let s = m.as_ref().to_string();
+                                if let Some(sid) = &remote_sid {
+                                    S2S_BYTES_SENT.with_label_values(&[sid.as_str()]).inc_by(s.len() as u64 + 2); // +2 for \r\n
+                                }
+                                if let Err(e) = framed.send(s).await {
                                      tracing::error!("Failed to send message to peer: {}", e);
                                      break;
                                 }
@@ -382,6 +429,9 @@ impl SyncManager {
                     result = framed.next() => {
                         match result {
                             Some(Ok(line)) => {
+                                if let Some(sid) = &remote_sid {
+                                    S2S_BYTES_RECEIVED.with_label_values(&[sid.as_str()]).inc_by(line.len() as u64 + 2); // +2 for \r\n
+                                }
                                 let msg = match line.parse::<Message>() {
                                     Ok(m) => m,
                                     Err(e) => {
@@ -392,6 +442,7 @@ impl SyncManager {
 
                                 #[allow(clippy::collapsible_if)]
                                 if let Some(sid) = &remote_sid {
+                                    S2S_COMMANDS.with_label_values(&[sid.as_str(), msg.command.name()]).inc();
                                     if let Err(e) = handler.handle_message(msg, &manager, sid).await {
                                         tracing::error!("Protocol error from peer: {}", e);
                                         break;
@@ -565,7 +616,7 @@ impl SyncManager {
             }
 
             // Register link
-            let (tx, mut rx) = mpsc::channel(100);
+            let (tx, mut rx) = mpsc::channel::<Arc<Message>>(100);
             if let Some(sid) = &remote_sid {
                 manager.links.insert(
                     sid.clone(),
@@ -575,6 +626,7 @@ impl SyncManager {
                         name: remote_name.clone().unwrap_or_default(),
                         last_pong: Instant::now(),
                         last_ping: Instant::now(),
+                        connected_at: Instant::now(),
                     },
                 );
             }
@@ -586,7 +638,11 @@ impl SyncManager {
                     msg = rx.recv() => {
                         match msg {
                             Some(m) => {
-                                if let Err(e) = framed.send(m.to_string()).await {
+                                let s = m.as_ref().to_string();
+                                if let Some(sid) = &remote_sid {
+                                    S2S_BYTES_SENT.with_label_values(&[sid.as_str()]).inc_by(s.len() as u64 + 2); // +2 for \r\n
+                                }
+                                if let Err(e) = framed.send(s).await {
                                      tracing::error!("Failed to send message to peer: {}", e);
                                      break;
                                 }
@@ -600,6 +656,9 @@ impl SyncManager {
                     result = framed.next() => {
                         match result {
                             Some(Ok(line)) => {
+                                if let Some(sid) = &remote_sid {
+                                    S2S_BYTES_RECEIVED.with_label_values(&[sid.as_str()]).inc_by(line.len() as u64 + 2); // +2 for \r\n
+                                }
                                 let msg = match line.parse::<Message>() {
                                     Ok(m) => m,
                                     Err(e) => {
@@ -610,6 +669,7 @@ impl SyncManager {
 
                                 #[allow(clippy::collapsible_if)]
                                 if let Some(sid) = &remote_sid {
+                                    S2S_COMMANDS.with_label_values(&[sid.as_str(), msg.command.name()]).inc();
                                     if let Err(e) = handler.handle_message(msg, &manager, sid).await {
                                         tracing::error!("Protocol error from peer: {}", e);
                                         break;
@@ -650,7 +710,7 @@ impl SyncManager {
         name: String,
         hopcount: u32,
         info: String,
-    ) -> mpsc::Receiver<Message> {
+    ) -> mpsc::Receiver<Arc<Message>> {
         let (tx, rx) = mpsc::channel(1000);
         self.links.insert(
             sid.clone(),
@@ -660,6 +720,7 @@ impl SyncManager {
                 name: name.clone(),
                 last_pong: Instant::now(),
                 last_ping: Instant::now(),
+                connected_at: Instant::now(),
             },
         );
         self.topology.servers.insert(
@@ -688,7 +749,7 @@ impl SyncManager {
         self.links.remove(sid);
     }
 
-    pub async fn broadcast(&self, _msg: Message, _source: Option<&ServerId>) {
+    pub async fn broadcast(&self, _msg: Arc<Message>, _source: Option<&ServerId>) {
         // Stub
     }
 

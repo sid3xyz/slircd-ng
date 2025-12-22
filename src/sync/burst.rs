@@ -2,7 +2,8 @@
 //!
 //! When a new server link is established, both sides exchange a "burst"
 //! containing their complete state. This module generates the burst commands:
-//! - `UID` for each user
+//! - Global bans (G-lines, Z-lines, Shuns) - sent first
+//! - `UID` for each user (including service pseudoclients)
 //! - `SJOIN` for each channel (with members, modes, topic)
 //!
 //! The burst is sent after handshake completion and before operational messages.
@@ -24,6 +25,39 @@ use tracing::error;
 /// * `local_sid` - The local server ID (used for hopcounts).
 pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
     let mut commands = Vec::new();
+
+    // 0. Burst Global Bans (before users/channels to prevent race conditions)
+    // G-lines
+    for (mask, reason, _expires) in state.security_manager.ban_cache.iter_glines() {
+        commands.push(Command::Raw("GLINE".to_string(), vec![mask, reason]));
+    }
+
+    // Shuns
+    for entry in state.security_manager.shuns.iter() {
+        let shun = entry.value();
+        commands.push(Command::Raw(
+            "SHUN".to_string(),
+            vec![
+                shun.mask.clone(),
+                shun.reason
+                    .clone()
+                    .unwrap_or_else(|| "No reason".to_string()),
+            ],
+        ));
+    }
+
+    // Z-lines (IP bans from ip_deny_list)
+    {
+        let ip_deny = state.security_manager.ip_deny_list.read().unwrap();
+        for (ip_mask, meta) in ip_deny.iter() {
+            if !meta.is_expired() {
+                commands.push(Command::Raw(
+                    "ZLINE".to_string(),
+                    vec![ip_mask.clone(), meta.reason.clone()],
+                ));
+            }
+        }
+    }
 
     // 1. Burst Users (UID)
     // Iterate over all users. We only burst local users or users that we are responsible for?

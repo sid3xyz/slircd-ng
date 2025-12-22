@@ -8,6 +8,7 @@ use slirc_crdt::clock::HybridTimestamp;
 use slirc_proto::message::Tag;
 use slirc_proto::{Command, Message};
 use std::borrow::Cow;
+use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
@@ -74,7 +75,7 @@ impl ChannelActor {
                     command: msg.command.clone(),
                 }
             };
-            if let Err(err) = sender.try_send(out_msg) {
+            if let Err(err) = sender.try_send(Arc::new(out_msg)) {
                 match err {
                     TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
                     TrySendError::Closed(_) => {}

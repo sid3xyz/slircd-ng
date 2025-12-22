@@ -231,7 +231,7 @@ impl ServerHandler for ServerPropagationHandler {
 
         ctx.matrix
             .sync_manager
-            .broadcast(out_msg, Some(&peer_sid))
+            .broadcast(Arc::new(out_msg), Some(&peer_sid))
             .await;
 
         Ok(())

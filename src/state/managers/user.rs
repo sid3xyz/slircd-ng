@@ -27,7 +27,7 @@ const MAX_WHOWAS_PER_NICK: usize = 10;
 pub struct UserManager {
     pub users: DashMap<Uid, Arc<RwLock<User>>>,
     pub nicks: DashMap<String, Uid>,
-    pub senders: DashMap<Uid, mpsc::Sender<Message>>,
+    pub senders: DashMap<Uid, mpsc::Sender<Arc<Message>>>,
     pub whowas: DashMap<String, VecDeque<WhowasEntry>>,
     pub uid_gen: UidGenerator,
     pub enforce_timers: DashMap<Uid, Instant>,
@@ -96,6 +96,19 @@ impl UserManager {
 
         // Notify observer (local change)
         self.notify_observer(&uid, None).await;
+    }
+
+    /// Register a service pseudoclient (NickServ, ChanServ, etc.).
+    ///
+    /// Unlike `add_local_user`, this is synchronous and does NOT notify
+    /// the observer because services are registered at startup before
+    /// the server accepts connections.
+    pub fn register_service_user(&mut self, user: User) {
+        let uid = user.uid.clone();
+        let nick_lower = slirc_proto::irc_to_lower(&user.nick);
+
+        self.nicks.insert(nick_lower, uid.clone());
+        self.users.insert(uid.clone(), Arc::new(RwLock::new(user)));
     }
 
     /// Merge a UserCrdt into the local state.
@@ -217,14 +230,14 @@ impl UserManager {
     /// - `mask`: The snomask character (e.g., 'c' for connect, 'k' for kill).
     /// - `message`: The message text.
     pub async fn send_snomask(&self, mask: char, message: &str) {
-        let notice_msg = Message {
+        let notice_msg = Arc::new(Message {
             tags: None,
             prefix: Some(Prefix::ServerName(self.server_name.clone())),
             command: Command::NOTICE(
                 "*".to_string(), // Target is * for server notices
                 format!("*** Notice -- {}", message),
             ),
-        };
+        });
 
         for user_entry in self.users.iter() {
             let user_guard = user_entry.value().read().await;

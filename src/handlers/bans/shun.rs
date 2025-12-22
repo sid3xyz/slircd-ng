@@ -7,6 +7,7 @@
 use crate::db::Shun;
 use crate::handlers::{Context, HandlerResult, PostRegHandler, server_notice};
 use crate::state::RegisteredState;
+use crate::state::observer::{GlobalBanType, StateObserver};
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -51,6 +52,16 @@ impl PostRegHandler for ShunHandler {
                     set_at: now,
                     expires_at: None,
                 },
+            );
+
+            // Broadcast to peers (SHUN is global)
+            ctx.matrix.sync_manager.on_ban_add(
+                GlobalBanType::Shun,
+                mask,
+                reason,
+                nick,
+                None, // duration (permanent)
+                None, // source (local)
             );
         }
 
@@ -120,6 +131,13 @@ impl PostRegHandler for UnshunHandler {
         let removed = ctx.matrix.security_manager.shuns.remove(mask).is_some();
 
         if removed {
+            // Broadcast removal to peers (SHUN is global)
+            ctx.matrix.sync_manager.on_ban_remove(
+                GlobalBanType::Shun,
+                mask,
+                None, // source (local)
+            );
+
             tracing::info!(
                 oper = %nick,
                 mask = %mask,

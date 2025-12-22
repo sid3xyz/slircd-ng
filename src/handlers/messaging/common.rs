@@ -7,6 +7,7 @@ use super::super::{Context, HandlerResult, server_reply};
 use crate::security::UserContext;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use slirc_proto::{Command, Message, Prefix, Response};
+use std::sync::Arc;
 use tracing::debug;
 
 // ============================================================================
@@ -352,6 +353,35 @@ pub async fn route_to_user_with_snapshot(
     // Use sender's account from snapshot
     let sender_account = snapshot.account.as_ref();
 
+    // Check if target is a service user
+    let is_service = if let Some(user_arc) = ctx.matrix.user_manager.users.get(&target_uid) {
+        user_arc.read().await.modes.service
+    } else {
+        false
+    };
+
+    if is_service {
+        // Route to service manager
+        let text = match &msg.command {
+            Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => text.as_str(),
+            _ => return UserRouteResult::Sent, // Ignore other commands for services
+        };
+
+        let handled = crate::services::route_service_message(
+            ctx.matrix,
+            ctx.uid,
+            &snapshot.nick,
+            target_lower,
+            text,
+            &ctx.sender,
+        )
+        .await;
+
+        if handled {
+            return UserRouteResult::Sent;
+        }
+    }
+
     // Check if target is local or remote
     let target_sender = ctx
         .matrix
@@ -423,7 +453,7 @@ pub async fn route_to_user_with_snapshot(
         } else {
             msg.clone()
         };
-        let _ = target_sender.send(msg_for_target).await;
+        let _ = target_sender.send(Arc::new(msg_for_target)).await;
         crate::metrics::MESSAGES_SENT.inc();
 
         // Echo message back to sender if they have echo-message capability
@@ -454,67 +484,39 @@ pub async fn route_to_user_with_snapshot(
         UserRouteResult::Sent
     } else {
         // REMOTE USER: Route via SyncManager
-        // 1. Find which server hosts this user
-        if let Some(_user_arc) = ctx.matrix.user_manager.users.get(&target_uid) {
-            // We need to know the server ID of the user.
-            // Currently UserCrdt doesn't store "current server", but we can infer it or add it.
-            // For now, let's assume we can't easily route without knowing the server.
-            // Wait! The user manager should know where the user is.
-            // Actually, UserCrdt is replicated, so we have the user data.
-            // But we need to know which server they are connected to.
-            // In a full mesh, we might need a "location" map.
-            // For now, let's assume we broadcast if we don't know, or we need to add location tracking.
+        // Construct S2S message: :SourceUID PRIVMSG TargetUID :text
+        let text = match &msg.command {
+            Command::PRIVMSG(_, text) => text,
+            Command::NOTICE(_, text) => text,
+            _ => return UserRouteResult::NoSuchNick,
+        };
 
-            // Innovation 9: We need to track user location (ServerId).
-            // Let's check if we have it.
-            // UserCrdt doesn't seem to have a "server_id" field for current location.
-            // However, the UID might contain the server ID prefix?
-            // UID format: 3 chars SID + 6 chars sequence.
-            let sid_prefix = if target_uid.len() >= 3 {
-                &target_uid[0..3]
-            } else {
-                tracing::warn!("Target UID {} is too short", target_uid);
-                return UserRouteResult::NoSuchNick;
-            };
+        let cmd = match &msg.command {
+            Command::PRIVMSG(_, _) => Command::PRIVMSG(target_uid.clone(), text.clone()),
+            Command::NOTICE(_, _) => Command::NOTICE(target_uid.clone(), text.clone()),
+            _ => return UserRouteResult::NoSuchNick,
+        };
 
-            use slirc_crdt::clock::ServerId;
-            let target_sid = ServerId::new(sid_prefix.to_string());
+        let mut routed_msg = Message {
+            tags: msg.tags.clone(),                      // Preserve tags
+            prefix: Some(Prefix::new_from_str(ctx.uid)), // Use UID as source
+            command: cmd,
+        };
 
-            tracing::info!(target_uid = %target_uid, target_sid = %target_sid.as_str(), "Attempting to route remote message");
+        // Add metadata tags
+        routed_msg = routed_msg.with_tag("msgid", Some(msgid));
+        routed_msg = routed_msg.with_tag("time", Some(timestamp));
+        if let Some(account) = sender_account {
+            routed_msg = routed_msg.with_tag("account", Some(account.clone()));
+        }
 
-            if let Some(peer) = ctx.matrix.sync_manager.get_peer_for_server(&target_sid) {
-                // Construct S2S message: :SourceUID PRIVMSG TargetUID :text
-                // We need to rewrite the command to use UIDs
-                let text = match &msg.command {
-                    Command::PRIVMSG(_, text) => text,
-                    Command::NOTICE(_, text) => text,
-                    _ => return UserRouteResult::NoSuchNick,
-                };
-
-                let cmd = match &msg.command {
-                    Command::PRIVMSG(_, _) => Command::PRIVMSG(target_uid.clone(), text.clone()),
-                    Command::NOTICE(_, _) => Command::NOTICE(target_uid.clone(), text.clone()),
-                    _ => return UserRouteResult::NoSuchNick,
-                };
-
-                let mut routed_msg = Message {
-                    tags: msg.tags.clone(),                      // Preserve tags
-                    prefix: Some(Prefix::new_from_str(ctx.uid)), // Use UID as source
-                    command: cmd,
-                };
-
-                // Add metadata tags
-                routed_msg = routed_msg.with_tag("msgid", Some(msgid));
-                routed_msg = routed_msg.with_tag("time", Some(timestamp));
-                if let Some(account) = sender_account {
-                    routed_msg = routed_msg.with_tag("account", Some(account.clone()));
-                }
-
-                let _ = peer.tx.send(routed_msg).await;
-                return UserRouteResult::Sent;
-            }
-
-            UserRouteResult::NoSuchNick
+        if ctx
+            .matrix
+            .sync_manager
+            .route_to_remote_user(&target_uid, Arc::new(routed_msg))
+            .await
+        {
+            UserRouteResult::Sent
         } else {
             UserRouteResult::NoSuchNick
         }

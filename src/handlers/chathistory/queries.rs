@@ -3,7 +3,7 @@
 use crate::handlers::{Context, HandlerError};
 use crate::history::{HistoryQuery, MessageEnvelope, StoredMessage};
 use crate::state::RegisteredState;
-use slirc_proto::{ChatHistorySubCommand, MessageRef, MessageReference, parse_server_time};
+use slirc_proto::{ChatHistorySubCommand, MessageReference, parse_server_time};
 use tracing::debug;
 
 use super::helpers::{QueryParams, exclusivity_offset, resolve_dm_key, resolve_msgref};
@@ -12,35 +12,36 @@ use super::helpers::{QueryParams, exclusivity_offset, resolve_dm_key, resolve_ms
 pub struct QueryExecutor;
 
 impl QueryExecutor {
-    pub async fn execute<'a>(
+    pub async fn execute(
         ctx: &Context<'_, RegisteredState>,
         subcommand: ChatHistorySubCommand,
-        params: QueryParams<'a>,
+        params: QueryParams,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
         let QueryParams {
             target,
             nick,
             limit,
             is_dm,
-            msg,
+            msgref,
+            msgref2,
         } = params;
         match subcommand {
             ChatHistorySubCommand::LATEST => {
-                Self::handle_latest(ctx, target, nick, limit, is_dm, msg).await
+                Self::handle_latest(ctx, &target, &nick, limit, is_dm, &msgref).await
             }
             ChatHistorySubCommand::BEFORE => {
-                Self::handle_before(ctx, target, nick, limit, is_dm, msg).await
+                Self::handle_before(ctx, &target, &nick, limit, is_dm, &msgref).await
             }
             ChatHistorySubCommand::AFTER => {
-                Self::handle_after(ctx, target, nick, limit, is_dm, msg).await
+                Self::handle_after(ctx, &target, &nick, limit, is_dm, &msgref).await
             }
             ChatHistorySubCommand::AROUND => {
-                Self::handle_around(ctx, target, nick, limit, is_dm, msg).await
+                Self::handle_around(ctx, &target, &nick, limit, is_dm, &msgref).await
             }
             ChatHistorySubCommand::BETWEEN => {
-                Self::handle_between(ctx, target, nick, limit, is_dm, msg).await
+                Self::handle_between(ctx, &target, &nick, limit, is_dm, &msgref, msgref2.as_deref().unwrap_or("*")).await
             }
-            ChatHistorySubCommand::TARGETS => Self::handle_targets(ctx, nick, limit, msg).await,
+            ChatHistorySubCommand::TARGETS => Self::handle_targets(ctx, &nick, limit, &msgref, msgref2.as_deref().unwrap_or("*")).await,
             _ => {
                 debug!("Unknown CHATHISTORY subcommand");
                 Ok(vec![])
@@ -54,9 +55,8 @@ impl QueryExecutor {
         nick: &str,
         limit: u32,
         is_dm: bool,
-        msg: &MessageRef<'_>,
+        msgref_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-        let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
@@ -93,9 +93,8 @@ impl QueryExecutor {
         nick: &str,
         limit: u32,
         is_dm: bool,
-        msg: &MessageRef<'_>,
+        msgref_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-        let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
@@ -133,9 +132,8 @@ impl QueryExecutor {
         nick: &str,
         limit: u32,
         is_dm: bool,
-        msg: &MessageRef<'_>,
+        msgref_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-        let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
@@ -172,9 +170,8 @@ impl QueryExecutor {
         nick: &str,
         limit: u32,
         is_dm: bool,
-        msg: &MessageRef<'_>,
+        msgref_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-        let msgref_str = msg.arg(2).unwrap_or("*");
 
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
@@ -231,10 +228,9 @@ impl QueryExecutor {
         nick: &str,
         limit: u32,
         is_dm: bool,
-        msg: &MessageRef<'_>,
+        ref1_str: &str,
+        ref2_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-        let ref1_str = msg.arg(2).unwrap_or("*");
-        let ref2_str = msg.arg(3).unwrap_or("*");
 
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
@@ -297,10 +293,9 @@ impl QueryExecutor {
         ctx: &Context<'_, RegisteredState>,
         nick: &str,
         limit: u32,
-        msg: &MessageRef<'_>,
+        start_str: &str,
+        end_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-        let start_str = msg.arg(1).unwrap_or("*");
-        let end_str = msg.arg(2).unwrap_or("*");
 
         let start = if start_str == "*" {
             0

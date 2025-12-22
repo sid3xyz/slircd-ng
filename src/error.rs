@@ -4,6 +4,7 @@
 //! with automatic conversions, IRC reply generation, and metric labeling.
 
 use slirc_proto::{Command, Message, Prefix, Response};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
@@ -52,6 +53,9 @@ pub enum HandlerError {
     #[error("send error: {0}")]
     Send(#[from] mpsc::error::SendError<Message>),
 
+    #[error("send error: {0}")]
+    SendArc(#[from] mpsc::error::SendError<Arc<Message>>),
+
     #[error("client quit: {0:?}")]
     Quit(Option<String>),
 
@@ -81,6 +85,7 @@ impl HandlerError {
             Self::NickOrUserMissing => "nick_or_user_missing",
             Self::ProtocolError(_) => "protocol_error",
             Self::Send(_) => "send_error",
+            Self::SendArc(_) => "send_error",
             Self::Quit(_) => "quit",
             Self::Internal(_) => "internal_error",
             Self::StartTls => "starttls",
@@ -107,6 +112,7 @@ impl HandlerError {
             Self::NickOrUserMissing => return None,
             Self::ProtocolError(_) => return None,
             Self::Send(_) => return None,
+            Self::SendArc(_) => return None,
             Self::Quit(_) => return None,
             Self::Internal(_) => return None,
             Self::StartTls => return None, // Handled specially by handshake loop

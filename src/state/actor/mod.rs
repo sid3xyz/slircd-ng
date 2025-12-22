@@ -41,7 +41,7 @@ pub struct ChannelActor {
     pub name: String,
     pub members: im::HashMap<Uid, MemberModes>,
     pub user_nicks: HashMap<Uid, String>,
-    pub senders: HashMap<Uid, mpsc::Sender<Message>>,
+    pub senders: HashMap<Uid, mpsc::Sender<Arc<Message>>>,
     pub user_caps: HashMap<Uid, HashSet<String>>,
     pub modes: HashSet<ChannelMode>,
     /// Timestamps for when each boolean mode was last changed.

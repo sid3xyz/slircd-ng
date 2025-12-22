@@ -18,7 +18,7 @@ impl ChannelActor {
             if exclude.as_ref() == Some(uid) {
                 continue;
             }
-            if let Err(err) = sender.try_send((*msg).clone()) {
+            if let Err(err) = sender.try_send(msg.clone()) {
                 match err {
                     TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
                     TrySendError::Closed(_) => {}
@@ -117,7 +117,7 @@ impl ChannelActor {
             }
 
             let link = entry.value().clone();
-            if let Err(e) = link.tx.send(s2s_msg.clone()).await {
+            if let Err(e) = link.tx.send(Arc::new(s2s_msg.clone())).await {
                 warn!(peer = %peer_sid.as_str(), error = %e, "Failed to forward channel message");
             } else {
                 debug!(
@@ -156,14 +156,14 @@ impl ChannelActor {
             };
 
             if should_send_main {
-                if let Err(err) = sender.try_send((*msg).clone()) {
+                if let Err(err) = sender.try_send(msg.clone()) {
                     match err {
                         TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
                         TrySendError::Closed(_) => {}
                     }
                 }
             } else if let Some(fb) = &fallback
-                && let Err(err) = sender.try_send((**fb).clone())
+                && let Err(err) = sender.try_send(fb.clone())
             {
                 match err {
                     TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
