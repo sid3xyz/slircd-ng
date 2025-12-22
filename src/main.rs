@@ -20,6 +20,7 @@ mod telemetry;
 use crate::config::Config;
 use std::sync::Arc;
 use crate::db::Database;
+use crate::handlers::Registry;
 use crate::network::Gateway;
 use crate::services::enforce::spawn_enforcement_task;
 use crate::state::Matrix;
@@ -343,13 +344,16 @@ async fn main() -> anyhow::Result<()> {
     }
     info!("Message history pruning task started");
 
+    // Create command handler registry
+    let registry = Arc::new(Registry::new(config.webirc.clone()));
+
     // Start the Gateway (with optional TLS and WebSocket)
     let gateway = Gateway::bind(
         config.listen.address,
         config.tls,
         config.websocket,
-        config.webirc,
         matrix.clone(),
+        registry.clone(),
         db.clone(),
     )
     .await?;
@@ -359,7 +363,7 @@ async fn main() -> anyhow::Result<()> {
         if link.autoconnect {
             matrix
                 .sync_manager
-                .connect_to_peer(matrix.clone(), link.clone());
+                .connect_to_peer(matrix.clone(), registry.clone(), db.clone(), link.clone());
         }
     }
 

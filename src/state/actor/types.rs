@@ -217,6 +217,7 @@ pub enum ChannelEvent {
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Incoming SJOIN from a peer server.
+    #[allow(dead_code)] // Reserved for S2S burst
     SJoin {
         ts: u64,
         modes: String,
@@ -224,6 +225,7 @@ pub enum ChannelEvent {
         users: Vec<(String, String)>, // (prefixes, uid)
     },
     /// Incoming TMODE from a peer server.
+    #[allow(dead_code)] // Reserved for S2S mode propagation
     RemoteMode {
         ts: u64,
         setter: String,
@@ -231,12 +233,14 @@ pub enum ChannelEvent {
         args: Vec<String>,
     },
     /// Incoming TOPIC from a peer server.
+    #[allow(dead_code)] // Reserved for S2S topic sync
     RemoteTopic {
         ts: u64,
         setter: String,
         topic: String,
     },
     /// Incoming KICK from a peer server.
+    #[allow(dead_code)] // Reserved for S2S kick propagation
     RemoteKick {
         sender: String,
         target: String,

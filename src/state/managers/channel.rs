@@ -41,6 +41,7 @@ impl ChannelManager {
     }
 
     /// Get an existing channel actor or create a new one.
+    #[allow(dead_code)] // Reserved for S2S SJOIN handling
     pub async fn get_or_create_actor(
         &self,
         name: String,

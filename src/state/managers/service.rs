@@ -122,6 +122,7 @@ impl ServiceManager {
     }
 
     /// Check if a UID belongs to a service.
+    #[allow(dead_code)] // Reserved for S2S service routing
     pub fn is_service_uid(&self, uid: &str) -> bool {
         uid == self.nickserv_uid || uid == self.chanserv_uid
     }

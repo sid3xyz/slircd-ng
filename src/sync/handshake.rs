@@ -16,6 +16,7 @@ pub enum HandshakeState {
     OutboundInitiated,
     /// We received a connection (inbound).
     /// We are waiting for PASS and SERVER.
+    #[allow(dead_code)] // Reserved for inbound S2S implementation
     InboundReceived,
     /// Handshake complete, exchanging burst data.
     Bursting,

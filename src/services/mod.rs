@@ -155,6 +155,7 @@ pub async fn apply_effects(
 ///
 /// Used for handling remote service requests via S2S where we don't
 /// have a local sender connection.
+#[allow(dead_code)] // Reserved for S2S service routing
 pub async fn apply_effects_no_sender(
     matrix: &Arc<Matrix>,
     nick: &str,
@@ -169,6 +170,7 @@ pub async fn apply_effects_no_sender(
 ///
 /// Handles effects for remote users where replies must be routed
 /// via S2S rather than a local sender channel.
+#[allow(dead_code)] // Reserved for S2S service routing
 pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: ServiceEffect) {
     match effect {
         ServiceEffect::Reply {

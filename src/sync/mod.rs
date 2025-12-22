@@ -6,11 +6,8 @@
 pub mod burst;
 pub mod handshake;
 mod observer;
-pub mod protocol;
 pub mod split;
 pub mod stream;
-#[cfg(test)]
-mod test_protocol;
 #[cfg(test)]
 mod tests;
 pub mod topology;
@@ -133,6 +130,7 @@ pub struct SyncManager {
     pub local_id: ServerId,
     pub local_name: String,
     pub local_desc: String,
+    #[allow(dead_code)] // Reserved for inbound S2S link verification
     pub configured_links: Vec<LinkBlock>,
     /// Connected peers (Direct connections).
     pub links: Arc<DashMap<ServerId, LinkState>>,
@@ -293,186 +291,14 @@ impl SyncManager {
         });
     }
 
-    /// Spawns a handler for an incoming server link.
-    #[allow(dead_code)]
-    pub fn handle_inbound_connection(&self, matrix: Arc<Matrix>, stream: S2SStream) {
-        let manager = self.clone();
-        let matrix = matrix.clone();
-        let is_tls = stream.is_tls();
-        tokio::spawn(async move {
-            info!(tls = is_tls, "Handling inbound server connection");
-            let mut framed = Framed::new(stream, LinesCodec::new());
-
-            let mut machine = HandshakeMachine::new(
-                manager.local_id.clone(),
-                manager.local_name.clone(),
-                manager.local_desc.clone(),
-            );
-            machine.transition(HandshakeState::InboundReceived);
-
-            // Track remote server info for netsplit handling
-            let mut remote_sid: Option<ServerId> = None;
-            let mut remote_name: Option<String> = None;
-
-            while let Some(Ok(line)) = framed.next().await {
-                let msg = match line.parse::<Message>() {
-                    Ok(m) => m,
-                    Err(_) => continue,
-                };
-
-                // Loop detection for SERVER command
-                if let Command::SERVER(name, _, sid, _) = &msg.command {
-                    let sid_obj = ServerId::new(sid.clone());
-                    if manager.topology.servers.contains_key(&sid_obj) {
-                        tracing::error!("Loop detected during handshake: {} ({})", name, sid);
-                        let _ = framed
-                            .send(
-                                Message::from(Command::ERROR(format!(
-                                    "Loop detected: {} ({})",
-                                    name, sid
-                                )))
-                                .to_string(),
-                            )
-                            .await;
-                        return;
-                    }
-                }
-
-                match machine.step(msg.command, &manager.configured_links) {
-                    Ok(responses) => {
-                        for resp in responses {
-                            if let Err(e) = framed.send(Message::from(resp).to_string()).await {
-                                tracing::error!("Failed to send response: {}", e);
-                                return;
-                            }
-                        }
-
-                        if machine.state == HandshakeState::Bursting {
-                            info!(
-                                "Handshake complete (Inbound). Remote: {:?}",
-                                machine.remote_name
-                            );
-
-                            // Capture remote server info
-                            remote_sid = machine.remote_sid.clone();
-                            remote_name = machine.remote_name.clone();
-
-                            // Generate Burst
-                            let burst =
-                                burst::generate_burst(&matrix, manager.local_id.as_str()).await;
-                            for cmd in burst {
-                                if let Err(e) = framed.send(Message::from(cmd).to_string()).await {
-                                    tracing::error!("Failed to send burst: {}", e);
-                                    // Connection failed, handle netsplit if we had a peer
-                                    if let Some(sid) = &remote_sid {
-                                        let rn = remote_name.as_deref().unwrap_or("unknown");
-                                        split::handle_netsplit(
-                                            &matrix,
-                                            sid,
-                                            &manager.local_name,
-                                            rn,
-                                        )
-                                        .await;
-                                    }
-                                    return;
-                                }
-                            }
-
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Handshake error: {:?}", e);
-                        return;
-                    }
-                }
-            }
-
-            // Register link
-            let (tx, mut rx) = mpsc::channel::<Arc<Message>>(100);
-            if let Some(sid) = &remote_sid {
-                manager.links.insert(
-                    sid.clone(),
-                    LinkState {
-                        tx,
-                        state: handshake::HandshakeState::Synced,
-                        name: remote_name.clone().unwrap_or_default(),
-                        last_pong: Instant::now(),
-                        last_ping: Instant::now(),
-                        connected_at: Instant::now(),
-                    },
-                );
-            }
-
-            let handler = protocol::IncomingCommandHandler::new(matrix.clone());
-
-            loop {
-                tokio::select! {
-                    msg = rx.recv() => {
-                        match msg {
-                            Some(m) => {
-                                let s = m.as_ref().to_string();
-                                if let Some(sid) = &remote_sid {
-                                    S2S_BYTES_SENT.with_label_values(&[sid.as_str()]).inc_by(s.len() as u64 + 2); // +2 for \r\n
-                                }
-                                if let Err(e) = framed.send(s).await {
-                                     tracing::error!("Failed to send message to peer: {}", e);
-                                     break;
-                                }
-                            }
-                            None => {
-                                info!("Link channel closed (timeout or removal), closing connection");
-                                break;
-                            }
-                        }
-                    }
-                    result = framed.next() => {
-                        match result {
-                            Some(Ok(line)) => {
-                                if let Some(sid) = &remote_sid {
-                                    S2S_BYTES_RECEIVED.with_label_values(&[sid.as_str()]).inc_by(line.len() as u64 + 2); // +2 for \r\n
-                                }
-                                let msg = match line.parse::<Message>() {
-                                    Ok(m) => m,
-                                    Err(e) => {
-                                        tracing::warn!("Failed to parse inbound message: {}", e);
-                                        continue;
-                                    }
-                                };
-
-                                #[allow(clippy::collapsible_if)]
-                                if let Some(sid) = &remote_sid {
-                                    S2S_COMMANDS.with_label_values(&[sid.as_str(), msg.command.name()]).inc();
-                                    if let Err(e) = handler.handle_message(msg, &manager, sid).await {
-                                        tracing::error!("Protocol error from peer: {}", e);
-                                        break;
-                                    }
-                                }
-                            }
-                            Some(Err(e)) => {
-                                tracing::error!("Stream error: {}", e);
-                                break;
-                            }
-                            None => {
-                                info!("Connection closed by peer");
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Connection ended - handle netsplit
-            if let Some(sid) = remote_sid {
-                let rn = remote_name.as_deref().unwrap_or("unknown");
-                info!(remote_sid = %sid.as_str(), "Peer disconnected, initiating netsplit cleanup");
-                split::handle_netsplit(&matrix, &sid, &manager.local_name, rn).await;
-            }
-        });
-    }
-
     /// Initiates an outbound connection.
-    pub fn connect_to_peer(&self, matrix: Arc<Matrix>, config: LinkBlock) {
+    pub fn connect_to_peer(
+        &self,
+        matrix: Arc<Matrix>,
+        registry: Arc<crate::handlers::Registry>,
+        db: crate::db::Database,
+        config: LinkBlock,
+    ) {
         let manager = self.clone();
         let matrix = matrix.clone();
         tokio::spawn(async move {
@@ -617,21 +443,37 @@ impl SyncManager {
 
             // Register link
             let (tx, mut rx) = mpsc::channel::<Arc<Message>>(100);
-            if let Some(sid) = &remote_sid {
-                manager.links.insert(
-                    sid.clone(),
-                    LinkState {
-                        tx,
-                        state: handshake::HandshakeState::Synced,
-                        name: remote_name.clone().unwrap_or_default(),
-                        last_pong: Instant::now(),
-                        last_ping: Instant::now(),
-                        connected_at: Instant::now(),
-                    },
-                );
-            }
+            let remote_sid_val = remote_sid.clone().expect("remote_sid should be set after handshake");
+            manager.links.insert(
+                remote_sid_val.clone(),
+                LinkState {
+                    tx,
+                    state: handshake::HandshakeState::Synced,
+                    name: remote_name.clone().unwrap_or_default(),
+                    last_pong: Instant::now(),
+                    last_ping: Instant::now(),
+                    connected_at: Instant::now(),
+                },
+            );
 
-            let handler = protocol::IncomingCommandHandler::new(matrix.clone());
+            // Create ServerState for Registry dispatch
+            let mut server_state = crate::state::ServerState {
+                name: remote_name.clone().unwrap_or_default(),
+                sid: remote_sid_val.as_str().to_string(),
+                info: String::new(),
+                hopcount: 1,
+                capabilities: std::collections::HashSet::new(),
+                is_tls: config.tls,
+                active_batch: None,
+                active_batch_ref: None,
+                batch_routing: None,
+            };
+
+            // Reply channel for handler responses
+            let (reply_tx, mut reply_rx) = mpsc::channel::<Arc<Message>>(100);
+            let remote_addr = format!("{}:{}", config.hostname, config.port)
+                .parse()
+                .unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], 0)));
 
             loop {
                 tokio::select! {
@@ -639,9 +481,7 @@ impl SyncManager {
                         match msg {
                             Some(m) => {
                                 let s = m.as_ref().to_string();
-                                if let Some(sid) = &remote_sid {
-                                    S2S_BYTES_SENT.with_label_values(&[sid.as_str()]).inc_by(s.len() as u64 + 2); // +2 for \r\n
-                                }
+                                S2S_BYTES_SENT.with_label_values(&[remote_sid_val.as_str()]).inc_by(s.len() as u64 + 2);
                                 if let Err(e) = framed.send(s).await {
                                      tracing::error!("Failed to send message to peer: {}", e);
                                      break;
@@ -653,12 +493,17 @@ impl SyncManager {
                             }
                         }
                     }
+                    Some(reply) = reply_rx.recv() => {
+                        let s = reply.as_ref().to_string();
+                        if let Err(e) = framed.send(s).await {
+                            tracing::error!("Failed to send reply to peer: {}", e);
+                            break;
+                        }
+                    }
                     result = framed.next() => {
                         match result {
                             Some(Ok(line)) => {
-                                if let Some(sid) = &remote_sid {
-                                    S2S_BYTES_RECEIVED.with_label_values(&[sid.as_str()]).inc_by(line.len() as u64 + 2); // +2 for \r\n
-                                }
+                                S2S_BYTES_RECEIVED.with_label_values(&[remote_sid_val.as_str()]).inc_by(line.len() as u64 + 2);
                                 let msg = match line.parse::<Message>() {
                                     Ok(m) => m,
                                     Err(e) => {
@@ -667,11 +512,26 @@ impl SyncManager {
                                     }
                                 };
 
-                                #[allow(clippy::collapsible_if)]
-                                if let Some(sid) = &remote_sid {
-                                    S2S_COMMANDS.with_label_values(&[sid.as_str(), msg.command.name()]).inc();
-                                    if let Err(e) = handler.handle_message(msg, &manager, sid).await {
-                                        tracing::error!("Protocol error from peer: {}", e);
+                                S2S_COMMANDS.with_label_values(&[remote_sid_val.as_str(), msg.command.name()]).inc();
+
+                                // Parse into MessageRef for Registry dispatch
+                                let raw_str = msg.to_string();
+                                if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
+                                    let mut ctx = crate::handlers::Context {
+                                        uid: "server",
+                                        matrix: &matrix,
+                                        sender: crate::handlers::ResponseMiddleware::Direct(&reply_tx),
+                                        state: &mut server_state,
+                                        db: &db,
+                                        remote_addr,
+                                        label: None,
+                                        suppress_labeled_ack: false,
+                                        active_batch_id: None,
+                                        registry: &registry,
+                                    };
+
+                                    if let Err(e) = registry.dispatch_server(&mut ctx, &msg_ref).await {
+                                        tracing::error!("Protocol error from peer: {:?}", e);
                                         break;
                                     }
                                 }
@@ -690,11 +550,9 @@ impl SyncManager {
             }
 
             // Connection ended - handle netsplit
-            if let Some(sid) = remote_sid {
-                let rn = remote_name.as_deref().unwrap_or("unknown");
-                info!(remote_sid = %sid.as_str(), "Peer disconnected, initiating netsplit cleanup");
-                split::handle_netsplit(&matrix, &sid, &manager.local_name, rn).await;
-            }
+            let rn = remote_name.as_deref().unwrap_or("unknown");
+            info!(remote_sid = %remote_sid_val.as_str(), "Peer disconnected, initiating netsplit cleanup");
+            split::handle_netsplit(&matrix, &remote_sid_val, &manager.local_name, rn).await;
         });
     }
 

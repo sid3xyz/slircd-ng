@@ -3,7 +3,6 @@
 //! The Gateway binds to sockets and spawns Connection tasks for each
 //! incoming client. Supports both plaintext and TLS connections.
 
-use crate::config::WebircBlock;
 use crate::config::{ClientAuth, TlsConfig, WebSocketConfig};
 use crate::db::Database;
 use crate::handlers::Registry;
@@ -234,12 +233,11 @@ impl Gateway {
         addr: SocketAddr,
         tls_config: Option<TlsConfig>,
         websocket_config: Option<WebSocketConfig>,
-        webirc_blocks: Vec<WebircBlock>,
         matrix: Arc<Matrix>,
+        registry: Arc<Registry>,
         db: Database,
     ) -> anyhow::Result<Self> {
         let plaintext_listener = TcpListener::bind(addr).await?;
-        let registry = Arc::new(Registry::new(webirc_blocks));
         info!(%addr, "Plaintext listener bound");
 
         let tls_listener = if let Some(tls_cfg) = tls_config {
