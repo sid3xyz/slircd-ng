@@ -71,18 +71,10 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
         let user = entry.value().read().await;
 
         // UID nick hopcount timestamp username hostname uid modes realname
-        // Note: hopcount should be incremented? Or is it 1 for local users?
-        // For local users, hopcount is 1. For remote users, we increment.
-        // But wait, `User` struct doesn't store hopcount directly?
-        // We might need to infer it or store it.
-        // For now, let's assume 1 for everyone as we are likely a leaf or single server.
-        // TODO(Phase2): Handle hopcounts correctly for multi-hop topology.
-
-        let hopcount = "1".to_string(); // Placeholder
-        let timestamp = "0".to_string(); // Placeholder: User struct needs creation TS?
-        // User struct has `last_modified` (HybridTimestamp), but not creation TS?
-        // Let's check User struct again.
-        // TODO(Phase2): Store and use user creation timestamp for proper TS6 burst.
+        // For local users, hopcount is 1. For remote users, increment on relay.
+        // Phase 2 note: When multi-hop is implemented, store hopcount in User struct.
+        let hopcount = "1".to_string();
+        let timestamp = user.created_at.to_string();
 
         commands.push(Command::UID(
             user.nick.clone(),

@@ -36,6 +36,8 @@ pub struct User {
     pub silence_list: HashSet<String>,
     /// ACCEPT list: nicknames allowed to PM even if +R is set (Caller ID).
     pub accept_list: HashSet<String>,
+    /// Unix timestamp when this user connected (for S2S UID burst).
+    pub created_at: i64,
     /// Last modified timestamp for CRDT synchronization.
     #[allow(dead_code)]
     pub last_modified: HybridTimestamp,
@@ -205,6 +207,7 @@ impl User {
             certfp,
             silence_list: HashSet::new(),
             accept_list: HashSet::new(),
+            created_at: chrono::Utc::now().timestamp(),
             last_modified,
         }
     }
@@ -259,6 +262,7 @@ impl User {
             certfp: None,
             silence_list: crdt.silence_list.iter().cloned().collect(),
             accept_list: crdt.accept_list.iter().cloned().collect(),
+            created_at: last_modified.millis / 1000, // Convert from HybridTimestamp millis
             last_modified,
         }
     }

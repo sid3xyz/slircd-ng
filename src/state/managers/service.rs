@@ -93,6 +93,7 @@ impl ServiceManager {
                 certfp: None,
                 silence_list: HashSet::new(),
                 accept_list: HashSet::new(),
+                created_at: chrono::Utc::now().timestamp(),
                 last_modified: now,
             },
             User {
@@ -116,6 +117,7 @@ impl ServiceManager {
                 certfp: None,
                 silence_list: HashSet::new(),
                 accept_list: HashSet::new(),
+                created_at: chrono::Utc::now().timestamp(),
                 last_modified: now,
             },
         ]

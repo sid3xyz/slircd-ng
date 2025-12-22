@@ -174,7 +174,7 @@ mod tests {
         assert!(fields.realname);
         assert!(!fields.nick);
         assert!(fields.query_token.is_none());
-        
+
         // Multiple fields
         let fields = WhoxFields::parse("%cunhar").unwrap();
         assert!(fields.channel);
@@ -183,23 +183,23 @@ mod tests {
         assert!(fields.hostname);
         assert!(fields.account);
         assert!(fields.realname);
-        
+
         // With token
         let fields = WhoxFields::parse("%t,42").unwrap();
         assert!(fields.token);
         assert_eq!(fields.query_token, Some("42".to_string()));
-        
+
         // Token in middle of flags
         let fields = WhoxFields::parse("%cnt,123").unwrap();
         assert!(fields.channel);
         assert!(fields.nick);
         assert!(fields.token);
         assert_eq!(fields.query_token, Some("123".to_string()));
-        
+
         // 't' without token value should fail
         assert!(WhoxFields::parse("%t").is_none());
         assert!(WhoxFields::parse("%cnt").is_none());
-        
+
         // Not starting with % should fail
         assert!(WhoxFields::parse("r").is_none());
         assert!(WhoxFields::parse("cunhar").is_none());

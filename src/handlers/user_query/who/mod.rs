@@ -36,7 +36,7 @@ impl PostRegHandler for WhoHandler {
 
         // Parse WHOX fields if present, otherwise check for 'o' flag
         let whox = second_arg.and_then(WhoxFields::parse);
-        
+
         let operators_only = if whox.is_none() {
             second_arg
                 .map(|s| s.eq_ignore_ascii_case("o"))
@@ -64,7 +64,7 @@ impl PostRegHandler for WhoHandler {
         // Determine query type
         if let Some(mask_str) = mask {
             let is_channel = mask_str.is_channel_name();
-            
+
             if let Some(fields) = whox {
                 v3::execute(ctx, mask_str, is_channel, operators_only, multi_prefix, &fields).await?;
             } else {
