@@ -7,9 +7,10 @@
 
 mod channel;
 mod common;
-mod user;
+pub mod user;
 
 pub use channel::format_modes_for_log;
+pub use user::apply_user_modes_typed;
 
 use super::{Context, HandlerError, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;

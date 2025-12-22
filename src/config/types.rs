@@ -95,6 +95,11 @@ pub struct ServerConfig {
     /// Idle timeout configuration for ping/pong keepalive.
     #[serde(default)]
     pub idle_timeouts: IdleTimeoutsConfig,
+    /// Default user modes applied to new connections (e.g., "+i" for invisible).
+    /// Supports: i (invisible), w (wallops), R (registered-only PM), T (no CTCP), B (bot).
+    /// Modes o, r, Z, s, S are special and cannot be set via default.
+    #[serde(default)]
+    pub default_user_modes: Option<String>,
 }
 
 /// Idle timeout configuration for client connection keepalive.

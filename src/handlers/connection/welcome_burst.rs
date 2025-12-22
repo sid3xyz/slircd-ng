@@ -20,9 +20,10 @@
 
 use crate::db::Database;
 use crate::error::{HandlerError, HandlerResult};
-use crate::handlers::{notify_monitors_online, server_reply};
+use crate::handlers::{apply_user_modes_typed, notify_monitors_online, server_reply};
 use crate::state::{Matrix, UnregisteredState, User};
 use slirc_proto::isupport::{ChanModesBuilder, IsupportBuilder, TargMaxBuilder};
+use slirc_proto::mode::{Mode, UserMode};
 use slirc_proto::transport::ZeroCopyTransportEnum;
 use slirc_proto::{Command, Message, Prefix, Response};
 use std::net::SocketAddr;
@@ -219,6 +220,14 @@ impl<'a> WelcomeBurstWriter<'a> {
             user_obj.modes.secure = true;
         }
 
+        // Apply default user modes from config (e.g., "+i" for default invisible)
+        if let Some(ref default_modes) = self.matrix.config.server.default_user_modes {
+            let modes = parse_default_user_modes(default_modes);
+            if !modes.is_empty() {
+                apply_user_modes_typed(&mut user_obj.modes, &modes);
+            }
+        }
+
         let cloaked_host = user_obj.visible_host.clone();
 
         self.matrix.user_manager.add_local_user(user_obj).await;
@@ -400,4 +409,53 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         Ok(())
     }
+}
+
+/// Parse a default user mode string (e.g., "+iwR") into Mode objects.
+///
+/// Only allows safe modes that can be set by default:
+/// - i (invisible), w (wallops), R (registered-only PM), T (no CTCP), B (bot)
+///
+/// Ignores special modes that cannot be set by default:
+/// - o (oper), r (registered), Z (TLS), s (snomask), S (service)
+fn parse_default_user_modes(mode_str: &str) -> Vec<Mode<UserMode>> {
+    let mut modes = Vec::new();
+    let mut adding = true;
+
+    for c in mode_str.chars() {
+        match c {
+            '+' => adding = true,
+            '-' => adding = false,
+            'i' => modes.push(if adding {
+                Mode::Plus(UserMode::Invisible, None)
+            } else {
+                Mode::Minus(UserMode::Invisible, None)
+            }),
+            'w' => modes.push(if adding {
+                Mode::Plus(UserMode::Wallops, None)
+            } else {
+                Mode::Minus(UserMode::Wallops, None)
+            }),
+            'R' => modes.push(if adding {
+                Mode::Plus(UserMode::RegisteredOnly, None)
+            } else {
+                Mode::Minus(UserMode::RegisteredOnly, None)
+            }),
+            'T' => modes.push(if adding {
+                Mode::Plus(UserMode::Unknown('T'), None)
+            } else {
+                Mode::Minus(UserMode::Unknown('T'), None)
+            }),
+            'B' => modes.push(if adding {
+                Mode::Plus(UserMode::Bot, None)
+            } else {
+                Mode::Minus(UserMode::Bot, None)
+            }),
+            // Silently ignore special modes that cannot be set by default
+            'o' | 'r' | 'Z' | 's' | 'S' | 'x' | 'O' => {}
+            _ => {}
+        }
+    }
+
+    modes
 }
