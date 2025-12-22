@@ -28,7 +28,8 @@ use crate::handlers::{
     monitor::MonitorHandler,
     server::{
         BurstHandler, ServerHandshakeHandler, ServerPropagationHandler, delta::DeltaHandler,
-        routing::RoutedMessageHandler,
+        routing::RoutedMessageHandler, sjoin::SJoinHandler, tmode::TModeHandler, uid::UidHandler,
+        sid::SidHandler,
     },
     service_aliases::{CsHandler, NsHandler},
     user_status::{AwayHandler, SetnameHandler, SilenceHandler},
@@ -104,6 +105,10 @@ impl Registry {
         server_handlers.insert("SERVER", Box::new(ServerPropagationHandler));
         server_handlers.insert("PRIVMSG", Box::new(RoutedMessageHandler));
         server_handlers.insert("NOTICE", Box::new(RoutedMessageHandler));
+        server_handlers.insert("SJOIN", Box::new(SJoinHandler));
+        server_handlers.insert("TMODE", Box::new(TModeHandler));
+        server_handlers.insert("UID", Box::new(UidHandler));
+        server_handlers.insert("SID", Box::new(SidHandler));
         server_handlers.insert(
             "BATCH",
             Box::new(crate::handlers::batch::server::ServerBatchHandler),

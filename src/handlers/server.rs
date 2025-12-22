@@ -9,6 +9,10 @@ use tracing::{info, warn};
 
 pub mod delta;
 pub mod routing;
+pub mod sid;
+pub mod sjoin;
+pub mod tmode;
+pub mod uid;
 
 /// Handler for the SERVER command (server-to-server handshake).
 pub struct ServerHandshakeHandler;

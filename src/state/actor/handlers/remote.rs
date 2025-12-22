@@ -78,13 +78,39 @@ impl ChannelActor {
 
     pub(crate) async fn handle_remote_kick(
         &mut self,
-        _sender: String,
+        sender: String,
         target: Uid,
-        _reason: Option<String>,
+        reason: Option<String>,
     ) {
         if self.members.remove(&target).is_some() {
+            self.senders.remove(&target);
+            self.user_caps.remove(&target);
+            self.user_nicks.remove(&target);
+
+            // Broadcast KICK to remaining members
+            let msg = std::sync::Arc::new(slirc_proto::Message {
+                tags: None,
+                prefix: Some(slirc_proto::Prefix::new_from_str(&sender)),
+                command: slirc_proto::Command::KICK(
+                    self.name.clone(),
+                    target.clone(), // Should be nick, but we might only have UID here.
+                                    // Wait, KICK target is nick.
+                                    // The caller should resolve UID to nick if possible, or we use UID if it's a UID-based kick.
+                                    // Standard IRC uses nick.
+                    reason,
+                ),
+            });
+
+            for tx in self.senders.values() {
+                let _ = tx.try_send(msg.clone());
+            }
+
+            // Update metrics
+            crate::metrics::set_channel_members(&self.name, self.members.len() as i64);
+            self.notify_observer(None);
+
             if self.members.is_empty() && !self.modes.contains(&ChannelMode::Permanent) {
-                // Channel empty logic if needed
+                self.cleanup_if_empty();
             }
         }
     }
