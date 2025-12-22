@@ -55,17 +55,14 @@ impl PostRegHandler for WhowasHandler {
         // Parse count parameter
         // Per RFC 1459/2812 and Modern IRC spec:
         // "If a non-positive number is passed as being <count>, then a full search is done"
-        let count_limit: Option<usize> = msg
-            .arg(1)
-            .and_then(|s| s.parse::<i32>().ok())
-            .and_then(|n| {
-                if n <= 0 {
-                    None // Full search - no limit
-                } else {
-                    Some((n as usize).min(10)) // Cap positive values at 10
-                }
-            })
-            .or(Some(10)); // Default to 10 if not specified
+        let count_limit: Option<usize> = match msg.arg(1) {
+            Some(s) => match s.parse::<i32>() {
+                Ok(n) if n <= 0 => None, // Non-positive = full search (no limit)
+                Ok(n) => Some((n as usize).min(10)), // Positive = cap at 10
+                Err(_) => Some(10), // Parse error = default to 10
+            },
+            None => Some(10), // No count arg = default to 10
+        };
 
         if targets.is_empty() {
             let reply = server_reply(
@@ -75,18 +72,8 @@ impl PostRegHandler for WhowasHandler {
             );
             ctx.sender.send(reply).await?;
 
-            // Per RFC 2812, WHOWAS with no params should still send ENDOFWHOWAS
-            // Use a placeholder nick for the end message
-            let end_reply = server_reply(
-                ctx.server_name(),
-                Response::RPL_ENDOFWHOWAS,
-                vec![
-                    ctx.state.nick.clone(),
-                    "*".to_string(),
-                    "End of WHOWAS".to_string(),
-                ],
-            );
-            ctx.sender.send(end_reply).await?;
+            // Per Modern IRC spec, do NOT send RPL_ENDOFWHOWAS when no nickname given.
+            // Only ERR_NONICKNAMEGIVEN is sent.
             return Ok(());
         }
 
