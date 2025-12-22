@@ -125,7 +125,13 @@ impl PostRegHandler for ChatHistoryHandler {
         let limit = limit.min(MAX_HISTORY_LIMIT);
 
         // Extract message reference arguments
-        let msgref = msg.arg(2).unwrap_or("*").to_string();
+        // TARGETS: args are [TARGETS, start_timestamp, end_timestamp, limit]
+        // So msgref=arg(1)=start, msgref2=arg(2)=end
+        // Other commands: msgref=arg(2), msgref2=arg(3) for BETWEEN
+        let msgref = match subcommand {
+            ChatHistorySubCommand::TARGETS => msg.arg(1).unwrap_or("*").to_string(),
+            _ => msg.arg(2).unwrap_or("*").to_string(),
+        };
         let msgref2 = match subcommand {
             ChatHistorySubCommand::BETWEEN => Some(msg.arg(3).unwrap_or("*").to_string()),
             ChatHistorySubCommand::TARGETS => Some(msg.arg(2).unwrap_or("*").to_string()),
