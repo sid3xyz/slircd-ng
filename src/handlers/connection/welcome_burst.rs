@@ -225,7 +225,8 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         crate::metrics::CONNECTED_USERS.inc();
 
-        let current_count = self.matrix.user_manager.users.len();
+        // Use real_user_count to exclude service pseudoclients from max tracking
+        let current_count = self.matrix.user_manager.real_user_count().await;
         self.matrix
             .user_manager
             .max_local_users

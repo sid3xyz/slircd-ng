@@ -296,6 +296,7 @@ impl PostRegHandler for LusersHandler {
 
         // Count users and channels
         // Collect user refs first to avoid holding DashMap shard lock across await points
+        // Exclude service pseudoclients (NickServ, ChanServ) from counts
         let user_refs: Vec<_> = ctx
             .matrix
             .user_manager
@@ -303,12 +304,18 @@ impl PostRegHandler for LusersHandler {
             .iter()
             .map(|r| r.value().clone())
             .collect();
-        let total_users = user_refs.len();
-        let mut invisible_count = 0;
-        let mut oper_count = 0;
+
+        let mut total_users: usize = 0;
+        let mut invisible_count: usize = 0;
+        let mut oper_count: usize = 0;
 
         for user_ref in user_refs {
             let user = user_ref.read().await;
+            // Skip service pseudoclients - they are not real users
+            if user.modes.service {
+                continue;
+            }
+            total_users += 1;
             if user.modes.invisible {
                 invisible_count += 1;
             }
@@ -350,8 +357,18 @@ impl PostRegHandler for LusersHandler {
         // RPL_LUSERUNKNOWN (253): <u> :unknown connection(s)
         // Unregistered = connections with nick but not yet in users map
         // This includes connections that have sent NICK but not USER
-        let total_nicks = ctx.matrix.user_manager.nicks.len();
-        let unregistered_count = total_nicks.saturating_sub(total_users);
+        // Note: Services have nicks but are excluded from total_users, so we compare
+        // total_nicks - service_nicks (which is the same as nicks.len() minus 2 for NickServ/ChanServ)
+        // Actually, the correct way is to compare: nicks with non-service users
+        // Since total_users already excludes services, we need total_nicks to also exclude them
+        let service_nick_count = 2; // NickServ, ChanServ
+        let real_nicks = ctx
+            .matrix
+            .user_manager
+            .nicks
+            .len()
+            .saturating_sub(service_nick_count);
+        let unregistered_count = real_nicks.saturating_sub(total_users);
 
         ctx.send_reply(
             Response::RPL_LUSERUNKNOWN,

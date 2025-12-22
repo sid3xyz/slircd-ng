@@ -86,6 +86,21 @@ impl UserManager {
         crdts
     }
 
+    /// Count the number of real (non-service) users.
+    ///
+    /// This excludes service pseudoclients (NickServ, ChanServ) from the count,
+    /// as they are not actual users and should not be reported in LUSERS.
+    pub async fn real_user_count(&self) -> usize {
+        let mut count = 0;
+        for entry in self.users.iter() {
+            let user = entry.value().read().await;
+            if !user.modes.service {
+                count += 1;
+            }
+        }
+        count
+    }
+
     /// Add a local user to the state.
     pub async fn add_local_user(&self, user: User) {
         let uid = user.uid.clone();
