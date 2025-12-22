@@ -178,6 +178,11 @@ where
         }
         let user = user_arc.read().await;
 
+        // Skip service users (+S) - they should not appear in WHO results
+        if user.modes.service {
+            continue;
+        }
+
         // Skip if operators_only and not an operator
         if operators_only && !user.modes.oper {
             continue;
@@ -195,9 +200,18 @@ where
             }
         }
 
-        // Match against nick
+        // Match against nick, username, visible_host, or realname (RFC 2812)
         let nick_lower = irc_to_lower(&user.nick);
-        if matches_mask(&nick_lower, &mask_lower) {
+        let user_lower = irc_to_lower(&user.user);
+        let host_lower = irc_to_lower(&user.visible_host);
+        let realname_lower = irc_to_lower(&user.realname);
+
+        let matches = matches_mask(&nick_lower, &mask_lower)
+            || matches_mask(&user_lower, &mask_lower)
+            || matches_mask(&host_lower, &mask_lower)
+            || matches_mask(&realname_lower, &mask_lower);
+
+        if matches {
             let user_info = WhoUserInfo {
                 nick: &user.nick,
                 user: &user.user,
