@@ -1,13 +1,16 @@
 use super::ChannelActor;
 use crate::state::MemberModes;
-use tracing::info;
+use crate::state::actor::ChannelMode as ActorMode;
+use slirc_crdt::clock::HybridTimestamp;
+use slirc_proto::{ChannelMode as ProtoMode, Mode};
+use tracing::{info, warn};
 
 impl ChannelActor {
     pub(crate) async fn handle_sjoin(
         &mut self,
         ts: u64,
-        _modes: String,
-        _mode_args: Vec<String>,
+        modes: String,
+        mode_args: Vec<String>,
         users: Vec<(String, String)>,
     ) {
         // 1. Timestamp Check
@@ -23,10 +26,59 @@ impl ChannelActor {
 
             // Clear current modes and apply remote modes
             self.modes.clear();
-            // TODO: Parse and apply modes/args. This requires a mode parser which we don't have easily accessible here.
-            // For now, we will just accept the users.
-            // Implementing full mode parsing here is complex.
-            // We should probably use a helper or just accept that we might be desynced on modes until we implement full parsing.
+
+            // Construct args for parser
+            let mut args = vec![modes.as_str()];
+            for arg in &mode_args {
+                args.push(arg.as_str());
+            }
+
+            match Mode::as_channel_modes(&args) {
+                Ok(parsed_modes) => {
+                    for mode in parsed_modes {
+                        if let Mode::Plus(m, arg) = mode {
+                            let hts = HybridTimestamp::new((ts as i64) * 1000, 0, &self.server_id);
+                            let actor_mode = match m {
+                                ProtoMode::NoExternalMessages => Some(ActorMode::NoExternal),
+                                ProtoMode::ProtectedTopic => Some(ActorMode::TopicLock),
+                                ProtoMode::Moderated => Some(ActorMode::Moderated),
+                                ProtoMode::ModeratedUnreg => Some(ActorMode::ModeratedUnreg),
+                                ProtoMode::OpModerated => Some(ActorMode::OpModerated),
+                                ProtoMode::NoNickChange => Some(ActorMode::NoNickChange),
+                                ProtoMode::NoColors => Some(ActorMode::NoColors),
+                                ProtoMode::TlsOnly => Some(ActorMode::TlsOnly),
+                                ProtoMode::NoKnock => Some(ActorMode::NoKnock),
+                                ProtoMode::NoInvite => Some(ActorMode::NoInvite),
+                                ProtoMode::NoChannelNotice => Some(ActorMode::NoNotice),
+                                ProtoMode::FreeInvite => Some(ActorMode::FreeInvite),
+                                ProtoMode::OperOnly => Some(ActorMode::OperOnly),
+                                ProtoMode::Auditorium => Some(ActorMode::Auditorium),
+                                ProtoMode::RegisteredOnly => Some(ActorMode::RegisteredOnly),
+                                ProtoMode::NoKick => Some(ActorMode::NoKicks),
+                                ProtoMode::Secret => Some(ActorMode::Secret),
+                                ProtoMode::InviteOnly => Some(ActorMode::InviteOnly),
+                                ProtoMode::NoCTCP => Some(ActorMode::NoCtcp),
+                                ProtoMode::Permanent => Some(ActorMode::Permanent),
+                                ProtoMode::Key => arg.map(|k| ActorMode::Key(k, hts)),
+                                ProtoMode::Limit => {
+                                    arg.and_then(|s| s.parse().ok()).map(|l| ActorMode::Limit(l, hts))
+                                }
+                                _ => None,
+                            };
+
+                            if let Some(am) = actor_mode {
+                                self.modes.insert(am);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to parse modes in SJOIN for {}: {} ({})",
+                        self.name, modes, e
+                    );
+                }
+            }
         } else if ts > current_ts {
             // Remote is newer (loser). We keep our TS and modes.
             // We still accept the users, but we ignore their modes.
