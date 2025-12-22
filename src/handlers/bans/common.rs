@@ -122,3 +122,117 @@ pub fn cidr_match(cidr: &str, ip: &str) -> bool {
 
     (network_u32 & mask) == (ip_u32 & mask)
 }
+
+/// Parse a duration string into seconds.
+///
+/// Supports formats like:
+/// - `30` or `30s` - 30 seconds
+/// - `5m` - 5 minutes
+/// - `2h` - 2 hours
+/// - `1d` - 1 day
+/// - `1w` - 1 week
+/// - `1d2h30m` - combined
+///
+/// Returns `None` for permanent bans (0 or empty string).
+pub fn parse_duration(s: &str) -> Option<i64> {
+    if s.is_empty() || s == "0" {
+        return None; // Permanent
+    }
+
+    // Try parsing as plain seconds first
+    if let Ok(secs) = s.parse::<i64>() {
+        return if secs <= 0 { None } else { Some(secs) };
+    }
+
+    let mut total_seconds: i64 = 0;
+    let mut current_num = String::new();
+
+    for c in s.chars() {
+        if c.is_ascii_digit() {
+            current_num.push(c);
+        } else {
+            let num: i64 = current_num.parse().unwrap_or(0);
+            current_num.clear();
+
+            let multiplier = match c {
+                's' | 'S' => 1,
+                'm' | 'M' => 60,
+                'h' | 'H' => 3600,
+                'd' | 'D' => 86400,
+                'w' | 'W' => 604800,
+                _ => return None, // Invalid format
+            };
+
+            total_seconds += num * multiplier;
+        }
+    }
+
+    // Handle trailing number (interpreted as seconds)
+    if !current_num.is_empty()
+        && let Ok(num) = current_num.parse::<i64>()
+    {
+        total_seconds += num;
+    }
+
+    if total_seconds <= 0 {
+        None
+    } else {
+        Some(total_seconds)
+    }
+}
+
+/// Format a duration in seconds to a human-readable string.
+pub fn format_duration(seconds: i64) -> String {
+    if seconds <= 0 {
+        return "permanent".to_string();
+    }
+
+    let days = seconds / 86400;
+    let hours = (seconds % 86400) / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let secs = seconds % 60;
+
+    let mut parts = Vec::new();
+    if days > 0 {
+        parts.push(format!("{}d", days));
+    }
+    if hours > 0 {
+        parts.push(format!("{}h", hours));
+    }
+    if minutes > 0 {
+        parts.push(format!("{}m", minutes));
+    }
+    if secs > 0 || parts.is_empty() {
+        parts.push(format!("{}s", secs));
+    }
+
+    parts.join("")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_duration() {
+        assert_eq!(parse_duration("0"), None);
+        assert_eq!(parse_duration(""), None);
+        assert_eq!(parse_duration("30"), Some(30));
+        assert_eq!(parse_duration("30s"), Some(30));
+        assert_eq!(parse_duration("5m"), Some(300));
+        assert_eq!(parse_duration("2h"), Some(7200));
+        assert_eq!(parse_duration("1d"), Some(86400));
+        assert_eq!(parse_duration("1w"), Some(604800));
+        assert_eq!(parse_duration("1d2h30m"), Some(86400 + 7200 + 1800));
+    }
+
+    #[test]
+    fn test_format_duration() {
+        assert_eq!(format_duration(0), "permanent");
+        assert_eq!(format_duration(30), "30s");
+        assert_eq!(format_duration(300), "5m");
+        assert_eq!(format_duration(7200), "2h");
+        assert_eq!(format_duration(86400), "1d");
+        assert_eq!(format_duration(90061), "1d1h1m1s");
+    }
+}

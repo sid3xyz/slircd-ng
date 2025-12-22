@@ -9,7 +9,7 @@
 //!
 //! Uses a trait-based generic handler system to minimize code duplication.
 
-use super::common::{BanType, disconnect_matching_ban};
+use super::common::{BanType, disconnect_matching_ban, format_duration, parse_duration};
 use crate::caps::CapabilityAuthority;
 use crate::db::{Database, DbError};
 use crate::handlers::{Context, HandlerResult, PostRegHandler, server_notice};
@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use ipnet::IpNet;
 use slirc_proto::{MessageRef, Response};
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::state::observer::GlobalBanType;
 
@@ -57,13 +58,21 @@ pub trait BanConfig: Send + Sync + 'static {
         target: &str,
         reason: &str,
         oper: &str,
+        duration: Option<i64>,
     ) -> Result<(), DbError>;
 
     /// Remove ban from database.
     async fn remove_from_db(&self, db: &Database, target: &str) -> Result<bool, DbError>;
 
     /// Add ban to in-memory cache.
-    async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str);
+    async fn add_to_cache(
+        &self,
+        matrix: &Arc<Matrix>,
+        target: &str,
+        reason: &str,
+        oper: &str,
+        duration: Option<i64>,
+    );
 
     /// Remove ban from in-memory cache.
     async fn remove_from_cache(&self, matrix: &Arc<Matrix>, target: &str) -> bool;
@@ -104,10 +113,32 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
             return Ok(());
         }
 
-        // Parse target (mask/ip/pattern) - using require_arg_or_reply! here would need
-        // a compile-time command string, but we have a dynamic cmd_name, so keep manual
-        let target = match msg.arg(0) {
-            Some(t) if !t.is_empty() => t,
+        // Parse arguments: KLINE [duration] target [:reason]
+        // Duration is optional and can be a time specifier like "1d2h30m" or "3600"
+        let (target, duration, reason) = match msg.arg(0) {
+            Some(first_arg) if !first_arg.is_empty() => {
+                // Try to parse first arg as duration
+                if let Some(dur) = parse_duration(first_arg) {
+                    // First arg is duration, second is target
+                    match msg.arg(1) {
+                        Some(t) if !t.is_empty() => {
+                            let r = msg.arg(2).unwrap_or("No reason given");
+                            (t, Some(dur), r)
+                        }
+                        _ => {
+                            let reply = Response::err_needmoreparams(nick, cmd_name)
+                                .with_prefix(ctx.server_prefix());
+                            ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply)
+                                .await?;
+                            return Ok(());
+                        }
+                    }
+                } else {
+                    // First arg is target
+                    let r = msg.arg(1).unwrap_or("No reason given");
+                    (first_arg, None, r)
+                }
+            }
             _ => {
                 let reply =
                     Response::err_needmoreparams(nick, cmd_name).with_prefix(ctx.server_prefix());
@@ -116,16 +147,19 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
                 return Ok(());
             }
         };
-        let reason = msg.arg(1).unwrap_or("No reason given");
 
         // Add to database
-        if let Err(e) = self.config.add_to_db(ctx.db, target, reason, nick).await {
+        if let Err(e) = self
+            .config
+            .add_to_db(ctx.db, target, reason, nick, duration)
+            .await
+        {
             tracing::error!(error = %e, "Failed to add {cmd_name} to database");
         }
 
         // Add to in-memory cache
         self.config
-            .add_to_cache(ctx.matrix, target, reason, nick)
+            .add_to_cache(ctx.matrix, target, reason, nick, duration)
             .await;
 
         // Broadcast global bans to peer servers (Phase 3: Distributed Security)
@@ -136,7 +170,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
                 target,
                 reason,
                 nick,
-                None, // TODO: Support timed bans
+                duration,
                 None, // Local origin
             );
         }
@@ -145,10 +179,19 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
         let disconnected =
             disconnect_matching_ban(ctx, self.config.ban_type(), target, reason).await;
 
+        // Format confirmation message
+        let duration_text = duration.map(format_duration).unwrap_or_default();
+        let duration_suffix = if duration_text.is_empty() {
+            String::new()
+        } else {
+            format!(" [expires in {duration_text}]")
+        };
+
         tracing::info!(
             oper = %nick,
             target = %target,
             reason = %reason,
+            duration = ?duration,
             disconnected = disconnected,
             cmd = cmd_name,
             "{} added", cmd_name
@@ -156,9 +199,11 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
 
         // Send confirmation
         let text = if disconnected > 0 {
-            format!("{cmd_name} added: {target} ({reason}) - {disconnected} user(s) disconnected")
+            format!(
+                "{cmd_name} added: {target} ({reason}){duration_suffix} - {disconnected} user(s) disconnected"
+            )
         } else {
-            format!("{cmd_name} added: {target} ({reason})")
+            format!("{cmd_name} added: {target} ({reason}){duration_suffix}")
         };
         ctx.sender
             .send(server_notice(server_name, nick, &text))
@@ -290,9 +335,9 @@ macro_rules! simple_ban_config {
             ban_type: $ban_type:expr,
             global_ban_type: $global_type:expr,
             capability_check: |$auth:ident, $uid:ident| $cap_check:expr,
-            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident| $add_expr:expr,
+            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident, $duration_add:ident| $add_expr:expr,
             db_remove: |$db_rem:ident, $target_rem:ident| $remove_expr:expr,
-            cache_add: |$cache_add:ident, $target_cache_add:ident, $reason_cache_add:ident| $cache_add_expr:expr,
+            cache_add: |$cache_add:ident, $target_cache_add:ident, $reason_cache_add:ident, $duration_cache:ident| $cache_add_expr:expr,
             cache_remove: |$cache_rem:ident, $target_cache_rem:ident| $cache_remove_expr:expr,
         }
     ) => {
@@ -327,6 +372,7 @@ macro_rules! simple_ban_config {
                 $target_add: &str,
                 $reason_add: &str,
                 $oper_add: &str,
+                $duration_add: Option<i64>,
             ) -> Result<(), DbError> {
                 $add_expr
             }
@@ -335,7 +381,7 @@ macro_rules! simple_ban_config {
                 $remove_expr
             }
 
-            async fn add_to_cache(&self, $cache_add: &Arc<Matrix>, $target_cache_add: &str, $reason_cache_add: &str, _oper: &str) {
+            async fn add_to_cache(&self, $cache_add: &Arc<Matrix>, $target_cache_add: &str, $reason_cache_add: &str, _oper: &str, $duration_cache: Option<i64>) {
                 $cache_add_expr
             }
 
@@ -353,9 +399,9 @@ macro_rules! simple_ban_config {
             unset_command: $unset_cmd:literal,
             ban_type: $ban_type:expr,
             capability_check: |$auth:ident, $uid:ident| $cap_check:expr,
-            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident| $add_expr:expr,
+            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident, $duration_add:ident| $add_expr:expr,
             db_remove: |$db_rem:ident, $target_rem:ident| $remove_expr:expr,
-            cache_add: |$cache_add:ident, $target_cache_add:ident, $reason_cache_add:ident| $cache_add_expr:expr,
+            cache_add: |$cache_add:ident, $target_cache_add:ident, $reason_cache_add:ident, $duration_cache:ident| $cache_add_expr:expr,
             cache_remove: |$cache_rem:ident, $target_cache_rem:ident| $cache_remove_expr:expr,
         }
     ) => {
@@ -386,6 +432,7 @@ macro_rules! simple_ban_config {
                 $target_add: &str,
                 $reason_add: &str,
                 $oper_add: &str,
+                $duration_add: Option<i64>,
             ) -> Result<(), DbError> {
                 $add_expr
             }
@@ -394,7 +441,7 @@ macro_rules! simple_ban_config {
                 $remove_expr
             }
 
-            async fn add_to_cache(&self, $cache_add: &Arc<Matrix>, $target_cache_add: &str, $reason_cache_add: &str, _oper: &str) {
+            async fn add_to_cache(&self, $cache_add: &Arc<Matrix>, $target_cache_add: &str, $reason_cache_add: &str, _oper: &str, $duration_cache: Option<i64>) {
                 $cache_add_expr
             }
 
@@ -417,9 +464,12 @@ simple_ban_config! {
         unset_command: "UNKLINE",
         ban_type: BanType::Kline,
         capability_check: |authority, uid| authority.request_kline_cap(uid).await.is_some(),
-        db_add: |db, target, reason, oper| db.bans().add_kline(target, Some(reason), oper, None).await,
+        db_add: |db, target, reason, oper, duration| db.bans().add_kline(target, Some(reason), oper, duration).await,
         db_remove: |db, target| db.bans().remove_kline(target).await,
-        cache_add: |matrix, target, reason| matrix.security_manager.ban_cache.add_kline(target.to_string(), reason.to_string(), None),
+        cache_add: |matrix, target, reason, duration| {
+            let expires_at = duration.map(|d| chrono::Utc::now().timestamp() + d);
+            matrix.security_manager.ban_cache.add_kline(target.to_string(), reason.to_string(), expires_at)
+        },
         cache_remove: |matrix, target| matrix.security_manager.ban_cache.remove_kline(target),
     }
 }
@@ -436,9 +486,12 @@ simple_ban_config! {
         ban_type: BanType::Gline,
         global_ban_type: GlobalBanType::Gline,
         capability_check: |authority, uid| authority.request_gline_cap(uid).await.is_some(),
-        db_add: |db, target, reason, oper| db.bans().add_gline(target, Some(reason), oper, None).await,
+        db_add: |db, target, reason, oper, duration| db.bans().add_gline(target, Some(reason), oper, duration).await,
         db_remove: |db, target| db.bans().remove_gline(target).await,
-        cache_add: |matrix, target, reason| matrix.security_manager.ban_cache.add_gline(target.to_string(), reason.to_string(), None),
+        cache_add: |matrix, target, reason, duration| {
+            let expires_at = duration.map(|d| chrono::Utc::now().timestamp() + d);
+            matrix.security_manager.ban_cache.add_gline(target.to_string(), reason.to_string(), expires_at)
+        },
         cache_remove: |matrix, target| matrix.security_manager.ban_cache.remove_gline(target),
     }
 }
@@ -460,7 +513,7 @@ macro_rules! ip_ban_config {
             ban_type: $ban_type:expr,
             global_ban_type: $global_type:expr,
             capability_check: |$auth:ident, $uid:ident| $cap_check:expr,
-            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident| $add_expr:expr,
+            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident, $duration_add:ident| $add_expr:expr,
             db_remove: |$db_rem:ident, $target_rem:ident| $remove_expr:expr,
             log_prefix: $log_prefix:literal,
         }
@@ -496,6 +549,7 @@ macro_rules! ip_ban_config {
                 $target_add: &str,
                 $reason_add: &str,
                 $oper_add: &str,
+                $duration_add: Option<i64>,
             ) -> Result<(), DbError> {
                 $add_expr
             }
@@ -504,10 +558,11 @@ macro_rules! ip_ban_config {
                 $remove_expr
             }
 
-            async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str) {
+            async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str, duration: Option<i64>) {
+                let duration_std = duration.map(|d| Duration::from_secs(d as u64));
                 if let Some(net) = parse_ip_or_cidr(target) {
                     if let Ok(mut deny_list) = matrix.security_manager.ip_deny_list.write()
-                        && let Err(e) = deny_list.add_ban(net, reason.to_string(), None, oper.to_string())
+                        && let Err(e) = deny_list.add_ban(net, reason.to_string(), duration_std, oper.to_string())
                     {
                         tracing::error!(error = %e, concat!("Failed to add ", $log_prefix, " to IP deny list"));
                     }
@@ -534,7 +589,7 @@ macro_rules! ip_ban_config {
             unset_command: $unset_cmd:literal,
             ban_type: $ban_type:expr,
             capability_check: |$auth:ident, $uid:ident| $cap_check:expr,
-            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident| $add_expr:expr,
+            db_add: |$db_add:ident, $target_add:ident, $reason_add:ident, $oper_add:ident, $duration_add:ident| $add_expr:expr,
             db_remove: |$db_rem:ident, $target_rem:ident| $remove_expr:expr,
             log_prefix: $log_prefix:literal,
         }
@@ -566,6 +621,7 @@ macro_rules! ip_ban_config {
                 $target_add: &str,
                 $reason_add: &str,
                 $oper_add: &str,
+                $duration_add: Option<i64>,
             ) -> Result<(), DbError> {
                 $add_expr
             }
@@ -574,10 +630,11 @@ macro_rules! ip_ban_config {
                 $remove_expr
             }
 
-            async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str) {
+            async fn add_to_cache(&self, matrix: &Arc<Matrix>, target: &str, reason: &str, oper: &str, duration: Option<i64>) {
+                let duration_std = duration.map(|d| Duration::from_secs(d as u64));
                 if let Some(net) = parse_ip_or_cidr(target) {
                     if let Ok(mut deny_list) = matrix.security_manager.ip_deny_list.write()
-                        && let Err(e) = deny_list.add_ban(net, reason.to_string(), None, oper.to_string())
+                        && let Err(e) = deny_list.add_ban(net, reason.to_string(), duration_std, oper.to_string())
                     {
                         tracing::error!(error = %e, concat!("Failed to add ", $log_prefix, " to IP deny list"));
                     }
@@ -609,7 +666,7 @@ ip_ban_config! {
         unset_command: "UNDLINE",
         ban_type: BanType::Dline,
         capability_check: |authority, uid| authority.request_dline_cap(uid).await.is_some(),
-        db_add: |db, target, reason, oper| db.bans().add_dline(target, Some(reason), oper, None).await,
+        db_add: |db, target, reason, oper, duration| db.bans().add_dline(target, Some(reason), oper, duration).await,
         db_remove: |db, target| db.bans().remove_dline(target).await,
         log_prefix: "D-line",
     }
@@ -627,7 +684,7 @@ ip_ban_config! {
         ban_type: BanType::Zline,
         global_ban_type: GlobalBanType::Zline,
         capability_check: |authority, uid| authority.request_zline_cap(uid).await.is_some(),
-        db_add: |db, target, reason, oper| db.bans().add_zline(target, Some(reason), oper, None).await,
+        db_add: |db, target, reason, oper, duration| db.bans().add_zline(target, Some(reason), oper, duration).await,
         db_remove: |db, target| db.bans().remove_zline(target).await,
         log_prefix: "Z-line",
     }
@@ -645,9 +702,9 @@ simple_ban_config! {
         ban_type: BanType::Rline,
         global_ban_type: GlobalBanType::Rline,
         capability_check: |authority, uid| authority.request_rline_cap(uid).await.is_some(),
-        db_add: |db, target, reason, oper| db.bans().add_rline(target, Some(reason), oper, None).await,
+        db_add: |db, target, reason, oper, duration| db.bans().add_rline(target, Some(reason), oper, duration).await,
         db_remove: |db, target| db.bans().remove_rline(target).await,
-        cache_add: |_matrix, _target, _reason| {
+        cache_add: |_matrix, _target, _reason, _duration| {
             // R-lines don't have an in-memory cache (checked at connection time via DB)
         },
         cache_remove: |_matrix, _target| {
