@@ -302,30 +302,33 @@ impl SyncManager {
         let manager = self.clone();
         let matrix = matrix.clone();
         tokio::spawn(async move {
-            info!(hostname = %config.hostname, port = config.port, tls = config.tls, "Connecting to peer");
+            loop {
+                info!(hostname = %config.hostname, port = config.port, tls = config.tls, "Connecting to peer");
 
-            // Establish TCP connection
-            let tcp_stream =
-                match TcpStream::connect(format!("{}:{}", config.hostname, config.port)).await {
-                    Ok(s) => s,
-                    Err(e) => {
-                        tracing::error!("Failed to connect to {}: {}", config.hostname, e);
-                        return;
+                // Establish TCP connection
+                let tcp_stream =
+                    match TcpStream::connect(format!("{}:{}", config.hostname, config.port)).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::error!("Failed to connect to {}: {}. Retrying in 5s...", config.hostname, e);
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
+                    };
+
+                // Upgrade to TLS if configured
+                let stream: S2SStream = if config.tls {
+                    match Self::upgrade_to_tls(tcp_stream, &config.hostname, config.verify_cert).await {
+                        Ok(tls_stream) => S2SStream::TlsClient(tls_stream),
+                        Err(e) => {
+                            tracing::error!("TLS handshake failed with {}: {}. Retrying in 5s...", config.hostname, e);
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
                     }
+                } else {
+                    S2SStream::Plain(tcp_stream)
                 };
-
-            // Upgrade to TLS if configured
-            let stream: S2SStream = if config.tls {
-                match Self::upgrade_to_tls(tcp_stream, &config.hostname, config.verify_cert).await {
-                    Ok(tls_stream) => S2SStream::TlsClient(tls_stream),
-                    Err(e) => {
-                        tracing::error!("TLS handshake failed with {}: {}", config.hostname, e);
-                        return;
-                    }
-                }
-            } else {
-                S2SStream::Plain(tcp_stream)
-            };
 
             let mut framed = Framed::new(stream, LinesCodec::new());
 
@@ -339,6 +342,7 @@ impl SyncManager {
             // Track remote server info for netsplit handling
             let mut remote_sid: Option<ServerId> = None;
             let mut remote_name: Option<String> = None;
+            let mut remote_info: Option<String> = None;
 
             // Send initial PASS and SERVER
             let pass_cmd = Command::Raw(
@@ -356,16 +360,19 @@ impl SyncManager {
                 manager.local_desc.clone(),
             );
 
-            if let Err(e) = framed.send(Message::from(pass_cmd).to_string()).await {
+            if let Err(e) = framed.send(Message::from(pass_cmd).to_string().trim_end()).await {
                 tracing::error!("Failed to send PASS: {}", e);
-                return;
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
             }
-            if let Err(e) = framed.send(Message::from(server_cmd).to_string()).await {
+            if let Err(e) = framed.send(Message::from(server_cmd).to_string().trim_end()).await {
                 tracing::error!("Failed to send SERVER: {}", e);
-                return;
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
             }
 
             let links = vec![config.clone()];
+            let mut handshake_success = false;
 
             while let Some(Ok(line)) = framed.next().await {
                 let msg = match line.parse::<Message>() {
@@ -384,19 +391,20 @@ impl SyncManager {
                                     "Loop detected: {} ({})",
                                     name, sid
                                 )))
-                                .to_string(),
+                                .to_string()
+                                .trim_end(),
                             )
                             .await;
-                        return;
+                        break;
                     }
                 }
 
                 match machine.step(msg.command, &links) {
                     Ok(responses) => {
                         for resp in responses {
-                            if let Err(e) = framed.send(Message::from(resp).to_string()).await {
+                            if let Err(e) = framed.send(Message::from(resp).to_string().trim_end()).await {
                                 tracing::error!("Failed to send response: {}", e);
-                                return;
+                                break;
                             }
                         }
 
@@ -409,12 +417,13 @@ impl SyncManager {
                             // Capture remote server info
                             remote_sid = machine.remote_sid.clone();
                             remote_name = machine.remote_name.clone();
+                            remote_info = machine.remote_info.clone();
 
                             // Generate Burst
                             let burst =
                                 burst::generate_burst(&matrix, manager.local_id.as_str()).await;
                             for cmd in burst {
-                                if let Err(e) = framed.send(Message::from(cmd).to_string()).await {
+                                if let Err(e) = framed.send(Message::from(cmd).to_string().trim_end()).await {
                                     tracing::error!("Failed to send burst: {}", e);
                                     // Connection failed, handle netsplit if we had a peer
                                     if let Some(sid) = &remote_sid {
@@ -427,18 +436,24 @@ impl SyncManager {
                                         )
                                         .await;
                                     }
-                                    return;
+                                    break;
                                 }
                             }
-
+                            handshake_success = true;
                             break;
                         }
                     }
                     Err(e) => {
                         tracing::error!("Handshake error with {}: {:?}", config.hostname, e);
-                        return;
+                        break;
                     }
                 }
+            }
+
+            if !handshake_success {
+                tracing::info!("Handshake failed or connection closed before completion. Retrying in 5s...");
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
             }
 
             // Register link
@@ -453,6 +468,18 @@ impl SyncManager {
                     last_pong: Instant::now(),
                     last_ping: Instant::now(),
                     connected_at: Instant::now(),
+                },
+            );
+
+            // Add to topology
+            manager.topology.servers.insert(
+                remote_sid_val.clone(),
+                ServerInfo {
+                    sid: remote_sid_val.clone(),
+                    name: remote_name.clone().unwrap_or_default(),
+                    info: remote_info.clone().unwrap_or_default(),
+                    hopcount: 1,
+                    via: None,
                 },
             );
 
@@ -482,7 +509,7 @@ impl SyncManager {
                             Some(m) => {
                                 let s = m.as_ref().to_string();
                                 S2S_BYTES_SENT.with_label_values(&[remote_sid_val.as_str()]).inc_by(s.len() as u64 + 2);
-                                if let Err(e) = framed.send(s).await {
+                                if let Err(e) = framed.send(s.trim_end()).await {
                                      tracing::error!("Failed to send message to peer: {}", e);
                                      break;
                                 }
@@ -495,7 +522,7 @@ impl SyncManager {
                     }
                     Some(reply) = reply_rx.recv() => {
                         let s = reply.as_ref().to_string();
-                        if let Err(e) = framed.send(s).await {
+                        if let Err(e) = framed.send(s.trim_end()).await {
                             tracing::error!("Failed to send reply to peer: {}", e);
                             break;
                         }
@@ -553,8 +580,13 @@ impl SyncManager {
             let rn = remote_name.as_deref().unwrap_or("unknown");
             info!(remote_sid = %remote_sid_val.as_str(), "Peer disconnected, initiating netsplit cleanup");
             split::handle_netsplit(&matrix, &remote_sid_val, &manager.local_name, rn).await;
-        });
-    }
+
+            // Retry after disconnect
+            info!("Reconnecting to {} in 5s...", config.hostname);
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+}
 
     /// Get a peer connection for a given server ID.
     pub fn get_peer_for_server(&self, sid: &ServerId) -> Option<LinkState> {
@@ -607,8 +639,28 @@ impl SyncManager {
         self.links.remove(sid);
     }
 
-    pub async fn broadcast(&self, _msg: Arc<Message>, _source: Option<&ServerId>) {
-        // Stub
+    /// Broadcast a message to all connected peers except the source.
+    ///
+    /// Implements split-horizon: we never echo a message back to its origin.
+    pub async fn broadcast(&self, msg: Arc<Message>, source: Option<&ServerId>) {
+        for entry in self.links.iter() {
+            let peer_sid = entry.key();
+
+            // Split-horizon: don't send back to source
+            if let Some(src) = source
+                && peer_sid == src
+            {
+                tracing::debug!(peer = %peer_sid.as_str(), "Skipping source peer (split-horizon)");
+                continue;
+            }
+
+            let link: LinkState = entry.value().clone();
+            if let Err(e) = link.tx.send(msg.clone()).await {
+                tracing::warn!(peer = %peer_sid.as_str(), error = %e, "Failed to send to peer");
+            } else {
+                tracing::debug!(peer = %peer_sid.as_str(), cmd = ?msg.command, "Sent to peer");
+            }
+        }
     }
 
     pub fn get_next_hop(&self, target: &ServerId) -> Option<LinkState> {
