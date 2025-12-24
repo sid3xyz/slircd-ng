@@ -29,7 +29,7 @@
 | Pass rate      | 100% (on applicable tests)                 |
 | Skipped        | 36 (SASL=TLS, ascii casemapping, optional) |
 | XFailed        | 6 (deprecated RFCs)                        |
-| Failed         | 1 (upstream test bug in deprecated test)   |
+| Failed         | 1 (LINKS: missing services server)         |
 
 ## Commands
 
@@ -100,7 +100,6 @@ SQLite via sqlx. Migrations:
 - 004_certfp.sql — certificate fingerprint storage
 - 005_channel_topics.sql — persistent topics
 - 006_reputation.sql — user reputation scores
-- 007_bans.sql — channel ban persistence
 
 ## Build
 

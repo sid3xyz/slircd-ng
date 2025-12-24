@@ -127,6 +127,7 @@ impl UserManager {
     }
 
     /// Merge a UserCrdt into the local state.
+    #[allow(dead_code)] // Reserved for S2S CRDT sync
     pub async fn merge_user_crdt(
         &self,
         crdt: slirc_crdt::user::UserCrdt,
@@ -197,6 +198,7 @@ impl UserManager {
     }
 
     /// Helper to perform the actual merge logic.
+    #[allow(dead_code)] // Reserved for S2S CRDT sync
     async fn perform_merge(&self, crdt: slirc_crdt::user::UserCrdt, source: Option<ServerId>) {
         let uid = crdt.uid.clone();
 

@@ -63,6 +63,11 @@ async fn validate_status_mode(
     Ok(ModeValidation::Valid)
 }
 
+/// Check if a channel key is valid.
+fn is_valid_key(key: &str) -> bool {
+    !key.is_empty() && !key.contains(' ') && key.len() <= 23
+}
+
 /// Validate a channel key mode.
 async fn validate_key_mode(
     ctx: &mut Context<'_, RegisteredState>,
@@ -80,7 +85,7 @@ async fn validate_key_mode(
     };
 
     // Validate: no spaces, not empty, max 23 chars
-    if key.is_empty() || key.contains(' ') || key.len() > 23 {
+    if !is_valid_key(key) {
         let reply = server_reply(
             ctx.server_name(),
             Response::ERR_INVALIDKEY,
@@ -349,4 +354,26 @@ pub fn format_modes_for_log(modes: &[Mode<ChannelMode>]) -> String {
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_valid_key() {
+        assert!(is_valid_key("password"));
+        assert!(is_valid_key("12345"));
+        assert!(is_valid_key("a".repeat(23).as_str()));
+
+        assert!(!is_valid_key("")); // Empty
+        assert!(!is_valid_key("pass word")); // Space
+        assert!(!is_valid_key("a".repeat(24).as_str())); // Too long
+    }
+
+    #[test]
+    fn test_is_valid_key_boundary() {
+        assert!(is_valid_key("a".repeat(23).as_str())); // Max length
+        assert!(!is_valid_key("a".repeat(24).as_str())); // Max length + 1
+    }
 }

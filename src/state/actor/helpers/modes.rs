@@ -184,3 +184,159 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
         format!("{} {}", flags, params.join(" "))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_crdt::clock::{HybridTimestamp, ServerId};
+
+    /// Helper to create a test timestamp
+    fn test_ts() -> HybridTimestamp {
+        HybridTimestamp::new(0, 0, &ServerId::new("test"))
+    }
+
+    #[test]
+    fn test_modes_to_string_empty_set() {
+        let modes = HashSet::new();
+        let result = modes_to_string(&modes);
+        // Empty set should just have the + prefix
+        assert_eq!(result, "+");
+    }
+
+    #[test]
+    fn test_modes_to_string_single_mode() {
+        let mut modes = HashSet::new();
+        modes.insert(ChannelMode::NoExternal);
+        let result = modes_to_string(&modes);
+        assert_eq!(result, "+n");
+    }
+
+    #[test]
+    fn test_modes_to_string_multiple_simple_modes() {
+        let mut modes = HashSet::new();
+        modes.insert(ChannelMode::NoExternal);
+        modes.insert(ChannelMode::TopicLock);
+        modes.insert(ChannelMode::Secret);
+
+        let result = modes_to_string(&modes);
+
+        // Should start with +
+        assert!(result.starts_with('+'));
+        // Should contain all three mode chars (order may vary)
+        assert!(result.contains('n'));
+        assert!(result.contains('t'));
+        assert!(result.contains('s'));
+        // Should be exactly 4 chars: +, n, t, s
+        assert_eq!(result.len(), 4);
+    }
+
+    #[test]
+    fn test_modes_to_string_with_key() {
+        let mut modes = HashSet::new();
+        modes.insert(ChannelMode::NoExternal);
+        modes.insert(ChannelMode::Key("secret".to_string(), test_ts()));
+
+        let result = modes_to_string(&modes);
+
+        // Should contain the key mode and the key value
+        assert!(result.contains('k'));
+        assert!(result.contains("secret"));
+        assert!(result.contains(' ')); // space before param
+    }
+
+    #[test]
+    fn test_modes_to_string_with_limit() {
+        let mut modes = HashSet::new();
+        modes.insert(ChannelMode::Limit(50, test_ts()));
+
+        let result = modes_to_string(&modes);
+
+        assert!(result.contains('l'));
+        assert!(result.contains("50"));
+    }
+
+    #[test]
+    fn test_modes_to_string_with_key_and_limit() {
+        let mut modes = HashSet::new();
+        modes.insert(ChannelMode::Key("pass".to_string(), test_ts()));
+        modes.insert(ChannelMode::Limit(100, test_ts()));
+        modes.insert(ChannelMode::InviteOnly);
+
+        let result = modes_to_string(&modes);
+
+        // Should have i, k, l modes
+        assert!(result.contains('i'));
+        assert!(result.contains('k'));
+        assert!(result.contains('l'));
+        // Should have both param values
+        assert!(result.contains("pass"));
+        assert!(result.contains("100"));
+    }
+
+    #[test]
+    fn test_modes_to_string_all_simple_modes() {
+        let mut modes = HashSet::new();
+        modes.insert(ChannelMode::NoExternal);
+        modes.insert(ChannelMode::TopicLock);
+        modes.insert(ChannelMode::Moderated);
+        modes.insert(ChannelMode::Secret);
+        modes.insert(ChannelMode::Private);
+        modes.insert(ChannelMode::InviteOnly);
+        modes.insert(ChannelMode::NoCtcp);
+        modes.insert(ChannelMode::Permanent);
+        modes.insert(ChannelMode::RegisteredOnly);
+
+        let result = modes_to_string(&modes);
+
+        // Check all expected mode chars are present
+        for c in ['n', 't', 'm', 's', 'p', 'i', 'C', 'P', 'R'] {
+            assert!(result.contains(c), "Missing mode char: {}", c);
+        }
+    }
+
+    // Tests for mode_to_char (via ChannelActor implementation)
+    // Note: mode_to_char is a method on ChannelActor, so we test it indirectly
+    // by verifying the mode character mappings match what modes_to_string uses.
+
+    #[test]
+    fn test_mode_to_char_basic_modes() {
+        // Verify mode_to_char returns expected characters
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoExternal), Some('n'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::TopicLock), Some('t'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Moderated), Some('m'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Secret), Some('s'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Private), Some('p'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::InviteOnly), Some('i'));
+    }
+
+    #[test]
+    fn test_mode_to_char_extended_modes() {
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::ModeratedUnreg), Some('M'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::OpModerated), Some('U'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoNickChange), Some('N'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoColors), Some('c'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::TlsOnly), Some('z'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoKnock), Some('K'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoInvite), Some('V'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoNotice), Some('T'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::FreeInvite), Some('g'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::OperOnly), Some('O'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::AdminOnly), Some('A'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Auditorium), Some('u'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Registered), Some('r'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoKicks), Some('Q'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoCtcp), Some('C'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Permanent), Some('P'));
+        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::RegisteredOnly), Some('R'));
+    }
+
+    #[test]
+    fn test_mode_to_char_param_modes_return_none() {
+        // Parametric modes should return None (they use separate timestamp fields)
+        let key_mode = ChannelMode::Key("test".to_string(), test_ts());
+        let limit_mode = ChannelMode::Limit(100, test_ts());
+
+        assert_eq!(ChannelActor::mode_to_char(&key_mode), None);
+        assert_eq!(ChannelActor::mode_to_char(&limit_mode), None);
+    }
+}

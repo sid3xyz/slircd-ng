@@ -57,3 +57,76 @@ impl StoredMessage {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper to build a minimal StoredMessage for testing timestamp_iso().
+    fn make_message(nanotime: i64) -> StoredMessage {
+        StoredMessage {
+            msgid: "test-msgid".to_string(),
+            target: "#test".to_string(),
+            sender: "testnick".to_string(),
+            envelope: MessageEnvelope {
+                command: "PRIVMSG".to_string(),
+                prefix: "testnick!user@host".to_string(),
+                target: "#test".to_string(),
+                text: "test message".to_string(),
+                tags: None,
+            },
+            nanotime,
+            account: None,
+        }
+    }
+
+    #[test]
+    fn test_timestamp_iso_normal() {
+        // 2023-11-14T22:13:20.000Z in nanoseconds
+        let msg = make_message(1_700_000_000_000_000_000);
+        let iso = msg.timestamp_iso();
+        assert_eq!(iso, "2023-11-14T22:13:20.000Z");
+    }
+
+    #[test]
+    fn test_timestamp_iso_zero() {
+        // Unix epoch should produce 1970-01-01T00:00:00.000Z
+        let msg = make_message(0);
+        let iso = msg.timestamp_iso();
+        assert_eq!(iso, "1970-01-01T00:00:00.000Z");
+    }
+
+    #[test]
+    fn test_timestamp_iso_with_milliseconds() {
+        // 1_700_000_000_123_000_000 ns = 1700000000.123 seconds
+        // Should show .123 milliseconds
+        let msg = make_message(1_700_000_000_123_000_000);
+        let iso = msg.timestamp_iso();
+        assert_eq!(iso, "2023-11-14T22:13:20.123Z");
+    }
+
+    #[test]
+    fn test_timestamp_iso_subsecond_precision() {
+        // 500 milliseconds = 500_000_000 nanoseconds
+        let msg = make_message(500_000_000);
+        let iso = msg.timestamp_iso();
+        assert_eq!(iso, "1970-01-01T00:00:00.500Z");
+    }
+
+    #[test]
+    fn test_timestamp_iso_negative_fallback() {
+        // Negative timestamp should fallback to epoch
+        // chrono::DateTime::from_timestamp returns None for invalid values
+        let msg = make_message(i64::MIN);
+        let iso = msg.timestamp_iso();
+        assert_eq!(iso, "1970-01-01T00:00:00.000Z");
+    }
+
+    #[test]
+    fn test_timestamp_iso_one_second() {
+        // Exactly 1 second after epoch
+        let msg = make_message(1_000_000_000);
+        let iso = msg.timestamp_iso();
+        assert_eq!(iso, "1970-01-01T00:00:01.000Z");
+    }
+}

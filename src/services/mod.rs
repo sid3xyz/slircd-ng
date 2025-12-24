@@ -12,6 +12,7 @@ pub use traits::Service;
 
 use crate::state::observer::StateObserver;
 use crate::{handlers::ResponseMiddleware, state::Matrix};
+use crate::handlers::notify_extended_monitor_watchers;
 use slirc_proto::{ChannelMode, Command, Message, Mode, Prefix, UserMode, irc_to_lower};
 use std::sync::Arc;
 use tracing::info;
@@ -720,8 +721,17 @@ pub async fn apply_effect(
                 .get(&target_uid)
                 .map(|s| s.clone());
             if let Some(sender) = sender {
-                let _ = sender.send(Arc::new(account_msg)).await;
+                let _ = sender.send(Arc::new(account_msg.clone())).await;
             }
+
+            // Extended MONITOR: Notify watchers with extended-monitor + account-notify
+            notify_extended_monitor_watchers(
+                matrix,
+                &nick,
+                account_msg,
+                "account-notify",
+            )
+            .await;
 
             // Broadcast to peers via S2S (Innovation 2)
             let account_opt = if new_account == "*" {

@@ -151,3 +151,74 @@ pub(super) fn mode_to_char(mode: &ChannelMode) -> char {
         _ => '?',
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::{ChannelMode, Mode};
+
+    #[test]
+    fn test_parse_mlock_inline() {
+        let modes = parse_mlock_inline("+nt-s");
+        assert_eq!(modes.len(), 3);
+        // +n
+        assert!(matches!(modes[0], Mode::Plus(ChannelMode::NoExternalMessages, None)));
+        // +t
+        assert!(matches!(modes[1], Mode::Plus(ChannelMode::ProtectedTopic, None)));
+        // -s
+        assert!(matches!(modes[2], Mode::Minus(ChannelMode::Secret, None)));
+    }
+
+    #[test]
+    fn test_parse_mlock_empty() {
+        let modes = parse_mlock_inline("");
+        assert!(modes.is_empty());
+    }
+
+    #[test]
+    fn test_parse_mlock_spaces() {
+        let modes = parse_mlock_inline(" +n ");
+        assert_eq!(modes.len(), 1);
+        assert!(matches!(modes[0], Mode::Plus(ChannelMode::NoExternalMessages, None)));
+    }
+
+    #[test]
+    fn test_parse_mlock_unknown() {
+        // Unknown chars should be ignored or handled gracefully
+        // Implementation:
+        /*
+            _ => modes.push(if is_plus {
+                Mode::Plus(ChannelMode::Unknown(ch), None)
+            } else {
+                Mode::Minus(ChannelMode::Unknown(ch), None)
+            }),
+        */
+        // Wait, I need to check the implementation of parse_mlock_inline again.
+        // It matches specific chars.
+        /*
+            'n' => ...
+            't' => ...
+            'i' => ...
+            'm' => ...
+            's' => ...
+            'k' => ...
+            'l' => ...
+            _ => {} // Ignored
+        */
+        // So unknown chars are ignored.
+
+        let modes = parse_mlock_inline("+n?t");
+        assert_eq!(modes.len(), 2);
+        assert!(matches!(modes[0], Mode::Plus(ChannelMode::NoExternalMessages, None)));
+        assert!(matches!(modes[1], Mode::Plus(ChannelMode::ProtectedTopic, None)));
+    }
+
+    #[test]
+    fn test_parse_mlock_switch_polarity() {
+        let modes = parse_mlock_inline("+n-t+i");
+        assert_eq!(modes.len(), 3);
+        assert!(matches!(modes[0], Mode::Plus(ChannelMode::NoExternalMessages, None)));
+        assert!(matches!(modes[1], Mode::Minus(ChannelMode::ProtectedTopic, None)));
+        assert!(matches!(modes[2], Mode::Plus(ChannelMode::InviteOnly, None)));
+    }
+}

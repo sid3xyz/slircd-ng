@@ -561,3 +561,36 @@ pub async fn send_no_such_nick<S>(ctx: &Context<'_, S>, nick: &str, target: &str
     ctx.send_error("PRIVMSG", "ERR_NOSUCHNICK", reply).await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_snapshot() -> SenderSnapshot {
+        SenderSnapshot {
+            nick: "testnick".to_string(),
+            user: "testuser".to_string(),
+            host: "real.host.com".to_string(),
+            visible_host: "visible.host.com".to_string(),
+            realname: "Real Name".to_string(),
+            ip: "127.0.0.1".to_string(),
+            account: Some("testaccount".to_string()),
+            is_registered: true,
+            is_oper: false,
+            is_bot: false,
+            is_tls: true,
+        }
+    }
+
+    #[test]
+    fn test_sender_snapshot_shun_mask() {
+        let snapshot = create_test_snapshot();
+        assert_eq!(snapshot.shun_mask(), "testuser@real.host.com");
+    }
+
+    #[test]
+    fn test_sender_snapshot_full_mask() {
+        let snapshot = create_test_snapshot();
+        assert_eq!(snapshot.full_mask(), "testnick!testuser@visible.host.com");
+    }
+}

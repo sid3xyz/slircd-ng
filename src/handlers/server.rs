@@ -7,10 +7,13 @@ use slirc_proto::MessageRef;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-pub mod delta;
+pub mod capab;
+pub mod encap;
+pub mod kill;
 pub mod routing;
 pub mod sid;
 pub mod sjoin;
+pub mod svinfo;
 pub mod tmode;
 pub mod uid;
 
@@ -44,9 +47,44 @@ impl PreRegHandler for ServerHandshakeHandler {
             "Received SERVER handshake"
         );
 
-        // In a real implementation, we would verify the password (PASS command)
-        // and check if the server is allowed to connect.
-        // For now, we'll just accept it.
+        // Verify password
+        let link_block = ctx.matrix.config.links.iter().find(|l| l.name == name)
+            .ok_or(HandlerError::AccessDenied)?;
+
+        if let Some(pass) = &ctx.state.pass_received {
+            if pass != &link_block.password {
+                warn!("Invalid password for server {}", name);
+                return Err(HandlerError::AccessDenied);
+            }
+        } else {
+            warn!("No password received for server {}", name);
+            return Err(HandlerError::AccessDenied);
+        }
+
+        // Only send credentials if we are NOT the initiator.
+        // Initiators send credentials in run_handshake_loop before receiving anything.
+        if ctx.state.initiator_data.is_none() {
+            // Send credentials
+            // PASS <password> TS=6 :<sid>
+            let pass_cmd = slirc_proto::Command::Raw(
+                "PASS".to_string(),
+                vec![
+                    link_block.password.clone(),
+                    "TS=6".to_string(),
+                    ctx.matrix.server_info.sid.as_str().to_string(),
+                ],
+            );
+            ctx.sender.send(slirc_proto::Message::from(pass_cmd)).await?;
+
+            // SERVER <name> <hopcount> <sid> <info>
+            let server_cmd = slirc_proto::Command::SERVER(
+                ctx.matrix.server_info.name.clone(),
+                1,
+                ctx.matrix.server_info.sid.as_str().to_string(),
+                ctx.matrix.server_info.description.clone(),
+            );
+            ctx.sender.send(slirc_proto::Message::from(server_cmd)).await?;
+        }
 
         // Transition to ServerState is handled by the lifecycle loop
         // when it sees that the connection has become a server.
@@ -57,111 +95,6 @@ impl PreRegHandler for ServerHandshakeHandler {
         ctx.state.server_sid = Some(sid.to_string());
         ctx.state.server_info = Some(info.to_string());
         ctx.state.server_hopcount = hopcount;
-
-        Ok(())
-    }
-}
-
-/// Handler for the BURST command (initial state synchronization).
-pub struct BurstHandler;
-
-#[async_trait]
-impl ServerHandler for BurstHandler {
-    async fn handle(
-        &self,
-        ctx: &mut Context<'_, ServerState>,
-        msg: &MessageRef<'_>,
-    ) -> HandlerResult {
-        let burst_type = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let payload = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
-
-        match burst_type {
-            "USER" => {
-                let user_crdt: slirc_crdt::user::UserCrdt =
-                    serde_json::from_str(payload).map_err(|e| {
-                        warn!(error = %e, "Failed to parse USER BURST payload");
-                        HandlerError::ProtocolError("Invalid USER BURST payload".to_string())
-                    })?;
-                ctx.matrix
-                    .user_manager
-                    .merge_user_crdt(user_crdt, Some(ServerId::new(ctx.state.sid.clone())))
-                    .await;
-            }
-            "CHANNEL" => {
-                let channel_crdt: slirc_crdt::channel::ChannelCrdt = serde_json::from_str(payload)
-                    .map_err(|e| {
-                        warn!(error = %e, "Failed to parse CHANNEL BURST payload");
-                        HandlerError::ProtocolError("Invalid CHANNEL BURST payload".to_string())
-                    })?;
-                ctx.matrix
-                    .channel_manager
-                    .merge_channel_crdt(
-                        channel_crdt,
-                        Arc::downgrade(ctx.matrix),
-                        Some(ServerId::new(ctx.state.sid.clone())),
-                    )
-                    .await;
-            }
-            _ => {
-                warn!(burst_type = %burst_type, "Unknown BURST type");
-            }
-        }
-
-        Ok(())
-    }
-}
-
-/// Handler for the DELTA command (incremental state updates).
-#[allow(dead_code)]
-pub struct DeltaHandler;
-
-#[async_trait]
-impl ServerHandler for DeltaHandler {
-    async fn handle(
-        &self,
-        ctx: &mut Context<'_, ServerState>,
-        msg: &MessageRef<'_>,
-    ) -> HandlerResult {
-        let start = std::time::Instant::now();
-        let delta_type = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let payload = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
-
-        match delta_type {
-            "USER" => {
-                let user_crdt: slirc_crdt::user::UserCrdt =
-                    serde_json::from_str(payload).map_err(|e| {
-                        warn!(error = %e, "Failed to parse USER DELTA payload");
-                        HandlerError::ProtocolError("Invalid USER DELTA payload".to_string())
-                    })?;
-                ctx.matrix
-                    .user_manager
-                    .merge_user_crdt(user_crdt, Some(ServerId::new(ctx.state.sid.clone())))
-                    .await;
-            }
-            "CHANNEL" => {
-                let channel_crdt: slirc_crdt::channel::ChannelCrdt = serde_json::from_str(payload)
-                    .map_err(|e| {
-                        warn!(error = %e, "Failed to parse CHANNEL DELTA payload");
-                        HandlerError::ProtocolError("Invalid CHANNEL DELTA payload".to_string())
-                    })?;
-                ctx.matrix
-                    .channel_manager
-                    .merge_channel_crdt(
-                        channel_crdt,
-                        Arc::downgrade(ctx.matrix),
-                        Some(ServerId::new(ctx.state.sid.clone())),
-                    )
-                    .await;
-            }
-            _ => {
-                warn!(delta_type = %delta_type, "Unknown DELTA type");
-            }
-        }
-
-        let duration = start.elapsed().as_secs_f64();
-        crate::metrics::DISTRIBUTED_SYNC_LATENCY
-            .with_label_values(&[&ctx.state.sid])
-            .observe(duration);
 
         Ok(())
     }

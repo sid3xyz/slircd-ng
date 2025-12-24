@@ -108,3 +108,34 @@ pub(super) async fn send_list_mode(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::{ChannelMode, Mode};
+
+    #[test]
+    fn test_get_list_mode_query() {
+        // Single list mode without arg = query
+        let modes = vec![Mode::Plus(ChannelMode::Ban, None)];
+        assert_eq!(get_list_mode_query(&modes), Some(ChannelMode::Ban));
+
+        let modes = vec![Mode::Plus(ChannelMode::Exception, None)];
+        assert_eq!(get_list_mode_query(&modes), Some(ChannelMode::Exception));
+
+        // With arg = not query (it's a set)
+        let modes = vec![Mode::Plus(ChannelMode::Ban, Some("mask".to_string()))];
+        assert_eq!(get_list_mode_query(&modes), None);
+
+        // Multiple modes = not query
+        let modes = vec![
+            Mode::Plus(ChannelMode::Ban, None),
+            Mode::Plus(ChannelMode::Exception, None),
+        ];
+        assert_eq!(get_list_mode_query(&modes), None);
+
+        // Non-list mode = not query
+        let modes = vec![Mode::Plus(ChannelMode::Moderated, None)];
+        assert_eq!(get_list_mode_query(&modes), None);
+    }
+}

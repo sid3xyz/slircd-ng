@@ -184,3 +184,112 @@ pub fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
 // ============================================================================
 // Ban matching (extended bans + hostmask via proto)
 // ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_server_reply_creates_correct_structure() {
+        let response = Response::RPL_WELCOME;
+        let params = vec!["nick".to_string(), "Welcome!".to_string()];
+        let msg = server_reply("irc.example.net", response, params.clone());
+
+        assert_eq!(
+            msg.prefix,
+            Some(Prefix::ServerName("irc.example.net".to_string()))
+        );
+        assert!(matches!(msg.command, Command::Response(Response::RPL_WELCOME, ref p) if *p == params));
+        assert!(msg.tags.is_none());
+    }
+
+    #[test]
+    fn test_server_reply_with_empty_params() {
+        let msg = server_reply("srv", Response::RPL_LUSERCLIENT, vec![]);
+        assert!(matches!(msg.command, Command::Response(Response::RPL_LUSERCLIENT, ref p) if p.is_empty()));
+    }
+
+    #[test]
+    fn test_server_notice_creates_notice_with_prefix() {
+        let msg = server_notice("irc.local", "#channel", "Hello, world!");
+
+        assert_eq!(
+            msg.prefix,
+            Some(Prefix::ServerName("irc.local".to_string()))
+        );
+        assert!(matches!(&msg.command, Command::NOTICE(target, message)
+            if target == "#channel" && message == "Hello, world!"));
+    }
+
+    #[test]
+    fn test_server_notice_with_string_conversion() {
+        // Test that Into<String> works with String input
+        let text = String::from("Test message");
+        let msg = server_notice("srv", "nick", text);
+        assert!(matches!(&msg.command, Command::NOTICE(_, message) if message == "Test message"));
+    }
+
+    #[test]
+    fn test_with_label_adds_label_when_some() {
+        let original = Message::pong("irc.example.net");
+        let labeled = with_label(original, Some("abc123"));
+
+        // Check the label tag was added
+        let tags = labeled.tags.expect("Tags should be Some");
+        assert!(tags.iter().any(|t| t.0 == "label" && t.1.as_deref() == Some("abc123")));
+    }
+
+    #[test]
+    fn test_with_label_returns_unchanged_when_none() {
+        let original = Message::pong("irc.example.net");
+        let original_clone = original.clone();
+        let result = with_label(original, None);
+
+        // Should be unchanged
+        assert_eq!(result.prefix, original_clone.prefix);
+        assert!(matches!(&result.command, Command::PONG { .. }));
+    }
+
+    #[test]
+    fn test_labeled_ack_has_correct_structure() {
+        let msg = labeled_ack("irc.example.net", "xyz789");
+
+        // Check prefix
+        assert_eq!(
+            msg.prefix,
+            Some(Prefix::ServerName("irc.example.net".to_string()))
+        );
+
+        // Check command is ACK
+        assert!(matches!(msg.command, Command::ACK));
+
+        // Check label tag
+        let tags = msg.tags.expect("Tags should be Some");
+        assert!(tags.iter().any(|t| t.0 == "label" && t.1.as_deref() == Some("xyz789")));
+    }
+
+    #[test]
+    fn test_labeled_ack_with_empty_label() {
+        let msg = labeled_ack("srv", "");
+
+        // Empty label is valid (though unusual)
+        let tags = msg.tags.expect("Tags should be Some");
+        assert!(tags.iter().any(|t| t.0 == "label" && t.1.as_deref() == Some("")));
+    }
+
+    #[test]
+    fn test_user_prefix_creates_correct_prefix() {
+        let prefix = user_prefix("nick", "user", "host.example.com");
+
+        assert!(matches!(prefix, Prefix::Nickname(ref n, ref u, ref h)
+            if n == "nick" && u == "user" && h == "host.example.com"));
+    }
+
+    #[test]
+    fn test_user_prefix_with_special_characters() {
+        let prefix = user_prefix("nick[away]", "~user", "192.168.1.1");
+
+        assert!(matches!(prefix, Prefix::Nickname(ref n, ref u, ref h)
+            if n == "nick[away]" && u == "~user" && h == "192.168.1.1"));
+    }
+}

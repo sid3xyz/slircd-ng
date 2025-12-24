@@ -15,31 +15,6 @@ use tracing::{debug, info, warn};
 use super::SyncManager;
 
 impl SyncManager {
-    /// Broadcast a message to all connected peers except the source.
-    ///
-    /// This implements split-horizon: we never echo a message back to its origin.
-    #[allow(dead_code)] // Will be used when full burst/sync is implemented
-    async fn broadcast_to_peers(&self, msg: Arc<Message>, source: Option<&ServerId>) {
-        for entry in self.links.iter() {
-            let peer_sid = entry.key();
-
-            // Split-horizon: don't send back to source
-            if let Some(src) = source
-                && peer_sid == src
-            {
-                debug!(peer = %peer_sid.as_str(), "Skipping source peer (split-horizon)");
-                continue;
-            }
-
-            let link: LinkState = entry.value().clone();
-            if let Err(e) = link.tx.send(msg.clone()).await {
-                warn!(peer = %peer_sid.as_str(), error = %e, "Failed to send to peer");
-            } else {
-                debug!(peer = %peer_sid.as_str(), cmd = ?msg.command, "Sent to peer");
-            }
-        }
-    }
-
     /// Build an SJOIN command for a channel state.
     fn build_sjoin_command(&self, channel: &ChannelCrdt) -> Command {
         // SJOIN timestamp channel modes [args] :[@user1 +user2 ...]
@@ -159,13 +134,6 @@ impl SyncManager {
             modes,
             user.realname.value().clone(),
         )
-    }
-
-    /// Build a QUIT command for a user.
-    #[allow(dead_code)] // Will be used when quit propagation uses Command enum
-    fn build_quit_command(&self, _uid: &str, reason: &str) -> Command {
-        // QUIT is sent with UID prefix
-        Command::Raw("QUIT".to_string(), vec![format!(":{}", reason)])
     }
 }
 

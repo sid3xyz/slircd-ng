@@ -125,7 +125,7 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
 ///
 /// **Specification:** [RFC 2812 §3.2.6](https://datatracker.ietf.org/doc/html/rfc2812#section-3.2.6)
 ///
-/// **Compliance:** 3/8 irctest pass (5 WHOX extensions skipped)
+/// **Compliance:** 3/8 irctest pass (5 ELIST extensions skipped)
 pub struct ListHandler;
 
 #[async_trait]
@@ -239,5 +239,63 @@ impl PostRegHandler for ListHandler {
         ctx.sender.send(reply).await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wildcard_match() {
+        assert!(wildcard_match("*", "anything"));
+        assert!(wildcard_match("foo*", "foobar"));
+        assert!(wildcard_match("*bar", "foobar"));
+        assert!(wildcard_match("f?o", "foo"));
+        assert!(wildcard_match("f?o", "fOo"));
+        assert!(!wildcard_match("foo", "bar"));
+    }
+
+    #[test]
+    fn test_list_filter_parse() {
+        let f = ListFilter::parse(None);
+        assert!(f.mask.is_none());
+        assert!(f.min_users.is_none());
+        assert!(f.max_users.is_none());
+
+        let f = ListFilter::parse(Some(">10"));
+        assert_eq!(f.min_users, Some(10));
+
+        let f = ListFilter::parse(Some("<5"));
+        assert_eq!(f.max_users, Some(5));
+
+        let f = ListFilter::parse(Some("!*bad*"));
+        assert_eq!(f.negative_mask, Some("*bad*".to_string()));
+
+        let f = ListFilter::parse(Some("#channel"));
+        assert_eq!(f.mask, Some("#channel".to_string()));
+    }
+
+    #[test]
+    fn test_list_filter_matches() {
+        let mut f = ListFilter::default();
+        f.min_users = Some(5);
+        assert!(!f.matches("#chan", 5));
+        assert!(f.matches("#chan", 6));
+
+        let mut f = ListFilter::default();
+        f.max_users = Some(5);
+        assert!(!f.matches("#chan", 5));
+        assert!(f.matches("#chan", 4));
+
+        let mut f = ListFilter::default();
+        f.mask = Some("#chan*".to_string());
+        assert!(f.matches("#channel", 10));
+        assert!(!f.matches("#other", 10));
+
+        let mut f = ListFilter::default();
+        f.negative_mask = Some("*bad*".to_string());
+        assert!(!f.matches("#badchan", 10));
+        assert!(f.matches("#goodchan", 10));
     }
 }

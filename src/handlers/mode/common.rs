@@ -63,3 +63,18 @@ pub async fn parse_user_modes(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_channel_target() {
+        assert!(is_channel_target("#channel"));
+        assert!(is_channel_target("&channel"));
+        assert!(is_channel_target("+channel"));
+        assert!(is_channel_target("!channel"));
+        assert!(!is_channel_target("user"));
+        assert!(!is_channel_target(""));
+    }
+}

@@ -519,3 +519,116 @@ fn dummy_password_verify(password: &str) {
         let _ = Argon2::default().verify_password(password.as_bytes(), &parsed);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_password_produces_valid_argon2_hash() {
+        let password = "test_password_123";
+        let hash = hash_password(password).expect("hashing should succeed");
+
+        // Verify hash starts with Argon2id prefix
+        assert!(
+            hash.starts_with("$argon2"),
+            "hash should be Argon2 format: {}",
+            hash
+        );
+
+        // Verify hash can be parsed
+        assert!(
+            PasswordHash::new(&hash).is_ok(),
+            "hash should be parseable: {}",
+            hash
+        );
+    }
+
+    #[test]
+    fn test_hash_password_produces_unique_hashes() {
+        let password = "same_password";
+        let hash1 = hash_password(password).expect("first hash");
+        let hash2 = hash_password(password).expect("second hash");
+
+        // Different salts should produce different hashes
+        assert_ne!(hash1, hash2, "hashes should differ due to random salt");
+    }
+
+    #[test]
+    fn test_verify_password_correct() {
+        let password = "my_secure_password";
+        let hash = hash_password(password).expect("hashing");
+
+        assert!(
+            verify_password(password, &hash).is_ok(),
+            "correct password should verify"
+        );
+    }
+
+    #[test]
+    fn test_verify_password_incorrect() {
+        let password = "correct_password";
+        let wrong_password = "wrong_password";
+        let hash = hash_password(password).expect("hashing");
+
+        assert!(
+            verify_password(wrong_password, &hash).is_err(),
+            "wrong password should fail verification"
+        );
+    }
+
+    #[test]
+    fn test_verify_password_empty_password() {
+        let password = "";
+        let hash = hash_password(password).expect("empty password should hash");
+
+        assert!(
+            verify_password(password, &hash).is_ok(),
+            "empty password should verify against its own hash"
+        );
+        assert!(
+            verify_password("nonempty", &hash).is_err(),
+            "nonempty should fail against empty hash"
+        );
+    }
+
+    #[test]
+    fn test_verify_password_invalid_hash_format() {
+        let result = verify_password("password", "not_a_valid_hash");
+
+        assert!(
+            result.is_err(),
+            "invalid hash format should return error"
+        );
+    }
+
+    #[test]
+    fn test_hash_password_unicode() {
+        let password = "пароль密码🔐";
+        let hash = hash_password(password).expect("unicode should hash");
+
+        assert!(
+            verify_password(password, &hash).is_ok(),
+            "unicode password should verify"
+        );
+    }
+
+    #[test]
+    fn test_hash_password_very_long() {
+        let password = "a".repeat(1000);
+        let hash = hash_password(&password).expect("long password should hash");
+
+        assert!(
+            verify_password(&password, &hash).is_ok(),
+            "long password should verify"
+        );
+    }
+
+    #[test]
+    fn test_dummy_password_verify_does_not_panic() {
+        // Just verify it doesn't panic with various inputs
+        dummy_password_verify("test");
+        dummy_password_verify("");
+        dummy_password_verify(&"x".repeat(100));
+    }
+}

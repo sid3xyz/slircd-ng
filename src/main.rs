@@ -349,7 +349,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Start the Gateway (with optional TLS and WebSocket)
     let gateway = Gateway::bind(
-        config.listen.address,
+        config.listen,
         config.tls,
         config.websocket,
         matrix.clone(),

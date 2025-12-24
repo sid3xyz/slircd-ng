@@ -19,6 +19,23 @@ use tokio::sync::oneshot;
 /// Rate limit cooldown for INVITE command (per target user)
 const INVITE_COOLDOWN: Duration = Duration::from_secs(30);
 
+#[allow(clippy::result_large_err)]
+fn parse_invite_params<'a>(msg: &MessageRef<'a>) -> Result<(&'a str, &'a str, bool), HandlerError> {
+    let arg0 = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+    let arg1 = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
+
+    let channel_first = arg0.starts_with('#')
+        || arg0.starts_with('&')
+        || arg0.starts_with('+')
+        || arg0.starts_with('!');
+
+    if channel_first {
+        Ok((arg1, arg0, true))
+    } else {
+        Ok((arg0, arg1, false))
+    }
+}
+
 /// Handler for INVITE command.
 ///
 /// `INVITE nickname channel`
@@ -39,24 +56,8 @@ impl PostRegHandler for InviteHandler {
         let server_name = ctx.server_name().to_string();
         let nick = ctx.state.nick.clone();
 
-        // INVITE <nickname> <channel> or INVITE <channel> <nickname>
-        // Detect which argument is which based on whether it starts with a channel prefix
-        let arg0 = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let arg1 = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
-
-        // Track if channel was first (non-standard order) for echo
-        let channel_first = arg0.starts_with('#')
-            || arg0.starts_with('&')
-            || arg0.starts_with('+')
-            || arg0.starts_with('!');
-
-        let (target_nick, channel_name) = if channel_first {
-            // INVITE #channel nickname format
-            (arg1, arg0)
-        } else {
-            // INVITE nickname #channel format (standard)
-            (arg0, arg1)
-        };
+        // Parse parameters
+        let (target_nick, channel_name, channel_first) = parse_invite_params(msg)?;
 
         let channel_lower = irc_to_lower(channel_name);
         let target_lower = irc_to_lower(target_nick);
@@ -323,5 +324,45 @@ impl PostRegHandler for InviteHandler {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::MessageRef;
+
+    #[test]
+    fn test_parse_invite_standard() {
+        let msg = MessageRef::parse("INVITE nick #channel").unwrap();
+        let (target, channel, first) = parse_invite_params(&msg).unwrap();
+        assert_eq!(target, "nick");
+        assert_eq!(channel, "#channel");
+        assert_eq!(first, false);
+    }
+
+    #[test]
+    fn test_parse_invite_reversed() {
+        let msg = MessageRef::parse("INVITE #channel nick").unwrap();
+        let (target, channel, first) = parse_invite_params(&msg).unwrap();
+        assert_eq!(target, "nick");
+        assert_eq!(channel, "#channel");
+        assert_eq!(first, true);
+    }
+
+    #[test]
+    fn test_parse_invite_other_prefixes() {
+        let msg = MessageRef::parse("INVITE &channel nick").unwrap();
+        let (target, channel, first) = parse_invite_params(&msg).unwrap();
+        assert_eq!(target, "nick");
+        assert_eq!(channel, "&channel");
+        assert_eq!(first, true);
+    }
+
+    #[test]
+    fn test_parse_invite_missing_params() {
+        let msg = MessageRef::parse("INVITE nick").unwrap();
+        let err = parse_invite_params(&msg).unwrap_err();
+        assert!(matches!(err, HandlerError::NeedMoreParams));
     }
 }

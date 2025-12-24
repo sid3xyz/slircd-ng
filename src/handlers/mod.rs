@@ -61,4 +61,4 @@ pub use cap::SaslState;
 pub use channel::{TargetUser, force_join_channel, force_part_channel};
 pub use connection::WelcomeBurstWriter;
 pub use mode::{apply_user_modes_typed, format_modes_for_log};
-pub use monitor::{cleanup_monitors, notify_monitors_offline, notify_monitors_online};
+pub use monitor::{cleanup_monitors, notify_extended_monitor_watchers, notify_monitors_offline, notify_monitors_online};

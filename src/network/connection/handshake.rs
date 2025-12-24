@@ -167,7 +167,7 @@ pub async fn run_handshake_loop(
 
             match result {
                 Ok(Some(Ok(msg_ref))) => {
-                    debug!(raw = %msg_ref.raw.trim(), "Received message");
+                    info!(raw = %msg_ref.raw.trim(), "Received message");
 
                     // Convert to owned immediately to release the borrow
                     let msg = msg_ref.to_owned();

@@ -169,6 +169,7 @@ impl ChannelManager {
     }
 
     /// Merge a ChannelCrdt into the local state.
+    #[allow(dead_code)] // Reserved for S2S CRDT sync
     pub async fn merge_channel_crdt(
         &self,
         crdt: slirc_crdt::channel::ChannelCrdt,

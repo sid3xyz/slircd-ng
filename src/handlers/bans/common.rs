@@ -235,4 +235,99 @@ mod tests {
         assert_eq!(format_duration(86400), "1d");
         assert_eq!(format_duration(90061), "1d1h1m1s");
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // cidr_match tests
+    // ─────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_cidr_match_exact() {
+        // /32 should match only the exact IP
+        assert!(cidr_match("192.168.1.100/32", "192.168.1.100"));
+        assert!(!cidr_match("192.168.1.100/32", "192.168.1.101"));
+    }
+
+    #[test]
+    fn test_cidr_match_24() {
+        // /24 should match the entire Class C range
+        assert!(cidr_match("192.168.1.0/24", "192.168.1.0"));
+        assert!(cidr_match("192.168.1.0/24", "192.168.1.100"));
+        assert!(cidr_match("192.168.1.0/24", "192.168.1.255"));
+        assert!(!cidr_match("192.168.1.0/24", "192.168.2.0"));
+    }
+
+    #[test]
+    fn test_cidr_match_16() {
+        // /16 should match the entire Class B range
+        assert!(cidr_match("192.168.0.0/16", "192.168.0.1"));
+        assert!(cidr_match("192.168.0.0/16", "192.168.255.255"));
+        assert!(!cidr_match("192.168.0.0/16", "192.169.0.0"));
+    }
+
+    #[test]
+    fn test_cidr_match_8() {
+        // /8 should match the entire Class A range
+        assert!(cidr_match("10.0.0.0/8", "10.0.0.1"));
+        assert!(cidr_match("10.0.0.0/8", "10.255.255.255"));
+        assert!(!cidr_match("10.0.0.0/8", "11.0.0.0"));
+    }
+
+    #[test]
+    fn test_cidr_match_0() {
+        // /0 should match any IP
+        assert!(cidr_match("0.0.0.0/0", "192.168.1.100"));
+        assert!(cidr_match("0.0.0.0/0", "10.0.0.1"));
+        assert!(cidr_match("0.0.0.0/0", "255.255.255.255"));
+    }
+
+    #[test]
+    fn test_cidr_no_match() {
+        // IPs outside the range should not match
+        assert!(!cidr_match("192.168.1.0/24", "192.168.2.100"));
+        assert!(!cidr_match("10.0.0.0/24", "10.0.1.1"));
+    }
+
+    #[test]
+    fn test_cidr_invalid_format() {
+        // Invalid CIDR notation should return false
+        assert!(!cidr_match("not-a-cidr", "192.168.1.100"));
+        assert!(!cidr_match("192.168.1.0", "192.168.1.100")); // Missing prefix
+        assert!(!cidr_match("", "192.168.1.100"));
+    }
+
+    #[test]
+    fn test_cidr_invalid_prefix() {
+        // Prefix > 32 should return false
+        assert!(!cidr_match("192.168.1.0/33", "192.168.1.100"));
+        assert!(!cidr_match("192.168.1.0/99", "192.168.1.100"));
+        assert!(!cidr_match("192.168.1.0/-1", "192.168.1.100"));
+    }
+
+    #[test]
+    fn test_cidr_invalid_ip() {
+        // Invalid target IP should return false
+        assert!(!cidr_match("192.168.1.0/24", "not.an.ip"));
+        assert!(!cidr_match("192.168.1.0/24", ""));
+        assert!(!cidr_match("192.168.1.0/24", "192.168.1")); // Incomplete
+    }
+
+    #[test]
+    fn test_cidr_invalid_network() {
+        // Invalid network address should return false
+        assert!(!cidr_match("not.valid/24", "192.168.1.100"));
+        assert!(!cidr_match("192.168/24", "192.168.1.100")); // Incomplete
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BanType::name tests
+    // ─────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_ban_type_names() {
+        assert_eq!(BanType::Kline.name(), "K-lined");
+        assert_eq!(BanType::Dline.name(), "D-lined");
+        assert_eq!(BanType::Gline.name(), "G-lined");
+        assert_eq!(BanType::Zline.name(), "Z-lined");
+        assert_eq!(BanType::Rline.name(), "R-lined");
+    }
 }

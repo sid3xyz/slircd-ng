@@ -369,6 +369,11 @@ pub async fn run_event_loop(
                     debug!(error = ?e, "Handler error");
 
                     if let crate::handlers::HandlerError::Quit(quit_msg) = e {
+                        // Drain pending outgoing messages before quitting
+                        while let Ok(msg) = outgoing_rx.try_recv() {
+                             let _ = transport.write_message(&msg).await;
+                        }
+
                         quit_message = quit_msg.clone();
                         let error_reply = closing_link_error(&addr, quit_msg.as_deref());
                         let _ = transport.write_message(&error_reply).await;

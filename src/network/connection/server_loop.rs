@@ -92,7 +92,7 @@ pub async fn run_server_loop(
     // Trigger initial burst
     matrix
         .sync_manager
-        .send_burst(&sid, &matrix.user_manager, &matrix.channel_manager)
+        .send_burst(&sid, matrix)
         .await;
 
     let mut state = server_state;

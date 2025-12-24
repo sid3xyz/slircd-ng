@@ -31,7 +31,8 @@ pub use user::{User, UserModes, UserParams};
 
 // Session state types (Innovation 1: Typestate pattern)
 pub use session::{
-    BatchRouting, InitiatorData, RegisteredState, ServerState, SessionState, UnregisteredState,
+    BatchRouting, InitiatorData, RegisteredState, SaslAccess, ServerState, SessionState,
+    UnregisteredState,
 };
 
 // Internal re-exports

@@ -392,3 +392,62 @@ pub fn cleanup_monitors(matrix: &Arc<Matrix>, uid: &str) {
         }
     }
 }
+
+// ============================================================================
+// Extended MONITOR notifications (IRCv3 extended-monitor)
+// ============================================================================
+
+use slirc_proto::Message;
+
+/// Notify all MONITOR watchers when a user's state changes.
+///
+/// This implements the IRCv3 extended-monitor capability, which sends AWAY, ACCOUNT,
+/// SETNAME, and CHGHOST notifications to clients monitoring a user.
+///
+/// Reference: <https://ircv3.net/specs/extensions/extended-monitor>
+///
+/// # Arguments
+/// * `matrix` - The Matrix state
+/// * `user_nick` - The nick of the user whose state changed
+/// * `msg` - The notification message to send (AWAY, ACCOUNT, SETNAME, etc.)
+/// * `required_cap` - The capability the watcher must have (e.g., "away-notify")
+pub async fn notify_extended_monitor_watchers(
+    matrix: &Arc<Matrix>,
+    user_nick: &str,
+    msg: Message,
+    required_cap: &str,
+) {
+    let nick_lower = irc_to_lower(user_nick);
+
+    // Collect watcher UIDs first to avoid holding DashSet lock across await points
+    let watcher_uids: Vec<String> = matrix
+        .monitor_manager
+        .monitoring
+        .get(&nick_lower)
+        .map(|watchers| watchers.iter().map(|uid| uid.clone()).collect())
+        .unwrap_or_default();
+
+    if watcher_uids.is_empty() {
+        return;
+    }
+
+    for watcher_uid in watcher_uids {
+        // Check if watcher has both extended-monitor AND the required capability
+        let should_send = {
+            let user_arc = matrix.user_manager.users.get(&watcher_uid).map(|u| u.clone());
+            if let Some(user_arc) = user_arc {
+                let user = user_arc.read().await;
+                user.caps.contains("extended-monitor") && user.caps.contains(required_cap)
+            } else {
+                false
+            }
+        };
+
+        if should_send {
+            let sender = matrix.user_manager.senders.get(&watcher_uid).map(|s| s.clone());
+            if let Some(sender) = sender {
+                let _ = sender.send(Arc::new(msg.clone())).await;
+            }
+        }
+    }
+}

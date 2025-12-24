@@ -51,3 +51,53 @@ fn default_max_names_channels() -> usize {
 fn default_channel_mailbox_capacity() -> usize {
     500
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_values_are_correct() {
+        let config = LimitsConfig::default();
+        assert_eq!(config.max_who_results, 500);
+        assert_eq!(config.max_list_channels, 1000);
+        assert_eq!(config.max_names_channels, 50);
+        assert_eq!(config.channel_mailbox_capacity, 500);
+    }
+
+    #[test]
+    fn default_max_who_results_returns_500() {
+        assert_eq!(default_max_who_results(), 500);
+    }
+
+    #[test]
+    fn default_max_list_channels_returns_1000() {
+        assert_eq!(default_max_list_channels(), 1000);
+    }
+
+    #[test]
+    fn default_max_names_channels_returns_50() {
+        assert_eq!(default_max_names_channels(), 50);
+    }
+
+    #[test]
+    fn default_channel_mailbox_capacity_returns_500() {
+        assert_eq!(default_channel_mailbox_capacity(), 500);
+    }
+
+    #[test]
+    fn limits_config_is_clone() {
+        let config = LimitsConfig::default();
+        let cloned = config.clone();
+        assert_eq!(cloned.max_who_results, config.max_who_results);
+        assert_eq!(cloned.max_list_channels, config.max_list_channels);
+    }
+
+    #[test]
+    fn limits_config_debug_impl() {
+        let config = LimitsConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("LimitsConfig"));
+        assert!(debug_str.contains("500")); // max_who_results
+    }
+}

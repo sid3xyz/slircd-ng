@@ -204,4 +204,49 @@ mod tests {
         assert!(WhoxFields::parse("r").is_none());
         assert!(WhoxFields::parse("cunhar").is_none());
     }
+
+    #[test]
+    fn test_get_member_prefixes_op_single() {
+        let mut modes = MemberModes::default();
+        modes.op = true;
+        assert_eq!(get_member_prefixes(&modes, false), "@");
+    }
+
+    #[test]
+    fn test_get_member_prefixes_op_multi() {
+        let mut modes = MemberModes::default();
+        modes.op = true;
+        assert_eq!(get_member_prefixes(&modes, true), "@");
+    }
+
+    #[test]
+    fn test_get_member_prefixes_voice_single() {
+        let mut modes = MemberModes::default();
+        modes.voice = true;
+        assert_eq!(get_member_prefixes(&modes, false), "+");
+    }
+
+    #[test]
+    fn test_get_member_prefixes_op_voice_single() {
+        let mut modes = MemberModes::default();
+        modes.op = true;
+        modes.voice = true;
+        // Should return highest rank only
+        assert_eq!(get_member_prefixes(&modes, false), "@");
+    }
+
+    #[test]
+    fn test_get_member_prefixes_op_voice_multi() {
+        let mut modes = MemberModes::default();
+        modes.op = true;
+        modes.voice = true;
+        // Should return all prefixes
+        assert_eq!(get_member_prefixes(&modes, true), "@+");
+    }
+
+    #[test]
+    fn test_get_member_prefixes_none() {
+        let modes = MemberModes::default();
+        assert_eq!(get_member_prefixes(&modes, false), "");
+    }
 }

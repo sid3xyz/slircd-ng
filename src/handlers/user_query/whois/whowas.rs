@@ -32,6 +32,52 @@ fn glob_to_regex(pattern: &str) -> Regex {
     Regex::new(&regex_str).unwrap_or_else(|_| EMPTY_REGEX.clone())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_glob_to_regex_simple() {
+        let re = glob_to_regex("test");
+        assert!(re.is_match("test"));
+        assert!(!re.is_match("testing"));
+        assert!(!re.is_match("atest"));
+    }
+
+    #[test]
+    fn test_glob_to_regex_star() {
+        let re = glob_to_regex("test*");
+        assert!(re.is_match("test"));
+        assert!(re.is_match("testing"));
+        assert!(re.is_match("testfoo"));
+        assert!(!re.is_match("atest"));
+    }
+
+    #[test]
+    fn test_glob_to_regex_question() {
+        let re = glob_to_regex("te?t");
+        assert!(re.is_match("test"));
+        assert!(re.is_match("tent"));
+        assert!(!re.is_match("teest"));
+        assert!(!re.is_match("tet"));
+    }
+
+    #[test]
+    fn test_glob_to_regex_escape() {
+        let re = glob_to_regex("test.foo");
+        assert!(re.is_match("test.foo"));
+        assert!(!re.is_match("testxfoo"));
+    }
+
+    #[test]
+    fn test_glob_to_regex_complex() {
+        let re = glob_to_regex("*.example.com");
+        assert!(re.is_match("irc.example.com"));
+        assert!(re.is_match("web.example.com"));
+        assert!(!re.is_match("example.com")); // * matches at least empty string, but . is literal
+    }
+}
+
 /// Handler for WHOWAS command.
 ///
 /// `WHOWAS nickname [count [server]]`

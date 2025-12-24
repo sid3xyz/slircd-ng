@@ -84,56 +84,65 @@ impl ServerHandler for UidHandler {
         let nick_lower = slirc_proto::irc_to_lower(nick);
 
         // Check collision
-        if let Some(existing_uid) = ctx.matrix.user_manager.nicks.get(&nick_lower) {
+        // CRITICAL: Clone UID and drop lock before acting to prevent deadlock
+        let collision_uid = if let Some(existing_uid) = ctx.matrix.user_manager.nicks.get(&nick_lower) {
             if *existing_uid != uid {
-                // Collision detected.
-                // TS6 Rule: Compare timestamps.
-                // If incoming is older (lower TS), it wins. Kill existing.
-                // If incoming is newer (higher TS), it loses. Kill incoming.
-                // If equal, kill both.
+                Some(existing_uid.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
-                let existing_ts = if let Some(u) = ctx.matrix.user_manager.users.get(&*existing_uid) {
-                    u.read().await.created_at
-                } else {
-                    0 // Should not happen
+        if let Some(existing_uid) = collision_uid {
+            // Collision detected.
+            // TS6 Rule: Compare timestamps.
+            // If incoming is older (lower TS), it wins. Kill existing.
+            // If incoming is newer (higher TS), it loses. Kill incoming.
+            // If equal, kill both.
+
+            let existing_ts = if let Some(u) = ctx.matrix.user_manager.users.get(&existing_uid) {
+                u.read().await.created_at
+            } else {
+                0 // Should not happen
+            };
+
+            if timestamp < existing_ts {
+                // Incoming wins
+                info!(nick = %nick, "Nick collision: Incoming UID {} wins (older)", uid);
+                ctx.matrix.user_manager.kill_user(&existing_uid, "Nick collision (older wins)").await;
+            } else if timestamp > existing_ts {
+                // Incoming loses
+                info!(nick = %nick, "Nick collision: Incoming UID {} loses (newer)", uid);
+
+                // Send KILL to peer for the incoming user
+                let kill_msg = slirc_proto::Message {
+                    tags: None,
+                    prefix: Some(ctx.server_prefix()),
+                    command: slirc_proto::Command::KILL(uid.to_string(), "Nick collision (newer loses)".to_string()),
                 };
-
-                if timestamp < existing_ts {
-                    // Incoming wins
-                    info!(nick = %nick, "Nick collision: Incoming UID {} wins (older)", uid);
-                    ctx.matrix.user_manager.kill_user(&existing_uid, "Nick collision (older wins)").await;
-                } else if timestamp > existing_ts {
-                    // Incoming loses
-                    info!(nick = %nick, "Nick collision: Incoming UID {} loses (newer)", uid);
-
-                    // Send KILL to peer for the incoming user
-                    let kill_msg = slirc_proto::Message {
-                        tags: None,
-                        prefix: Some(ctx.server_prefix()),
-                        command: slirc_proto::Command::KILL(uid.to_string(), "Nick collision (newer loses)".to_string()),
-                    };
-                    if let Err(e) = ctx.sender.send(kill_msg).await {
-                         tracing::error!("Failed to send KILL for collision: {}", e);
-                    }
-
-                    return Ok(());
-                } else {
-                    // Tie - kill both
-                    info!(nick = %nick, "Nick collision: Tie. Killing both.");
-                    ctx.matrix.user_manager.kill_user(&existing_uid, "Nick collision (tie)").await;
-
-                    // Send KILL to peer for the incoming user
-                    let kill_msg = slirc_proto::Message {
-                        tags: None,
-                        prefix: Some(ctx.server_prefix()),
-                        command: slirc_proto::Command::KILL(uid.to_string(), "Nick collision (tie)".to_string()),
-                    };
-                    if let Err(e) = ctx.sender.send(kill_msg).await {
-                         tracing::error!("Failed to send KILL for collision: {}", e);
-                    }
-
-                    return Ok(());
+                if let Err(e) = ctx.sender.send(kill_msg).await {
+                        tracing::error!("Failed to send KILL for collision: {}", e);
                 }
+
+                return Ok(());
+            } else {
+                // Tie - kill both
+                info!(nick = %nick, "Nick collision: Tie. Killing both.");
+                ctx.matrix.user_manager.kill_user(&existing_uid, "Nick collision (tie)").await;
+
+                // Send KILL to peer for the incoming user
+                let kill_msg = slirc_proto::Message {
+                    tags: None,
+                    prefix: Some(ctx.server_prefix()),
+                    command: slirc_proto::Command::KILL(uid.to_string(), "Nick collision (tie)".to_string()),
+                };
+                if let Err(e) = ctx.sender.send(kill_msg).await {
+                        tracing::error!("Failed to send KILL for collision: {}", e);
+                }
+
+                return Ok(());
             }
         }
 

@@ -92,3 +92,274 @@ impl MemberModes {
         self.owner || self.admin || self.op || self.halfop
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========== prefix_char tests ==========
+
+    #[test]
+    fn prefix_char_none_returns_none() {
+        let modes = MemberModes::default();
+        assert_eq!(modes.prefix_char(), None);
+    }
+
+    #[test]
+    fn prefix_char_voice_returns_plus() {
+        let modes = MemberModes {
+            voice: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.prefix_char(), Some('+'));
+    }
+
+    #[test]
+    fn prefix_char_halfop_returns_percent() {
+        let modes = MemberModes {
+            halfop: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.prefix_char(), Some('%'));
+    }
+
+    #[test]
+    fn prefix_char_op_returns_at() {
+        let modes = MemberModes {
+            op: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.prefix_char(), Some('@'));
+    }
+
+    #[test]
+    fn prefix_char_admin_returns_ampersand() {
+        let modes = MemberModes {
+            admin: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.prefix_char(), Some('&'));
+    }
+
+    #[test]
+    fn prefix_char_owner_returns_tilde() {
+        let modes = MemberModes {
+            owner: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.prefix_char(), Some('~'));
+    }
+
+    #[test]
+    fn prefix_char_priority_owner_over_op() {
+        let modes = MemberModes {
+            owner: true,
+            op: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.prefix_char(), Some('~'));
+    }
+
+    #[test]
+    fn prefix_char_priority_admin_over_voice() {
+        let modes = MemberModes {
+            admin: true,
+            voice: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.prefix_char(), Some('&'));
+    }
+
+    #[test]
+    fn prefix_char_priority_op_over_halfop() {
+        let modes = MemberModes {
+            op: true,
+            halfop: true,
+            voice: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.prefix_char(), Some('@'));
+    }
+
+    // ========== all_prefix_chars tests ==========
+
+    #[test]
+    fn all_prefix_chars_none_returns_empty() {
+        let modes = MemberModes::default();
+        assert_eq!(modes.all_prefix_chars(), "");
+    }
+
+    #[test]
+    fn all_prefix_chars_voice_only() {
+        let modes = MemberModes {
+            voice: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.all_prefix_chars(), "+");
+    }
+
+    #[test]
+    fn all_prefix_chars_op_only() {
+        let modes = MemberModes {
+            op: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.all_prefix_chars(), "@");
+    }
+
+    #[test]
+    fn all_prefix_chars_op_and_voice() {
+        let modes = MemberModes {
+            op: true,
+            voice: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.all_prefix_chars(), "@+");
+    }
+
+    #[test]
+    fn all_prefix_chars_all_modes() {
+        let modes = MemberModes {
+            owner: true,
+            admin: true,
+            op: true,
+            halfop: true,
+            voice: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.all_prefix_chars(), "~&@%+");
+    }
+
+    #[test]
+    fn all_prefix_chars_admin_and_halfop() {
+        let modes = MemberModes {
+            admin: true,
+            halfop: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.all_prefix_chars(), "&%");
+    }
+
+    // ========== has_op_or_higher tests ==========
+
+    #[test]
+    fn has_op_or_higher_regular_is_false() {
+        let modes = MemberModes::default();
+        assert!(!modes.has_op_or_higher());
+    }
+
+    #[test]
+    fn has_op_or_higher_voice_is_false() {
+        let modes = MemberModes {
+            voice: true,
+            ..Default::default()
+        };
+        assert!(!modes.has_op_or_higher());
+    }
+
+    #[test]
+    fn has_op_or_higher_halfop_is_false() {
+        let modes = MemberModes {
+            halfop: true,
+            ..Default::default()
+        };
+        assert!(!modes.has_op_or_higher());
+    }
+
+    #[test]
+    fn has_op_or_higher_op_is_true() {
+        let modes = MemberModes {
+            op: true,
+            ..Default::default()
+        };
+        assert!(modes.has_op_or_higher());
+    }
+
+    #[test]
+    fn has_op_or_higher_admin_is_true() {
+        let modes = MemberModes {
+            admin: true,
+            ..Default::default()
+        };
+        assert!(modes.has_op_or_higher());
+    }
+
+    #[test]
+    fn has_op_or_higher_owner_is_true() {
+        let modes = MemberModes {
+            owner: true,
+            ..Default::default()
+        };
+        assert!(modes.has_op_or_higher());
+    }
+
+    // ========== has_voice_or_higher tests ==========
+
+    #[test]
+    fn has_voice_or_higher_regular_is_false() {
+        let modes = MemberModes::default();
+        assert!(!modes.has_voice_or_higher());
+    }
+
+    #[test]
+    fn has_voice_or_higher_voice_is_true() {
+        let modes = MemberModes {
+            voice: true,
+            ..Default::default()
+        };
+        assert!(modes.has_voice_or_higher());
+    }
+
+    #[test]
+    fn has_voice_or_higher_halfop_is_true() {
+        let modes = MemberModes {
+            halfop: true,
+            ..Default::default()
+        };
+        assert!(modes.has_voice_or_higher());
+    }
+
+    #[test]
+    fn has_voice_or_higher_op_is_true() {
+        let modes = MemberModes {
+            op: true,
+            ..Default::default()
+        };
+        assert!(modes.has_voice_or_higher());
+    }
+
+    // ========== has_halfop_or_higher tests ==========
+
+    #[test]
+    fn has_halfop_or_higher_regular_is_false() {
+        let modes = MemberModes::default();
+        assert!(!modes.has_halfop_or_higher());
+    }
+
+    #[test]
+    fn has_halfop_or_higher_voice_is_false() {
+        let modes = MemberModes {
+            voice: true,
+            ..Default::default()
+        };
+        assert!(!modes.has_halfop_or_higher());
+    }
+
+    #[test]
+    fn has_halfop_or_higher_halfop_is_true() {
+        let modes = MemberModes {
+            halfop: true,
+            ..Default::default()
+        };
+        assert!(modes.has_halfop_or_higher());
+    }
+
+    #[test]
+    fn has_halfop_or_higher_op_is_true() {
+        let modes = MemberModes {
+            op: true,
+            ..Default::default()
+        };
+        assert!(modes.has_halfop_or_higher());
+    }
+}

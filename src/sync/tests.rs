@@ -35,36 +35,56 @@ fn test_handshake_flow() {
     // Machine 2 receives (Inbound)
     machine2.transition(HandshakeState::InboundReceived);
 
-    // 1 sends PASS and SERVER (simulated)
+    // 1 sends PASS, CAPAB, SERVER, SVINFO (simulated full TS6 handshake)
     let pass1 = Command::Raw(
         "PASS".to_string(),
         vec!["secret".to_string(), "TS=6".to_string(), "001".to_string()],
     );
+    let capab1 = Command::CAPAB(vec!["QS".to_string(), "ENCAP".to_string()]);
     let server1 = Command::SERVER(
         "server1".to_string(),
         1,
         "001".to_string(),
         "Server 1".to_string(),
     );
+    let svinfo1 = Command::SVINFO(6, 6, 0, 1234567890);
 
     // 2 processes PASS
     let res = machine2.step(pass1, &[link2.clone()]).unwrap();
     assert!(res.is_empty());
 
+    // 2 processes CAPAB
+    let res = machine2.step(capab1, &[link2.clone()]).unwrap();
+    assert!(res.is_empty());
+
     // 2 processes SERVER
     let res = machine2.step(server1, &[link2.clone()]).unwrap();
+    assert!(res.is_empty()); // Not complete yet, waiting for SVINFO
+
+    // 2 processes SVINFO - now complete
+    let res = machine2.step(svinfo1, &[link2.clone()]).unwrap();
     assert_eq!(machine2.state, HandshakeState::Bursting);
-    assert_eq!(res.len(), 2); // Should send PASS and SERVER back
+    assert_eq!(res.len(), 4); // Should send PASS, CAPAB, SERVER, SVINFO back
 
     let pass2 = res[0].clone();
-    let server2 = res[1].clone();
+    let capab2 = res[1].clone();
+    let server2 = res[2].clone();
+    let svinfo2 = res[3].clone();
 
     // 1 processes PASS from 2
     let res = machine1.step(pass2, &[link1.clone()]).unwrap();
     assert!(res.is_empty());
 
+    // 1 processes CAPAB from 2
+    let res = machine1.step(capab2, &[link1.clone()]).unwrap();
+    assert!(res.is_empty());
+
     // 1 processes SERVER from 2
     let res = machine1.step(server2, &[link1.clone()]).unwrap();
+    assert!(res.is_empty());
+
+    // 1 processes SVINFO from 2 - now complete
+    let res = machine1.step(svinfo2, &[link1.clone()]).unwrap();
     assert_eq!(machine1.state, HandshakeState::Bursting);
     assert!(res.is_empty());
 }

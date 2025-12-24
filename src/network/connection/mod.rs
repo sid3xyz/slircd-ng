@@ -38,6 +38,8 @@ use server_loop::run_server_loop;
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::state::{InitiatorData, Matrix, UnregisteredState};
+use crate::sync::ServerInfo;
+use slirc_crdt::clock::ServerId;
 use slirc_proto::Message;
 use slirc_proto::transport::ZeroCopyTransportEnum;
 use std::net::SocketAddr;
@@ -260,8 +262,9 @@ impl Connection {
             }
             HandshakeSuccess::Server => {
                 // Transition: UnregisteredState -> ServerState
-                // If we didn't initiate (initiator_data is None), we must send handshake now.
-                let send_handshake = unreg_state.initiator_data.is_none();
+                // Handshake loop already sent credentials in handle_inbound_step.
+                // We do NOT need to send them again.
+                let send_handshake = false;
 
                 let server_state = match unreg_state.try_register_server() {
                     Ok(state) => state,
@@ -275,6 +278,18 @@ impl Connection {
                     name = %server_state.name,
                     sid = %server_state.sid,
                     "Server registered - starting sync loop"
+                );
+
+                // Add to topology
+                self.matrix.sync_manager.topology.servers.insert(
+                    ServerId::new(server_state.sid.clone()),
+                    ServerInfo {
+                        sid: ServerId::new(server_state.sid.clone()),
+                        name: server_state.name.clone(),
+                        info: server_state.info.clone(),
+                        hopcount: server_state.hopcount,
+                        via: None, // Direct link
+                    },
                 );
 
                 // Phase 2: Server Sync Loop

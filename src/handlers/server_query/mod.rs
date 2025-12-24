@@ -6,6 +6,7 @@
 mod disabled;
 mod help;
 mod info;
+mod lusers;
 mod server_info;
 mod service;
 mod stats;
@@ -13,8 +14,9 @@ mod stats;
 pub use disabled::{SummonHandler, UsersHandler};
 pub use help::HelpHandler;
 pub use info::{LinksHandler, MapHandler, RulesHandler, UseripHandler};
+pub use lusers::LusersHandler;
 pub use server_info::{
-    AdminHandler, InfoHandler, LusersHandler, MotdHandler, TimeHandler, VersionHandler,
+    AdminHandler, InfoHandler, MotdHandler, TimeHandler, VersionHandler,
 };
 pub use service::{ServiceHandler, ServlistHandler, SqueryHandler};
 pub use stats::StatsHandler;

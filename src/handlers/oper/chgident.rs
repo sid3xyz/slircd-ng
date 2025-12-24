@@ -2,7 +2,10 @@
 //!
 //! Allows operators to change a user's ident (username field).
 
-use super::super::{Context, HandlerResult, PostRegHandler, resolve_nick_to_uid, server_notice};
+use super::super::{
+    notify_extended_monitor_watchers, Context, HandlerResult, PostRegHandler, resolve_nick_to_uid,
+    server_notice,
+};
 use crate::state::RegisteredState;
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
@@ -96,9 +99,12 @@ impl PostRegHandler for ChgIdentHandler {
         {
             let user = user_ref.read().await;
             if user.caps.contains("chghost") {
-                let _ = target_sender.send(Arc::new(chghost_msg)).await;
+                let _ = target_sender.send(Arc::new(chghost_msg.clone())).await;
             }
         }
+
+        // Notify extended-monitor watchers (IRCv3 extended-monitor)
+        notify_extended_monitor_watchers(ctx.matrix, &old_nick, chghost_msg, "chghost").await;
 
         ctx.sender
             .send(server_notice(

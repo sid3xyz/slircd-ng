@@ -4,6 +4,7 @@
 
 use super::user_mask_from_state;
 use super::{Context, HandlerError, HandlerResult, PostRegHandler, server_reply};
+use super::monitor::notify_extended_monitor_watchers;
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{Command, MessageRef, Response};
@@ -86,6 +87,15 @@ impl PostRegHandler for AwayHandler {
                     .await;
             }
 
+            // Extended MONITOR: Notify watchers with extended-monitor + away-notify
+            notify_extended_monitor_watchers(
+                ctx.matrix,
+                &nick,
+                away_broadcast,
+                "away-notify",
+            )
+            .await;
+
             // RPL_NOWAWAY (306)
             debug!(nick = %nick, away = %away_text, "User marked as away");
             let reply = server_reply(
@@ -148,6 +158,15 @@ impl PostRegHandler for AwayHandler {
                 )
                 .await;
         }
+
+        // Extended MONITOR: Notify watchers with extended-monitor + away-notify
+        notify_extended_monitor_watchers(
+            ctx.matrix,
+            &nick,
+            away_broadcast,
+            "away-notify",
+        )
+        .await;
 
         // RPL_UNAWAY (305)
         debug!(nick = %nick, "User no longer away");
@@ -271,6 +290,15 @@ impl PostRegHandler for SetnameHandler {
                 )
                 .await;
         }
+
+        // Extended MONITOR: Notify watchers with extended-monitor + setname
+        notify_extended_monitor_watchers(
+            ctx.matrix,
+            &nick,
+            setname_msg,
+            "setname",
+        )
+        .await;
 
         debug!(nick = %nick, new_realname = %new_realname, "User changed realname via SETNAME");
 

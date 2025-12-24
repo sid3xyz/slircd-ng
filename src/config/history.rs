@@ -93,3 +93,272 @@ fn default_history_backend() -> String {
 fn default_history_path() -> String {
     "history.db".to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === HistoryEventsConfig Default Tests ===
+
+    #[test]
+    fn history_events_config_default_privmsg_enabled() {
+        let config = HistoryEventsConfig::default();
+        assert!(config.privmsg, "privmsg should default to true");
+    }
+
+    #[test]
+    fn history_events_config_default_notice_enabled() {
+        let config = HistoryEventsConfig::default();
+        assert!(config.notice, "notice should default to true");
+    }
+
+    #[test]
+    fn history_events_config_default_topic_enabled() {
+        let config = HistoryEventsConfig::default();
+        assert!(config.topic, "topic should default to true");
+    }
+
+    #[test]
+    fn history_events_config_default_tagmsg_enabled() {
+        let config = HistoryEventsConfig::default();
+        assert!(config.tagmsg, "tagmsg should default to true");
+    }
+
+    #[test]
+    fn history_events_config_default_membership_disabled() {
+        let config = HistoryEventsConfig::default();
+        assert!(!config.membership, "membership should default to false");
+    }
+
+    #[test]
+    fn history_events_config_default_mode_disabled() {
+        let config = HistoryEventsConfig::default();
+        assert!(!config.mode, "mode should default to false");
+    }
+
+    // === HistoryConfig Default Tests ===
+
+    #[test]
+    fn history_config_default_disabled() {
+        let config = HistoryConfig::default();
+        assert!(!config.enabled, "history should default to disabled");
+    }
+
+    #[test]
+    fn history_config_default_backend_none() {
+        let config = HistoryConfig::default();
+        assert_eq!(config.backend, "none");
+    }
+
+    #[test]
+    fn history_config_default_path() {
+        let config = HistoryConfig::default();
+        assert_eq!(config.path, "history.db");
+    }
+
+    // === should_store_event Tests ===
+
+    #[test]
+    fn should_store_event_returns_false_when_disabled() {
+        let config = HistoryConfig {
+            enabled: false,
+            events: HistoryEventsConfig {
+                privmsg: true,
+                notice: true,
+                topic: true,
+                tagmsg: true,
+                membership: true,
+                mode: true,
+            },
+            ..Default::default()
+        };
+        // Even with all events enabled, disabled config returns false
+        assert!(!config.should_store_event("PRIVMSG"));
+        assert!(!config.should_store_event("NOTICE"));
+        assert!(!config.should_store_event("TOPIC"));
+        assert!(!config.should_store_event("TAGMSG"));
+        assert!(!config.should_store_event("JOIN"));
+        assert!(!config.should_store_event("PART"));
+        assert!(!config.should_store_event("QUIT"));
+        assert!(!config.should_store_event("KICK"));
+        assert!(!config.should_store_event("MODE"));
+    }
+
+    #[test]
+    fn should_store_event_privmsg_based_on_config() {
+        let enabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                privmsg: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(enabled_config.should_store_event("PRIVMSG"));
+
+        let disabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                privmsg: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!disabled_config.should_store_event("PRIVMSG"));
+    }
+
+    #[test]
+    fn should_store_event_notice_based_on_config() {
+        let enabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                notice: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(enabled_config.should_store_event("NOTICE"));
+
+        let disabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                notice: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!disabled_config.should_store_event("NOTICE"));
+    }
+
+    #[test]
+    fn should_store_event_topic_based_on_config() {
+        let enabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                topic: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(enabled_config.should_store_event("TOPIC"));
+
+        let disabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                topic: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!disabled_config.should_store_event("TOPIC"));
+    }
+
+    #[test]
+    fn should_store_event_tagmsg_based_on_config() {
+        let enabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                tagmsg: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(enabled_config.should_store_event("TAGMSG"));
+
+        let disabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                tagmsg: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!disabled_config.should_store_event("TAGMSG"));
+    }
+
+    #[test]
+    fn should_store_event_membership_events_based_on_config() {
+        let enabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                membership: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(enabled_config.should_store_event("JOIN"));
+        assert!(enabled_config.should_store_event("PART"));
+        assert!(enabled_config.should_store_event("QUIT"));
+        assert!(enabled_config.should_store_event("KICK"));
+
+        let disabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                membership: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!disabled_config.should_store_event("JOIN"));
+        assert!(!disabled_config.should_store_event("PART"));
+        assert!(!disabled_config.should_store_event("QUIT"));
+        assert!(!disabled_config.should_store_event("KICK"));
+    }
+
+    #[test]
+    fn should_store_event_mode_based_on_config() {
+        let enabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                mode: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(enabled_config.should_store_event("MODE"));
+
+        let disabled_config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                mode: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!disabled_config.should_store_event("MODE"));
+    }
+
+    #[test]
+    fn should_store_event_unknown_event_returns_false() {
+        let config = HistoryConfig {
+            enabled: true,
+            events: HistoryEventsConfig {
+                privmsg: true,
+                notice: true,
+                topic: true,
+                tagmsg: true,
+                membership: true,
+                mode: true,
+            },
+            ..Default::default()
+        };
+        // Unknown event types always return false
+        assert!(!config.should_store_event("UNKNOWN"));
+        assert!(!config.should_store_event("PING"));
+        assert!(!config.should_store_event("PONG"));
+        assert!(!config.should_store_event("WHO"));
+        assert!(!config.should_store_event(""));
+    }
+
+    // === Helper function default tests ===
+
+    #[test]
+    fn default_history_backend_is_none() {
+        assert_eq!(default_history_backend(), "none");
+    }
+
+    #[test]
+    fn default_history_path_is_history_db() {
+        assert_eq!(default_history_path(), "history.db");
+    }
+}

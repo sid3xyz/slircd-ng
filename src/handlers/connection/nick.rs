@@ -31,21 +31,31 @@ use slirc_proto::{Command, Message, MessageRef, NickExt, Prefix, Response, irc_t
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
+#[allow(clippy::result_large_err)]
+fn parse_nick_params<'a>(msg: &MessageRef<'a>) -> Result<&'a str, HandlerError> {
+    let nick = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+    if nick.is_empty() {
+        return Err(HandlerError::NeedMoreParams);
+    }
+    Ok(nick)
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_nick(nick: &str) -> Result<(), HandlerError> {
+    if !nick.is_valid_nick() {
+        return Err(HandlerError::ErroneousNickname(nick.to_string()));
+    }
+    Ok(())
+}
+
 pub struct NickHandler;
 
 #[async_trait]
 impl<S: SessionState> UniversalHandler<S> for NickHandler {
     async fn handle(&self, ctx: &mut Context<'_, S>, msg: &MessageRef<'_>) -> HandlerResult {
         // NICK <nickname>
-        let nick = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-
-        if nick.is_empty() {
-            return Err(HandlerError::NeedMoreParams);
-        }
-
-        if !nick.is_valid_nick() {
-            return Err(HandlerError::ErroneousNickname(nick.to_string()));
-        }
+        let nick = parse_nick_params(msg)?;
+        validate_nick(nick)?;
 
         let nick_lower = irc_to_lower(nick);
 
@@ -297,5 +307,51 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         // The connection loop handles the registration transition.
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::MessageRef;
+
+    #[test]
+    fn test_parse_nick_params_valid() {
+        let msg = MessageRef::parse("NICK valid_nick").unwrap();
+        let nick = parse_nick_params(&msg).unwrap();
+        assert_eq!(nick, "valid_nick");
+    }
+
+    #[test]
+    fn test_parse_nick_params_missing() {
+        let msg = MessageRef::parse("NICK").unwrap();
+        let err = parse_nick_params(&msg).unwrap_err();
+        assert!(matches!(err, HandlerError::NeedMoreParams));
+    }
+
+    #[test]
+    fn test_parse_nick_params_empty() {
+        let msg = MessageRef::parse("NICK :").unwrap();
+        let err = parse_nick_params(&msg).unwrap_err();
+        assert!(matches!(err, HandlerError::NeedMoreParams));
+    }
+
+    #[test]
+    fn test_validate_nick_valid() {
+        assert!(validate_nick("valid").is_ok());
+        assert!(validate_nick("Valid123").is_ok());
+        assert!(validate_nick("[valid]").is_ok());
+    }
+
+    #[test]
+    fn test_validate_nick_invalid() {
+        let err = validate_nick("1invalid").unwrap_err();
+        assert!(matches!(err, HandlerError::ErroneousNickname(_)));
+
+        let err = validate_nick("invalid space").unwrap_err();
+        assert!(matches!(err, HandlerError::ErroneousNickname(_)));
+
+        let err = validate_nick("").unwrap_err();
+        assert!(matches!(err, HandlerError::ErroneousNickname(_)));
     }
 }

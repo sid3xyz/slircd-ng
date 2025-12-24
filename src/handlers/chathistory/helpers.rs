@@ -133,3 +133,41 @@ pub async fn resolve_dm_key(
     users.sort();
     format!("dm:{}:{}", users[0], users[1])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_exclusivity_offset_for_timestamp() {
+        // Timestamps have millisecond precision, so offset should be 1ms in ns
+        let resolved = ResolvedTimestamp {
+            timestamp: 1_700_000_000_000_000_000,
+            is_timestamp: true,
+        };
+        assert_eq!(exclusivity_offset(&resolved), ONE_MILLISECOND_NS);
+        assert_eq!(exclusivity_offset(&resolved), 1_000_000);
+    }
+
+    #[test]
+    fn test_exclusivity_offset_for_msgid() {
+        // Message IDs have nanosecond precision, so offset should be 1 ns
+        let resolved = ResolvedTimestamp {
+            timestamp: 1_700_000_000_000_000_000,
+            is_timestamp: false,
+        };
+        assert_eq!(exclusivity_offset(&resolved), 1);
+    }
+
+    #[test]
+    fn test_one_millisecond_ns_constant() {
+        // Verify the constant is correctly defined
+        assert_eq!(ONE_MILLISECOND_NS, 1_000_000);
+    }
+
+    #[test]
+    fn test_max_history_limit_constant() {
+        // Verify the max limit constant
+        assert_eq!(MAX_HISTORY_LIMIT, 100);
+    }
+}

@@ -107,6 +107,7 @@ impl UserModes {
     }
 
     /// Create UserModes from a CRDT representation.
+    #[allow(dead_code)] // Reserved for S2S CRDT sync
     pub fn from_crdt(crdt: &UserModesCrdt) -> Self {
         Self {
             invisible: *crdt.invisible.value(),
@@ -243,6 +244,7 @@ impl User {
     }
 
     /// Create a User from a CRDT representation.
+    #[allow(dead_code)] // Reserved for S2S CRDT sync
     pub fn from_crdt(crdt: UserCrdt) -> Self {
         let last_modified = crdt.nick.timestamp();
         Self {
@@ -268,6 +270,7 @@ impl User {
     }
 
     /// Merge a UserCrdt into this user.
+    #[allow(dead_code)] // Reserved for S2S CRDT sync
     pub fn merge(&mut self, other: UserCrdt) {
         use slirc_crdt::traits::Crdt;
         let mut current_crdt = self.to_crdt();
@@ -304,4 +307,178 @@ pub struct WhowasEntry {
     pub server: String,
     /// When they logged out (Unix timestamp in milliseconds).
     pub logout_time: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========== UserModes::as_mode_string tests ==========
+
+    #[test]
+    fn mode_string_default_returns_plus() {
+        let modes = UserModes::default();
+        assert_eq!(modes.as_mode_string(), "+");
+    }
+
+    #[test]
+    fn mode_string_invisible_only() {
+        let modes = UserModes {
+            invisible: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+i");
+    }
+
+    #[test]
+    fn mode_string_wallops_only() {
+        let modes = UserModes {
+            wallops: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+w");
+    }
+
+    #[test]
+    fn mode_string_oper_only() {
+        let modes = UserModes {
+            oper: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+o");
+    }
+
+    #[test]
+    fn mode_string_registered_only() {
+        let modes = UserModes {
+            registered: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+r");
+    }
+
+    #[test]
+    fn mode_string_secure_only() {
+        let modes = UserModes {
+            secure: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+Z");
+    }
+
+    #[test]
+    fn mode_string_registered_only_flag() {
+        let modes = UserModes {
+            registered_only: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+R");
+    }
+
+    #[test]
+    fn mode_string_no_ctcp_only() {
+        let modes = UserModes {
+            no_ctcp: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+T");
+    }
+
+    #[test]
+    fn mode_string_bot_only() {
+        let modes = UserModes {
+            bot: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+B");
+    }
+
+    #[test]
+    fn mode_string_service_only() {
+        let modes = UserModes {
+            service: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+S");
+    }
+
+    #[test]
+    fn mode_string_snomasks_appends_s() {
+        let mut snomasks = HashSet::new();
+        snomasks.insert('c');
+        let modes = UserModes {
+            snomasks,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+s");
+    }
+
+    #[test]
+    fn mode_string_multiple_modes() {
+        let modes = UserModes {
+            invisible: true,
+            wallops: true,
+            oper: true,
+            ..Default::default()
+        };
+        assert_eq!(modes.as_mode_string(), "+iwo");
+    }
+
+    #[test]
+    fn mode_string_all_modes_set() {
+        let mut snomasks = HashSet::new();
+        snomasks.insert('c');
+        snomasks.insert('r');
+        let modes = UserModes {
+            invisible: true,
+            wallops: true,
+            oper: true,
+            registered: true,
+            secure: true,
+            registered_only: true,
+            no_ctcp: true,
+            bot: true,
+            service: true,
+            snomasks,
+            oper_type: Some("admin".to_string()),
+        };
+        assert_eq!(modes.as_mode_string(), "+iworZRTBSs");
+    }
+
+    // ========== UserModes::has_snomask tests ==========
+
+    #[test]
+    fn has_snomask_empty_returns_false() {
+        let modes = UserModes::default();
+        assert!(!modes.has_snomask('c'));
+        assert!(!modes.has_snomask('r'));
+    }
+
+    #[test]
+    fn has_snomask_with_c_returns_true_for_c() {
+        let mut snomasks = HashSet::new();
+        snomasks.insert('c');
+        let modes = UserModes {
+            snomasks,
+            ..Default::default()
+        };
+        assert!(modes.has_snomask('c'));
+        assert!(!modes.has_snomask('r'));
+    }
+
+    #[test]
+    fn has_snomask_multiple_masks() {
+        let mut snomasks = HashSet::new();
+        snomasks.insert('c');
+        snomasks.insert('r');
+        snomasks.insert('k');
+        let modes = UserModes {
+            snomasks,
+            ..Default::default()
+        };
+        assert!(modes.has_snomask('c'));
+        assert!(modes.has_snomask('r'));
+        assert!(modes.has_snomask('k'));
+        assert!(!modes.has_snomask('o'));
+    }
 }

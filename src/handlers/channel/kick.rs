@@ -3,6 +3,7 @@
 use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, resolve_nick_to_uid, user_mask_from_state,
 };
+use super::common::{build_kick_pairs, kick_reason_or_default, parse_channel_list, parse_nick_list};
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -37,7 +38,7 @@ impl PostRegHandler for KickHandler {
         let channels_arg = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let targets_arg = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
         // RFC2812: default comment is the nickname of the user issuing the KICK
-        let reason_str = msg.arg(2).unwrap_or(kicker_nick).to_string();
+        let reason_str = kick_reason_or_default(msg.arg(2), kicker_nick).to_string();
 
         if channels_arg.is_empty() || targets_arg.is_empty() {
             return Err(HandlerError::NeedMoreParams);
@@ -47,31 +48,14 @@ impl PostRegHandler for KickHandler {
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
-        // Split comma-separated channels and targets
-        let channel_names: Vec<&str> = channels_arg.split(',').map(|s| s.trim()).collect();
-        let target_nicks: Vec<&str> = targets_arg.split(',').map(|s| s.trim()).collect();
+        // Parse comma-separated channels and targets using shared utilities
+        let channel_names = parse_channel_list(channels_arg);
+        let target_nicks = parse_nick_list(targets_arg);
 
-        // RFC 2812: If multiple channels/users, they must be paired 1:1
-        // Modern: Most servers only support 1 channel with multiple nicks
-        // We'll support both: if N channels, pair with N nicks (or repeat last channel)
-        let pairs: Vec<(&str, &str)> = if channel_names.len() == 1 {
-            // Single channel, multiple nicks
-            target_nicks
-                .iter()
-                .map(|&nick| (channel_names[0], nick))
-                .collect()
-        } else if channel_names.len() == target_nicks.len() {
-            // Equal counts: pair them 1:1
-            channel_names.into_iter().zip(target_nicks).collect()
-        } else {
-            // Mismatch: pair as many as possible, ignore extras
-            channel_names.into_iter().zip(target_nicks).collect()
-        };
+        // Build channel:target pairs using RFC 2812 rules
+        let pairs = build_kick_pairs(&channel_names, &target_nicks);
 
         for (channel_name, target_nick) in pairs {
-            if channel_name.is_empty() || target_nick.is_empty() {
-                continue;
-            }
 
             let channel_lower = irc_to_lower(channel_name);
 
@@ -149,5 +133,139 @@ impl PostRegHandler for KickHandler {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::common::{
+        build_kick_pairs, kick_reason_or_default, parse_channel_list, parse_nick_list,
+    };
+    use slirc_proto::irc_to_lower;
+
+    // ========================================================================
+    // KICK-specific integration tests
+    // Tests the combination of parsing + pairing logic used by KICK
+    // ========================================================================
+
+    #[test]
+    fn test_kick_single_target() {
+        let channels = parse_channel_list("#test");
+        let targets = parse_nick_list("victim");
+        let pairs = build_kick_pairs(&channels, &targets);
+
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0], ("#test", "victim"));
+    }
+
+    #[test]
+    fn test_kick_multiple_targets_single_channel() {
+        let channels = parse_channel_list("#test");
+        let targets = parse_nick_list("alice,bob,charlie");
+        let pairs = build_kick_pairs(&channels, &targets);
+
+        assert_eq!(pairs.len(), 3);
+        assert_eq!(
+            pairs,
+            vec![("#test", "alice"), ("#test", "bob"), ("#test", "charlie")]
+        );
+    }
+
+    #[test]
+    fn test_kick_paired_channels_and_targets() {
+        let channels = parse_channel_list("#foo,#bar");
+        let targets = parse_nick_list("alice,bob");
+        let pairs = build_kick_pairs(&channels, &targets);
+
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs, vec![("#foo", "alice"), ("#bar", "bob")]);
+    }
+
+    #[test]
+    fn test_kick_with_reason() {
+        let reason = kick_reason_or_default(Some("spamming the channel"), "kicker");
+        assert_eq!(reason, "spamming the channel");
+    }
+
+    #[test]
+    fn test_kick_without_reason_uses_kicker_nick() {
+        let reason = kick_reason_or_default(None, "OperatorNick");
+        assert_eq!(reason, "OperatorNick");
+    }
+
+    #[test]
+    fn test_kick_empty_reason_uses_kicker_nick() {
+        let reason = kick_reason_or_default(Some(""), "OperatorNick");
+        assert_eq!(reason, "OperatorNick");
+    }
+
+    // ========================================================================
+    // Channel name case handling for KICK
+    // ========================================================================
+
+    #[test]
+    fn test_kick_channel_case_preservation() {
+        let channels = parse_channel_list("#MyChannel");
+        assert_eq!(channels[0], "#MyChannel"); // Preserved for display
+        assert_eq!(irc_to_lower(channels[0]), "#mychannel"); // Lowered for lookup
+    }
+
+    #[test]
+    fn test_kick_target_nick_preservation() {
+        let targets = parse_nick_list("CamelCaseNick");
+        assert_eq!(targets[0], "CamelCaseNick"); // Preserved
+    }
+
+    // ========================================================================
+    // Edge cases
+    // ========================================================================
+
+    #[test]
+    fn test_kick_whitespace_in_lists() {
+        let channels = parse_channel_list(" #foo , #bar ");
+        let targets = parse_nick_list(" alice , bob ");
+        let pairs = build_kick_pairs(&channels, &targets);
+
+        assert_eq!(pairs, vec![("#foo", "alice"), ("#bar", "bob")]);
+    }
+
+    #[test]
+    fn test_kick_empty_entries_filtered() {
+        let channels = parse_channel_list("#foo,,#bar");
+        let targets = parse_nick_list("alice,,bob");
+
+        // Empty entries are filtered by parse_* functions
+        assert_eq!(channels, vec!["#foo", "#bar"]);
+        assert_eq!(targets, vec!["alice", "bob"]);
+    }
+
+    #[test]
+    fn test_kick_reason_with_special_chars() {
+        let reason = kick_reason_or_default(Some("Goodbye! 🦀 See RFC 2812"), "kicker");
+        assert_eq!(reason, "Goodbye! 🦀 See RFC 2812");
+    }
+
+    #[test]
+    fn test_kick_mismatched_counts() {
+        // 2 channels, 3 targets - only first 2 pairs
+        let channels = parse_channel_list("#foo,#bar");
+        let targets = parse_nick_list("alice,bob,charlie");
+        let pairs = build_kick_pairs(&channels, &targets);
+
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs, vec![("#foo", "alice"), ("#bar", "bob")]);
+    }
+
+    #[test]
+    fn test_kick_single_channel_many_nicks() {
+        // This is the common use case: /kick #channel nick1,nick2,nick3
+        let channels = parse_channel_list("#ops");
+        let targets = parse_nick_list("spammer1,spammer2,spammer3,spammer4");
+        let pairs = build_kick_pairs(&channels, &targets);
+
+        assert_eq!(pairs.len(), 4);
+        for (channel, _) in &pairs {
+            assert_eq!(*channel, "#ops");
+        }
     }
 }

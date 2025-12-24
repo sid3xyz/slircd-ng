@@ -37,6 +37,24 @@ use tokio::sync::oneshot;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+#[derive(Debug, PartialEq)]
+enum TopicAction<'a> {
+    Query,
+    Set(&'a str),
+}
+
+#[allow(clippy::result_large_err)]
+fn extract_params<'a>(msg: &MessageRef<'a>) -> Result<(&'a str, TopicAction<'a>), HandlerError> {
+    let channel_name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+
+    let action = match msg.arg(1) {
+        Some(topic) => TopicAction::Set(topic),
+        None => TopicAction::Query,
+    };
+
+    Ok((channel_name, action))
+}
+
 pub struct TopicHandler;
 
 #[async_trait]
@@ -48,9 +66,8 @@ impl PostRegHandler for TopicHandler {
     ) -> HandlerResult {
         let (nick, _user_name) = ctx.nick_user();
 
-        // TOPIC <channel> [new_topic]
-        let channel_name = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let new_topic = msg.arg(1);
+        // Parse parameters
+        let (channel_name, action) = extract_params(msg)?;
 
         let channel_lower = irc_to_lower(channel_name);
 
@@ -73,8 +90,8 @@ impl PostRegHandler for TopicHandler {
             return Ok(());
         }
 
-        match new_topic {
-            None => {
+        match action {
+            TopicAction::Query => {
                 // Query topic
                 let (reply_tx, reply_rx) = oneshot::channel();
                 let event = ChannelEvent::GetInfo {
@@ -121,7 +138,7 @@ impl PostRegHandler for TopicHandler {
                     }
                 }
             }
-            Some(topic_text) => {
+            TopicAction::Set(topic_text) => {
                 // Set topic
                 let (reply_tx, reply_rx) = oneshot::channel();
                 let (nick, user, host) = user_mask_from_state(ctx, ctx.uid)
@@ -229,5 +246,42 @@ impl PostRegHandler for TopicHandler {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::MessageRef;
+
+    #[test]
+    fn test_extract_params_query() {
+        let msg = MessageRef::parse("TOPIC #channel").unwrap();
+        let (channel, action) = extract_params(&msg).unwrap();
+        assert_eq!(channel, "#channel");
+        assert_eq!(action, TopicAction::Query);
+    }
+
+    #[test]
+    fn test_extract_params_set() {
+        let msg = MessageRef::parse("TOPIC #channel :new topic").unwrap();
+        let (channel, action) = extract_params(&msg).unwrap();
+        assert_eq!(channel, "#channel");
+        assert_eq!(action, TopicAction::Set("new topic"));
+    }
+
+    #[test]
+    fn test_extract_params_clear() {
+        let msg = MessageRef::parse("TOPIC #channel :").unwrap();
+        let (channel, action) = extract_params(&msg).unwrap();
+        assert_eq!(channel, "#channel");
+        assert_eq!(action, TopicAction::Set(""));
+    }
+
+    #[test]
+    fn test_extract_params_missing_channel() {
+        let msg = MessageRef::parse("TOPIC").unwrap();
+        let err = extract_params(&msg).unwrap_err();
+        assert!(matches!(err, HandlerError::NeedMoreParams));
     }
 }

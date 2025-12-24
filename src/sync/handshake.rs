@@ -39,6 +39,9 @@ pub struct HandshakeMachine {
     pub remote_name: Option<String>,
     pub remote_pass: Option<String>,
     pub remote_sid: Option<ServerId>,
+    pub remote_info: Option<String>,
+    pub remote_capab: Option<Vec<String>>,
+    pub remote_svinfo: Option<(u32, u32, u32, u64)>,
 
     // Local identity
     pub local_sid: ServerId,
@@ -53,6 +56,9 @@ impl HandshakeMachine {
             remote_name: None,
             remote_pass: None,
             remote_sid: None,
+            remote_info: None,
+            remote_capab: None,
+            remote_svinfo: None,
             local_sid,
             local_name,
             local_desc,
@@ -87,6 +93,21 @@ impl HandshakeMachine {
         }
     }
 
+    fn check_handshake_complete(&mut self, links: &[LinkBlock]) -> Result<bool, HandshakeError> {
+        if self.remote_pass.is_some()
+            && self.remote_name.is_some()
+            && self.remote_sid.is_some()
+            && self.remote_svinfo.is_some()
+            && self.remote_capab.is_some()
+        {
+            self.verify_credentials(links)?;
+            self.state = HandshakeState::Bursting;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
     fn handle_outbound_step(
         &mut self,
         command: Command,
@@ -95,30 +116,34 @@ impl HandshakeMachine {
         match command {
             Command::PASS(pass) => {
                 self.remote_pass = Some(pass);
-                Ok(vec![])
             }
             Command::Raw(cmd, args) if cmd == "PASS" => {
                 if let Some(pass) = args.first() {
                     self.remote_pass = Some(pass.clone());
                 }
-                Ok(vec![])
             }
-            Command::SERVER(name, _hopcount, sid, _info) => {
+            Command::CAPAB(caps) => {
+                self.remote_capab = Some(caps);
+            }
+            Command::SVINFO(v, m, z, t) => {
+                self.remote_svinfo = Some((v, m, z, t));
+            }
+            Command::SERVER(name, _hopcount, sid, info) => {
                 self.remote_name = Some(name.clone());
                 self.remote_sid = Some(ServerId::new(&sid));
-
-                // Verify credentials
-                self.verify_credentials(links)?;
-
-                // Transition to Bursting
-                self.state = HandshakeState::Bursting;
-                Ok(vec![])
+                self.remote_info = Some(info);
             }
-            _ => Err(HandshakeError::ProtocolError(format!(
+            Command::CAP(_, _, _, _) => {
+                // Ignore CAP negotiation for now in S2S
+            }
+            _ => return Err(HandshakeError::ProtocolError(format!(
                 "Unexpected command in OutboundInitiated: {:?}",
                 command
             ))),
         }
+
+        self.check_handshake_complete(links)?;
+        Ok(vec![])
     }
 
     fn handle_inbound_step(
@@ -129,48 +154,73 @@ impl HandshakeMachine {
         match command {
             Command::PASS(pass) => {
                 self.remote_pass = Some(pass);
-                Ok(vec![])
             }
             Command::Raw(cmd, args) if cmd == "PASS" => {
                 if let Some(pass) = args.first() {
                     self.remote_pass = Some(pass.clone());
                 }
-                Ok(vec![])
             }
-            Command::SERVER(name, _hopcount, sid, _info) => {
+            Command::CAPAB(caps) => {
+                self.remote_capab = Some(caps);
+            }
+            Command::SVINFO(v, m, z, t) => {
+                self.remote_svinfo = Some((v, m, z, t));
+            }
+            Command::SERVER(name, _hopcount, sid, info) => {
                 self.remote_name = Some(name.clone());
                 self.remote_sid = Some(ServerId::new(&sid));
-
-                // Verify credentials
-                let link = self.verify_credentials(links)?;
-
-                // Send our credentials
-                let responses = vec![
-                    // PASS <password> TS=6 :<sid>
-                    Command::Raw(
-                        "PASS".to_string(),
-                        vec![
-                            link.password.clone(),
-                            "TS=6".to_string(),
-                            self.local_sid.as_str().to_string(),
-                        ],
-                    ),
-                    // SERVER <name> <hopcount> <description>
-                    Command::SERVER(
-                        self.local_name.clone(),
-                        1,
-                        self.local_sid.as_str().to_string(),
-                        self.local_desc.clone(),
-                    ),
-                ];
-
-                self.state = HandshakeState::Bursting;
-                Ok(responses)
+                self.remote_info = Some(info);
             }
-            _ => Err(HandshakeError::ProtocolError(format!(
+            Command::CAP(_, _, _, _) => {
+                // Ignore CAP negotiation for now in S2S
+            }
+            _ => return Err(HandshakeError::ProtocolError(format!(
                 "Unexpected command in InboundReceived: {:?}",
                 command
             ))),
+        }
+
+        if self.check_handshake_complete(links)? {
+            let link = self.verify_credentials(links)?;
+            // Send our credentials
+            let responses = vec![
+                Command::Raw(
+                    "PASS".to_string(),
+                    vec![
+                        link.password.clone(),
+                        "TS=6".to_string(),
+                        self.local_sid.as_str().to_string(),
+                    ],
+                ),
+                Command::CAPAB(vec![
+                    "QS".to_string(),
+                    "ENCAP".to_string(),
+                    "EX".to_string(),
+                    "IE".to_string(),
+                    "UNKLN".to_string(),
+                    "KLN".to_string(),
+                    "GLN".to_string(),
+                    "HOPS".to_string(),
+                ]),
+                Command::SERVER(
+                    self.local_name.clone(),
+                    1,
+                    self.local_sid.as_str().to_string(),
+                    self.local_desc.clone(),
+                ),
+                Command::SVINFO(
+                    6,
+                    6,
+                    0,
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                ),
+            ];
+            Ok(responses)
+        } else {
+            Ok(vec![])
         }
     }
 

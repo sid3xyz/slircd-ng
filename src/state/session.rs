@@ -27,6 +27,30 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 // ============================================================================
+// SaslAccess trait — SASL state access for universal AUTHENTICATE handler
+// ============================================================================
+
+/// Trait for accessing SASL authentication state.
+///
+/// This allows the AUTHENTICATE handler to work with both pre-registration
+/// and post-registration connections.
+pub trait SaslAccess {
+    /// Get the current SASL state.
+    fn sasl_state(&self) -> &SaslState;
+    /// Set the SASL state.
+    fn set_sasl_state(&mut self, state: SaslState);
+    /// Get the SASL buffer for accumulating chunked data.
+    fn sasl_buffer(&self) -> &str;
+    /// Get mutable access to the SASL buffer.
+    fn sasl_buffer_mut(&mut self) -> &mut String;
+    /// Get the account name (if authenticated).
+    #[allow(dead_code)] // Future use: post-registration account queries
+    fn account(&self) -> Option<&str>;
+    /// Set the account name.
+    fn set_account(&mut self, account: Option<String>);
+}
+
+// ============================================================================
 // SessionState trait — Unified interface for universal handlers
 // ============================================================================
 
@@ -172,6 +196,36 @@ impl SessionState for ServerState {
     }
 }
 
+/// ServerState doesn't do SASL - these are no-ops with panic paths that should never execute.
+impl SaslAccess for ServerState {
+    fn sasl_state(&self) -> &SaslState {
+        // Servers don't authenticate via SASL - this should never be called
+        static NONE: SaslState = SaslState::None;
+        &NONE
+    }
+
+    fn set_sasl_state(&mut self, _state: SaslState) {
+        // No-op for servers
+    }
+
+    fn sasl_buffer(&self) -> &str {
+        ""
+    }
+
+    fn sasl_buffer_mut(&mut self) -> &mut String {
+        // This should never be called for servers
+        panic!("ServerState does not support SASL buffer access")
+    }
+
+    fn account(&self) -> Option<&str> {
+        None
+    }
+
+    fn set_account(&mut self, _account: Option<String>) {
+        // No-op for servers
+    }
+}
+
 // ============================================================================
 // UnregisteredState — Pre-registration connection state
 // ============================================================================
@@ -227,6 +281,10 @@ pub struct UnregisteredState {
     pub server_info: Option<String>,
     /// Server hop count (if SERVER command received).
     pub server_hopcount: u32,
+    /// Server capabilities (if CAPAB command received).
+    pub server_capab: Option<Vec<String>>,
+    /// Server version info (if SVINFO command received).
+    pub server_svinfo: Option<(u32, u32, u32, u64)>,
     /// Data for initiating a server connection.
     pub initiator_data: Option<InitiatorData>,
 }
@@ -290,6 +348,32 @@ impl SessionState for UnregisteredState {
     }
 }
 
+impl SaslAccess for UnregisteredState {
+    fn sasl_state(&self) -> &SaslState {
+        &self.sasl_state
+    }
+
+    fn set_sasl_state(&mut self, state: SaslState) {
+        self.sasl_state = state;
+    }
+
+    fn sasl_buffer(&self) -> &str {
+        &self.sasl_buffer
+    }
+
+    fn sasl_buffer_mut(&mut self) -> &mut String {
+        &mut self.sasl_buffer
+    }
+
+    fn account(&self) -> Option<&str> {
+        self.account.as_deref()
+    }
+
+    fn set_account(&mut self, account: Option<String>) {
+        self.account = account;
+    }
+}
+
 impl UnregisteredState {
     /// Check if registration requirements are met.
     ///
@@ -303,19 +387,31 @@ impl UnregisteredState {
 
     /// Check if server registration requirements are met.
     pub fn can_register_server(&self) -> bool {
-        self.is_server_handshake && self.server_name.is_some() && self.server_sid.is_some()
+        self.is_server_handshake
+            && self.server_name.is_some()
+            && self.server_sid.is_some()
+            && self.server_capab.is_some()
+            && self.server_svinfo.is_some()
     }
 
     /// Attempt to transition to ServerState.
     #[allow(clippy::result_large_err)]
     pub fn try_register_server(self) -> Result<ServerState, Self> {
         if self.can_register_server() {
+            let capabilities = self
+                .server_capab
+                .as_ref()
+                .unwrap()
+                .iter()
+                .cloned()
+                .collect();
+
             Ok(ServerState {
                 name: self.server_name.unwrap(),
                 sid: self.server_sid.unwrap(),
                 info: self.server_info.unwrap_or_default(),
                 hopcount: self.server_hopcount,
-                capabilities: self.capabilities,
+                capabilities,
                 is_tls: self.is_tls,
                 active_batch: None,
                 active_batch_ref: None,
@@ -358,6 +454,9 @@ impl UnregisteredState {
                     // Rate limiting for KNOCK and INVITE commands
                     knock_timestamps: HashMap::new(),
                     invite_timestamps: HashMap::new(),
+                    // SASL state preserved for post-registration re-authentication
+                    sasl_state: self.sasl_state,
+                    sasl_buffer: self.sasl_buffer,
                 })
             }
             _ => Err(self),
@@ -418,6 +517,10 @@ pub struct RegisteredState {
     /// Track last INVITE time per target user (for rate limiting).
     /// Key: lowercase target nick, Value: timestamp of last invite.
     pub invite_timestamps: HashMap<String, Instant>,
+    /// SASL authentication state (for post-registration re-authentication).
+    pub sasl_state: SaslState,
+    /// Buffer for accumulating chunked SASL data.
+    pub sasl_buffer: String,
 }
 
 impl RegisteredState {
@@ -476,6 +579,32 @@ impl SessionState for RegisteredState {
 
     fn active_batch_ref(&self) -> Option<&str> {
         self.active_batch_ref.as_deref()
+    }
+}
+
+impl SaslAccess for RegisteredState {
+    fn sasl_state(&self) -> &SaslState {
+        &self.sasl_state
+    }
+
+    fn set_sasl_state(&mut self, state: SaslState) {
+        self.sasl_state = state;
+    }
+
+    fn sasl_buffer(&self) -> &str {
+        &self.sasl_buffer
+    }
+
+    fn sasl_buffer_mut(&mut self) -> &mut String {
+        &mut self.sasl_buffer
+    }
+
+    fn account(&self) -> Option<&str> {
+        self.account.as_deref()
+    }
+
+    fn set_account(&mut self, account: Option<String>) {
+        self.account = account;
     }
 }
 
@@ -548,6 +677,8 @@ mod tests {
             ping_sent_at: None,
             knock_timestamps: HashMap::new(),
             invite_timestamps: HashMap::new(),
+            sasl_state: SaslState::default(),
+            sasl_buffer: String::new(),
         };
 
         assert!(state.has_cap("echo-message"));

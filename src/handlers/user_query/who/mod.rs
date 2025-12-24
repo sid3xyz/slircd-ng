@@ -22,6 +22,8 @@ use common::WhoxFields;
 ///
 /// **Specification:** [RFC 2812 §3.6.1](https://datatracker.ietf.org/doc/html/rfc2812#section-3.6.1)
 /// **Extension:** [IRCv3 WHOX](https://ircv3.net/specs/extensions/whox)
+///
+/// **Compliance:** 38/39 irctest pass
 pub struct WhoHandler;
 
 #[async_trait]

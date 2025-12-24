@@ -206,3 +206,179 @@ fn default_ctcp_burst() -> u32 {
 fn default_max_connections() -> u32 {
     10
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === Default Function Tests ===
+
+    #[test]
+    fn default_cloak_suffix_is_ip() {
+        assert_eq!(default_cloak_suffix(), "ip");
+    }
+
+    #[test]
+    fn default_spam_detection_enabled_is_true() {
+        assert!(default_spam_detection_enabled());
+    }
+
+    #[test]
+    fn default_velocity_window_value() {
+        assert_eq!(default_velocity_window(), 10);
+    }
+
+    #[test]
+    fn default_max_velocity_value() {
+        assert_eq!(default_max_velocity(), 5);
+    }
+
+    #[test]
+    fn default_fanout_window_value() {
+        assert_eq!(default_fanout_window(), 60);
+    }
+
+    #[test]
+    fn default_max_fanout_value() {
+        assert_eq!(default_max_fanout(), 10);
+    }
+
+    #[test]
+    fn default_repetition_decay_value() {
+        assert!((default_repetition_decay() - 0.8).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn default_message_rate_value() {
+        assert_eq!(default_message_rate(), 2);
+    }
+
+    #[test]
+    fn default_connection_burst_value() {
+        assert_eq!(default_connection_burst(), 3);
+    }
+
+    #[test]
+    fn default_join_burst_value() {
+        assert_eq!(default_join_burst(), 5);
+    }
+
+    #[test]
+    fn default_ctcp_rate_value() {
+        assert_eq!(default_ctcp_rate(), 1);
+    }
+
+    #[test]
+    fn default_ctcp_burst_value() {
+        assert_eq!(default_ctcp_burst(), 2);
+    }
+
+    #[test]
+    fn default_max_connections_value() {
+        assert_eq!(default_max_connections(), 10);
+    }
+
+    // === SpamConfig Default Tests ===
+
+    #[test]
+    fn spam_config_default_dnsbl_enabled() {
+        let config = SpamConfig::default();
+        assert!(config.dnsbl_enabled);
+    }
+
+    #[test]
+    fn spam_config_default_reputation_enabled() {
+        let config = SpamConfig::default();
+        assert!(config.reputation_enabled);
+    }
+
+    #[test]
+    fn spam_config_default_heuristics_enabled() {
+        let config = SpamConfig::default();
+        assert!(config.heuristics.enabled);
+    }
+
+    // === HeuristicsConfig Default Tests ===
+
+    #[test]
+    fn heuristics_config_default_values() {
+        let config = HeuristicsConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.velocity_window, 10);
+        assert_eq!(config.max_velocity, 5);
+        assert_eq!(config.fanout_window, 60);
+        assert_eq!(config.max_fanout, 10);
+        assert!((config.repetition_decay - 0.8).abs() < f32::EPSILON);
+    }
+
+    // === RateLimitConfig Default Tests ===
+
+    #[test]
+    fn rate_limit_config_default_message_rate() {
+        let config = RateLimitConfig::default();
+        assert_eq!(config.message_rate_per_second, 2);
+    }
+
+    #[test]
+    fn rate_limit_config_default_connection_burst() {
+        let config = RateLimitConfig::default();
+        assert_eq!(config.connection_burst_per_ip, 3);
+    }
+
+    #[test]
+    fn rate_limit_config_default_join_burst() {
+        let config = RateLimitConfig::default();
+        assert_eq!(config.join_burst_per_client, 5);
+    }
+
+    #[test]
+    fn rate_limit_config_default_ctcp_rate() {
+        let config = RateLimitConfig::default();
+        assert_eq!(config.ctcp_rate_per_second, 1);
+    }
+
+    #[test]
+    fn rate_limit_config_default_ctcp_burst() {
+        let config = RateLimitConfig::default();
+        assert_eq!(config.ctcp_burst_per_client, 2);
+    }
+
+    #[test]
+    fn rate_limit_config_default_max_connections() {
+        let config = RateLimitConfig::default();
+        assert_eq!(config.max_connections_per_ip, 10);
+    }
+
+    #[test]
+    fn rate_limit_config_default_exempt_ips_empty() {
+        let config = RateLimitConfig::default();
+        assert!(config.exempt_ips.is_empty());
+    }
+
+    // === SecurityConfig Default Tests ===
+
+    #[test]
+    fn security_config_default_cloak_suffix() {
+        let config = SecurityConfig::default();
+        assert_eq!(config.cloak_suffix, "ip");
+    }
+
+    #[test]
+    fn security_config_default_spam_detection_enabled() {
+        let config = SecurityConfig::default();
+        assert!(config.spam_detection_enabled);
+    }
+
+    #[test]
+    fn security_config_default_cloak_secret_is_32_chars() {
+        // Note: This generates an ephemeral secret - we just verify its length
+        let config = SecurityConfig::default();
+        assert_eq!(config.cloak_secret.len(), 32);
+    }
+
+    #[test]
+    fn security_config_default_cloak_secret_is_alphanumeric() {
+        let config = SecurityConfig::default();
+        assert!(config.cloak_secret.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+}

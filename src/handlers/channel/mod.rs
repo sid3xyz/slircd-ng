@@ -2,6 +2,7 @@
 //!
 //! Handles JOIN, PART, TOPIC, NAMES, KICK, INVITE, KNOCK, CYCLE commands.
 
+pub mod common;
 mod cycle;
 mod invite;
 mod join;

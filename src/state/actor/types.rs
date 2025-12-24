@@ -143,6 +143,7 @@ pub enum ChannelEvent {
         reply_tx: oneshot::Sender<slirc_crdt::channel::ChannelCrdt>,
     },
     /// Merge a CRDT representation into the channel (Innovation 2).
+    #[allow(dead_code)] // Reserved for S2S CRDT sync
     MergeCrdt {
         crdt: Box<slirc_crdt::channel::ChannelCrdt>,
         source: Option<slirc_crdt::clock::ServerId>,

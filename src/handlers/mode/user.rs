@@ -182,3 +182,118 @@ pub fn apply_user_modes_typed(
 
     (applied, rejected)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::{Mode, UserMode};
+
+    #[test]
+    fn test_apply_user_modes_simple() {
+        let mut modes = UserModes::default();
+        let changes = vec![
+            Mode::Plus(UserMode::Invisible, None),
+            Mode::Plus(UserMode::Wallops, None),
+        ];
+
+        let (applied, rejected) = apply_user_modes_typed(&mut modes, &changes);
+
+        assert!(modes.invisible);
+        assert!(modes.wallops);
+        assert_eq!(applied.len(), 2);
+        assert!(rejected.is_empty());
+    }
+
+    #[test]
+    fn test_apply_user_modes_remove() {
+        let mut modes = UserModes::default();
+        modes.invisible = true;
+
+        let changes = vec![Mode::Minus(UserMode::Invisible, None)];
+        let (applied, _) = apply_user_modes_typed(&mut modes, &changes);
+
+        assert!(!modes.invisible);
+        assert_eq!(applied.len(), 1);
+    }
+
+    #[test]
+    fn test_apply_user_modes_rejected() {
+        let mut modes = UserModes::default();
+        // Operator mode cannot be set by user via MODE command (usually)
+        // But apply_user_modes_typed logic allows it if passed?
+        // Let's check the implementation.
+        // It seems apply_user_modes_typed handles Operator mode by setting it!
+        // Wait, the handler calls this. The handler doesn't filter it?
+        // Ah, apply_user_modes_typed implementation:
+        /*
+            UserMode::Oper => {
+                // Cannot set +o via MODE, only via OPER command
+                if !adding && user_modes.oper {
+                    user_modes.oper = false;
+                    applied.push(mode.clone());
+                } else {
+                    rejected.push(mode_type.clone());
+                }
+            }
+        */
+        // So +o should be rejected.
+
+        let changes = vec![Mode::Plus(UserMode::Oper, None)];
+        let (applied, rejected) = apply_user_modes_typed(&mut modes, &changes);
+
+        assert!(!modes.oper);
+        assert!(applied.is_empty());
+        assert_eq!(rejected.len(), 1);
+    }
+
+    #[test]
+    fn test_apply_user_modes_snomask() {
+        let mut modes = UserModes::default();
+
+        // +s with arg
+        let changes = vec![Mode::Plus(UserMode::ServerNotices, Some("ck".to_string()))];
+        apply_user_modes_typed(&mut modes, &changes);
+        assert!(modes.snomasks.contains(&'c'));
+        assert!(modes.snomasks.contains(&'k'));
+
+        // -s with arg
+        let changes = vec![Mode::Minus(UserMode::ServerNotices, Some("c".to_string()))];
+        apply_user_modes_typed(&mut modes, &changes);
+        assert!(!modes.snomasks.contains(&'c'));
+        assert!(modes.snomasks.contains(&'k'));
+    }
+
+    #[test]
+    fn test_apply_user_modes_unknown() {
+        let mut modes = UserModes::default();
+        let changes = vec![Mode::Plus(UserMode::Unknown('?'), None)];
+        let (applied, rejected) = apply_user_modes_typed(&mut modes, &changes);
+
+        assert!(applied.is_empty());
+        assert_eq!(rejected.len(), 1);
+        assert!(matches!(rejected[0], UserMode::Unknown('?')));
+    }
+
+    #[test]
+    fn test_apply_user_modes_ctcp() {
+        let mut modes = UserModes::default();
+        // +T = no_ctcp
+        // Wait, UserMode::Unknown('T') is handled specially in apply_user_modes_typed
+        /*
+            UserMode::Unknown('T') => {
+                // +T - block CTCP messages (except ACTION)
+                user_modes.no_ctcp = adding;
+                applied.push(mode.clone());
+            }
+        */
+
+        let changes = vec![Mode::Plus(UserMode::Unknown('T'), None)];
+        let (applied, _) = apply_user_modes_typed(&mut modes, &changes);
+        assert!(modes.no_ctcp);
+        assert_eq!(applied.len(), 1);
+
+        let changes = vec![Mode::Minus(UserMode::Unknown('T'), None)];
+        apply_user_modes_typed(&mut modes, &changes);
+        assert!(!modes.no_ctcp);
+    }
+}

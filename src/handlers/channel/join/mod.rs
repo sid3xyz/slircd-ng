@@ -28,6 +28,7 @@ mod enforcement;
 mod responses;
 
 use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, server_reply};
+use super::common::{is_join_zero, parse_channel_list, parse_key_list};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, MessageRef, Response};
@@ -55,7 +56,7 @@ impl PostRegHandler for JoinHandler {
             let channels_str = channels_str_raw.ok_or(HandlerError::NeedMoreParams)?;
 
             // Handle "JOIN 0" - leave all channels
-            if channels_str == "0" {
+            if is_join_zero(channels_str) {
                 return leave_all_channels(ctx).await;
             }
 
@@ -82,30 +83,11 @@ impl PostRegHandler for JoinHandler {
             }
 
             // Parse channel list (comma-separated) and optional keys
-            let channels: Vec<&str> = channels_str.split(',').collect();
-            let keys: Vec<Option<&str>> = if let Some(keys_str) = msg.arg(1) {
-                let mut key_list: Vec<Option<&str>> = keys_str
-                    .split(',')
-                    .map(|k| {
-                        let trimmed = k.trim();
-                        if trimmed.is_empty() {
-                            None
-                        } else {
-                            Some(trimmed)
-                        }
-                    })
-                    .collect();
-                key_list.resize(channels.len(), None);
-                key_list
-            } else {
-                vec![None; channels.len()]
-            };
+            let channels = parse_channel_list(channels_str);
+            let keys = parse_key_list(msg.arg(1), channels.len());
 
             for (i, channel_name) in channels.iter().enumerate() {
-                let channel_name = channel_name.trim();
-                if channel_name.is_empty() {
-                    continue;
-                }
+                // Empty entries already filtered by parse_channel_list
 
                 if !channel_name.is_channel_name() {
                     let reply = server_reply(
@@ -158,4 +140,103 @@ async fn leave_all_channels(ctx: &mut Context<'_, RegisteredState>) -> HandlerRe
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::ChannelExt;
+
+    // ========================================================================
+    // Channel name validation tests (via slirc_proto::ChannelExt)
+    // These are JOIN-specific as they validate the is_channel_name() check
+    // ========================================================================
+
+    #[test]
+    fn test_valid_channel_names() {
+        assert!("#channel".is_channel_name());
+        assert!("#test".is_channel_name());
+        assert!("&local".is_channel_name());
+        assert!("+modeless".is_channel_name());
+        assert!("!ABCDE".is_channel_name());
+        assert!("#123".is_channel_name());
+        assert!("#a-b_c".is_channel_name());
+    }
+
+    #[test]
+    fn test_invalid_channel_names() {
+        // Missing prefix
+        assert!(!"channel".is_channel_name());
+        assert!(!"test".is_channel_name());
+
+        // Invalid prefix
+        assert!(!"@channel".is_channel_name());
+        assert!(!"$channel".is_channel_name());
+
+        // Contains space
+        assert!(!"#chan nel".is_channel_name());
+
+        // Contains comma
+        assert!(!"#chan,nel".is_channel_name());
+
+        // Empty
+        assert!(!"".is_channel_name());
+
+        // Just prefix
+        assert!("#".is_channel_name()); // Actually valid per RFC - just prefix char
+
+        // Control characters (BEL)
+        assert!(!"#test\x07".is_channel_name());
+    }
+
+    #[test]
+    fn test_channel_name_length_limit() {
+        // RFC 2812 says 50 chars max including prefix
+        let valid_49 = format!("#{}", "a".repeat(48));
+        assert!(valid_49.is_channel_name());
+
+        let valid_50 = format!("#{}", "a".repeat(49));
+        assert!(valid_50.is_channel_name());
+
+        let invalid_51 = format!("#{}", "a".repeat(50));
+        assert!(!invalid_51.is_channel_name());
+    }
+
+    // ========================================================================
+    // Integration-style tests for parsing + validation flow
+    // ========================================================================
+
+    #[test]
+    fn test_parse_and_validate_channels() {
+        let channels = parse_channel_list("#valid,invalid,#also-valid");
+
+        let valid: Vec<&str> = channels
+            .iter()
+            .copied()
+            .filter(|c| c.is_channel_name())
+            .collect();
+
+        assert_eq!(valid, vec!["#valid", "#also-valid"]);
+    }
+
+    #[test]
+    fn test_parse_channels_and_keys_aligned() {
+        let channels_str = "#foo,#bar,#baz";
+        let keys_str = Some("key1,,key3");
+
+        let channels = parse_channel_list(channels_str);
+        let keys = parse_key_list(keys_str, channels.len());
+
+        assert_eq!(channels.len(), keys.len());
+
+        let pairs: Vec<_> = channels.iter().zip(keys.iter()).collect();
+        assert_eq!(
+            pairs,
+            vec![
+                (&"#foo", &Some("key1")),
+                (&"#bar", &None),
+                (&"#baz", &Some("key3")),
+            ]
+        );
+    }
 }

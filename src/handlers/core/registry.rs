@@ -27,9 +27,10 @@ use crate::handlers::{
     mode::ModeHandler,
     monitor::MonitorHandler,
     server::{
-        BurstHandler, ServerHandshakeHandler, ServerPropagationHandler, delta::DeltaHandler,
-        routing::RoutedMessageHandler, sjoin::SJoinHandler, tmode::TModeHandler, uid::UidHandler,
-        sid::SidHandler,
+        ServerHandshakeHandler, ServerPropagationHandler,
+        capab::CapabHandler, encap::EncapHandler, kill::KillHandler, routing::RoutedMessageHandler,
+        sid::SidHandler, sjoin::SJoinHandler, svinfo::SvinfoHandler, tmode::TModeHandler,
+        uid::UidHandler,
     },
     service_aliases::{CsHandler, NsHandler},
     user_status::{AwayHandler, SetnameHandler, SilenceHandler},
@@ -80,12 +81,12 @@ impl Registry {
         // ====================================================================
         universal_handlers.insert("CAP", Box::new(CapHandler));
         universal_handlers.insert("REGISTER", Box::new(RegisterHandler));
+        universal_handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
 
         // ====================================================================
         // Pre-registration handlers (valid only before registration completes)
         // These require UnregisteredState and cannot be used after registration.
         // ====================================================================
-        pre_reg_handlers.insert("AUTHENTICATE", Box::new(AuthenticateHandler));
 
         // Connection handlers (Universal + Pre-reg)
         crate::handlers::connection::register(
@@ -96,12 +97,12 @@ impl Registry {
 
         // Server-to-server handshake
         pre_reg_handlers.insert("SERVER", Box::new(ServerHandshakeHandler));
+        pre_reg_handlers.insert("CAPAB", Box::new(CapabHandler));
+        pre_reg_handlers.insert("SVINFO", Box::new(SvinfoHandler));
 
         // ====================================================================
         // Server-to-server handlers (valid for registered servers)
         // ====================================================================
-        server_handlers.insert("BURST", Box::new(BurstHandler));
-        server_handlers.insert("DELTA", Box::new(DeltaHandler));
         server_handlers.insert("SERVER", Box::new(ServerPropagationHandler));
         server_handlers.insert("PRIVMSG", Box::new(RoutedMessageHandler));
         server_handlers.insert("NOTICE", Box::new(RoutedMessageHandler));
@@ -109,6 +110,8 @@ impl Registry {
         server_handlers.insert("TMODE", Box::new(TModeHandler));
         server_handlers.insert("UID", Box::new(UidHandler));
         server_handlers.insert("SID", Box::new(SidHandler));
+        server_handlers.insert("ENCAP", Box::new(EncapHandler));
+        server_handlers.insert("KILL", Box::new(KillHandler));
         server_handlers.insert(
             "BATCH",
             Box::new(crate::handlers::batch::server::ServerBatchHandler),

@@ -215,3 +215,33 @@ pub(crate) fn format_timestamp(ts: i64) -> String {
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
         .unwrap_or_else(|| "Unknown".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_timestamp_epoch() {
+        // Unix epoch: 0 → 1970-01-01 00:00:00 UTC
+        assert_eq!(format_timestamp(0), "1970-01-01 00:00:00 UTC");
+    }
+
+    #[test]
+    fn test_format_timestamp_recent() {
+        // 1700000000 → 2023-11-14 22:13:20 UTC
+        assert_eq!(format_timestamp(1_700_000_000), "2023-11-14 22:13:20 UTC");
+    }
+
+    #[test]
+    fn test_format_timestamp_specific() {
+        // 1609459200 → 2021-01-01 00:00:00 UTC (new year 2021)
+        assert_eq!(format_timestamp(1_609_459_200), "2021-01-01 00:00:00 UTC");
+    }
+
+    #[test]
+    fn test_format_timestamp_invalid_returns_unknown() {
+        // Very negative timestamp that chrono can't handle
+        // i64::MIN should be out of range for any reasonable datetime
+        assert_eq!(format_timestamp(i64::MIN), "Unknown");
+    }
+}

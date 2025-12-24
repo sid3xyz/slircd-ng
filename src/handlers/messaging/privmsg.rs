@@ -578,4 +578,79 @@ mod tests {
         assert!(Ctcp::is_ctcp("\x01incomplete"));
         assert!(Ctcp::parse("\x01incomplete").is_some()); // Lenient parsing
     }
+
+    #[test]
+    fn test_parse_statusmsg_at() {
+        let (prefix, target) = super::parse_statusmsg("@#channel");
+        assert_eq!(prefix, Some('@'));
+        assert_eq!(target, Some("#channel"));
+    }
+
+    #[test]
+    fn test_parse_statusmsg_plus() {
+        let (prefix, target) = super::parse_statusmsg("+#channel");
+        assert_eq!(prefix, Some('+'));
+        assert_eq!(target, Some("#channel"));
+    }
+
+    #[test]
+    fn test_parse_statusmsg_percent() {
+        let (prefix, target) = super::parse_statusmsg("%#channel");
+        assert_eq!(prefix, Some('%'));
+        assert_eq!(target, Some("#channel"));
+    }
+
+    #[test]
+    fn test_parse_statusmsg_tilde() {
+        let (prefix, target) = super::parse_statusmsg("~#channel");
+        assert_eq!(prefix, Some('~'));
+        assert_eq!(target, Some("#channel"));
+    }
+
+    #[test]
+    fn test_parse_statusmsg_ampersand() {
+        let (prefix, target) = super::parse_statusmsg("&#channel");
+        assert_eq!(prefix, Some('&'));
+        assert_eq!(target, Some("#channel"));
+    }
+
+    #[test]
+    fn test_parse_statusmsg_regular_channel() {
+        let (prefix, target) = super::parse_statusmsg("#channel");
+        assert_eq!(prefix, None);
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn test_parse_statusmsg_user() {
+        let (prefix, target) = super::parse_statusmsg("nick");
+        assert_eq!(prefix, None);
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn test_parse_statusmsg_empty() {
+        let (prefix, target) = super::parse_statusmsg("");
+        assert_eq!(prefix, None);
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn test_parse_statusmsg_prefix_without_channel() {
+        let (prefix, target) = super::parse_statusmsg("@nick");
+        assert_eq!(prefix, None);
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn test_parse_statusmsg_double_prefix() {
+        // @@#channel -> prefix '@', target '@#channel' (which is invalid channel name usually, but parse_statusmsg just splits)
+        // Wait, let's check implementation:
+        // if matches!(first_char, ...) && rest.chars().next().map(|c| c == '#' || c == '&' || c == '+' || c == '!').unwrap_or(false)
+        // So for @@#channel: first='@', rest='@#channel'. rest[0] is '@', which is NOT in ['#', '&', '+', '!'].
+        // So it should return (None, None).
+        let (prefix, target) = super::parse_statusmsg("@@#channel");
+        assert_eq!(prefix, None);
+        assert_eq!(target, None);
+    }
 }

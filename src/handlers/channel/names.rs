@@ -8,6 +8,13 @@ use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 
+fn parse_names_target<'a>(msg: &MessageRef<'a>) -> Option<&'a str> {
+    match msg.arg(0) {
+        Some(s) if !s.is_empty() => Some(s),
+        _ => None,
+    }
+}
+
 /// Handler for NAMES command.
 pub struct NamesHandler;
 
@@ -40,9 +47,9 @@ impl PostRegHandler for NamesHandler {
         };
 
         // NAMES [channel [target]]
-        let channel_name = msg.arg(0).unwrap_or("");
+        let target_channel = parse_names_target(msg);
 
-        if channel_name.is_empty() {
+        if target_channel.is_none() {
             // NAMES without channel - list all visible channels
             // Per RFC 2812, list:
             // - Public channels the user is in
@@ -193,6 +200,7 @@ impl PostRegHandler for NamesHandler {
             return Ok(());
         }
 
+        let channel_name = target_channel.unwrap();
         // Handle multiple channels (comma-separated): NAMES #chan1,#chan2
         let channels: Vec<&str> = channel_name.split(',').collect();
 
@@ -334,5 +342,54 @@ impl PostRegHandler for NamesHandler {
         } // end for loop
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::MessageRef;
+    use crate::state::MemberModes;
+
+    #[test]
+    fn test_parse_names_target_none() {
+        let msg = MessageRef::parse("NAMES").unwrap();
+        assert_eq!(parse_names_target(&msg), None);
+    }
+
+    #[test]
+    fn test_parse_names_target_empty() {
+        let msg = MessageRef::parse("NAMES :").unwrap();
+        assert_eq!(parse_names_target(&msg), None);
+    }
+
+    #[test]
+    fn test_parse_names_target_specific() {
+        let msg = MessageRef::parse("NAMES #channel").unwrap();
+        assert_eq!(parse_names_target(&msg), Some("#channel"));
+    }
+
+    #[test]
+    fn test_get_member_prefix_single() {
+        let mut modes = MemberModes::default();
+        modes.op = true;
+        assert_eq!(get_member_prefix(&modes, false), "@");
+
+        modes.voice = true; // op > voice
+        assert_eq!(get_member_prefix(&modes, false), "@");
+    }
+
+    #[test]
+    fn test_get_member_prefix_multi() {
+        let mut modes = MemberModes::default();
+        modes.op = true;
+        modes.voice = true;
+        assert_eq!(get_member_prefix(&modes, true), "@+");
+    }
+
+    #[test]
+    fn test_get_member_prefix_none() {
+        let modes = MemberModes::default();
+        assert_eq!(get_member_prefix(&modes, false), "");
     }
 }

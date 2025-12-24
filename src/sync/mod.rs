@@ -13,7 +13,7 @@ mod tests;
 pub mod topology;
 
 use crate::metrics::{S2S_BYTES_RECEIVED, S2S_BYTES_SENT, S2S_COMMANDS};
-use crate::state::{ChannelManager, Matrix, UserManager};
+use crate::state::Matrix;
 use crate::sync::handshake::{HandshakeMachine, HandshakeState};
 use crate::sync::stream::S2SStream;
 use dashmap::DashMap;
@@ -344,7 +344,7 @@ impl SyncManager {
             let mut remote_name: Option<String> = None;
             let mut remote_info: Option<String> = None;
 
-            // Send initial PASS and SERVER
+            // Send initial PASS, CAPAB, SERVER, SVINFO
             let pass_cmd = Command::Raw(
                 "PASS".to_string(),
                 vec![
@@ -353,11 +353,30 @@ impl SyncManager {
                     manager.local_id.as_str().to_string(),
                 ],
             );
+            let capab_cmd = Command::CAPAB(vec![
+                "QS".to_string(),
+                "ENCAP".to_string(),
+                "EX".to_string(),
+                "IE".to_string(),
+                "UNKLN".to_string(),
+                "KLN".to_string(),
+                "GLN".to_string(),
+                "HOPS".to_string(),
+            ]);
             let server_cmd = Command::SERVER(
                 manager.local_name.clone(),
                 1,
                 manager.local_id.as_str().to_string(),
                 manager.local_desc.clone(),
+            );
+            let svinfo_cmd = Command::SVINFO(
+                6,
+                6,
+                0,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
             );
 
             if let Err(e) = framed.send(Message::from(pass_cmd).to_string().trim_end()).await {
@@ -365,8 +384,18 @@ impl SyncManager {
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
+            if let Err(e) = framed.send(Message::from(capab_cmd).to_string().trim_end()).await {
+                tracing::error!("Failed to send CAPAB: {}", e);
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
             if let Err(e) = framed.send(Message::from(server_cmd).to_string().trim_end()).await {
                 tracing::error!("Failed to send SERVER: {}", e);
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+            if let Err(e) = framed.send(Message::from(svinfo_cmd).to_string().trim_end()).await {
+                tracing::error!("Failed to send SVINFO: {}", e);
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
@@ -629,10 +658,22 @@ impl SyncManager {
     pub async fn send_burst(
         &self,
         sid: &ServerId,
-        _user_manager: &UserManager,
-        _channel_manager: &ChannelManager,
+        matrix: &Matrix,
     ) {
         info!("Sending burst to {}", sid.as_str());
+        let commands = burst::generate_burst(matrix, self.local_id.as_str()).await;
+
+        if let Some(link) = self.links.get(sid) {
+            for cmd in commands {
+                let msg = Arc::new(Message::from(cmd));
+                if let Err(e) = link.tx.send(msg).await {
+                    tracing::error!("Failed to send burst command to {}: {}", sid.as_str(), e);
+                    break;
+                }
+            }
+        } else {
+            tracing::warn!("Cannot send burst to {}: Link not found", sid.as_str());
+        }
     }
 
     pub async fn remove_peer(&self, sid: &ServerId) {

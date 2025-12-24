@@ -3,10 +3,11 @@
 //! The Gateway binds to sockets and spawns Connection tasks for each
 //! incoming client. Supports both plaintext and TLS connections.
 
-use crate::config::{ClientAuth, TlsConfig, WebSocketConfig};
+use crate::config::{ClientAuth, ListenConfig, TlsConfig, WebSocketConfig};
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::network::Connection;
+use crate::network::proxy_protocol::parse_proxy_header;
 use crate::state::Matrix;
 use rustls_pemfile::{certs, pkcs8_private_keys};
 use std::io::{BufReader, Cursor};
@@ -220,7 +221,8 @@ async fn handle_plaintext_connection(
 /// The Gateway accepts incoming TCP/TLS connections and spawns handlers.
 pub struct Gateway {
     plaintext_listener: TcpListener,
-    tls_listener: Option<(TcpListener, TlsAcceptor)>,
+    plaintext_proxy_protocol: bool,
+    tls_listener: Option<(TcpListener, TlsAcceptor, bool)>,
     websocket_listener: Option<(TcpListener, WebSocketConfig)>,
     pub matrix: Arc<Matrix>,
     pub registry: Arc<Registry>,
@@ -230,21 +232,21 @@ pub struct Gateway {
 impl Gateway {
     /// Bind the gateway to the specified addresses.
     pub async fn bind(
-        addr: SocketAddr,
+        listen_config: ListenConfig,
         tls_config: Option<TlsConfig>,
         websocket_config: Option<WebSocketConfig>,
         matrix: Arc<Matrix>,
         registry: Arc<Registry>,
         db: Database,
     ) -> anyhow::Result<Self> {
-        let plaintext_listener = TcpListener::bind(addr).await?;
-        info!(%addr, "Plaintext listener bound");
+        let plaintext_listener = TcpListener::bind(listen_config.address).await?;
+        info!(address = %listen_config.address, "Plaintext listener bound");
 
         let tls_listener = if let Some(tls_cfg) = tls_config {
             let tls_acceptor = Self::load_tls(&tls_cfg)?;
             let listener = TcpListener::bind(tls_cfg.address).await?;
             info!(address = %tls_cfg.address, "TLS listener bound");
-            Some((listener, tls_acceptor))
+            Some((listener, tls_acceptor, tls_cfg.proxy_protocol))
         } else {
             None
         };
@@ -259,6 +261,7 @@ impl Gateway {
 
         Ok(Self {
             plaintext_listener,
+            plaintext_proxy_protocol: listen_config.proxy_protocol,
             tls_listener,
             websocket_listener,
             matrix,
@@ -375,10 +378,10 @@ impl Gateway {
 
         // Extract TLS acceptor for STARTTLS on plaintext connections
         // Clone it before the TLS listener task takes ownership
-        let starttls_acceptor = self.tls_listener.as_ref().map(|(_, a)| a.clone());
+        let starttls_acceptor = self.tls_listener.as_ref().map(|(_, a, _)| a.clone());
 
         // If TLS is configured, spawn a separate task for the TLS listener
-        if let Some((tls_listener, tls_acceptor)) = self.tls_listener {
+        if let Some((tls_listener, tls_acceptor, proxy_protocol)) = self.tls_listener {
             let matrix_tls = Arc::clone(&matrix);
             let registry_tls = Arc::clone(&registry);
             let db_tls = db.clone();
@@ -388,9 +391,23 @@ impl Gateway {
                 loop {
                     tokio::select! {
                         result = tls_listener.accept() => {
-                            let Ok((stream, addr)) = result.inspect_err(|e| {
+                            let Ok((mut stream, mut addr)) = result.inspect_err(|e| {
                                 error!(error = %e, "Failed to accept TLS connection");
                             }) else { continue };
+
+                            // Handle PROXY protocol if enabled
+                            if proxy_protocol {
+                                match parse_proxy_header(&mut stream).await {
+                                    Ok(real_addr) => {
+                                        info!(%addr, %real_addr, "PROXY protocol: client address resolved");
+                                        addr = real_addr;
+                                    }
+                                    Err(e) => {
+                                        warn!(%addr, error = %e, "PROXY protocol handshake failed");
+                                        continue;
+                                    }
+                                }
+                            }
 
                             let Some(uid) = validate_connection(&addr, &matrix_tls, "TLS") else {
                                 continue;
@@ -426,15 +443,30 @@ impl Gateway {
             let registry_ws = Arc::clone(&registry);
             let db_ws = db.clone();
             let allow_origins = ws_config.allow_origins;
+            let proxy_protocol = ws_config.proxy_protocol;
             let mut shutdown_rx_ws = matrix.lifecycle_manager.shutdown_tx.subscribe();
 
             tokio::spawn(async move {
                 loop {
                     tokio::select! {
                         result = ws_listener.accept() => {
-                            let Ok((stream, addr)) = result.inspect_err(|e| {
+                            let Ok((mut stream, mut addr)) = result.inspect_err(|e| {
                                 error!(error = %e, "Failed to accept WebSocket connection");
                             }) else { continue };
+
+                            // Handle PROXY protocol if enabled
+                            if proxy_protocol {
+                                match parse_proxy_header(&mut stream).await {
+                                    Ok(real_addr) => {
+                                        info!(%addr, %real_addr, "PROXY protocol: client address resolved");
+                                        addr = real_addr;
+                                    }
+                                    Err(e) => {
+                                        warn!(%addr, error = %e, "PROXY protocol handshake failed");
+                                        continue;
+                                    }
+                                }
+                            }
 
                             let Some(uid) = validate_connection(&addr, &matrix_ws, "WebSocket") else {
                                 continue;
@@ -469,12 +501,26 @@ impl Gateway {
             tokio::select! {
                 // Handle incoming connections
                 result = self.plaintext_listener.accept() => {
-                    let Ok((stream, addr)) = result else {
+                    let Ok((mut stream, mut addr)) = result else {
                         if let Err(e) = result {
                             error!(error = %e, "Failed to accept plaintext connection");
                         }
                         continue;
                     };
+
+                    // Handle PROXY protocol if enabled
+                    if self.plaintext_proxy_protocol {
+                        match parse_proxy_header(&mut stream).await {
+                            Ok(real_addr) => {
+                                info!(%addr, %real_addr, "PROXY protocol: client address resolved");
+                                addr = real_addr;
+                            }
+                            Err(e) => {
+                                warn!(%addr, error = %e, "PROXY protocol handshake failed");
+                                continue;
+                            }
+                        }
+                    }
 
                     let Some(uid) = validate_connection(&addr, &matrix, "Plaintext") else {
                         continue;

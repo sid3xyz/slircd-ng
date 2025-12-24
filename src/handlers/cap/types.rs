@@ -46,6 +46,7 @@ pub const SUPPORTED_CAPS: &[Capability] = &[
     Capability::InviteNotify,
     Capability::ChgHost,
     Capability::Monitor,
+    Capability::ExtendedMonitor,
     Capability::CapNotify,
     Capability::AccountTag,
     Capability::Multiline,
@@ -70,4 +71,73 @@ pub enum SaslState {
     /// Waiting for EXTERNAL response (empty or authzid).
     WaitingForExternal,
     Authenticated,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_secure_string_debug_hides_content() {
+        let secret = SecureString::new("super_secret_password".to_string());
+        let debug_output = format!("{:?}", secret);
+
+        // Debug output should NOT contain the actual password
+        assert!(!debug_output.contains("super_secret_password"));
+        // Should show SecureString struct name
+        assert!(debug_output.contains("SecureString"));
+        // Should show length field
+        assert!(debug_output.contains("len"));
+        assert!(debug_output.contains("21")); // Length of "super_secret_password"
+    }
+
+    #[test]
+    fn test_secure_string_as_str_returns_content() {
+        let secret = SecureString::new("my_password".to_string());
+        assert_eq!(secret.as_str(), "my_password");
+    }
+
+    #[test]
+    fn test_secure_string_empty() {
+        let secret = SecureString::new(String::new());
+        assert_eq!(secret.as_str(), "");
+        let debug_output = format!("{:?}", secret);
+        assert!(debug_output.contains("len"));
+        assert!(debug_output.contains("0"));
+    }
+
+    #[test]
+    fn test_sasl_state_default_is_none() {
+        assert_eq!(SaslState::default(), SaslState::None);
+    }
+
+    #[test]
+    fn test_sasl_state_variants_equality() {
+        assert_eq!(SaslState::None, SaslState::None);
+        assert_eq!(SaslState::WaitingForData, SaslState::WaitingForData);
+        assert_eq!(SaslState::WaitingForExternal, SaslState::WaitingForExternal);
+        assert_eq!(SaslState::Authenticated, SaslState::Authenticated);
+
+        assert_ne!(SaslState::None, SaslState::Authenticated);
+        assert_ne!(SaslState::WaitingForData, SaslState::WaitingForExternal);
+    }
+
+    #[test]
+    fn test_multiline_constants() {
+        // Verify multiline limits are reasonable values
+        assert_eq!(MULTILINE_MAX_BYTES, 40000);
+        assert_eq!(MULTILINE_MAX_LINES, 100);
+
+        // Sanity check: bytes should be much larger than lines
+        assert!(MULTILINE_MAX_BYTES > MULTILINE_MAX_LINES);
+    }
+
+    #[test]
+    fn test_supported_caps_not_empty() {
+        assert!(!SUPPORTED_CAPS.is_empty());
+        // Should include common caps
+        assert!(SUPPORTED_CAPS.contains(&Capability::Sasl));
+        assert!(SUPPORTED_CAPS.contains(&Capability::MultiPrefix));
+        assert!(SUPPORTED_CAPS.contains(&Capability::ServerTime));
+    }
 }
