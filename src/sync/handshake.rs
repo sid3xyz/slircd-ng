@@ -251,3 +251,109 @@ impl HandshakeMachine {
         Ok(link)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_machine() -> HandshakeMachine {
+        HandshakeMachine::new(
+            ServerId::new("001"),
+            "test.server.com".to_string(),
+            "Test Server".to_string(),
+        )
+    }
+
+    // ========================================================================
+    // HandshakeMachine::new tests
+    // ========================================================================
+
+    #[test]
+    fn handshake_machine_starts_unconnected() {
+        let machine = make_machine();
+        assert_eq!(machine.state, HandshakeState::Unconnected);
+    }
+
+    #[test]
+    fn handshake_machine_stores_local_info() {
+        let machine = make_machine();
+        assert_eq!(machine.local_sid.as_str(), "001");
+        assert_eq!(machine.local_name, "test.server.com");
+        assert_eq!(machine.local_desc, "Test Server");
+    }
+
+    #[test]
+    fn handshake_machine_remote_fields_initially_none() {
+        let machine = make_machine();
+        assert!(machine.remote_name.is_none());
+        assert!(machine.remote_pass.is_none());
+        assert!(machine.remote_sid.is_none());
+        assert!(machine.remote_info.is_none());
+        assert!(machine.remote_capab.is_none());
+        assert!(machine.remote_svinfo.is_none());
+    }
+
+    // ========================================================================
+    // HandshakeMachine::transition tests
+    // ========================================================================
+
+    #[test]
+    fn transition_to_outbound_initiated() {
+        let mut machine = make_machine();
+        machine.transition(HandshakeState::OutboundInitiated);
+        assert_eq!(machine.state, HandshakeState::OutboundInitiated);
+    }
+
+    #[test]
+    fn transition_to_bursting() {
+        let mut machine = make_machine();
+        machine.transition(HandshakeState::Bursting);
+        assert_eq!(machine.state, HandshakeState::Bursting);
+    }
+
+    #[test]
+    fn transition_to_synced() {
+        let mut machine = make_machine();
+        machine.transition(HandshakeState::Synced);
+        assert_eq!(machine.state, HandshakeState::Synced);
+    }
+
+    // ========================================================================
+    // HandshakeState equality tests
+    // ========================================================================
+
+    #[test]
+    fn handshake_states_are_equal() {
+        assert_eq!(HandshakeState::Unconnected, HandshakeState::Unconnected);
+        assert_eq!(HandshakeState::Synced, HandshakeState::Synced);
+    }
+
+    #[test]
+    fn handshake_states_are_not_equal() {
+        assert_ne!(HandshakeState::Unconnected, HandshakeState::Synced);
+        assert_ne!(HandshakeState::Bursting, HandshakeState::OutboundInitiated);
+    }
+
+    // ========================================================================
+    // step from Unconnected tests
+    // ========================================================================
+
+    #[test]
+    fn step_from_unconnected_returns_error() {
+        let mut machine = make_machine();
+        let result = machine.step(Command::PING("test".to_string(), None), &[]);
+        assert!(matches!(result, Err(HandshakeError::InvalidStateTransition)));
+    }
+
+    // ========================================================================
+    // step from Synced tests
+    // ========================================================================
+
+    #[test]
+    fn step_from_synced_returns_empty() {
+        let mut machine = make_machine();
+        machine.transition(HandshakeState::Synced);
+        let result = machine.step(Command::PING("test".to_string(), None), &[]);
+        assert!(matches!(result, Ok(commands) if commands.is_empty()));
+    }
+}

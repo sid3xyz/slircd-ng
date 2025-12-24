@@ -58,3 +58,52 @@ pub mod spans {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slirc_proto::MessageRef;
+
+    #[test]
+    fn test_extract_msgid_present() {
+        // Message with msgid tag
+        let raw = "@msgid=abc123 :nick!user@host PRIVMSG #chan :Hello\r\n";
+        let msg = MessageRef::parse(raw).unwrap();
+        let result = extract_msgid(&msg);
+        assert_eq!(result, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn test_extract_msgid_absent() {
+        // Message without msgid tag
+        let raw = ":nick!user@host PRIVMSG #chan :Hello\r\n";
+        let msg = MessageRef::parse(raw).unwrap();
+        let result = extract_msgid(&msg);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_msgid_other_tags() {
+        // Message with other tags but no msgid
+        let raw = "@time=2025-01-01T00:00:00Z;account=testuser :nick!user@host PRIVMSG #chan :Hello\r\n";
+        let msg = MessageRef::parse(raw).unwrap();
+        let result = extract_msgid(&msg);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_msgid_with_multiple_tags() {
+        // Message with msgid among multiple tags
+        let raw = "@time=2025-01-01T00:00:00Z;msgid=xyz789;account=testuser :nick!user@host PRIVMSG #chan :Hello\r\n";
+        let msg = MessageRef::parse(raw).unwrap();
+        let result = extract_msgid(&msg);
+        assert_eq!(result, Some("xyz789".to_string()));
+    }
+
+    #[test]
+    fn test_command_timer_creation() {
+        // Just verify we can create a CommandTimer without panicking
+        let timer = CommandTimer::new("PRIVMSG");
+        assert_eq!(timer.command, "PRIVMSG");
+    }
+}

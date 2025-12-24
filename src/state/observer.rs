@@ -87,3 +87,79 @@ pub trait StateObserver: Send + Sync {
     /// `account` is the account name, or None for logout.
     fn on_account_change(&self, uid: &str, account: Option<&str>, source: Option<ServerId>);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // GlobalBanType::command_name tests
+    // ========================================================================
+
+    #[test]
+    fn gline_command_name() {
+        assert_eq!(GlobalBanType::Gline.command_name(), "GLINE");
+    }
+
+    #[test]
+    fn zline_command_name() {
+        assert_eq!(GlobalBanType::Zline.command_name(), "ZLINE");
+    }
+
+    #[test]
+    fn rline_command_name() {
+        assert_eq!(GlobalBanType::Rline.command_name(), "RLINE");
+    }
+
+    #[test]
+    fn shun_command_name() {
+        assert_eq!(GlobalBanType::Shun.command_name(), "SHUN");
+    }
+
+    // ========================================================================
+    // GlobalBanType::unset_command_name tests
+    // ========================================================================
+
+    #[test]
+    fn gline_unset_command_name() {
+        assert_eq!(GlobalBanType::Gline.unset_command_name(), "UNGLINE");
+    }
+
+    #[test]
+    fn zline_unset_command_name() {
+        assert_eq!(GlobalBanType::Zline.unset_command_name(), "UNZLINE");
+    }
+
+    #[test]
+    fn rline_unset_command_name() {
+        assert_eq!(GlobalBanType::Rline.unset_command_name(), "UNRLINE");
+    }
+
+    #[test]
+    fn shun_unset_command_name() {
+        assert_eq!(GlobalBanType::Shun.unset_command_name(), "UNSHUN");
+    }
+
+    // ========================================================================
+    // GlobalBanType equality tests
+    // ========================================================================
+
+    #[test]
+    fn ban_types_are_equal() {
+        assert_eq!(GlobalBanType::Gline, GlobalBanType::Gline);
+        assert_eq!(GlobalBanType::Zline, GlobalBanType::Zline);
+    }
+
+    #[test]
+    fn ban_types_are_not_equal() {
+        assert_ne!(GlobalBanType::Gline, GlobalBanType::Zline);
+        assert_ne!(GlobalBanType::Rline, GlobalBanType::Shun);
+    }
+
+    #[test]
+    fn ban_types_are_copy() {
+        let bt = GlobalBanType::Gline;
+        let bt2 = bt; // Copy
+        assert_eq!(bt, bt2); // Both should still be valid
+    }
+}

@@ -127,3 +127,85 @@ impl PreRegHandler for WebircHandler {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_block(password: &str, hosts: Vec<&str>) -> WebircBlock {
+        WebircBlock {
+            password: password.to_string(),
+            hosts: hosts.into_iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    // ========================================================================
+    // is_authorized tests
+    // ========================================================================
+
+    #[test]
+    fn is_authorized_correct_password_no_hosts() {
+        let handler = WebircHandler::new(vec![make_block("secret123", vec![])]);
+        // Empty hosts list = accept from anywhere
+        assert!(handler.is_authorized("secret123", "192.168.1.1"));
+        assert!(handler.is_authorized("secret123", "any.host.com"));
+    }
+
+    #[test]
+    fn is_authorized_wrong_password() {
+        let handler = WebircHandler::new(vec![make_block("secret123", vec![])]);
+        assert!(!handler.is_authorized("wrongpass", "192.168.1.1"));
+        assert!(!handler.is_authorized("", "192.168.1.1"));
+    }
+
+    #[test]
+    fn is_authorized_correct_password_matching_host() {
+        let handler = WebircHandler::new(vec![make_block("secret", vec!["192.168.1.*"])]);
+        assert!(handler.is_authorized("secret", "192.168.1.100"));
+        assert!(handler.is_authorized("secret", "192.168.1.1"));
+    }
+
+    #[test]
+    fn is_authorized_correct_password_non_matching_host() {
+        let handler = WebircHandler::new(vec![make_block("secret", vec!["192.168.1.*"])]);
+        assert!(!handler.is_authorized("secret", "192.168.2.100"));
+        assert!(!handler.is_authorized("secret", "10.0.0.1"));
+    }
+
+    #[test]
+    fn is_authorized_multiple_blocks() {
+        let handler = WebircHandler::new(vec![
+            make_block("pass1", vec!["10.0.0.*"]),
+            make_block("pass2", vec!["192.168.*"]),
+        ]);
+        assert!(handler.is_authorized("pass1", "10.0.0.5"));
+        assert!(handler.is_authorized("pass2", "192.168.1.1"));
+        assert!(!handler.is_authorized("pass1", "192.168.1.1"));
+        assert!(!handler.is_authorized("pass2", "10.0.0.5"));
+    }
+
+    #[test]
+    fn is_authorized_wildcard_host_patterns() {
+        let handler = WebircHandler::new(vec![
+            make_block("web", vec!["*.example.com", "gateway.*.net"]),
+        ]);
+        assert!(handler.is_authorized("web", "proxy.example.com"));
+        assert!(handler.is_authorized("web", "gateway.test.net"));
+        assert!(!handler.is_authorized("web", "evil.example.org"));
+    }
+
+    #[test]
+    fn is_authorized_no_blocks() {
+        let handler = WebircHandler::new(vec![]);
+        assert!(!handler.is_authorized("anypass", "anyhost"));
+    }
+
+    #[test]
+    fn is_authorized_exact_host_match() {
+        let handler = WebircHandler::new(vec![
+            make_block("exact", vec!["trusted.gateway.com"]),
+        ]);
+        assert!(handler.is_authorized("exact", "trusted.gateway.com"));
+        assert!(!handler.is_authorized("exact", "other.gateway.com"));
+    }
+}

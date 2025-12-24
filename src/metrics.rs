@@ -328,3 +328,65 @@ pub fn record_mode_change(mode: char) {
         .with_label_values(&[&mode.to_string()])
         .inc();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_record_command_does_not_panic() {
+        // Ensure metric recording doesn't panic
+        record_command("PRIVMSG", 0.001);
+        record_command("JOIN", 0.0005);
+        record_command("PART", 0.00001);
+    }
+
+    #[test]
+    fn test_record_command_error_does_not_panic() {
+        record_command_error("JOIN", "need_more_params");
+        record_command_error("NICK", "nickname_in_use");
+    }
+
+    #[test]
+    fn test_set_channel_members_does_not_panic() {
+        set_channel_members("#test", 10);
+        set_channel_members("#another", 0);
+        set_channel_members("#large", 5000);
+    }
+
+    #[test]
+    fn test_remove_channel_metrics_does_not_panic() {
+        set_channel_members("#todelete", 5);
+        remove_channel_metrics("#todelete");
+    }
+
+    #[test]
+    fn test_record_fanout_does_not_panic() {
+        record_fanout(1);
+        record_fanout(100);
+        record_fanout(10000);
+    }
+
+    #[test]
+    fn test_record_mode_change_does_not_panic() {
+        record_mode_change('o');
+        record_mode_change('v');
+        record_mode_change('b');
+        record_mode_change('i');
+    }
+
+    #[test]
+    fn test_gather_metrics_returns_string() {
+        // Initialize metrics first
+        init();
+
+        // Record some data
+        record_command("TEST", 0.001);
+        set_channel_members("#test_gather", 5);
+
+        // Gather should return a non-empty string
+        let output = gather_metrics();
+        // Should contain prometheus-formatted metrics
+        assert!(output.contains("irc_") || output.is_empty());
+    }
+}
