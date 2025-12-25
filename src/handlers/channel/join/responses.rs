@@ -3,7 +3,7 @@
 use super::super::super::{Context, HandlerResult, server_reply, user_prefix, with_label};
 use crate::error::ChannelError;
 use crate::state::RegisteredState;
-use slirc_proto::{Command, Message, Response};
+use slirc_proto::{Command, Message, Prefix, Response};
 
 /// Context for handling successful JOIN responses.
 pub(super) struct JoinSuccessContext<'a> {
@@ -54,7 +54,6 @@ pub(super) async fn handle_join_success(
 
     // If session is invalid (user disconnected), send Quit to ChannelActor to clean up ghost
     if !session_valid {
-        use slirc_proto::{Command, Prefix};
         let quit_msg = Message {
             tags: None,
             prefix: Some(Prefix::new(
@@ -64,13 +63,21 @@ pub(super) async fn handle_join_success(
             )),
             command: Command::QUIT(Some("Session terminated".to_string())),
         };
-        let _ = channel_sender
+        if let Err(e) = channel_sender
             .send(crate::state::actor::ChannelEvent::Quit {
                 uid: ctx.uid.to_string(),
                 quit_msg,
                 reply_tx: None,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(
+                uid = %ctx.uid,
+                channel = %channel_lower,
+                error = %e,
+                "Failed to send Quit event for ghost member cleanup"
+            );
+        }
         return Ok(());
     }
 
