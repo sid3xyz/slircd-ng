@@ -131,19 +131,25 @@ fn sjoin_to_crdt(
 ) -> ChannelCrdt {
     // Create HybridTimestamp from Unix TS and server_id
     // Note: TS is seconds, HybridTimestamp wants millis
-    let hts = HybridTimestamp::new((ts as i64) * 1000, 0, server_id);
+    let base_hts = HybridTimestamp::new((ts as i64) * 1000, 0, server_id);
 
-    // Create base CRDT
-    let mut crdt = ChannelCrdt::new(channel_name.to_string(), hts);
+    // Create base CRDT with the base timestamp
+    let mut crdt = ChannelCrdt::new(channel_name.to_string(), base_hts);
+
+    // Use incremented timestamp for mode values to ensure they override defaults
+    let mode_hts = base_hts.increment();
 
     // Parse modes string and apply to CRDT
-    apply_modes_to_crdt(&mut crdt, modes, mode_args, hts);
+    apply_modes_to_crdt(&mut crdt, modes, mode_args, mode_hts);
 
     // Parse users and add to membership CRDT
+    // Use double-incremented timestamp for prefix modes to ensure they override
+    // the default member modes created by join()
+    let prefix_hts = mode_hts.increment();
     for (prefix, uid) in users {
-        crdt.members.join(uid.clone(), hts);
+        crdt.members.join(uid.clone(), mode_hts);
         if let Some(member_modes) = crdt.members.get_modes_mut(uid) {
-            apply_prefix_to_member_modes(member_modes, prefix, hts);
+            apply_prefix_to_member_modes(member_modes, prefix, prefix_hts);
         }
     }
 
@@ -223,5 +229,221 @@ fn apply_prefix_to_member_modes(
             '+' => m_crdt.voice.update(true, hts),
             _ => {} // Ignore unknown prefixes
         }
+    }
+}
+
+// =============================================================================
+// Unit Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_server_id() -> ServerId {
+        ServerId::new("00A".to_string())
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_empty_channel() {
+        let crdt = sjoin_to_crdt(
+            "#test",
+            1700000000,
+            "+nt",
+            &[],
+            &[],
+            &test_server_id(),
+        );
+
+        assert_eq!(crdt.name, "#test");
+        assert!(*crdt.modes.no_external.value());
+        assert!(*crdt.modes.topic_ops_only.value());
+        assert!(!*crdt.modes.moderated.value());
+        assert!(crdt.members.is_empty());
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_with_users() {
+        let users = vec![
+            ("@".to_string(), "00AAAAAAA".to_string()),
+            ("+".to_string(), "00AAAAAAB".to_string()),
+            ("".to_string(), "00AAAAAAC".to_string()),
+        ];
+
+        let crdt = sjoin_to_crdt(
+            "#channel",
+            1700000000,
+            "+nt",
+            &[],
+            &users,
+            &test_server_id(),
+        );
+
+        assert_eq!(crdt.members.len(), 3);
+        assert!(crdt.members.contains("00AAAAAAA"));
+        assert!(crdt.members.contains("00AAAAAAB"));
+        assert!(crdt.members.contains("00AAAAAAC"));
+
+        // Check op user
+        let op_modes = crdt.members.get_modes("00AAAAAAA").unwrap();
+        assert!(*op_modes.op.value());
+        assert!(!*op_modes.voice.value());
+
+        // Check voiced user
+        let voice_modes = crdt.members.get_modes("00AAAAAAB").unwrap();
+        assert!(!*voice_modes.op.value());
+        assert!(*voice_modes.voice.value());
+
+        // Check regular user
+        let reg_modes = crdt.members.get_modes("00AAAAAAC").unwrap();
+        assert!(!*reg_modes.op.value());
+        assert!(!*reg_modes.voice.value());
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_with_key() {
+        let crdt = sjoin_to_crdt(
+            "#secret",
+            1700000000,
+            "+ntk",
+            &["secretkey".to_string()],
+            &[],
+            &test_server_id(),
+        );
+
+        assert_eq!(crdt.key.value(), &Some("secretkey".to_string()));
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_with_limit() {
+        let crdt = sjoin_to_crdt(
+            "#limited",
+            1700000000,
+            "+ntl",
+            &["50".to_string()],
+            &[],
+            &test_server_id(),
+        );
+
+        assert_eq!(crdt.limit.value(), &Some(50));
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_with_key_and_limit() {
+        let crdt = sjoin_to_crdt(
+            "#both",
+            1700000000,
+            "+ntkl",
+            &["password".to_string(), "100".to_string()],
+            &[],
+            &test_server_id(),
+        );
+
+        assert_eq!(crdt.key.value(), &Some("password".to_string()));
+        assert_eq!(crdt.limit.value(), &Some(100));
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_multiple_prefixes() {
+        // User with @+ (op AND voice)
+        let users = vec![("@+".to_string(), "00AAAAAAA".to_string())];
+
+        let crdt = sjoin_to_crdt(
+            "#test",
+            1700000000,
+            "+nt",
+            &[],
+            &users,
+            &test_server_id(),
+        );
+
+        let modes = crdt.members.get_modes("00AAAAAAA").unwrap();
+        assert!(*modes.op.value());
+        assert!(*modes.voice.value());
+        assert!(!*modes.owner.value());
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_all_prefixes() {
+        // User with all prefixes ~&@%+
+        let users = vec![("~&@%+".to_string(), "00AAAAAAA".to_string())];
+
+        let crdt = sjoin_to_crdt(
+            "#test",
+            1700000000,
+            "+nt",
+            &[],
+            &users,
+            &test_server_id(),
+        );
+
+        let modes = crdt.members.get_modes("00AAAAAAA").unwrap();
+        assert!(*modes.owner.value());
+        assert!(*modes.admin.value());
+        assert!(*modes.op.value());
+        assert!(*modes.halfop.value());
+        assert!(*modes.voice.value());
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_all_boolean_modes() {
+        let crdt = sjoin_to_crdt(
+            "#allmodes",
+            1700000000,
+            "+ntmispcCzR",
+            &[],
+            &[],
+            &test_server_id(),
+        );
+
+        assert!(*crdt.modes.no_external.value());
+        assert!(*crdt.modes.topic_ops_only.value());
+        assert!(*crdt.modes.moderated.value());
+        assert!(*crdt.modes.invite_only.value());
+        assert!(*crdt.modes.secret.value());
+        assert!(*crdt.modes.private.value());
+        assert!(*crdt.modes.no_colors.value());
+        assert!(*crdt.modes.no_ctcp.value());
+        assert!(*crdt.modes.ssl_only.value());
+        assert!(*crdt.modes.registered_only.value());
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_timestamp_conversion() {
+        let ts = 1700000000_u64; // Unix timestamp in seconds
+        let crdt = sjoin_to_crdt(
+            "#test",
+            ts,
+            "+n",
+            &[],
+            &[],
+            &test_server_id(),
+        );
+
+        // HybridTimestamp should have millis = ts * 1000
+        assert_eq!(crdt.created_at.millis, (ts as i64) * 1000);
+    }
+
+    #[test]
+    fn test_sjoin_to_crdt_mode_with_leading_plus() {
+        // Some servers send "+nt", some send "nt"
+        let crdt1 = sjoin_to_crdt("#test", 1700000000, "+nt", &[], &[], &test_server_id());
+        let crdt2 = sjoin_to_crdt("#test", 1700000000, "nt", &[], &[], &test_server_id());
+
+        assert!(*crdt1.modes.no_external.value());
+        assert!(*crdt1.modes.topic_ops_only.value());
+        assert!(*crdt2.modes.no_external.value());
+        assert!(*crdt2.modes.topic_ops_only.value());
+    }
+
+    #[test]
+    fn test_apply_modes_to_crdt_invalid_limit() {
+        let server_id = test_server_id();
+        let hts = HybridTimestamp::new(1700000000000, 0, &server_id);
+        let mut crdt = ChannelCrdt::new("#test".to_string(), hts);
+
+        // Invalid limit (not a number) should be ignored
+        apply_modes_to_crdt(&mut crdt, "+l", &["notanumber".to_string()], hts);
+        assert_eq!(crdt.limit.value(), &None);
     }
 }
