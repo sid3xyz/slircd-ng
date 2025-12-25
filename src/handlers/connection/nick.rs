@@ -353,7 +353,7 @@ mod tests {
         }
         
         // Verify final state
-        assert_eq!(nicks.get(nick).map(|v| v.clone()), Some(uid1.to_string()));
+        assert_eq!(nicks.get(nick).unwrap().value(), uid1);
         assert_eq!(nicks.len(), 1);
     }
     

@@ -81,7 +81,7 @@ pub struct UserManager {
 The `nicks` field is a `DashMap`, which provides concurrent access with atomic operations via the Entry API.
 
 ### Test Coverage
-The existing unit tests in `src/handlers/connection/nick.rs` (lines 314-357) cover:
+The unit tests in `src/handlers/connection/nick.rs` cover:
 - Valid nickname parsing
 - Invalid nickname detection
 - Empty nickname handling
