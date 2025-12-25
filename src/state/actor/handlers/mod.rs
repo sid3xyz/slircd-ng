@@ -13,5 +13,4 @@ pub mod message;
 pub mod modes;
 pub mod part_quit;
 pub mod remote;
-pub mod sjoin;
 pub mod topic;

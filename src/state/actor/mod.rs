@@ -257,14 +257,6 @@ impl ChannelActor {
                 self.handle_clear(sender_uid, sender_prefix, target, reply_tx)
                     .await;
             }
-            ChannelEvent::SJoin {
-                ts,
-                modes,
-                mode_args,
-                users,
-            } => {
-                self.handle_sjoin(ts, modes, mode_args, users).await;
-            }
             ChannelEvent::RemoteMode {
                 ts,
                 setter,
