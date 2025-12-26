@@ -217,14 +217,6 @@ pub enum ChannelEvent {
         target: ClearTarget,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
-    /// Incoming SJOIN from a peer server.
-    #[allow(dead_code)] // Reserved for S2S burst
-    SJoin {
-        ts: u64,
-        modes: String,
-        mode_args: Vec<String>,
-        users: Vec<(String, String)>, // (prefixes, uid)
-    },
     /// Incoming TMODE from a peer server.
     #[allow(dead_code)] // Reserved for S2S mode propagation
     RemoteMode {
