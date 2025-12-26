@@ -3,7 +3,7 @@
 use super::super::super::{Context, HandlerResult, server_reply, user_prefix, with_label};
 use crate::error::ChannelError;
 use crate::state::RegisteredState;
-use slirc_proto::{Command, Message, Response};
+use slirc_proto::{Command, Message, Prefix, Response};
 
 /// Context for handling successful JOIN responses.
 pub(super) struct JoinSuccessContext<'a> {
@@ -16,6 +16,7 @@ pub(super) struct JoinSuccessContext<'a> {
     pub standard_join_msg: &'a Message,
     pub away_message: &'a Option<String>,
     pub data: crate::state::actor::JoinSuccessData,
+    pub session_id: uuid::Uuid,
 }
 
 /// Handle successful JOIN - send topic, names, and update user state.
@@ -33,12 +34,51 @@ pub(super) async fn handle_join_success(
         standard_join_msg,
         away_message,
         data,
+        session_id,
     } = join_ctx;
 
-    // Add channel to user's list
-    if let Some(user) = ctx.matrix.user_manager.users.get(&ctx.uid.to_string()) {
+    // Add channel to user's list with session validation
+    // This prevents the ghost member race condition where a user disconnects
+    // after the ChannelActor adds them but before this code runs.
+    let session_valid = if let Some(user) = ctx.matrix.user_manager.users.get(&ctx.uid.to_string()) {
         let mut user = user.write().await;
-        user.channels.insert(channel_lower.to_string());
+        if user.session_id == session_id {
+            user.channels.insert(channel_lower.to_string());
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // If session is invalid (user disconnected), send Quit to ChannelActor to clean up ghost
+    if !session_valid {
+        let quit_msg = Message {
+            tags: None,
+            prefix: Some(Prefix::new(
+                nick.to_string(),
+                user_name.to_string(),
+                visible_host.to_string(),
+            )),
+            command: Command::QUIT(Some("Session terminated".to_string())),
+        };
+        if let Err(e) = channel_sender
+            .send(crate::state::actor::ChannelEvent::Quit {
+                uid: ctx.uid.to_string(),
+                quit_msg,
+                reply_tx: None,
+            })
+            .await
+        {
+            tracing::warn!(
+                uid = %ctx.uid,
+                channel = %channel_lower,
+                error = %e,
+                "Failed to send Quit event for ghost member cleanup"
+            );
+        }
+        return Ok(());
     }
 
     // Send JOIN message to user
