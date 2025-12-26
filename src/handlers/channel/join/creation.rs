@@ -240,6 +240,7 @@ pub(super) async fn join_channel(
                         standard_join_msg: &standard_join_msg,
                         away_message: &away_message,
                         data,
+                        session_id,
                     },
                 )
                 .await?;
