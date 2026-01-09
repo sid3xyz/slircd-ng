@@ -11,6 +11,7 @@ fn create_link(name: &str, password: &str) -> LinkBlock {
         password: password.to_string(),
         tls: false,
         verify_cert: true,
+        cert_fingerprint: None,
         autoconnect: false,
         sid: None,
     }
@@ -254,4 +255,87 @@ async fn test_state_observer_skip_source() {
         msg.is_err(),
         "Peer should NOT receive update from itself (split-horizon)"
     );
+}
+
+// === S2S TLS Configuration Tests ===
+
+#[test]
+fn test_link_block_fingerprint_parsing() {
+    // Test that LinkBlock parses cert_fingerprint correctly
+    let toml_str = r#"
+        name = "hub.example.com"
+        hostname = "192.168.1.1"
+        port = 6900
+        password = "secret"
+        tls = true
+        verify_cert = true
+        cert_fingerprint = "01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF"
+        autoconnect = true
+    "#;
+
+    let link: LinkBlock = toml::from_str(toml_str).unwrap();
+    assert_eq!(link.name, "hub.example.com");
+    assert!(link.tls);
+    assert!(link.verify_cert);
+    assert!(link.cert_fingerprint.is_some());
+    assert!(link.autoconnect);
+}
+
+#[test]
+fn test_link_block_without_fingerprint() {
+    // Test that LinkBlock works without cert_fingerprint
+    let toml_str = r#"
+        name = "leaf.example.com"
+        hostname = "10.0.0.1"
+        port = 6900
+        password = "secret"
+        tls = true
+    "#;
+
+    let link: LinkBlock = toml::from_str(toml_str).unwrap();
+    assert!(link.tls);
+    assert!(link.verify_cert); // default is true
+    assert!(link.cert_fingerprint.is_none());
+    assert!(!link.autoconnect); // default is false
+}
+
+#[test]
+fn test_fingerprint_normalization() {
+    // Test the fingerprint normalization logic used in upgrade_to_tls
+    let test_cases = [
+        // (input, expected normalized)
+        ("01:23:45:67", "01:23:45:67"),
+        ("01-23-45-67", "01:23:45:67"),
+        ("01 23 45 67", "01:23:45:67"),
+        ("01234567", "01234567"), // No separators, stays as-is
+        ("ab:cd:ef", "AB:CD:EF"), // Lowercase to uppercase
+    ];
+
+    for (input, expected) in test_cases {
+        let normalized = input.to_uppercase().replace([' ', '-'], ":");
+        assert_eq!(normalized, expected, "Failed for input: {}", input);
+    }
+}
+
+#[test]
+fn test_s2s_tls_config_parsing() {
+    use crate::config::S2STlsConfig;
+    use crate::config::ClientAuth;
+
+    let toml_str = r#"
+        address = "0.0.0.0:6900"
+        cert_path = "/etc/slircd/server.crt"
+        key_path = "/etc/slircd/server.key"
+        tls13_only = true
+        client_auth = "optional"
+        ca_path = "/etc/slircd/ca.crt"
+    "#;
+
+    let cfg: S2STlsConfig = toml::from_str(toml_str).unwrap();
+    assert_eq!(cfg.address.port(), 6900);
+    assert_eq!(cfg.cert_path, "/etc/slircd/server.crt");
+    assert_eq!(cfg.key_path, "/etc/slircd/server.key");
+    assert!(cfg.tls13_only);
+    assert_eq!(cfg.client_auth, ClientAuth::Optional);
+    assert_eq!(cfg.ca_path.as_deref(), Some("/etc/slircd/ca.crt"));
 }

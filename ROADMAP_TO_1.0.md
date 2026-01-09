@@ -365,16 +365,37 @@ These issues must be fixed before any alpha release.
 
 #### 1.3.1: Fix Known Security Issues (40 hours)
 
-**1.3.1.1: Implement TLS for S2S Links** (24 hours)
-- **Issue**: Server-to-server links use plaintext
-- **Impact**: CRITICAL - Eavesdropping, MITM, credential theft
-- **Steps**:
-  1. Add TLS configuration for S2S links
-  2. Implement certificate validation
-  3. Add certificate pinning option
-  4. Update handshake protocol
-  5. Test TLS negotiation
-  6. Document TLS setup
+**1.3.1.1: Implement TLS for S2S Links** ✅ RESOLVED
+
+**Status**: ✅ **COMPLETE** — Full TLS support for server-to-server links.
+
+**Implementation** (Branch: security/s2s-tls):
+
+**Inbound S2S TLS Listener** (`[s2s_tls]` config section):
+- `address` — Bind address for S2S TLS (e.g., "0.0.0.0:6900")
+- `cert_path` / `key_path` — Server certificate and key
+- `tls13_only` — Force TLS 1.3 only (default: false, allows TLS 1.2+)
+- `client_auth` — mTLS mode: "none" / "optional" / "required"
+- `ca_path` — CA for client cert validation (required if client_auth != "none")
+
+**Outbound S2S TLS** (per-link `[[links]]` blocks):
+- `tls = true` — Enable TLS for outbound connection
+- `verify_cert = true` — Verify certificate chain (default: true)
+- `cert_fingerprint` — SHA-256 fingerprint pinning (optional)
+
+**Plaintext S2S** (NOT RECOMMENDED):
+- `s2s_listen` — Optional plaintext S2S address (for testing only)
+
+**Features**:
+- [x] TLS 1.2/1.3 support with configurable minimum version
+- [x] Certificate pinning via SHA-256 fingerprint
+- [x] mTLS support for inbound connections
+- [x] `DangerousNoVerifier` for self-signed certs (testing only)
+- [x] Password authentication during handshake
+- [x] Uses existing `S2SStream::TlsServer` and `S2SStream::TlsClient` variants
+- [x] 4 new unit tests for TLS configuration
+
+**Priority**: ~~P1~~ → Resolved
 
 **1.3.1.2: Add S2S Rate Limiting** ✅ RESOLVED
 
