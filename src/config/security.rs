@@ -71,7 +71,9 @@ fn default_spam_detection_enabled() -> bool {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SpamConfig {
     /// Enable DNS Blocklist checks (default: true).
+    /// DEPRECATED: Use `rbl.dns_enabled` instead. This field is ignored.
     #[serde(default = "default_true")]
+    #[allow(dead_code)]
     pub dnsbl_enabled: bool,
     /// Enable Reputation system (default: true).
     #[serde(default = "default_true")]
@@ -79,6 +81,9 @@ pub struct SpamConfig {
     /// Heuristics configuration.
     #[serde(default)]
     pub heuristics: HeuristicsConfig,
+    /// RBL (Realtime Blocklist) configuration.
+    #[serde(default)]
+    pub rbl: RblConfig,
 }
 
 impl Default for SpamConfig {
@@ -87,8 +92,77 @@ impl Default for SpamConfig {
             dnsbl_enabled: true,
             reputation_enabled: true,
             heuristics: HeuristicsConfig::default(),
+            rbl: RblConfig::default(),
         }
     }
+}
+
+/// RBL (Realtime Blocklist) configuration.
+///
+/// Supports both traditional DNS-based lookups and privacy-preserving HTTP APIs.
+/// HTTP APIs are preferred as they don't leak user IPs to DNS resolvers.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RblConfig {
+    /// Enable HTTP-based RBL providers (default: true).
+    /// These are privacy-preserving as queries go directly to the provider.
+    #[serde(default = "default_true")]
+    pub http_enabled: bool,
+    /// Enable DNS-based RBL lookups (default: false for privacy).
+    /// DNS lookups leak user IPs to your DNS resolver.
+    #[serde(default)]
+    pub dns_enabled: bool,
+    /// Cache duration for RBL results in seconds (default: 300 = 5 minutes).
+    #[serde(default = "default_rbl_cache_ttl")]
+    pub cache_ttl_secs: u64,
+    /// Maximum cache size in entries (default: 10000).
+    #[serde(default = "default_rbl_cache_size")]
+    pub cache_max_size: usize,
+    /// StopForumSpam API key (optional, enables higher rate limits).
+    /// Not currently used, but reserved for future rate limit bypass.
+    #[allow(dead_code)]
+    pub stopforumspam_api_key: Option<String>,
+    /// AbuseIPDB API key (optional, required for AbuseIPDB provider).
+    pub abuseipdb_api_key: Option<String>,
+    /// Minimum confidence score for AbuseIPDB to block (0-100, default: 50).
+    #[serde(default = "default_abuseipdb_threshold")]
+    pub abuseipdb_threshold: u8,
+    /// DNS-based RBL lists to query (if dns_enabled = true).
+    #[serde(default = "default_dns_rbl_lists")]
+    pub dns_lists: Vec<String>,
+}
+
+impl Default for RblConfig {
+    fn default() -> Self {
+        Self {
+            http_enabled: true,
+            dns_enabled: false, // Privacy-preserving default
+            cache_ttl_secs: default_rbl_cache_ttl(),
+            cache_max_size: default_rbl_cache_size(),
+            stopforumspam_api_key: None,
+            abuseipdb_api_key: None,
+            abuseipdb_threshold: default_abuseipdb_threshold(),
+            dns_lists: default_dns_rbl_lists(),
+        }
+    }
+}
+
+fn default_rbl_cache_ttl() -> u64 {
+    300 // 5 minutes
+}
+
+fn default_rbl_cache_size() -> usize {
+    10000
+}
+
+fn default_abuseipdb_threshold() -> u8 {
+    50
+}
+
+fn default_dns_rbl_lists() -> Vec<String> {
+    vec![
+        "dnsbl.dronebl.org".to_string(),
+        "rbl.efnetrbl.org".to_string(),
+    ]
 }
 
 /// Configuration for behavioral heuristics
@@ -175,7 +249,6 @@ pub struct RateLimitConfig {
     pub exempt_ips: Vec<String>,
 
     // === Server-to-Server Rate Limiting ===
-
     /// S2S commands allowed per peer per second (default: 100).
     /// This is much higher than client rate limits since servers relay many users.
     #[serde(default = "default_s2s_command_rate")]
@@ -415,6 +488,11 @@ mod tests {
     #[test]
     fn security_config_default_cloak_secret_is_alphanumeric() {
         let config = SecurityConfig::default();
-        assert!(config.cloak_secret.chars().all(|c| c.is_ascii_alphanumeric()));
+        assert!(
+            config
+                .cloak_secret
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric())
+        );
     }
 }

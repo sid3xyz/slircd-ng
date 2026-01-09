@@ -424,15 +424,33 @@ These issues must be fixed before any alpha release.
 
 **Priority**: ~~P1~~ → Resolved
 
-**1.3.1.3: Fix DNSBL Privacy Leaks** (8 hours)
-- **Issue**: DNSBL queries leak real IP to DNS resolver
-- **Impact**: MEDIUM - Privacy violation
-- **Steps**:
-  1. Switch from DNS to HTTP-based RBL APIs
-  2. Add support for multiple RBL providers
-  3. Implement result caching
-  4. Add privacy-preserving option
-  5. Document RBL configuration
+**1.3.1.3: Fix DNSBL Privacy Leaks** ✅ RESOLVED (8 hours)
+
+**Status**: ✅ **COMPLETE** — Implemented privacy-preserving HTTP-based RBL service.
+
+**Implementation** (`src/security/rbl.rs`):
+- New `RblService` with HTTP-based providers (StopForumSpam, AbuseIPDB)
+- Result caching with configurable TTL and max size
+- Optional DNS fallback with explicit privacy warning
+- Full configuration via `RblConfig` in `security.rs`
+
+**Privacy Model**:
+- HTTP APIs (default): Queries go directly to provider over HTTPS
+- DNS APIs (opt-in): Requires explicit `dns_enabled = true` with privacy warning
+- Default configuration is privacy-preserving
+
+**Configuration Options**:
+```toml
+[security.spam.rbl]
+http_enabled = true       # Use privacy-preserving HTTP APIs
+dns_enabled = false       # DNS leaks IPs to resolver
+cache_ttl_secs = 300      # Cache results for 5 minutes
+cache_max_size = 10000    # Max cached entries
+abuseipdb_api_key = "..."  # Optional, enables AbuseIPDB
+abuseipdb_threshold = 50   # Minimum confidence score (0-100)
+```
+
+**Priority**: ~~P1~~ → Resolved
 
 #### 1.3.2: Security Audit (80 hours)
 1. **Self-audit** (40 hours)

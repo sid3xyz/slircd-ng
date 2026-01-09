@@ -83,3 +83,6 @@ bcrypt = "0.17.1"
 im = "15.1.0"
 redb = "3.1.0"
 hickory-resolver = { version = "0.25.2", features = ["tokio"] }
+
+# HTTP client for privacy-preserving RBL API calls
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
