@@ -15,9 +15,7 @@ pub use disabled::{SummonHandler, UsersHandler};
 pub use help::HelpHandler;
 pub use info::{LinksHandler, MapHandler, RulesHandler, UseripHandler};
 pub use lusers::LusersHandler;
-pub use server_info::{
-    AdminHandler, InfoHandler, MotdHandler, TimeHandler, VersionHandler,
-};
+pub use server_info::{AdminHandler, InfoHandler, MotdHandler, TimeHandler, VersionHandler};
 pub use service::{ServiceHandler, ServlistHandler, SqueryHandler};
 pub use stats::StatsHandler;
 

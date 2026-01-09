@@ -94,9 +94,9 @@ impl ChannelActor {
                 command: slirc_proto::Command::KICK(
                     self.name.clone(),
                     target.clone(), // Should be nick, but we might only have UID here.
-                                    // Wait, KICK target is nick.
-                                    // The caller should resolve UID to nick if possible, or we use UID if it's a UID-based kick.
-                                    // Standard IRC uses nick.
+                    // Wait, KICK target is nick.
+                    // The caller should resolve UID to nick if possible, or we use UID if it's a UID-based kick.
+                    // Standard IRC uses nick.
                     reason,
                 ),
             });

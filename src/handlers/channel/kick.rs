@@ -4,7 +4,9 @@ use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, resolve_nick_or_nosuchnick,
     user_mask_from_state,
 };
-use super::common::{build_kick_pairs, kick_reason_or_default, parse_channel_list, parse_nick_list};
+use super::common::{
+    build_kick_pairs, kick_reason_or_default, parse_channel_list, parse_nick_list,
+};
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -57,7 +59,6 @@ impl PostRegHandler for KickHandler {
         let pairs = build_kick_pairs(&channel_names, &target_nicks);
 
         for (channel_name, target_nick) in pairs {
-
             let channel_lower = irc_to_lower(channel_name);
 
             // Get channel
@@ -73,7 +74,8 @@ impl PostRegHandler for KickHandler {
             };
 
             // Find target user
-            let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "KICK", target_nick).await? else {
+            let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "KICK", target_nick).await?
+            else {
                 continue;
             };
 

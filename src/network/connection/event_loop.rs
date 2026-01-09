@@ -271,7 +271,10 @@ pub async fn run_event_loop(
                 break;
             }
 
-            SelectResult::OutgoingMessage { msg, is_error_disconnect } => {
+            SelectResult::OutgoingMessage {
+                msg,
+                is_error_disconnect,
+            } => {
                 if let Err(e) = transport.write_message(&msg).await {
                     warn!(error = ?e, "Write error");
                     break;
@@ -295,9 +298,11 @@ pub async fn run_event_loop(
             }
 
             SelectResult::PingTimeout { total_idle } => {
-                let error_msg = Message::from(Command::ERROR(
-                    format!("Closing Link: {} (Ping timeout: {} seconds)", addr.ip(), total_idle)
-                ));
+                let error_msg = Message::from(Command::ERROR(format!(
+                    "Closing Link: {} (Ping timeout: {} seconds)",
+                    addr.ip(),
+                    total_idle
+                )));
                 let _ = transport.write_message(&error_msg).await;
                 break;
             }
@@ -308,11 +313,12 @@ pub async fn run_event_loop(
                 // Batch processing - need to create a temporary MessageRef for this
                 // since process_batch_message needs a reference
                 let raw_str = msg.to_string();
-                let batch_result = if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
-                    process_batch_message(reg_state, &msg_ref, &matrix.server_info.name)
-                } else {
-                    Ok(None)
-                };
+                let batch_result =
+                    if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
+                        process_batch_message(reg_state, &msg_ref, &matrix.server_info.name)
+                    } else {
+                        Ok(None)
+                    };
 
                 match batch_result {
                     Ok(Some(_batch_ref)) => {
@@ -332,7 +338,8 @@ pub async fn run_event_loop(
                 }
 
                 // Select middleware for labeled-response
-                let capture_buffer: Option<Mutex<Vec<Message>>> = label.as_ref().map(|_| Mutex::new(Vec::new()));
+                let capture_buffer: Option<Mutex<Vec<Message>>> =
+                    label.as_ref().map(|_| Mutex::new(Vec::new()));
                 let sender_middleware = if let Some(buf) = capture_buffer.as_ref() {
                     ResponseMiddleware::Capturing(buf)
                 } else {
@@ -371,7 +378,7 @@ pub async fn run_event_loop(
                     if let crate::handlers::HandlerError::Quit(quit_msg) = e {
                         // Drain pending outgoing messages before quitting
                         while let Ok(msg) = outgoing_rx.try_recv() {
-                             let _ = transport.write_message(&msg).await;
+                            let _ = transport.write_message(&msg).await;
                         }
 
                         quit_message = quit_msg.clone();
@@ -381,7 +388,9 @@ pub async fn run_event_loop(
                     } else {
                         // Other errors - use owned message for error reply
                         let nick = &reg_state.nick;
-                        if let Some(reply) = handler_error_to_reply_owned(&matrix.server_info.name, nick, &e, &msg) {
+                        if let Some(reply) =
+                            handler_error_to_reply_owned(&matrix.server_info.name, nick, &e, &msg)
+                        {
                             let _ = transport.write_message(&reply).await;
                         }
                     }
@@ -398,7 +407,8 @@ pub async fn run_event_loop(
                         &label_str,
                         &mut messages,
                         suppress_ack,
-                    ).await;
+                    )
+                    .await;
                 }
             }
         }

@@ -518,13 +518,7 @@ mod tests {
 
     #[test]
     fn zline_matches_cidr() {
-        let zline = Zline::from_row(
-            "10.0.0.0/8".to_string(),
-            None,
-            "admin".to_string(),
-            0,
-            None,
-        );
+        let zline = Zline::from_row("10.0.0.0/8".to_string(), None, "admin".to_string(), 0, None);
         assert!(zline.matches("10.1.2.3"));
         assert!(zline.matches("10.255.255.255"));
         assert!(!zline.matches("11.0.0.1"));
@@ -532,13 +526,7 @@ mod tests {
 
     #[test]
     fn zline_matches_exact_ip() {
-        let zline = Zline::from_row(
-            "1.2.3.4".to_string(),
-            None,
-            "admin".to_string(),
-            0,
-            None,
-        );
+        let zline = Zline::from_row("1.2.3.4".to_string(), None, "admin".to_string(), 0, None);
         // Exact IP match via wildcard_match
         assert!(zline.matches("1.2.3.4"));
         assert!(!zline.matches("1.2.3.5"));
@@ -546,13 +534,7 @@ mod tests {
 
     #[test]
     fn rline_matches_realname() {
-        let rline = Rline::from_row(
-            "*spam*".to_string(),
-            None,
-            "admin".to_string(),
-            0,
-            None,
-        );
+        let rline = Rline::from_row("*spam*".to_string(), None, "admin".to_string(), 0, None);
         assert!(rline.matches("I am a spammer"));
         assert!(rline.matches("spam bot v1.0"));
         assert!(!rline.matches("Legitimate User"));
@@ -561,26 +543,14 @@ mod tests {
     #[test]
     fn rline_matches_case_insensitive_pattern() {
         // Note: depends on wildcard_match implementation
-        let rline = Rline::from_row(
-            "*BOT*".to_string(),
-            None,
-            "admin".to_string(),
-            0,
-            None,
-        );
+        let rline = Rline::from_row("*BOT*".to_string(), None, "admin".to_string(), 0, None);
         // Test exact case match
         assert!(rline.matches("I am a BOT"));
     }
 
     #[test]
     fn shun_matches() {
-        let shun = Shun::from_row(
-            "troll*@*".to_string(),
-            None,
-            "oper".to_string(),
-            0,
-            None,
-        );
+        let shun = Shun::from_row("troll*@*".to_string(), None, "oper".to_string(), 0, None);
         assert!(shun.matches("troll123@anywhere.com"));
         assert!(shun.matches("troll@host.net"));
         assert!(!shun.matches("user@troll.net"));

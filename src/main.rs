@@ -18,12 +18,12 @@ mod sync;
 mod telemetry;
 
 use crate::config::Config;
-use std::sync::Arc;
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::network::Gateway;
 use crate::services::enforce::spawn_enforcement_task;
 use crate::state::Matrix;
+use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -381,9 +381,12 @@ async fn main() -> anyhow::Result<()> {
     // Start outgoing connections
     for link in &config.links {
         if link.autoconnect {
-            matrix
-                .sync_manager
-                .connect_to_peer(matrix.clone(), registry.clone(), db.clone(), link.clone());
+            matrix.sync_manager.connect_to_peer(
+                matrix.clone(),
+                registry.clone(),
+                db.clone(),
+                link.clone(),
+            );
         }
     }
 

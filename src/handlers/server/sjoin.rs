@@ -27,13 +27,13 @@ impl ServerHandler for SJoinHandler {
         let channel_name = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
         let modes = msg.arg(2).ok_or(HandlerError::NeedMoreParams)?;
 
-        let ts = ts_str.parse::<u64>().map_err(|_| {
-            HandlerError::ProtocolError(format!("Invalid timestamp: {}", ts_str))
-        })?;
+        let ts = ts_str
+            .parse::<u64>()
+            .map_err(|_| HandlerError::ProtocolError(format!("Invalid timestamp: {}", ts_str)))?;
 
         let arg_count = msg.args().len();
         if arg_count < 4 {
-             return Err(HandlerError::NeedMoreParams);
+            return Err(HandlerError::NeedMoreParams);
         }
 
         // The last argument is the user list (validated by arg_count check above)
@@ -70,10 +70,14 @@ impl ServerHandler for SJoinHandler {
         }
 
         // Get or create channel actor
-        let tx = ctx.matrix.channel_manager.get_or_create_actor(
-            channel_name.to_string(),
-            std::sync::Arc::downgrade(ctx.matrix),
-        ).await;
+        let tx = ctx
+            .matrix
+            .channel_manager
+            .get_or_create_actor(
+                channel_name.to_string(),
+                std::sync::Arc::downgrade(ctx.matrix),
+            )
+            .await;
 
         // Convert TS6 SJOIN to CRDT for lossless merge semantics
         // Extract source SID from message prefix (e.g., ":00A SJOIN ...")
@@ -92,14 +96,7 @@ impl ServerHandler for SJoinHandler {
             .unwrap_or_else(|| "000".to_string());
         let source = ServerId::new(source_sid);
 
-        let crdt = sjoin_to_crdt(
-            channel_name,
-            ts,
-            modes,
-            &mode_args,
-            &users,
-            &source,
-        );
+        let crdt = sjoin_to_crdt(channel_name, ts, modes, &mode_args, &users, &source);
 
         let event = ChannelEvent::MergeCrdt {
             crdt: Box::new(crdt),
@@ -215,11 +212,7 @@ fn apply_modes_to_crdt(
 /// - `@` → op (+o)
 /// - `%` → halfop (+h)
 /// - `+` → voice (+v)
-fn apply_prefix_to_member_modes(
-    m_crdt: &mut MemberModesCrdt,
-    prefix: &str,
-    hts: HybridTimestamp,
-) {
+fn apply_prefix_to_member_modes(m_crdt: &mut MemberModesCrdt, prefix: &str, hts: HybridTimestamp) {
     for c in prefix.chars() {
         match c {
             '~' => m_crdt.owner.update(true, hts),
@@ -246,14 +239,7 @@ mod tests {
 
     #[test]
     fn test_sjoin_to_crdt_empty_channel() {
-        let crdt = sjoin_to_crdt(
-            "#test",
-            1700000000,
-            "+nt",
-            &[],
-            &[],
-            &test_server_id(),
-        );
+        let crdt = sjoin_to_crdt("#test", 1700000000, "+nt", &[], &[], &test_server_id());
 
         assert_eq!(crdt.name, "#test");
         assert!(*crdt.modes.no_external.value());
@@ -348,14 +334,7 @@ mod tests {
         // User with @+ (op AND voice)
         let users = vec![("@+".to_string(), "00AAAAAAA".to_string())];
 
-        let crdt = sjoin_to_crdt(
-            "#test",
-            1700000000,
-            "+nt",
-            &[],
-            &users,
-            &test_server_id(),
-        );
+        let crdt = sjoin_to_crdt("#test", 1700000000, "+nt", &[], &users, &test_server_id());
 
         let modes = crdt.members.get_modes("00AAAAAAA").unwrap();
         assert!(*modes.op.value());
@@ -368,14 +347,7 @@ mod tests {
         // User with all prefixes ~&@%+
         let users = vec![("~&@%+".to_string(), "00AAAAAAA".to_string())];
 
-        let crdt = sjoin_to_crdt(
-            "#test",
-            1700000000,
-            "+nt",
-            &[],
-            &users,
-            &test_server_id(),
-        );
+        let crdt = sjoin_to_crdt("#test", 1700000000, "+nt", &[], &users, &test_server_id());
 
         let modes = crdt.members.get_modes("00AAAAAAA").unwrap();
         assert!(*modes.owner.value());
@@ -411,14 +383,7 @@ mod tests {
     #[test]
     fn test_sjoin_to_crdt_timestamp_conversion() {
         let ts = 1700000000_u64; // Unix timestamp in seconds
-        let crdt = sjoin_to_crdt(
-            "#test",
-            ts,
-            "+n",
-            &[],
-            &[],
-            &test_server_id(),
-        );
+        let crdt = sjoin_to_crdt("#test", ts, "+n", &[], &[], &test_server_id());
 
         // HybridTimestamp should have millis = ts * 1000
         assert_eq!(crdt.created_at.millis, (ts as i64) * 1000);

@@ -40,7 +40,8 @@ pub(super) async fn handle_join_success(
     // Add channel to user's list with session validation
     // This prevents the ghost member race condition where a user disconnects
     // after the ChannelActor adds them but before this code runs.
-    let session_valid = if let Some(user) = ctx.matrix.user_manager.users.get(&ctx.uid.to_string()) {
+    let session_valid = if let Some(user) = ctx.matrix.user_manager.users.get(&ctx.uid.to_string())
+    {
         let mut user = user.write().await;
         if user.session_id == session_id {
             user.channels.insert(channel_lower.to_string());
