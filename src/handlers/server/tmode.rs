@@ -24,9 +24,9 @@ impl ServerHandler for TModeHandler {
         let channel_name = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
         let modes = msg.arg(2).ok_or(HandlerError::NeedMoreParams)?;
 
-        let ts = ts_str.parse::<u64>().map_err(|_| {
-            HandlerError::ProtocolError(format!("Invalid timestamp: {}", ts_str))
-        })?;
+        let ts = ts_str
+            .parse::<u64>()
+            .map_err(|_| HandlerError::ProtocolError(format!("Invalid timestamp: {}", ts_str)))?;
 
         // Collect mode arguments
         let mut mode_args = Vec::new();
@@ -41,7 +41,11 @@ impl ServerHandler for TModeHandler {
             // Send to actor
             let event = ChannelEvent::RemoteMode {
                 ts,
-                setter: msg.prefix.as_ref().map(|p| p.raw.to_string()).unwrap_or_else(|| ctx.state.sid.clone()),
+                setter: msg
+                    .prefix
+                    .as_ref()
+                    .map(|p| p.raw.to_string())
+                    .unwrap_or_else(|| ctx.state.sid.clone()),
                 modes: modes.to_string(),
                 args: mode_args,
             };

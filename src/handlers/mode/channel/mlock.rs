@@ -162,9 +162,15 @@ mod tests {
         let modes = parse_mlock_inline("+nt-s");
         assert_eq!(modes.len(), 3);
         // +n
-        assert!(matches!(modes[0], Mode::Plus(ChannelMode::NoExternalMessages, None)));
+        assert!(matches!(
+            modes[0],
+            Mode::Plus(ChannelMode::NoExternalMessages, None)
+        ));
         // +t
-        assert!(matches!(modes[1], Mode::Plus(ChannelMode::ProtectedTopic, None)));
+        assert!(matches!(
+            modes[1],
+            Mode::Plus(ChannelMode::ProtectedTopic, None)
+        ));
         // -s
         assert!(matches!(modes[2], Mode::Minus(ChannelMode::Secret, None)));
     }
@@ -179,7 +185,10 @@ mod tests {
     fn test_parse_mlock_spaces() {
         let modes = parse_mlock_inline(" +n ");
         assert_eq!(modes.len(), 1);
-        assert!(matches!(modes[0], Mode::Plus(ChannelMode::NoExternalMessages, None)));
+        assert!(matches!(
+            modes[0],
+            Mode::Plus(ChannelMode::NoExternalMessages, None)
+        ));
     }
 
     #[test]
@@ -209,16 +218,31 @@ mod tests {
 
         let modes = parse_mlock_inline("+n?t");
         assert_eq!(modes.len(), 2);
-        assert!(matches!(modes[0], Mode::Plus(ChannelMode::NoExternalMessages, None)));
-        assert!(matches!(modes[1], Mode::Plus(ChannelMode::ProtectedTopic, None)));
+        assert!(matches!(
+            modes[0],
+            Mode::Plus(ChannelMode::NoExternalMessages, None)
+        ));
+        assert!(matches!(
+            modes[1],
+            Mode::Plus(ChannelMode::ProtectedTopic, None)
+        ));
     }
 
     #[test]
     fn test_parse_mlock_switch_polarity() {
         let modes = parse_mlock_inline("+n-t+i");
         assert_eq!(modes.len(), 3);
-        assert!(matches!(modes[0], Mode::Plus(ChannelMode::NoExternalMessages, None)));
-        assert!(matches!(modes[1], Mode::Minus(ChannelMode::ProtectedTopic, None)));
-        assert!(matches!(modes[2], Mode::Plus(ChannelMode::InviteOnly, None)));
+        assert!(matches!(
+            modes[0],
+            Mode::Plus(ChannelMode::NoExternalMessages, None)
+        ));
+        assert!(matches!(
+            modes[1],
+            Mode::Minus(ChannelMode::ProtectedTopic, None)
+        ));
+        assert!(matches!(
+            modes[2],
+            Mode::Plus(ChannelMode::InviteOnly, None)
+        ));
     }
 }

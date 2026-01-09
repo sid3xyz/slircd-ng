@@ -205,7 +205,8 @@ mod tests {
         let caps = build_cap_list_tokens(&make_params(302, true, true));
 
         assert!(
-            caps.iter().any(|c| c == "sasl=SCRAM-SHA-256,PLAIN,EXTERNAL"),
+            caps.iter()
+                .any(|c| c == "sasl=SCRAM-SHA-256,PLAIN,EXTERNAL"),
             "TLS with cert should advertise SASL SCRAM/PLAIN/EXTERNAL: {:?}",
             caps
         );
@@ -488,11 +489,7 @@ mod tests {
         // Verify all caps are included across lines
         let combined: String = lines.join(" ");
         for cap in &caps {
-            assert!(
-                combined.contains(cap),
-                "Missing cap {} in output",
-                cap
-            );
+            assert!(combined.contains(cap), "Missing cap {} in output", cap);
         }
     }
 

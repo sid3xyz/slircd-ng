@@ -666,7 +666,12 @@ mod tests {
         // First 10 commands should be allowed (burst of 10)
         for i in 0..10 {
             let result = limiter.check_command(sid);
-            assert_eq!(result, S2SRateLimitResult::Allowed, "Command {} should be allowed", i);
+            assert_eq!(
+                result,
+                S2SRateLimitResult::Allowed,
+                "Command {} should be allowed",
+                i
+            );
         }
     }
 
@@ -682,10 +687,16 @@ mod tests {
 
         // Next commands should be limited (but not disconnected yet)
         let result = limiter.check_command(sid);
-        assert!(matches!(result, S2SRateLimitResult::Limited { violations: 1 }));
+        assert!(matches!(
+            result,
+            S2SRateLimitResult::Limited { violations: 1 }
+        ));
 
         let result = limiter.check_command(sid);
-        assert!(matches!(result, S2SRateLimitResult::Limited { violations: 2 }));
+        assert!(matches!(
+            result,
+            S2SRateLimitResult::Limited { violations: 2 }
+        ));
     }
 
     #[test]

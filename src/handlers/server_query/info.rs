@@ -246,7 +246,11 @@ impl PostRegHandler for LinksHandler {
                 server_name.to_string()
             } else {
                 // Find upstream name
-                ctx.matrix.sync_manager.topology.servers.get(upstream_sid)
+                ctx.matrix
+                    .sync_manager
+                    .topology
+                    .servers
+                    .get(upstream_sid)
                     .map(|s| s.name.clone())
                     .unwrap_or_else(|| "???".to_string())
             };

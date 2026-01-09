@@ -90,10 +90,7 @@ pub async fn run_server_loop(
     }
 
     // Trigger initial burst
-    matrix
-        .sync_manager
-        .send_burst(&sid, matrix)
-        .await;
+    matrix.sync_manager.send_burst(&sid, matrix).await;
 
     let mut state = server_state;
     let (reply_tx, mut reply_rx) = mpsc::channel(100);

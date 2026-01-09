@@ -379,7 +379,10 @@ mod tests {
 
     #[test]
     fn test_kick_reason_provided() {
-        assert_eq!(kick_reason_or_default(Some("spamming"), "kicker"), "spamming");
+        assert_eq!(
+            kick_reason_or_default(Some("spamming"), "kicker"),
+            "spamming"
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@
 //! Allows operators to change a user's visible hostname (vhost).
 
 use super::super::{
-    notify_extended_monitor_watchers, Context, HandlerResult, PostRegHandler,
+    Context, HandlerResult, PostRegHandler, notify_extended_monitor_watchers,
     resolve_nick_or_nosuchnick, server_notice,
 };
 use crate::state::RegisteredState;
@@ -42,7 +42,8 @@ impl PostRegHandler for ChghostHandler {
             return Ok(());
         };
 
-        let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "CHGHOST", target_nick).await? else {
+        let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "CHGHOST", target_nick).await?
+        else {
             return Ok(());
         };
 

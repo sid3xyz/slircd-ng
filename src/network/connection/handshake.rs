@@ -185,11 +185,12 @@ pub async fn run_handshake_loop(
                     // Drop msg_ref explicitly
                     drop(msg_ref);
 
-                    HandshakeSelectResult::Message { msg: Box::new(msg), label }
+                    HandshakeSelectResult::Message {
+                        msg: Box::new(msg),
+                        label,
+                    }
                 }
-                Ok(Some(Err(e))) => {
-                    HandshakeSelectResult::ReadError(classify_read_error(&e))
-                }
+                Ok(Some(Err(e))) => HandshakeSelectResult::ReadError(classify_read_error(&e)),
                 Ok(None) => {
                     info!("Client disconnected during handshake");
                     HandshakeSelectResult::Disconnected
@@ -242,25 +243,26 @@ pub async fn run_handshake_loop(
                 // Dispatch the command - we need a MessageRef for the dispatch
                 // Create a temporary one from the owned message
                 let raw_str = msg.to_string();
-                let dispatch_result = if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
-                    let mut ctx = Context {
-                        uid,
-                        matrix,
-                        sender: ResponseMiddleware::Direct(handshake_tx),
-                        state: unreg_state,
-                        db,
-                        remote_addr: addr,
-                        label,
-                        suppress_labeled_ack: false,
-                        active_batch_id: None,
-                        registry,
-                    };
+                let dispatch_result =
+                    if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
+                        let mut ctx = Context {
+                            uid,
+                            matrix,
+                            sender: ResponseMiddleware::Direct(handshake_tx),
+                            state: unreg_state,
+                            db,
+                            remote_addr: addr,
+                            label,
+                            suppress_labeled_ack: false,
+                            active_batch_id: None,
+                            registry,
+                        };
 
-                    registry.dispatch_pre_reg(&mut ctx, &msg_ref).await
-                } else {
-                    // Should not happen, but handle gracefully
-                    Ok(())
-                };
+                        registry.dispatch_pre_reg(&mut ctx, &msg_ref).await
+                    } else {
+                        // Should not happen, but handle gracefully
+                        Ok(())
+                    };
 
                 if let Err(e) = dispatch_result {
                     debug!(error = ?e, "Handler error during handshake");

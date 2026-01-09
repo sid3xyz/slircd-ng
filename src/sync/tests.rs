@@ -319,8 +319,8 @@ fn test_fingerprint_normalization() {
 
 #[test]
 fn test_s2s_tls_config_parsing() {
-    use crate::config::S2STlsConfig;
     use crate::config::ClientAuth;
+    use crate::config::S2STlsConfig;
 
     let toml_str = r#"
         address = "0.0.0.0:6900"

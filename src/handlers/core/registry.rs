@@ -27,10 +27,9 @@ use crate::handlers::{
     mode::ModeHandler,
     monitor::MonitorHandler,
     server::{
-        ServerHandshakeHandler, ServerPropagationHandler,
-        capab::CapabHandler, encap::EncapHandler, kill::KillHandler, routing::RoutedMessageHandler,
-        sid::SidHandler, sjoin::SJoinHandler, svinfo::SvinfoHandler, tmode::TModeHandler,
-        uid::UidHandler,
+        ServerHandshakeHandler, ServerPropagationHandler, capab::CapabHandler, encap::EncapHandler,
+        kill::KillHandler, routing::RoutedMessageHandler, sid::SidHandler, sjoin::SJoinHandler,
+        svinfo::SvinfoHandler, tmode::TModeHandler, uid::UidHandler,
     },
     service_aliases::{CsHandler, NsHandler},
     user_status::{AwayHandler, SetnameHandler, SilenceHandler},
