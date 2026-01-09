@@ -111,15 +111,8 @@ impl PostRegHandler for UnshunHandler {
         };
 
         // UNSHUN <mask>
-        let mask = match msg.arg(0) {
-            Some(m) if !m.is_empty() => m,
-            _ => {
-                let reply =
-                    Response::err_needmoreparams(nick, "UNSHUN").with_prefix(ctx.server_prefix());
-                ctx.send_error("UNSHUN", "ERR_NEEDMOREPARAMS", reply)
-                    .await?;
-                return Ok(());
-            }
+        let Some(mask) = crate::require_arg_or_reply!(ctx, msg, 0, "UNSHUN") else {
+            return Ok(());
         };
 
         // Remove from database

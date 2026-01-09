@@ -5,6 +5,7 @@
 //! Note: User lookup helpers (`resolve_nick_to_uid`, `get_nick_or_star`, etc.)
 //! remain in `mod.rs` because they depend on `Context` which is defined there.
 
+use super::{Context, HandlerResult};
 use slirc_proto::{Command, Message, Prefix, Response, Tag};
 
 // Re-export hostmask matching from proto for use by handlers
@@ -48,10 +49,24 @@ macro_rules! require_arg_or_reply {
             _ => {
                 let reply = slirc_proto::Response::err_needmoreparams($ctx.nick(), $cmd)
                     .with_prefix($ctx.server_prefix());
+                let reply = $crate::handlers::helpers::with_label(reply, $ctx.label.as_deref());
                 let _ = $ctx.sender.send(reply).await;
                 $crate::metrics::record_command_error($cmd, "ERR_NEEDMOREPARAMS");
                 None
             }
+        }
+    }};
+}
+
+/// Resolve a nickname or send ERR_NOSUCHNICK and early-return.
+///
+/// Wraps `resolve_nick_or_nosuchnick()` to integrate cleanly in handler flows.
+#[macro_export]
+macro_rules! require_nick {
+    ($ctx:expr, $target:expr, $cmd:expr) => {{
+        match $crate::handlers::resolve_nick_or_nosuchnick($ctx, $cmd, $target).await? {
+            Some(uid) => uid,
+            None => return Ok(()),
         }
     }};
 }
@@ -179,6 +194,22 @@ pub fn labeled_ack(server_name: &str, label: &str) -> Message {
 #[inline]
 pub fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
     Prefix::new(nick, user, host)
+}
+
+// ============================================================================
+// Standard error helpers
+// ============================================================================
+
+/// Send ERR_NOSUCHNICK with labeling + metrics.
+pub async fn send_no_such_nick<S: crate::state::SessionState>(
+    ctx: &mut Context<'_, S>,
+    cmd: &str,
+    target: &str,
+) -> HandlerResult {
+    let reply = Response::err_nosuchnick(ctx.nick(), target).with_prefix(ctx.server_prefix());
+    let reply = with_label(reply, ctx.label.as_deref());
+    ctx.send_error(cmd, "ERR_NOSUCHNICK", reply).await?;
+    Ok(())
 }
 
 // ============================================================================

@@ -1,13 +1,14 @@
 //! KICK command handler.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, resolve_nick_to_uid, user_mask_from_state,
+    Context, HandlerError, HandlerResult, PostRegHandler, resolve_nick_or_nosuchnick,
+    user_mask_from_state,
 };
 use super::common::{build_kick_pairs, kick_reason_or_default, parse_channel_list, parse_nick_list};
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, irc_to_lower};
+use slirc_proto::{MessageRef, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::info;
 
@@ -72,14 +73,8 @@ impl PostRegHandler for KickHandler {
             };
 
             // Find target user
-            let target_uid = match resolve_nick_to_uid(ctx, target_nick) {
-                Some(uid) => uid,
-                None => {
-                    let reply = Response::err_nosuchnick(&nick, target_nick)
-                        .with_prefix(ctx.server_prefix());
-                    ctx.send_error("KICK", "ERR_NOSUCHNICK", reply).await?;
-                    continue;
-                }
+            let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "KICK", target_nick).await? else {
+                continue;
             };
 
             // Request KICK capability from authority (Innovation 4)

@@ -1,36 +1,51 @@
 use super::types::{MULTILINE_MAX_BYTES, MULTILINE_MAX_LINES, SUPPORTED_CAPS};
-use crate::config::AccountRegistrationConfig;
+use crate::config::{AccountRegistrationConfig, StsConfig};
 use slirc_proto::{CapSubCommand, Capability, Command, Message, Prefix};
+
+/// Parameters for building the CAP list.
+pub struct CapListParams<'a> {
+    /// CAP negotiation version (301, 302, etc.)
+    pub version: u32,
+    /// Whether the connection is over TLS
+    pub is_tls: bool,
+    /// Whether the client presented a TLS certificate
+    pub has_cert: bool,
+    /// Account registration config
+    pub acct_cfg: &'a AccountRegistrationConfig,
+    /// STS (Strict Transport Security) config, if enabled
+    pub sts_cfg: Option<&'a StsConfig>,
+}
 
 /// Build capability list string for CAP LS response.
 ///
-/// `is_tls` indicates whether the connection is over TLS.
-/// `has_cert` indicates whether the client presented a TLS certificate,
-/// which enables SASL EXTERNAL.
-///
 /// SECURITY: SASL PLAIN is ONLY advertised over TLS connections to prevent
 /// plaintext credential exposure. Non-TLS connections cannot use password auth.
-pub fn build_cap_list_tokens(
-    version: u32,
-    is_tls: bool,
-    has_cert: bool,
-    acct_cfg: &AccountRegistrationConfig,
-) -> Vec<String> {
+pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
+    let CapListParams {
+        version,
+        is_tls,
+        has_cert,
+        acct_cfg,
+        sts_cfg,
+    } = params;
+
     SUPPORTED_CAPS
         .iter()
         .filter_map(|cap| {
             // For CAP 302+, add values for caps that have them
-            if version >= 302 {
+            if *version >= 302 {
                 match cap {
                     Capability::Sasl => {
                         // SECURITY: Only advertise SASL over TLS
                         if !is_tls {
                             return None; // Don't advertise SASL at all on plaintext
                         }
-                        if has_cert {
-                            Some("sasl=PLAIN,EXTERNAL".to_string())
+                        // SCRAM-SHA-256 is safe even on plaintext, but we require TLS anyway
+                        // Prefer SCRAM-SHA-256 as it's more secure than PLAIN
+                        if *has_cert {
+                            Some("sasl=SCRAM-SHA-256,PLAIN,EXTERNAL".to_string())
                         } else {
-                            Some("sasl=PLAIN".to_string())
+                            Some("sasl=SCRAM-SHA-256,PLAIN".to_string())
                         }
                     }
                     Capability::Multiline => Some(format!(
@@ -57,20 +72,42 @@ pub fn build_cap_list_tokens(
                     }
                     Capability::Tls => {
                         // Only advertise STARTTLS on plaintext connections
-                        if is_tls {
+                        if *is_tls {
                             None
                         } else {
                             Some("tls".to_string())
                         }
                     }
+                    Capability::Sts => {
+                        // STS capability: different behavior for TLS vs plaintext
+                        // Per spec: insecure gets port=, secure gets duration=
+                        if let Some(sts) = sts_cfg {
+                            if *is_tls {
+                                // Secure connection: advertise persistence policy
+                                let mut value = format!("sts=duration={}", sts.duration);
+                                if sts.preload {
+                                    value.push_str(",preload");
+                                }
+                                Some(value)
+                            } else {
+                                // Insecure connection: advertise upgrade policy
+                                Some(format!("sts=port={}", sts.port))
+                            }
+                        } else {
+                            None // STS not configured
+                        }
+                    }
                     _ => Some(cap.as_ref().to_string()),
                 }
             } else {
-                // For older CAP versions, filter SASL on non-TLS
+                // For older CAP versions, filter SASL on non-TLS and skip STS
                 if *cap == Capability::Sasl && !is_tls {
                     None
-                } else if *cap == Capability::Tls && is_tls {
+                } else if *cap == Capability::Tls && *is_tls {
                     // Don't advertise tls (STARTTLS) on already-TLS connections
+                    None
+                } else if *cap == Capability::Sts {
+                    // STS requires CAP 302+ for values
                     None
                 } else {
                     Some(cap.as_ref().to_string())
@@ -144,32 +181,44 @@ mod tests {
     use super::*;
     use crate::config::AccountRegistrationConfig;
 
+    // Helper to create CapListParams for tests
+    fn make_params(version: u32, is_tls: bool, has_cert: bool) -> CapListParams<'static> {
+        // Use a leaked box to get 'static lifetime for tests
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        CapListParams {
+            version,
+            is_tls,
+            has_cert,
+            acct_cfg,
+            sts_cfg: None,
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // build_cap_list_tokens tests
     // ─────────────────────────────────────────────────────────────────────────
 
     #[test]
     fn test_cap_list_tls_with_cert() {
-        // TLS + cert → includes "sasl=PLAIN,EXTERNAL"
-        let cfg = AccountRegistrationConfig::default();
-        let caps = build_cap_list_tokens(302, true, true, &cfg);
+        // TLS + cert → includes "sasl=SCRAM-SHA-256,PLAIN,EXTERNAL"
+        let caps = build_cap_list_tokens(&make_params(302, true, true));
 
         assert!(
-            caps.iter().any(|c| c == "sasl=PLAIN,EXTERNAL"),
-            "TLS with cert should advertise SASL EXTERNAL: {:?}",
+            caps.iter().any(|c| c == "sasl=SCRAM-SHA-256,PLAIN,EXTERNAL"),
+            "TLS with cert should advertise SASL SCRAM/PLAIN/EXTERNAL: {:?}",
             caps
         );
     }
 
     #[test]
     fn test_cap_list_tls_no_cert() {
-        // TLS, no cert → includes "sasl=PLAIN" (not EXTERNAL)
-        let cfg = AccountRegistrationConfig::default();
-        let caps = build_cap_list_tokens(302, true, false, &cfg);
+        // TLS, no cert → includes "sasl=SCRAM-SHA-256,PLAIN" (not EXTERNAL)
+        let caps = build_cap_list_tokens(&make_params(302, true, false));
 
         assert!(
-            caps.iter().any(|c| c == "sasl=PLAIN"),
-            "TLS without cert should advertise SASL PLAIN only: {:?}",
+            caps.iter().any(|c| c == "sasl=SCRAM-SHA-256,PLAIN"),
+            "TLS without cert should advertise SASL SCRAM/PLAIN only: {:?}",
             caps
         );
         assert!(
@@ -182,8 +231,7 @@ mod tests {
     #[test]
     fn test_cap_list_no_tls() {
         // No TLS → SASL not advertised, TLS (STARTTLS) cap IS present
-        let cfg = AccountRegistrationConfig::default();
-        let caps = build_cap_list_tokens(302, false, false, &cfg);
+        let caps = build_cap_list_tokens(&make_params(302, false, false));
 
         assert!(
             !caps.iter().any(|c| c.starts_with("sasl")),
@@ -200,8 +248,7 @@ mod tests {
     #[test]
     fn test_cap_list_tls_no_starttls() {
         // TLS connection should NOT advertise STARTTLS (already encrypted)
-        let cfg = AccountRegistrationConfig::default();
-        let caps = build_cap_list_tokens(302, true, false, &cfg);
+        let caps = build_cap_list_tokens(&make_params(302, true, false));
 
         assert!(
             !caps.iter().any(|c| c == "tls"),
@@ -213,8 +260,7 @@ mod tests {
     #[test]
     fn test_cap_list_version_301_no_values() {
         // CAP version 301 → no values (just capability names)
-        let cfg = AccountRegistrationConfig::default();
-        let caps = build_cap_list_tokens(301, true, true, &cfg);
+        let caps = build_cap_list_tokens(&make_params(301, true, true));
 
         // SASL should be present as just "sasl", not "sasl=..."
         assert!(
@@ -232,8 +278,7 @@ mod tests {
     #[test]
     fn test_cap_list_version_302_has_values() {
         // CAP version 302 → includes values for multiline, sasl, etc.
-        let cfg = AccountRegistrationConfig::default();
-        let caps = build_cap_list_tokens(302, true, true, &cfg);
+        let caps = build_cap_list_tokens(&make_params(302, true, true));
 
         // Should have values
         let multiline_cap = caps.iter().find(|c| c.starts_with("draft/multiline="));
@@ -252,8 +297,7 @@ mod tests {
     #[test]
     fn test_cap_list_multiline_format() {
         // Verify multiline format string includes expected fields
-        let cfg = AccountRegistrationConfig::default();
-        let caps = build_cap_list_tokens(302, true, false, &cfg);
+        let caps = build_cap_list_tokens(&make_params(302, true, false));
 
         let multiline = caps
             .iter()
@@ -275,8 +319,7 @@ mod tests {
     #[test]
     fn test_cap_list_account_registration_flags() {
         // Default config: before-connect=true, email-required=false, custom-account-name=true
-        let cfg = AccountRegistrationConfig::default();
-        let caps = build_cap_list_tokens(302, true, false, &cfg);
+        let caps = build_cap_list_tokens(&make_params(302, true, false));
 
         let acct_reg = caps
             .iter()
@@ -297,6 +340,103 @@ mod tests {
             !acct_reg.contains("email-required"),
             "Should NOT have email-required by default: {}",
             acct_reg
+        );
+    }
+
+    #[test]
+    fn test_cap_list_sts_secure_connection() {
+        // STS on secure connection → advertises duration
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let sts_cfg: &'static StsConfig = Box::leak(Box::new(StsConfig {
+            port: 6697,
+            duration: 2592000,
+            preload: false,
+        }));
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 302,
+            is_tls: true,
+            has_cert: false,
+            acct_cfg,
+            sts_cfg: Some(sts_cfg),
+        });
+
+        let sts = caps
+            .iter()
+            .find(|c| c.starts_with("sts="))
+            .expect("Should have STS cap on TLS");
+        assert!(
+            sts.contains("duration=2592000"),
+            "STS should have duration on TLS: {}",
+            sts
+        );
+        assert!(
+            !sts.contains("port="),
+            "STS should NOT have port on TLS: {}",
+            sts
+        );
+    }
+
+    #[test]
+    fn test_cap_list_sts_insecure_connection() {
+        // STS on insecure connection → advertises port for upgrade
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let sts_cfg: &'static StsConfig = Box::leak(Box::new(StsConfig {
+            port: 6697,
+            duration: 2592000,
+            preload: false,
+        }));
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 302,
+            is_tls: false,
+            has_cert: false,
+            acct_cfg,
+            sts_cfg: Some(sts_cfg),
+        });
+
+        let sts = caps
+            .iter()
+            .find(|c| c.starts_with("sts="))
+            .expect("Should have STS cap on plaintext");
+        assert!(
+            sts.contains("port=6697"),
+            "STS should have port on plaintext: {}",
+            sts
+        );
+        assert!(
+            !sts.contains("duration="),
+            "STS should NOT have duration on plaintext: {}",
+            sts
+        );
+    }
+
+    #[test]
+    fn test_cap_list_sts_preload() {
+        // STS with preload flag on secure connection
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let sts_cfg: &'static StsConfig = Box::leak(Box::new(StsConfig {
+            port: 6697,
+            duration: 31536000,
+            preload: true,
+        }));
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 302,
+            is_tls: true,
+            has_cert: false,
+            acct_cfg,
+            sts_cfg: Some(sts_cfg),
+        });
+
+        let sts = caps
+            .iter()
+            .find(|c| c.starts_with("sts="))
+            .expect("Should have STS cap");
+        assert!(
+            sts.contains("preload"),
+            "STS should have preload flag: {}",
+            sts
         );
     }
 

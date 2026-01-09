@@ -7,7 +7,20 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+use rand::RngCore;
 use sqlx::SqlitePool;
+use std::num::NonZeroU32;
+
+/// Default iteration count for SCRAM-SHA-256 (RFC 7677 recommends >= 4096).
+const SCRAM_ITERATIONS: u32 = 4096;
+
+/// SCRAM verifiers for SASL SCRAM-SHA-256 authentication.
+#[derive(Debug, Clone)]
+pub struct ScramVerifiers {
+    pub salt: Vec<u8>,
+    pub iterations: u32,
+    pub hashed_password: Vec<u8>,
+}
 
 /// A registered NickServ account.
 #[derive(Debug, Clone)]
@@ -20,6 +33,8 @@ pub struct Account {
     pub enforce: bool,
     pub hide_email: bool,
 }
+
+
 
 /// Repository for account operations.
 pub struct AccountRepository<'a> {
@@ -35,14 +50,19 @@ impl<'a> AccountRepository<'a> {
     /// Register a new account with the given nickname and password.
     ///
     /// Uses a transaction to ensure atomicity between account and nickname creation.
+    /// Also computes and stores SCRAM-SHA-256 verifiers for SASL authentication.
     pub async fn register(
         &self,
         name: &str,
         password: &str,
         email: Option<&str>,
     ) -> Result<Account, DbError> {
-        // Hash the password using Argon2
+        // Hash the password using Argon2 (for PLAIN auth fallback)
         let password_hash = hash_password(password)?;
+
+        // Compute SCRAM-SHA-256 verifiers
+        let scram_verifiers = compute_scram_verifiers(password);
+
         let now = chrono::Utc::now().timestamp();
 
         // Use a transaction to ensure account + nickname are created atomically
@@ -51,8 +71,9 @@ impl<'a> AccountRepository<'a> {
         // Insert account (UNIQUE constraint will catch duplicates)
         let result = sqlx::query(
             r#"
-            INSERT INTO accounts (name, password_hash, email, registered_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO accounts (name, password_hash, email, registered_at, last_seen_at,
+                                  scram_salt, scram_iterations, scram_hashed_password)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(name)
@@ -60,6 +81,9 @@ impl<'a> AccountRepository<'a> {
         .bind(email)
         .bind(now)
         .bind(now)
+        .bind(&scram_verifiers.salt)
+        .bind(scram_verifiers.iterations as i32)
+        .bind(&scram_verifiers.hashed_password)
         .execute(&mut *tx)
         .await
         .map_err(|e| {
@@ -309,11 +333,22 @@ impl<'a> AccountRepository<'a> {
             }
             "password" => {
                 let password_hash = hash_password(value)?;
-                sqlx::query("UPDATE accounts SET password_hash = ? WHERE id = ?")
-                    .bind(password_hash)
-                    .bind(account_id)
-                    .execute(self.pool)
-                    .await?;
+                let scram_verifiers = compute_scram_verifiers(value);
+                sqlx::query(
+                    r#"UPDATE accounts SET
+                       password_hash = ?,
+                       scram_salt = ?,
+                       scram_iterations = ?,
+                       scram_hashed_password = ?
+                       WHERE id = ?"#,
+                )
+                .bind(password_hash)
+                .bind(&scram_verifiers.salt)
+                .bind(scram_verifiers.iterations as i32)
+                .bind(&scram_verifiers.hashed_password)
+                .bind(account_id)
+                .execute(self.pool)
+                .await?;
             }
             _ => {
                 return Err(DbError::UnknownOption(option.to_string()));
@@ -480,6 +515,67 @@ impl<'a> AccountRepository<'a> {
 
         Ok(())
     }
+
+    /// Get SCRAM verifiers for an account by name (for SASL SCRAM-SHA-256).
+    ///
+    /// Returns `None` if the account doesn't exist or has no SCRAM verifiers.
+    pub async fn get_scram_verifiers(&self, name: &str) -> Result<Option<ScramVerifiers>, DbError> {
+        // First try by account name
+        let row = sqlx::query_as::<_, (Option<Vec<u8>>, Option<i32>, Option<Vec<u8>>)>(
+            r#"
+            SELECT scram_salt, scram_iterations, scram_hashed_password
+            FROM accounts
+            WHERE name = ? COLLATE NOCASE
+            "#,
+        )
+        .bind(name)
+        .fetch_optional(self.pool)
+        .await?;
+
+        // If not found by account name, try nickname
+        let row = match row {
+            Some(r) => Some(r),
+            None => {
+                let account_id = sqlx::query_scalar::<_, i64>(
+                    r#"
+                    SELECT account_id FROM nicknames
+                    WHERE name = ? COLLATE NOCASE
+                    "#,
+                )
+                .bind(name)
+                .fetch_optional(self.pool)
+                .await?;
+
+                match account_id {
+                    Some(id) => {
+                        sqlx::query_as::<_, (Option<Vec<u8>>, Option<i32>, Option<Vec<u8>>)>(
+                            r#"
+                            SELECT scram_salt, scram_iterations, scram_hashed_password
+                            FROM accounts
+                            WHERE id = ?
+                            "#,
+                        )
+                        .bind(id)
+                        .fetch_optional(self.pool)
+                        .await?
+                    }
+                    None => None,
+                }
+            }
+        };
+
+        // Extract and validate SCRAM verifiers
+        match row {
+            Some((Some(salt), Some(iterations), Some(hashed_password))) => {
+                Ok(Some(ScramVerifiers {
+                    salt,
+                    iterations: iterations as u32,
+                    hashed_password,
+                }))
+            }
+            _ => Ok(None), // Account doesn't exist or has no SCRAM verifiers
+        }
+    }
 }
 
 /// Hash a password using Argon2.
@@ -490,6 +586,26 @@ fn hash_password(password: &str) -> Result<String, DbError> {
         .hash_password(password.as_bytes(), &salt)
         .map_err(|_| DbError::InvalidPassword)?;
     Ok(hash.to_string())
+}
+
+/// Compute SCRAM-SHA-256 verifiers for a password.
+///
+/// This generates a random salt and uses PBKDF2-SHA-256 to derive the
+/// hashed password. The result can be stored and used for SASL SCRAM auth.
+fn compute_scram_verifiers(password: &str) -> ScramVerifiers {
+    // Generate 16 bytes of random salt (as recommended by RFC 5802)
+    let mut salt = vec![0u8; 16];
+    OsRng.fill_bytes(&mut salt);
+
+    // Hash password using scram crate's hash_password function
+    let iterations = NonZeroU32::new(SCRAM_ITERATIONS).unwrap();
+    let hashed_password = scram::hash_password(password, iterations, &salt).to_vec();
+
+    ScramVerifiers {
+        salt,
+        iterations: SCRAM_ITERATIONS,
+        hashed_password,
+    }
 }
 
 /// Verify a password against a stored hash.

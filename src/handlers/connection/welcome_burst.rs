@@ -20,6 +20,7 @@
 
 use crate::db::Database;
 use crate::error::{HandlerError, HandlerResult};
+use crate::handlers::SaslState;
 use crate::handlers::{apply_user_modes_typed, notify_monitors_online, server_reply};
 use crate::state::{Matrix, UnregisteredState, User};
 use slirc_proto::isupport::{ChanModesBuilder, IsupportBuilder, TargMaxBuilder};
@@ -107,6 +108,23 @@ impl<'a> WelcomeBurstWriter<'a> {
             .or(webirc_ip.clone())
             .unwrap_or_else(|| remote_ip.clone());
         let host = ban_host.clone();
+
+        // Check if SASL authentication is required
+        if self.matrix.config.security.require_sasl
+            && self.state.sasl_state != SaslState::Authenticated
+        {
+            let reply = server_reply(
+                server_name,
+                Response::ERR_SASLFAIL,
+                vec![nick.clone(), "SASL authentication is required".to_string()],
+            );
+            self.write(reply).await?;
+            let error = Message::from(Command::ERROR(
+                "Closing Link: Access denied (SASL authentication required)".to_string(),
+            ));
+            self.write(error).await?;
+            return Err(HandlerError::AccessDenied);
+        }
 
         // Check server password if configured
         if let Some(required_password) = &self.matrix.config.server.password {
@@ -338,7 +356,8 @@ impl<'a> WelcomeBurstWriter<'a> {
             .custom("ELIST", Some("MNU"))
             .status_msg("~&@%+")
             .custom("BOT", Some("B"))
-            .custom("WHOX", None);
+            .custom("WHOX", None)
+            .custom("UTF8ONLY", None); // Advertise UTF-8 only mode per modern IRC
 
         // Send ISUPPORT lines (max 13 tokens per line to be safe)
         for line in builder.build_lines(13) {

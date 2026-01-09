@@ -177,10 +177,10 @@ mod tests {
     fn batch_messages_use_matching_refs() {
         let start = batch_start_msg("srv", "ref123");
         let end = batch_end_msg("srv", "ref123");
-        
+
         let start_enc = to_string(&start);
         let end_enc = to_string(&end);
-        
+
         // Both should reference the same batch ID
         assert!(start_enc.contains("+ref123"));
         assert!(end_enc.contains("-ref123"));

@@ -25,21 +25,10 @@ impl PostRegHandler for IsonHandler {
         let nick = &ctx.state.nick;
 
         // ISON <nick> [<nick> ...]
-        let nicks = msg.args();
-
-        if nicks.is_empty() {
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NEEDMOREPARAMS,
-                vec![
-                    nick.clone(),
-                    "ISON".to_string(),
-                    "Not enough parameters".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
+        let Some(_) = crate::require_arg_or_reply!(ctx, msg, 0, "ISON") else {
             return Ok(());
-        }
+        };
+        let nicks = msg.args();
 
         // Find which nicks are online
         let mut online = Vec::with_capacity(nicks.len());

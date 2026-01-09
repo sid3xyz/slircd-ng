@@ -24,7 +24,7 @@ pub use history::{HistoryConfig, HistoryEventsConfig};
 pub use limits::LimitsConfig;
 pub use links::LinkBlock;
 #[allow(unused_imports)]
-pub use listen::{ClientAuth, ListenConfig, TlsConfig, WebSocketConfig};
+pub use listen::{ClientAuth, ListenConfig, StsConfig, TlsConfig, WebSocketConfig};
 pub use oper::{OperBlock, WebircBlock};
 #[allow(unused_imports)]
 pub use security::{HeuristicsConfig, RateLimitConfig, SecurityConfig, SpamConfig};

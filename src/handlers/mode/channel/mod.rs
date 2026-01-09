@@ -6,7 +6,9 @@
 mod lists;
 mod mlock;
 
-use crate::handlers::{Context, HandlerError, HandlerResult, server_reply, with_label};
+use crate::handlers::{
+    Context, HandlerError, HandlerResult, resolve_nick_or_nosuchnick, server_reply, with_label,
+};
 use crate::state::RegisteredState;
 use crate::state::actor::{ChannelError, ChannelInfo};
 use slirc_proto::{ChannelMode, Mode, Response, irc_to_lower};
@@ -38,14 +40,11 @@ async fn validate_status_mode(
         return Ok(ModeValidation::NoArg);
     };
 
-    let target_lower = irc_to_lower(target_nick);
-    let Some(target_uid) = ctx.matrix.user_manager.nicks.get(&target_lower) else {
-        let reply = Response::err_nosuchnick(nick, target_nick).with_prefix(ctx.server_prefix());
-        ctx.send_error("MODE", "ERR_NOSUCHNICK", reply).await?;
+    let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "MODE", target_nick).await? else {
         return Ok(ModeValidation::Invalid);
     };
 
-    if !info.members.contains(target_uid.value()) {
+    if !info.members.contains(target_uid.as_str()) {
         let reply = server_reply(
             ctx.server_name(),
             Response::ERR_USERNOTINCHANNEL,

@@ -2,12 +2,14 @@
 //!
 //! Allows operators to set custom virtual hostnames on users.
 
-use super::super::{Context, HandlerResult, PostRegHandler, resolve_nick_to_uid, server_notice};
+use super::super::{
+    Context, HandlerResult, PostRegHandler, resolve_nick_or_nosuchnick, server_notice,
+};
 use super::is_valid_hostname;
 use crate::state::RegisteredState;
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{Command, Message, MessageRef, Prefix};
 
 /// Handler for VHOST command. Uses capability-based authorization (Innovation 4).
 ///
@@ -24,9 +26,6 @@ impl PostRegHandler for VhostHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = ctx.server_name();
-        let oper_nick = ctx.nick();
-
         // Request oper capability from authority (Innovation 4)
         let Some(_cap) = require_oper_cap!(ctx, "VHOST", request_vhost_cap) else {
             return Ok(());
@@ -39,30 +38,31 @@ impl PostRegHandler for VhostHandler {
         };
 
         if new_vhost.len() > 64 {
-            let reply = server_notice(server_name, oper_nick, "Vhost too long (max 64 chars)");
+            let reply = server_notice(
+                ctx.server_name(),
+                ctx.nick(),
+                "Vhost too long (max 64 chars)",
+            );
             ctx.sender.send(reply).await?;
             return Ok(());
         }
 
         if !is_valid_hostname(new_vhost) {
             let reply = server_notice(
-                server_name,
-                oper_nick,
+                ctx.server_name(),
+                ctx.nick(),
                 "Invalid vhost: use alphanumeric, hyphens, dots only",
             );
             ctx.sender.send(reply).await?;
             return Ok(());
         }
 
-        let target_uid = match resolve_nick_to_uid(ctx, target_nick) {
-            Some(uid) => uid,
-            None => {
-                let reply = Response::err_nosuchnick(oper_nick, target_nick)
-                    .with_prefix(ctx.server_prefix());
-                ctx.send_error("VHOST", "ERR_NOSUCHNICK", reply).await?;
-                return Ok(());
-            }
+        let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "VHOST", target_nick).await? else {
+            return Ok(());
         };
+
+        let server_name = ctx.server_name();
+        let oper_nick = ctx.nick();
 
         if let Some(target_user_ref) = ctx.matrix.user_manager.users.get(&target_uid) {
             let mut target_user = target_user_ref.write().await;

@@ -12,7 +12,7 @@ mod queries;
 use crate::handlers::{Context, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{ChatHistorySubCommand, Command, Message, MessageRef, Response};
+use slirc_proto::{ChatHistorySubCommand, Command, Message, MessageRef};
 use tracing::warn;
 
 use batch::send_history_batch;
@@ -34,15 +34,8 @@ impl PostRegHandler for ChatHistoryHandler {
         let nick = ctx.nick().to_string();
 
         // CHATHISTORY <subcommand> <target> [params...]
-        let subcommand_str = match msg.arg(0) {
-            Some(s) => s,
-            None => {
-                let reply = Response::err_needmoreparams(&nick, "CHATHISTORY")
-                    .with_prefix(ctx.server_prefix());
-                ctx.send_error("CHATHISTORY", "ERR_NEEDMOREPARAMS", reply)
-                    .await?;
-                return Ok(());
-            }
+        let Some(subcommand_str) = crate::require_arg_or_reply!(ctx, msg, 0, "CHATHISTORY") else {
+            return Ok(());
         };
 
         let subcommand: ChatHistorySubCommand = match subcommand_str.parse() {
@@ -66,16 +59,10 @@ impl PostRegHandler for ChatHistoryHandler {
         let target = if subcommand == ChatHistorySubCommand::TARGETS {
             "*".to_string() // Dummy target for TARGETS command
         } else {
-            match msg.arg(1) {
-                Some(t) => t.to_string(),
-                None => {
-                    let reply = Response::err_needmoreparams(&nick, "CHATHISTORY")
-                        .with_prefix(ctx.server_prefix());
-                    ctx.send_error("CHATHISTORY", "ERR_NEEDMOREPARAMS", reply)
-                        .await?;
-                    return Ok(());
-                }
-            }
+            let Some(t) = crate::require_arg_or_reply!(ctx, msg, 1, "CHATHISTORY") else {
+                return Ok(());
+            };
+            t.to_string()
         };
 
         let is_dm = !target.starts_with('#') && !target.starts_with('&');

@@ -52,6 +52,10 @@ rustls-native-certs = "0.8"
 argon2 = "0.5"
 rand = "0.8"
 zeroize = { version = "1.7", features = ["derive"] }
+scram = "0.6"
+base64 = "0.22"
+ring = "0.17"
+subtle = "2.5"
 
 # Security (cloaking, rate limiting)
 hmac = "0.12"

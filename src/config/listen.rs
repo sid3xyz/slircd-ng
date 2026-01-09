@@ -47,6 +47,34 @@ pub struct TlsConfig {
     /// Enable PROXY protocol (v1/v2) support.
     #[serde(default)]
     pub proxy_protocol: bool,
+    /// Strict Transport Security (STS) configuration.
+    /// When enabled, advertises the STS capability to enforce TLS-only connections.
+    #[serde(default)]
+    pub sts: Option<StsConfig>,
+}
+
+/// Strict Transport Security (STS) configuration for IRCv3 sts capability.
+///
+/// STS allows servers to advertise that clients should only connect via TLS.
+/// Reference: <https://ircv3.net/specs/extensions/sts>
+#[derive(Debug, Clone, Deserialize)]
+pub struct StsConfig {
+    /// Port number for secure connections (required for insecure->secure upgrade).
+    /// This should be the TLS port (typically 6697).
+    pub port: u16,
+    /// Duration in seconds for which clients must use secure connections.
+    /// Recommended: 2592000 (30 days) to 31536000 (1 year).
+    /// Set to 0 to disable STS persistence policy.
+    #[serde(default = "default_sts_duration")]
+    pub duration: u64,
+    /// Whether to opt-in to STS preload lists.
+    /// Only enable this if you're committed to offering TLS long-term.
+    #[serde(default)]
+    pub preload: bool,
+}
+
+fn default_sts_duration() -> u64 {
+    2592000 // 30 days
 }
 
 /// WebSocket listener configuration.

@@ -1,4 +1,4 @@
-use super::helpers::{build_cap_list_tokens, pack_cap_ls_lines};
+use super::helpers::{build_cap_list_tokens, pack_cap_ls_lines, CapListParams};
 use super::types::SUPPORTED_CAPS;
 use crate::handlers::{Context, HandlerResult};
 use crate::state::SessionState;
@@ -28,13 +28,17 @@ pub async fn handle_ls<S: SessionState>(
 
     let server_name = ctx.server_name();
 
+    // Get STS config if TLS is configured
+    let sts_cfg = ctx.matrix.config.tls.as_ref().and_then(|tls| tls.sts.as_ref());
+
     // Build capability tokens (include EXTERNAL if TLS with cert)
-    let caps = build_cap_list_tokens(
+    let caps = build_cap_list_tokens(&CapListParams {
         version,
-        ctx.state.is_tls(),
-        ctx.state.is_tls() && ctx.state.certfp().is_some(),
-        &ctx.matrix.config.account_registration,
-    );
+        is_tls: ctx.state.is_tls(),
+        has_cert: ctx.state.is_tls() && ctx.state.certfp().is_some(),
+        acct_cfg: &ctx.matrix.config.account_registration,
+        sts_cfg,
+    });
 
     // CAP LS may need to be split across multiple lines to satisfy the IRC 512-byte limit.
     // We pack space-separated capability tokens into lines using the actual serialized

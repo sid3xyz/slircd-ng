@@ -506,14 +506,13 @@ RUST_LOG=debug cargo run -- config.toml 2>&1 | tee debug.log
 - No proof-of-work DoS protection
 - Single-file database (no clustering)
 
-For a complete assessment, see [VIABILITY.md](VIABILITY.md).
+For complete details, see [ARCHITECTURE.md](ARCHITECTURE.md) sections 10-15.
 
 ## 📚 Documentation
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete architectural deep dive
-- **[VIABILITY.md](VIABILITY.md)** - Harsh viability assessment and production readiness
-- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Deployment guide
-- **[DATABASE_AUDIT_REPORT.md](DATABASE_AUDIT_REPORT.md)** - Database layer audit
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete architectural deep dive and code quality assessment
+- **[ROADMAP_TO_1.0.md](ROADMAP_TO_1.0.md)** - Release readiness roadmap and blocking issues
+- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Production deployment guide
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 
 ## 📜 License

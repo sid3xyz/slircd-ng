@@ -44,7 +44,7 @@ mod user_status;
 // Re-export core types
 pub use core::{
     Context, HandlerError, HandlerResult, Registry, ResponseMiddleware, get_nick_or_star,
-    get_oper_info, is_user_in_channel, resolve_nick_to_uid, user_mask_from_state,
+    get_oper_info, is_user_in_channel, resolve_nick_or_nosuchnick, user_mask_from_state,
 };
 
 // Re-export typestate handler traits (Innovation 1)
@@ -52,7 +52,8 @@ pub use core::{PostRegHandler, PreRegHandler, UniversalHandler};
 
 // Re-export helper functions for use by handlers
 pub use helpers::{
-    labeled_ack, matches_hostmask, server_notice, server_reply, user_prefix, with_label,
+    labeled_ack, matches_hostmask, send_no_such_nick, server_notice, server_reply, user_prefix,
+    with_label,
 };
 
 // Re-export types used by other modules

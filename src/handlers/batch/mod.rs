@@ -17,7 +17,7 @@ pub use types::BatchState;
 // Re-export processing function
 pub use processing::process_batch_message;
 
-use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware};
+use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware, resolve_nick_or_nosuchnick};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{
@@ -359,18 +359,7 @@ async fn deliver_multiline_to_user(
     target_nick: &str,
 ) -> HandlerResult {
     // Find target user by nick
-    let target_uid = ctx
-        .matrix
-        .user_manager
-        .nicks
-        .get(&target_nick.to_lowercase())
-        .map(|r| r.clone());
-
-    let Some(target_uid) = target_uid else {
-        // User not found
-        let reply =
-            Response::err_nosuchnick(&ctx.state.nick, target_nick).with_prefix(ctx.server_prefix());
-        ctx.send_error("BATCH", "ERR_NOSUCHNICK", reply).await?;
+    let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "BATCH", target_nick).await? else {
         return Ok(());
     };
 

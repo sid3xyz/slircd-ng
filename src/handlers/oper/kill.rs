@@ -4,12 +4,12 @@
 //! Uses capability-based authorization (Innovation 4).
 
 use super::super::{
-    Context, HandlerResult, PostRegHandler, resolve_nick_to_uid, user_mask_from_state,
+    Context, HandlerResult, PostRegHandler, resolve_nick_or_nosuchnick, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
-use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
+use slirc_proto::{Command, Message, MessageRef, Prefix};
 use std::sync::Arc;
 
 /// Handler for KILL command.
@@ -51,10 +51,7 @@ impl PostRegHandler for KillHandler {
             return Ok(());
         };
 
-        let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            let reply = Response::err_nosuchnick(&killer_nick, target_nick)
-                .with_prefix(ctx.server_prefix());
-            ctx.send_error("KILL", "ERR_NOSUCHNICK", reply).await?;
+        let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "KILL", target_nick).await? else {
             return Ok(());
         };
 
