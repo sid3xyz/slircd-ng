@@ -376,15 +376,32 @@ These issues must be fixed before any alpha release.
   5. Test TLS negotiation
   6. Document TLS setup
 
-**1.3.1.2: Add S2S Rate Limiting** (8 hours)
-- **Issue**: Remote servers can flood local server
-- **Impact**: HIGH - DoS from compromised peer
-- **Steps**:
-  1. Add per-peer rate limiters
-  2. Implement burst allowance
-  3. Add disconnect on violation
-  4. Add metrics for S2S rate limiting
-  5. Test flood scenarios
+**1.3.1.2: Add S2S Rate Limiting** ✅ RESOLVED
+
+**Status**: ✅ **COMPLETE** — S2S rate limiting implemented with per-peer tracking.
+
+**Implementation** (Branch: security/s2s-rate-limiting):
+
+**Configuration** (`[security.rate_limits]`):
+- `s2s_command_rate_per_second = 100` — Commands/sec per peer (high for relay traffic)
+- `s2s_burst_per_peer = 500` — Burst allowance for netsplit recovery
+- `s2s_disconnect_threshold = 10` — Violations before disconnect
+
+**Features**:
+- [x] Per-peer token bucket rate limiters (governor crate)
+- [x] Burst allowance for legitimate traffic spikes
+- [x] Violation counter with disconnect threshold
+- [x] Metrics: `slircd_s2s_rate_limited_total{peer_sid, result}`
+- [x] ERROR message sent before disconnect
+- [x] Rate limiter cleanup on peer disconnect
+- [x] 5 unit tests for S2S rate limiting behavior
+
+**Protection Against**:
+- Compromised peer flooding local server
+- Misconfigured peer sending excessive traffic
+- Cascading failures from burst traffic
+
+**Priority**: ~~P1~~ → Resolved
 
 **1.3.1.3: Fix DNSBL Privacy Leaks** (8 hours)
 - **Issue**: DNSBL queries leak real IP to DNS resolver

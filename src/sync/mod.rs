@@ -12,7 +12,8 @@ pub mod stream;
 mod tests;
 pub mod topology;
 
-use crate::metrics::{S2S_BYTES_RECEIVED, S2S_BYTES_SENT, S2S_COMMANDS};
+use crate::metrics::{S2S_BYTES_RECEIVED, S2S_BYTES_SENT, S2S_COMMANDS, S2S_RATE_LIMITED};
+use crate::security::rate_limit::S2SRateLimitResult;
 use crate::state::Matrix;
 use crate::sync::handshake::{HandshakeMachine, HandshakeState};
 use crate::sync::stream::S2SStream;
@@ -136,6 +137,8 @@ pub struct SyncManager {
     pub links: Arc<DashMap<ServerId, LinkState>>,
     /// Network topology.
     pub topology: Arc<TopologyGraph>,
+    /// S2S rate limiter for flood protection.
+    pub rate_limiter: Arc<crate::security::rate_limit::S2SRateLimiter>,
 }
 
 impl SyncManager {
@@ -144,6 +147,7 @@ impl SyncManager {
         local_name: String,
         local_desc: String,
         configured_links: Vec<LinkBlock>,
+        rate_limit_config: &crate::config::RateLimitConfig,
     ) -> Self {
         Self {
             local_id,
@@ -152,6 +156,9 @@ impl SyncManager {
             configured_links,
             links: Arc::new(DashMap::new()),
             topology: Arc::new(TopologyGraph::new()),
+            rate_limiter: Arc::new(crate::security::rate_limit::S2SRateLimiter::new(
+                rate_limit_config,
+            )),
         }
     }
 
@@ -574,6 +581,38 @@ impl SyncManager {
 
                                 S2S_COMMANDS.with_label_values(&[remote_sid_val.as_str(), msg.command.name()]).inc();
 
+                                // Check S2S rate limit before processing
+                                match manager.rate_limiter.check_command(remote_sid_val.as_str()) {
+                                    S2SRateLimitResult::Allowed => {
+                                        // Continue to dispatch below
+                                    }
+                                    S2SRateLimitResult::Limited { violations } => {
+                                        S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "limited"]).inc();
+                                        tracing::warn!(
+                                            sid = %remote_sid_val.as_str(),
+                                            violations = violations,
+                                            command = %msg.command.name(),
+                                            "S2S rate limit exceeded, dropping command"
+                                        );
+                                        continue; // Drop the command but keep connection
+                                    }
+                                    S2SRateLimitResult::Disconnect { violations } => {
+                                        S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "disconnected"]).inc();
+                                        tracing::error!(
+                                            sid = %remote_sid_val.as_str(),
+                                            violations = violations,
+                                            "S2S rate limit threshold exceeded, disconnecting peer"
+                                        );
+                                        // Send ERROR before disconnecting
+                                        let error_msg = Command::ERROR(format!(
+                                            "Rate limit exceeded ({} violations)",
+                                            violations
+                                        ));
+                                        let _ = framed.send(Message::from(error_msg).to_string().trim_end()).await;
+                                        break; // Disconnect
+                                    }
+                                }
+
                                 // Parse into MessageRef for Registry dispatch
                                 let raw_str = msg.to_string();
                                 if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
@@ -613,6 +652,9 @@ impl SyncManager {
             let rn = remote_name.as_deref().unwrap_or("unknown");
             info!(remote_sid = %remote_sid_val.as_str(), "Peer disconnected, initiating netsplit cleanup");
             split::handle_netsplit(&matrix, &remote_sid_val, &manager.local_name, rn).await;
+
+            // Clean up rate limiter state for this peer
+            manager.rate_limiter.remove_peer(remote_sid_val.as_str());
 
             // Retry after disconnect
             info!("Reconnecting to {} in 5s...", config.hostname);

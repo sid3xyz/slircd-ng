@@ -376,6 +376,152 @@ impl Default for RateLimitManager {
     }
 }
 
+// =============================================================================
+// Server-to-Server Rate Limiting
+// =============================================================================
+
+/// Server ID type for S2S rate limiting.
+type Sid = String;
+
+/// S2S peer state with rate limiter and violation counter.
+#[derive(Debug)]
+pub struct S2SPeerState {
+    /// Token bucket rate limiter for this peer.
+    limiter: DirectRateLimiter,
+    /// Number of rate limit violations since last reset.
+    pub violations: std::sync::atomic::AtomicU32,
+    /// Last access timestamp for debugging.
+    last_access: AtomicU64,
+}
+
+impl S2SPeerState {
+    fn new(rate: NonZeroU32, burst: NonZeroU32) -> Self {
+        Self {
+            limiter: GovRateLimiter::direct(Quota::per_second(rate).allow_burst(burst)),
+            violations: std::sync::atomic::AtomicU32::new(0),
+            last_access: AtomicU64::new(current_timestamp()),
+        }
+    }
+
+    /// Check if a command is allowed. Returns (allowed, should_disconnect).
+    fn check(&self, disconnect_threshold: u32) -> (bool, bool) {
+        self.last_access
+            .store(current_timestamp(), Ordering::Relaxed);
+
+        if self.limiter.check().is_ok() {
+            // Reset violations on successful check (sliding window behavior)
+            self.violations.store(0, Ordering::Relaxed);
+            (true, false)
+        } else {
+            // Increment violation counter
+            let violations = self.violations.fetch_add(1, Ordering::Relaxed) + 1;
+            let should_disconnect = violations >= disconnect_threshold;
+            (false, should_disconnect)
+        }
+    }
+
+    /// Get current violation count (test-only).
+    #[cfg(test)]
+    pub fn violation_count(&self) -> u32 {
+        self.violations.load(Ordering::Relaxed)
+    }
+}
+
+/// Rate limiter for server-to-server links.
+///
+/// Prevents a compromised or misbehaving peer from flooding the local server.
+/// Uses a token bucket algorithm with configurable rates and disconnect threshold.
+#[derive(Debug)]
+pub struct S2SRateLimiter {
+    /// Per-peer rate limiters, keyed by server ID (SID).
+    peers: DashMap<Sid, S2SPeerState>,
+    /// Commands allowed per second per peer.
+    rate: NonZeroU32,
+    /// Burst allowance per peer.
+    burst: NonZeroU32,
+    /// Number of violations before disconnecting.
+    disconnect_threshold: u32,
+}
+
+impl S2SRateLimiter {
+    /// Create a new S2S rate limiter from configuration.
+    pub fn new(config: &RateLimitConfig) -> Self {
+        Self {
+            peers: DashMap::new(),
+            rate: NonZeroU32::new(config.s2s_command_rate_per_second).unwrap_or(
+                // SAFETY: 100 is non-zero
+                NonZeroU32::new(100).unwrap(),
+            ),
+            burst: NonZeroU32::new(config.s2s_burst_per_peer).unwrap_or(
+                // SAFETY: 500 is non-zero
+                NonZeroU32::new(500).unwrap(),
+            ),
+            disconnect_threshold: config.s2s_disconnect_threshold,
+        }
+    }
+
+    /// Check if a command from a peer is allowed.
+    ///
+    /// Returns `Ok(())` if allowed, `Err(S2SRateLimitResult)` if limited or should disconnect.
+    pub fn check_command(&self, sid: &str) -> S2SRateLimitResult {
+        let entry = self
+            .peers
+            .entry(sid.to_string())
+            .or_insert_with(|| S2SPeerState::new(self.rate, self.burst));
+
+        let (allowed, should_disconnect) = entry.check(self.disconnect_threshold);
+
+        if should_disconnect {
+            S2SRateLimitResult::Disconnect {
+                violations: entry.violations.load(Ordering::Relaxed),
+            }
+        } else if allowed {
+            S2SRateLimitResult::Allowed
+        } else {
+            S2SRateLimitResult::Limited {
+                violations: entry.violations.load(Ordering::Relaxed),
+            }
+        }
+    }
+
+    /// Remove a peer's rate limit state (call on disconnect).
+    pub fn remove_peer(&self, sid: &str) {
+        self.peers.remove(sid);
+    }
+
+    /// Get the current violation count for a peer (test-only).
+    #[cfg(test)]
+    pub fn violation_count(&self, sid: &str) -> u32 {
+        self.peers
+            .get(sid)
+            .map(|p| p.violation_count())
+            .unwrap_or(0)
+    }
+}
+
+impl Default for S2SRateLimiter {
+    fn default() -> Self {
+        Self::new(&RateLimitConfig::default())
+    }
+}
+
+/// Result of an S2S rate limit check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum S2SRateLimitResult {
+    /// Command is allowed.
+    Allowed,
+    /// Command is rate limited but peer should not be disconnected yet.
+    Limited {
+        /// Current violation count.
+        violations: u32,
+    },
+    /// Too many violations - peer should be disconnected.
+    Disconnect {
+        /// Final violation count.
+        violations: u32,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,6 +535,9 @@ mod tests {
             ctcp_burst_per_client: 2,
             max_connections_per_ip: 3,
             exempt_ips: Vec::new(),
+            s2s_command_rate_per_second: 100,
+            s2s_burst_per_peer: 500,
+            s2s_disconnect_threshold: 10,
         }
     }
 
@@ -496,5 +645,108 @@ mod tests {
 
         // uid2 should still be able to send
         assert!(manager.check_message_rate(&uid2));
+    }
+
+    // === S2S Rate Limiting Tests ===
+
+    fn s2s_test_config() -> RateLimitConfig {
+        RateLimitConfig {
+            s2s_command_rate_per_second: 5,
+            s2s_burst_per_peer: 10,
+            s2s_disconnect_threshold: 3,
+            ..test_config()
+        }
+    }
+
+    #[test]
+    fn test_s2s_rate_limit_burst_allowed() {
+        let limiter = S2SRateLimiter::new(&s2s_test_config());
+        let sid = "00A";
+
+        // First 10 commands should be allowed (burst of 10)
+        for i in 0..10 {
+            let result = limiter.check_command(sid);
+            assert_eq!(result, S2SRateLimitResult::Allowed, "Command {} should be allowed", i);
+        }
+    }
+
+    #[test]
+    fn test_s2s_rate_limit_exceeded() {
+        let limiter = S2SRateLimiter::new(&s2s_test_config());
+        let sid = "00B";
+
+        // Exhaust burst
+        for _ in 0..10 {
+            limiter.check_command(sid);
+        }
+
+        // Next commands should be limited (but not disconnected yet)
+        let result = limiter.check_command(sid);
+        assert!(matches!(result, S2SRateLimitResult::Limited { violations: 1 }));
+
+        let result = limiter.check_command(sid);
+        assert!(matches!(result, S2SRateLimitResult::Limited { violations: 2 }));
+    }
+
+    #[test]
+    fn test_s2s_disconnect_threshold() {
+        let limiter = S2SRateLimiter::new(&s2s_test_config());
+        let sid = "00C";
+
+        // Exhaust burst
+        for _ in 0..10 {
+            limiter.check_command(sid);
+        }
+
+        // Violate 3 times (threshold is 3)
+        limiter.check_command(sid); // violation 1
+        limiter.check_command(sid); // violation 2
+        let result = limiter.check_command(sid); // violation 3 - should disconnect
+
+        assert!(
+            matches!(result, S2SRateLimitResult::Disconnect { violations: 3 }),
+            "Expected Disconnect after 3 violations, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_s2s_peer_removal() {
+        let limiter = S2SRateLimiter::new(&s2s_test_config());
+        let sid = "00D";
+
+        // Exhaust burst and create violations
+        for _ in 0..12 {
+            limiter.check_command(sid);
+        }
+        assert!(limiter.violation_count(sid) > 0);
+
+        // Remove peer
+        limiter.remove_peer(sid);
+
+        // Peer should have fresh state
+        assert_eq!(limiter.violation_count(sid), 0);
+        assert_eq!(limiter.check_command(sid), S2SRateLimitResult::Allowed);
+    }
+
+    #[test]
+    fn test_s2s_peers_independent() {
+        let limiter = S2SRateLimiter::new(&s2s_test_config());
+        let sid1 = "00E";
+        let sid2 = "00F";
+
+        // Exhaust sid1's burst
+        for _ in 0..10 {
+            limiter.check_command(sid1);
+        }
+
+        // sid1 should be limited
+        assert!(matches!(
+            limiter.check_command(sid1),
+            S2SRateLimitResult::Limited { .. }
+        ));
+
+        // sid2 should still be allowed
+        assert_eq!(limiter.check_command(sid2), S2SRateLimitResult::Allowed);
     }
 }

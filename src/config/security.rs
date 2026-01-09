@@ -173,6 +173,21 @@ pub struct RateLimitConfig {
     /// Use sparingly - only for trusted operators/bots.
     #[serde(default)]
     pub exempt_ips: Vec<String>,
+
+    // === Server-to-Server Rate Limiting ===
+
+    /// S2S commands allowed per peer per second (default: 100).
+    /// This is much higher than client rate limits since servers relay many users.
+    #[serde(default = "default_s2s_command_rate")]
+    pub s2s_command_rate_per_second: u32,
+    /// S2S burst allowed per peer (default: 500).
+    /// Allows for initial burst during netsplit recovery.
+    #[serde(default = "default_s2s_burst")]
+    pub s2s_burst_per_peer: u32,
+    /// Number of rate limit violations before disconnecting peer (default: 10).
+    /// Prevents cascading failures from a single flood event.
+    #[serde(default = "default_s2s_disconnect_threshold")]
+    pub s2s_disconnect_threshold: u32,
 }
 
 impl Default for RateLimitConfig {
@@ -185,6 +200,9 @@ impl Default for RateLimitConfig {
             ctcp_burst_per_client: default_ctcp_burst(),
             max_connections_per_ip: default_max_connections(),
             exempt_ips: Vec::new(),
+            s2s_command_rate_per_second: default_s2s_command_rate(),
+            s2s_burst_per_peer: default_s2s_burst(),
+            s2s_disconnect_threshold: default_s2s_disconnect_threshold(),
         }
     }
 }
@@ -211,6 +229,18 @@ fn default_ctcp_burst() -> u32 {
 
 fn default_max_connections() -> u32 {
     10
+}
+
+fn default_s2s_command_rate() -> u32 {
+    100 // 100 commands/sec per peer - much higher than clients since they relay many users
+}
+
+fn default_s2s_burst() -> u32 {
+    500 // Large burst for netsplit recovery when many users rejoin at once
+}
+
+fn default_s2s_disconnect_threshold() -> u32 {
+    10 // Disconnect after 10 rate limit violations to prevent cascading failures
 }
 
 #[cfg(test)]
