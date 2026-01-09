@@ -397,28 +397,30 @@ impl UnregisteredState {
     /// Attempt to transition to ServerState.
     #[allow(clippy::result_large_err)]
     pub fn try_register_server(self) -> Result<ServerState, Self> {
-        if self.can_register_server() {
-            let capabilities = self
-                .server_capab
-                .as_ref()
-                .unwrap()
-                .iter()
-                .cloned()
-                .collect();
+        // Use pattern matching to avoid unwrap() - destructure all required fields at once
+        match (
+            self.is_server_handshake,
+            &self.server_name,
+            &self.server_sid,
+            &self.server_capab,
+            self.server_svinfo.is_some(),
+        ) {
+            (true, Some(name), Some(sid), Some(capab), true) => {
+                let capabilities = capab.iter().cloned().collect();
 
-            Ok(ServerState {
-                name: self.server_name.unwrap(),
-                sid: self.server_sid.unwrap(),
-                info: self.server_info.unwrap_or_default(),
-                hopcount: self.server_hopcount,
-                capabilities,
-                is_tls: self.is_tls,
-                active_batch: None,
-                active_batch_ref: None,
-                batch_routing: None,
-            })
-        } else {
-            Err(self)
+                Ok(ServerState {
+                    name: name.clone(),
+                    sid: sid.clone(),
+                    info: self.server_info.unwrap_or_default(),
+                    hopcount: self.server_hopcount,
+                    capabilities,
+                    is_tls: self.is_tls,
+                    active_batch: None,
+                    active_batch_ref: None,
+                    batch_routing: None,
+                })
+            }
+            _ => Err(self),
         }
     }
 

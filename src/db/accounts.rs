@@ -597,7 +597,7 @@ fn compute_scram_verifiers(password: &str) -> ScramVerifiers {
     let mut salt = vec![0u8; 16];
     OsRng.fill_bytes(&mut salt);
 
-    // Hash password using scram crate's hash_password function
+    // SAFETY: SCRAM_ITERATIONS is const 4096, always > 0
     let iterations = NonZeroU32::new(SCRAM_ITERATIONS).unwrap();
     let hashed_password = scram::hash_password(password, iterations, &salt).to_vec();
 

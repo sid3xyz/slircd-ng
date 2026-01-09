@@ -47,8 +47,9 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
     }
 
     // Z-lines (IP bans from ip_deny_list)
-    {
-        let ip_deny = state.security_manager.ip_deny_list.read().unwrap();
+    // Note: Use ok() to gracefully handle lock poisoning - if the lock is poisoned,
+    // skip Z-line burst rather than crash. The peer will sync eventually.
+    if let Ok(ip_deny) = state.security_manager.ip_deny_list.read() {
         for (ip_mask, meta) in ip_deny.iter() {
             if !meta.is_expired() {
                 commands.push(Command::Raw(
@@ -57,6 +58,8 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
                 ));
             }
         }
+    } else {
+        error!("ip_deny_list lock poisoned, skipping Z-line burst");
     }
 
     // 1. Burst Users (UID)

@@ -369,6 +369,7 @@ impl SyncManager {
                 manager.local_id.as_str().to_string(),
                 manager.local_desc.clone(),
             );
+            // SAFETY: duration_since(UNIX_EPOCH) cannot fail unless system clock is before 1970
             let svinfo_cmd = Command::SVINFO(
                 6,
                 6,
@@ -479,15 +480,18 @@ impl SyncManager {
                 }
             }
 
-            if !handshake_success {
-                tracing::info!("Handshake failed or connection closed before completion. Retrying in 5s...");
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
-            }
+            // Both handshake success AND remote_sid must be present to proceed
+            let remote_sid_val = match (handshake_success, remote_sid.clone()) {
+                (true, Some(sid)) => sid,
+                _ => {
+                    tracing::info!("Handshake failed or incomplete. Retrying in 5s...");
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
 
             // Register link
             let (tx, mut rx) = mpsc::channel::<Arc<Message>>(100);
-            let remote_sid_val = remote_sid.clone().expect("remote_sid should be set after handshake");
             manager.links.insert(
                 remote_sid_val.clone(),
                 LinkState {

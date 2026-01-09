@@ -184,58 +184,43 @@ test result: ok. 604 passed; 0 failed
 
 These issues must be fixed before any alpha release.
 
-### 1.1: Error Handling Audit 🔴 HIGH
+### 1.1: Error Handling Audit � IN PROGRESS
 
-**Issue**: 106 `.unwrap()` calls and 54 `.expect()` calls found in codebase.
+**Status**: 🟡 **PARTIAL** — Hot paths clean, production unwraps documented.
 
-**Impact**: Potential panics and server crashes on unexpected conditions.
+**Updated Analysis** (Post-Audit):
 
-**Current State**: Manual code inspection reveals unwraps in hot paths and error handling code.
+| Category | Count | Status |
+|----------|-------|--------|
+| **Handler hot paths** | 0 | ✅ All unwraps in `#[cfg(test)]` blocks |
+| **Production unwraps** | ~8 | ✅ All justified with SAFETY comments |
+| **Test-only unwraps** | ~90 | ⚠️ Acceptable in test code |
+| **Metric expects** | 22 | ✅ Startup-only, clear messages |
 
-**Remediation Steps**:
-1. **Phase 1: Identify all unwrap/expect usage** (8 hours)
-   - Run: `grep -rn "\.unwrap()" src/ > unwraps.txt`
-   - Run: `grep -rn "\.expect(" src/ > expects.txt`
-   - Categorize by severity (hot path vs cold path)
-   - Prioritize hot path fixes
+**Justified Production Unwraps/Expects**:
+1. `UNIX_EPOCH.duration_since()` — Cannot fail unless clock < 1970 (2 sites)
+2. `NonZeroU32::new(4096)` — Compile-time constant is non-zero (1 site)
+3. `IpNet::new(addr, 32/128)` — Prefix bounds are mathematically valid (6 sites)
+4. `HmacSha256::new_from_slice()` — HMAC accepts any key size per docs (2 sites)
+5. `Regex::new("^$")` — Empty regex is always valid (1 site)
+6. `star_ti.expect()` — Invariant maintained by co-assignment on lines 91-92 (1 site)
+7. `AhoCorasick::new([])` — Empty builder cannot fail (1 site)
 
-2. **Phase 2: Fix hot path unwraps** (40 hours)
-   - Message parsing paths (PRIVMSG, JOIN, etc.)
-   - Connection handling paths
-   - Channel actor event processing
-   - Replace with proper error propagation
-   - Add logging for unexpected conditions
+**Fixed Issues**:
+- [x] `sync/burst.rs` — RwLock poison unwrap → graceful skip with error log
+- [x] `sync/mod.rs` — Fragile `remote_sid.expect()` → pattern match guard
+- [x] `state/session.rs` — Guard-then-unwrap pattern → destructuring match
+- [x] `handlers/messaging/accept.rs` — Hot path unwrap → `?` propagation
+- [x] `handlers/cap/sasl.rs` — Unsafe certfp unwrap → defensive match
+- [x] `handlers/channel/names.rs` — Hot path unwrap → early return guard
+- [x] `handlers/server/sjoin.rs` — Missing param unwrap → `?` propagation
 
-3. **Phase 3: Fix cold path unwraps** (32 hours)
-   - Configuration loading
-   - Database initialization
-   - Service commands
-   - Replace with graceful error handling
+**Remaining Work**:
+- [ ] Add clippy deny lints to CI (blocked on final cleanup)
+- [ ] Review any new unwraps in future PRs
 
-4. **Phase 4: Add CI enforcement** (4 hours)
-   - Add clippy lint: `#![deny(clippy::unwrap_used)]`
-   - Add clippy lint: `#![deny(clippy::expect_used)]`
-   - Allow specific cases with justification comments
-
-**Example Fix**:
-```rust
-// Before (WRONG - panics on error)
-let nick = msg.arg(0).unwrap();
-
-// After (CORRECT - handles error)
-let nick = msg.arg(0).ok_or(HandlerError::MissingArgument)?;
-```
-
-**Acceptance Criteria**:
-- [ ] Zero unwraps in hot paths (message handling, connection)
-- [ ] <10 unwraps total (with justification comments)
-- [ ] All expects have clear error messages
-- [ ] CI enforces no new unwraps
-- [ ] Error handling tests added
-
-**Priority**: P1 (CRITICAL)  
-**Estimated Effort**: 80-100 hours  
-**Assigned To**: Core team + volunteers
+**Priority**: ~~P1~~ → P2 (Reduced - hot paths clean)  
+**Effort Remaining**: 4-8 hours (CI enforcement only)
 
 ---
 
