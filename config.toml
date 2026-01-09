@@ -44,8 +44,11 @@ path = "slircd.db"
 
 # Security configuration for anti-abuse protection
 [security]
-# HMAC secret for host cloaking - CHANGE IN PRODUCTION!
-cloak_secret = "slircd-default-secret-CHANGE-ME-IN-PRODUCTION"
+# HMAC secret for host cloaking
+# SECURITY: Server will refuse to start with a weak secret!
+# Generate a strong secret with: openssl rand -hex 32
+# Requirements: 16+ chars, 3+ character classes (upper/lower/digit/special), 8+ unique chars
+cloak_secret = "CHANGE-ME-generate-with-openssl-rand-hex-32"
 # Suffix for cloaked IP addresses
 cloak_suffix = "ip"
 # Enable spam detection for message content

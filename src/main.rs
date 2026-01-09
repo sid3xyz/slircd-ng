@@ -54,11 +54,31 @@ async fn main() -> anyhow::Result<()> {
         "Starting slircd-ng"
     );
 
-    // Warn if using default cloak secret
+    // SECURITY: Refuse to start with default/weak cloak secret
+    // This prevents operators from accidentally running in production with predictable IP cloaks
     if crate::security::cloaking::is_default_secret(&config.security.cloak_secret) {
-        tracing::warn!(
-            "Using default cloak_secret! Set [security].cloak_secret in config.toml for production."
-        );
+        // Check for explicit override via environment variable (for testing/dev only)
+        if std::env::var("SLIRCD_ALLOW_INSECURE_CLOAK").is_ok() {
+            tracing::warn!(
+                "⚠️  INSECURE: Running with weak cloak_secret (allowed via SLIRCD_ALLOW_INSECURE_CLOAK)"
+            );
+        } else {
+            error!("FATAL: Insecure cloak_secret detected!");
+            error!("  The cloak_secret is used to hash user IP addresses for privacy.");
+            error!("  Using a weak or default secret makes IP cloaks predictable and reversible.");
+            error!("");
+            error!("  To fix, set a strong secret in config.toml:");
+            error!("    [security]");
+            error!("    cloak_secret = \"<random-32-char-string>\"");
+            error!("");
+            error!("  Generate a secure secret with:");
+            error!("    openssl rand -hex 32");
+            error!("");
+            error!("  For testing only, set SLIRCD_ALLOW_INSECURE_CLOAK=1 to bypass this check.");
+            return Err(anyhow::anyhow!(
+                "Refusing to start with insecure cloak_secret. See error messages above."
+            ));
+        }
     }
 
     // Initialize database

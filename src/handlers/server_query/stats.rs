@@ -204,9 +204,9 @@ impl PostRegHandler for StatsHandler {
                             nick.to_string(),
                             link.name.clone(),
                             "0".to_string(), // SendQ
-                            "0".to_string(), // Sent Messages (TODO)
+                            "0".to_string(), // Sent Messages (not tracked per-link)
                             sent_bytes.to_string(),
-                            "0".to_string(), // Recv Messages (TODO)
+                            "0".to_string(), // Recv Messages (not tracked per-link)
                             recv_bytes.to_string(),
                             time_open.to_string(),
                         ],

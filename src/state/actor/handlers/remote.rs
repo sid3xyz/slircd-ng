@@ -180,7 +180,7 @@ impl ChannelActor {
             ProtoChannelMode::Limit => {
                 if adding {
                     if let Some(l) = arg.and_then(|s| s.parse().ok()) {
-                        // Check if incoming wins
+                        // Check if incoming wins (LWW: Last-Write-Wins)
                         let current_ts = self
                             .modes
                             .iter()
@@ -190,7 +190,8 @@ impl ChannelActor {
                             })
                             .or_else(|| self.mode_timestamps.get(&'l').copied());
 
-                        if current_ts.is_none() || incoming_ts > current_ts.unwrap() {
+                        // Incoming wins if no current timestamp or incoming is newer
+                        if current_ts.is_none_or(|ts| incoming_ts > ts) {
                             self.modes
                                 .retain(|m| !matches!(m, ChannelMode::Limit(_, _)));
                             self.modes.insert(ChannelMode::Limit(l, incoming_ts));
@@ -208,7 +209,7 @@ impl ChannelActor {
                         })
                         .or_else(|| self.mode_timestamps.get(&'l').copied());
 
-                    if current_ts.is_none() || incoming_ts > current_ts.unwrap() {
+                    if current_ts.is_none_or(|ts| incoming_ts > ts) {
                         self.modes
                             .retain(|m| !matches!(m, ChannelMode::Limit(_, _)));
                         self.mode_timestamps.insert('l', incoming_ts);
@@ -227,7 +228,7 @@ impl ChannelActor {
                             })
                             .or_else(|| self.mode_timestamps.get(&'k').copied());
 
-                        if current_ts.is_none() || incoming_ts > current_ts.unwrap() {
+                        if current_ts.is_none_or(|ts| incoming_ts > ts) {
                             self.modes.retain(|m| !matches!(m, ChannelMode::Key(_, _)));
                             self.modes.insert(ChannelMode::Key(k, incoming_ts));
                             self.mode_timestamps.insert('k', incoming_ts);
@@ -243,7 +244,7 @@ impl ChannelActor {
                         })
                         .or_else(|| self.mode_timestamps.get(&'k').copied());
 
-                    if current_ts.is_none() || incoming_ts > current_ts.unwrap() {
+                    if current_ts.is_none_or(|ts| incoming_ts > ts) {
                         self.modes.retain(|m| !matches!(m, ChannelMode::Key(_, _)));
                         self.mode_timestamps.insert('k', incoming_ts);
                     }

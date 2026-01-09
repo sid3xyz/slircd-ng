@@ -200,7 +200,11 @@ impl PostRegHandler for NamesHandler {
             return Ok(());
         }
 
-        let channel_name = target_channel.unwrap();
+        // target_channel is Some() at this point - use if-let for safe unwrap
+        let Some(channel_name) = target_channel else {
+            // Unreachable: we just checked is_none() above
+            return Ok(());
+        };
         // Handle multiple channels (comma-separated): NAMES #chan1,#chan2
         let channels: Vec<&str> = channel_name.split(',').collect();
 

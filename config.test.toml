@@ -31,8 +31,9 @@ address = "0.0.0.0:6667"
 path = ":memory:" # In-memory for tests, or use "slircd-test.db" for persistence
 
 [security]
-# Cloaking disabled for easier test debugging
-cloak_secret = "test-secret-do-not-use-in-production"
+# Strong test secret - meets entropy requirements (3+ char classes, 8+ unique chars)
+# For actual production, generate with: openssl rand -hex 32
+cloak_secret = "TestEnv-Secure-Secret-2026-X9!kL"
 cloak_suffix = "test"
 spam_detection_enabled = false                        # Disable spam filtering for tests
 
