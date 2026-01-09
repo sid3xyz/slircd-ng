@@ -35,7 +35,7 @@ impl PostRegHandler for LusersHandler {
             let is_match = target_lower == server_lower || target == "*";
 
             if !is_match {
-                 ctx.send_reply(
+                ctx.send_reply(
                     Response::ERR_NOSUCHSERVER,
                     vec![
                         nick.to_string(),
@@ -165,7 +165,10 @@ impl PostRegHandler for LusersHandler {
             Response::RPL_LUSERME,
             vec![
                 nick.to_string(),
-                format!("I have {} clients and {} servers", local_users, direct_links),
+                format!(
+                    "I have {} clients and {} servers",
+                    local_users, direct_links
+                ),
             ],
         )
         .await?;

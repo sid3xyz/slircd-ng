@@ -103,9 +103,9 @@ impl PostRegHandler for WhowasHandler {
         // "If a non-positive number is passed as being <count>, then a full search is done"
         let count_limit: Option<usize> = match msg.arg(1) {
             Some(s) => match s.parse::<i32>() {
-                Ok(n) if n <= 0 => None, // Non-positive = full search (no limit)
+                Ok(n) if n <= 0 => None,             // Non-positive = full search (no limit)
                 Ok(n) => Some((n as usize).min(10)), // Positive = cap at 10
-                Err(_) => Some(10), // Parse error = default to 10
+                Err(_) => Some(10),                  // Parse error = default to 10
             },
             None => Some(10), // No count arg = default to 10
         };

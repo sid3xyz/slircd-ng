@@ -56,18 +56,14 @@ impl ServerHandler for UidHandler {
 
         // Convert TS6 UID to CRDT for lossless merge
         let crdt = uid_to_crdt(
-            uid,
-            nick,
-            timestamp,
-            modes_str,
-            username,
-            hostname,
-            realname,
-            &source,
+            uid, nick, timestamp, modes_str, username, hostname, realname, &source,
         );
 
         // Merge user CRDT (handles nick collisions via CRDT semantics)
-        ctx.matrix.user_manager.merge_user_crdt(crdt, Some(source)).await;
+        ctx.matrix
+            .user_manager
+            .merge_user_crdt(crdt, Some(source))
+            .await;
 
         info!(uid = %uid, nick = %nick, "Registered remote user via UID CRDT");
 
@@ -118,11 +114,7 @@ fn uid_to_crdt(
 }
 
 /// Parses TS6 user mode string (e.g., "+iowZ") and applies to UserCrdt with timestamp.
-fn apply_user_modes_to_crdt(
-    crdt: &mut UserCrdt,
-    modes_str: &str,
-    timestamp: HybridTimestamp,
-) {
+fn apply_user_modes_to_crdt(crdt: &mut UserCrdt, modes_str: &str, timestamp: HybridTimestamp) {
     for c in modes_str.chars() {
         match c {
             '+' => continue,
@@ -231,10 +223,7 @@ mod tests {
         let modes_ts = crdt.modes.invisible.timestamp();
 
         // Modes timestamp should be incremented relative to base
-        assert!(
-            modes_ts > base_ts,
-            "Modes timestamp should be incremented"
-        );
+        assert!(modes_ts > base_ts, "Modes timestamp should be incremented");
     }
 
     #[test]

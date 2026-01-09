@@ -85,7 +85,8 @@ mod tests {
     #[test]
     fn test_extract_msgid_other_tags() {
         // Message with other tags but no msgid
-        let raw = "@time=2025-01-01T00:00:00Z;account=testuser :nick!user@host PRIVMSG #chan :Hello\r\n";
+        let raw =
+            "@time=2025-01-01T00:00:00Z;account=testuser :nick!user@host PRIVMSG #chan :Hello\r\n";
         let msg = MessageRef::parse(raw).unwrap();
         let result = extract_msgid(&msg);
         assert_eq!(result, None);

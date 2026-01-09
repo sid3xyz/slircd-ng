@@ -1,7 +1,7 @@
-use super::common::{get_member_prefixes, matches_mask, WhoUserInfo};
+use super::common::{WhoUserInfo, get_member_prefixes, matches_mask};
 use crate::handlers::{Context, HandlerResult, server_reply};
 use crate::state::RegisteredState;
-use slirc_proto::{irc_to_lower, Response, Message};
+use slirc_proto::{Message, Response, irc_to_lower};
 
 /// Execute WHO search on a channel.
 pub async fn search_channel_users<F>(

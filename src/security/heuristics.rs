@@ -153,7 +153,11 @@ mod tests {
     fn test_initial_message_no_risk() {
         let engine = HeuristicsEngine::new(test_config());
         let risk = engine.analyze("user1", "Hello world", false);
-        assert!(risk < 0.1, "First message should have near-zero risk, got {}", risk);
+        assert!(
+            risk < 0.1,
+            "First message should have near-zero risk, got {}",
+            risk
+        );
     }
 
     #[test]
@@ -162,7 +166,11 @@ mod tests {
         // Send 5 messages (at threshold)
         for i in 0..5 {
             let risk = engine.analyze("user1", &format!("Message {}", i), false);
-            assert!(risk < 0.5, "Messages at threshold should have low risk, got {}", risk);
+            assert!(
+                risk < 0.5,
+                "Messages at threshold should have low risk, got {}",
+                risk
+            );
         }
     }
 
@@ -175,7 +183,11 @@ mod tests {
         }
         // The 11th message should trigger velocity risk
         let risk = engine.analyze("user1", "Message 10", false);
-        assert!(risk > 0.2, "Excess velocity should increase risk, got {}", risk);
+        assert!(
+            risk > 0.2,
+            "Excess velocity should increase risk, got {}",
+            risk
+        );
     }
 
     #[test]
@@ -192,7 +204,10 @@ mod tests {
 
         // And again
         let risk3 = engine.analyze("user1", same_message, false);
-        assert!(risk3 > risk2, "Repeated message should increase risk further");
+        assert!(
+            risk3 > risk2,
+            "Repeated message should increase risk further"
+        );
     }
 
     #[test]
@@ -208,8 +223,15 @@ mod tests {
         // User2 sends first message - should be clean
         let user2_risk = engine.analyze("user2", "Hello", false);
 
-        assert!(user2_risk < user1_risk, "Different users should have independent metrics");
-        assert!(user2_risk < 0.1, "New user should have low risk, got {}", user2_risk);
+        assert!(
+            user2_risk < user1_risk,
+            "Different users should have independent metrics"
+        );
+        assert!(
+            user2_risk < 0.1,
+            "New user should have low risk, got {}",
+            user2_risk
+        );
     }
 
     #[test]
@@ -222,7 +244,11 @@ mod tests {
         }
         // Fanout should contribute to risk
         let risk = engine.analyze("user1", "Final PM", true);
-        assert!(risk > 0.2, "Excessive fanout should increase risk, got {}", risk);
+        assert!(
+            risk > 0.2,
+            "Excessive fanout should increase risk, got {}",
+            risk
+        );
     }
 
     #[test]
@@ -237,7 +263,11 @@ mod tests {
         // but no fanout risk since is_private_msg = false
         let risk = engine.analyze("user1", "Final", false);
         // Should have velocity risk but not as high as if fanout was counted
-        assert!(risk < 0.5, "Channel messages should not trigger fanout risk, got {}", risk);
+        assert!(
+            risk < 0.5,
+            "Channel messages should not trigger fanout risk, got {}",
+            risk
+        );
     }
 
     #[test]
@@ -256,6 +286,10 @@ mod tests {
         // Repetition score should have decayed
         let risk = engine.analyze("user1", "Yet another", false);
         // Risk should be lower due to decay
-        assert!(risk < 0.5, "Repetition should decay on different messages, got {}", risk);
+        assert!(
+            risk < 0.5,
+            "Repetition should decay on different messages, got {}",
+            risk
+        );
     }
 }

@@ -35,7 +35,8 @@ impl PostRegHandler for TraceHandler {
         let target = msg.arg(0);
 
         if let Some(target_nick) = target {
-            let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "TRACE", target_nick).await? else {
+            let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "TRACE", target_nick).await?
+            else {
                 return Ok(());
             };
 

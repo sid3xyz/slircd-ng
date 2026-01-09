@@ -17,7 +17,9 @@ pub use types::BatchState;
 // Re-export processing function
 pub use processing::process_batch_message;
 
-use super::{Context, HandlerResult, PostRegHandler, ResponseMiddleware, resolve_nick_or_nosuchnick};
+use super::{
+    Context, HandlerResult, PostRegHandler, ResponseMiddleware, resolve_nick_or_nosuchnick,
+};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{

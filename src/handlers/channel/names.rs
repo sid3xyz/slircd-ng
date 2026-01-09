@@ -352,8 +352,8 @@ impl PostRegHandler for NamesHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slirc_proto::MessageRef;
     use crate::state::MemberModes;
+    use slirc_proto::MessageRef;
 
     #[test]
     fn test_parse_names_target_none() {

@@ -186,9 +186,10 @@ mod tests {
 
     #[test]
     fn is_authorized_wildcard_host_patterns() {
-        let handler = WebircHandler::new(vec![
-            make_block("web", vec!["*.example.com", "gateway.*.net"]),
-        ]);
+        let handler = WebircHandler::new(vec![make_block(
+            "web",
+            vec!["*.example.com", "gateway.*.net"],
+        )]);
         assert!(handler.is_authorized("web", "proxy.example.com"));
         assert!(handler.is_authorized("web", "gateway.test.net"));
         assert!(!handler.is_authorized("web", "evil.example.org"));
@@ -202,9 +203,7 @@ mod tests {
 
     #[test]
     fn is_authorized_exact_host_match() {
-        let handler = WebircHandler::new(vec![
-            make_block("exact", vec!["trusted.gateway.com"]),
-        ]);
+        let handler = WebircHandler::new(vec![make_block("exact", vec!["trusted.gateway.com"])]);
         assert!(handler.is_authorized("exact", "trusted.gateway.com"));
         assert!(!handler.is_authorized("exact", "other.gateway.com"));
     }

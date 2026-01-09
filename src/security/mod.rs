@@ -26,15 +26,16 @@ pub mod dnsbl;
 pub mod heuristics;
 pub mod ip_deny;
 pub mod rate_limit;
+pub mod rbl;
 pub mod reputation;
 pub mod spam;
 pub mod xlines;
 
 // Re-export primary types for convenience
 pub use ban_cache::BanCache;
-pub use dnsbl::DnsblService;
 pub use heuristics::HeuristicsEngine;
 pub use rate_limit::RateLimitManager;
+pub use rbl::RblService;
 pub use reputation::ReputationManager;
 pub use xlines::{ExtendedBan, RegistrationParams, UserContext, matches_extended_ban};
 

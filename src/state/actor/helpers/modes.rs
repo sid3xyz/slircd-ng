@@ -301,33 +301,84 @@ mod tests {
     #[test]
     fn test_mode_to_char_basic_modes() {
         // Verify mode_to_char returns expected characters
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoExternal), Some('n'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::TopicLock), Some('t'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Moderated), Some('m'));
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::NoExternal),
+            Some('n')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::TopicLock),
+            Some('t')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::Moderated),
+            Some('m')
+        );
         assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Secret), Some('s'));
         assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Private), Some('p'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::InviteOnly), Some('i'));
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::InviteOnly),
+            Some('i')
+        );
     }
 
     #[test]
     fn test_mode_to_char_extended_modes() {
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::ModeratedUnreg), Some('M'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::OpModerated), Some('U'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoNickChange), Some('N'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoColors), Some('c'));
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::ModeratedUnreg),
+            Some('M')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::OpModerated),
+            Some('U')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::NoNickChange),
+            Some('N')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::NoColors),
+            Some('c')
+        );
         assert_eq!(ChannelActor::mode_to_char(&ChannelMode::TlsOnly), Some('z'));
         assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoKnock), Some('K'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoInvite), Some('V'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoNotice), Some('T'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::FreeInvite), Some('g'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::OperOnly), Some('O'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::AdminOnly), Some('A'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Auditorium), Some('u'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Registered), Some('r'));
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::NoInvite),
+            Some('V')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::NoNotice),
+            Some('T')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::FreeInvite),
+            Some('g')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::OperOnly),
+            Some('O')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::AdminOnly),
+            Some('A')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::Auditorium),
+            Some('u')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::Registered),
+            Some('r')
+        );
         assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoKicks), Some('Q'));
         assert_eq!(ChannelActor::mode_to_char(&ChannelMode::NoCtcp), Some('C'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::Permanent), Some('P'));
-        assert_eq!(ChannelActor::mode_to_char(&ChannelMode::RegisteredOnly), Some('R'));
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::Permanent),
+            Some('P')
+        );
+        assert_eq!(
+            ChannelActor::mode_to_char(&ChannelMode::RegisteredOnly),
+            Some('R')
+        );
     }
 
     #[test]

@@ -27,7 +27,7 @@ use tracing::{debug, warn};
 
 use crate::config::SecurityConfig;
 use crate::db::Database;
-use crate::security::{DnsblService, HeuristicsEngine, ReputationManager};
+use crate::security::{HeuristicsEngine, RblService, ReputationManager};
 
 /// Spam detection result
 #[derive(Debug, Clone, PartialEq)]
@@ -58,7 +58,8 @@ pub struct SpamDetectionService {
 
     // Integrated sub-systems (config-driven initialization)
     reputation: Option<Arc<ReputationManager>>,
-    dnsbl: Option<Arc<DnsblService>>,
+    /// Privacy-preserving RBL service (replaces legacy DNSBL).
+    rbl: Option<Arc<RblService>>,
     heuristics: Option<HeuristicsEngine>,
 }
 
@@ -97,9 +98,11 @@ impl SpamDetectionService {
             None
         };
 
-        // Initialize DNSBL
-        let dnsbl = if config.spam.dnsbl_enabled {
-            Some(Arc::new(DnsblService::new()))
+        // Initialize RBL service (replaces legacy dnsbl_enabled flag)
+        // The RblConfig controls whether HTTP, DNS, or both are enabled
+        let rbl_config = config.spam.rbl.clone();
+        let rbl = if rbl_config.http_enabled || rbl_config.dns_enabled {
+            Some(Arc::new(RblService::new(rbl_config)))
         } else {
             None
         };
@@ -114,15 +117,18 @@ impl SpamDetectionService {
             max_char_repetition: 10,
             recent_messages: DashMap::new(),
             reputation,
-            dnsbl,
+            rbl,
             heuristics,
         }
     }
 
-    /// Check if an IP is listed in DNSBLs.
+    /// Check if an IP is listed in any RBL (blocklist).
+    ///
+    /// Uses privacy-preserving HTTP APIs by default (StopForumSpam, AbuseIPDB).
+    /// Falls back to DNS-based lookups only if explicitly enabled in config.
     pub async fn check_ip_dnsbl(&self, ip: IpAddr) -> bool {
-        if let Some(dnsbl) = &self.dnsbl {
-            dnsbl.check_ip(ip).await.is_some()
+        if let Some(rbl) = &self.rbl {
+            rbl.check_ip(ip).await
         } else {
             false
         }

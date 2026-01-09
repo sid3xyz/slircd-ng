@@ -39,9 +39,27 @@ impl QueryExecutor {
                 Self::handle_around(ctx, &target, &nick, limit, is_dm, &msgref).await
             }
             ChatHistorySubCommand::BETWEEN => {
-                Self::handle_between(ctx, &target, &nick, limit, is_dm, &msgref, msgref2.as_deref().unwrap_or("*")).await
+                Self::handle_between(
+                    ctx,
+                    &target,
+                    &nick,
+                    limit,
+                    is_dm,
+                    &msgref,
+                    msgref2.as_deref().unwrap_or("*"),
+                )
+                .await
             }
-            ChatHistorySubCommand::TARGETS => Self::handle_targets(ctx, &nick, limit, &msgref, msgref2.as_deref().unwrap_or("*")).await,
+            ChatHistorySubCommand::TARGETS => {
+                Self::handle_targets(
+                    ctx,
+                    &nick,
+                    limit,
+                    &msgref,
+                    msgref2.as_deref().unwrap_or("*"),
+                )
+                .await
+            }
             _ => {
                 debug!("Unknown CHATHISTORY subcommand");
                 Ok(vec![])
@@ -57,7 +75,6 @@ impl QueryExecutor {
         is_dm: bool,
         msgref_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -95,7 +112,6 @@ impl QueryExecutor {
         is_dm: bool,
         msgref_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -134,7 +150,6 @@ impl QueryExecutor {
         is_dm: bool,
         msgref_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -172,7 +187,6 @@ impl QueryExecutor {
         is_dm: bool,
         msgref_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -231,7 +245,6 @@ impl QueryExecutor {
         ref1_str: &str,
         ref2_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -296,7 +309,6 @@ impl QueryExecutor {
         start_str: &str,
         end_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
-
         let start = if start_str == "*" {
             0
         } else {

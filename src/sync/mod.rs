@@ -223,7 +223,7 @@ impl SyncManager {
             if let Some(certs) = conn.peer_certificates()
                 && let Some(cert) = certs.first()
             {
-                use sha2::{Sha256, Digest};
+                use sha2::{Digest, Sha256};
                 let mut hasher = Sha256::new();
                 hasher.update(cert.as_ref());
                 let actual_fp = hasher.finalize();
@@ -274,7 +274,10 @@ impl SyncManager {
         }
 
         // 3. Find next hop
-        let next_hop = self.topology.get_route(&target_sid).unwrap_or(target_sid.clone());
+        let next_hop = self
+            .topology
+            .get_route(&target_sid)
+            .unwrap_or(target_sid.clone());
 
         // 4. Send to link
         if let Some(link) = self.links.get(&next_hop) {
@@ -284,7 +287,11 @@ impl SyncManager {
                 .inc();
             true
         } else {
-            tracing::warn!("No route to server {} (for user {})", target_sid.as_str(), target_uid);
+            tracing::warn!(
+                "No route to server {} (for user {})",
+                target_sid.as_str(),
+                target_uid
+            );
             crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
                 .with_label_values(&[self.local_id.as_str(), target_sid.as_str(), "no_route"])
                 .inc();
@@ -354,13 +361,9 @@ impl SyncManager {
             let db = db.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = Self::run_s2s_tls_listener(
-                    manager,
-                    matrix,
-                    registry,
-                    db,
-                    tls_config,
-                ).await {
+                if let Err(e) =
+                    Self::run_s2s_tls_listener(manager, matrix, registry, db, tls_config).await
+                {
                     tracing::error!(error = %e, "S2S TLS listener failed");
                 }
             });
@@ -374,13 +377,9 @@ impl SyncManager {
             let db = db.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = Self::run_s2s_plaintext_listener(
-                    manager,
-                    matrix,
-                    registry,
-                    db,
-                    addr,
-                ).await {
+                if let Err(e) =
+                    Self::run_s2s_plaintext_listener(manager, matrix, registry, db, addr).await
+                {
                     tracing::error!(error = %e, "S2S plaintext listener failed");
                 }
             });
@@ -395,32 +394,30 @@ impl SyncManager {
         db: crate::db::Database,
         config: crate::config::S2STlsConfig,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        use tokio_rustls::TlsAcceptor;
-        use tokio_rustls::rustls::{ServerConfig, RootCertStore};
-        use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-        use tokio_rustls::rustls::server::WebPkiClientVerifier;
         use rustls_pemfile::{certs, pkcs8_private_keys};
         use std::io::Cursor;
+        use tokio_rustls::TlsAcceptor;
+        use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+        use tokio_rustls::rustls::server::WebPkiClientVerifier;
+        use tokio_rustls::rustls::{RootCertStore, ServerConfig};
 
         info!(address = %config.address, "Starting S2S TLS listener");
 
         // Load certificate
         let cert_data = std::fs::read(&config.cert_path)?;
-        let cert_chain: Vec<CertificateDer<'static>> =
-            certs(&mut Cursor::new(&cert_data))
-                .filter_map(|r| r.ok())
-                .collect();
+        let cert_chain: Vec<CertificateDer<'static>> = certs(&mut Cursor::new(&cert_data))
+            .filter_map(|r| r.ok())
+            .collect();
         if cert_chain.is_empty() {
             return Err("No certificates found in cert file".into());
         }
 
         // Load private key
         let key_data = std::fs::read(&config.key_path)?;
-        let keys: Vec<PrivateKeyDer<'static>> =
-            pkcs8_private_keys(&mut Cursor::new(&key_data))
-                .filter_map(|r| r.ok())
-                .map(PrivateKeyDer::Pkcs8)
-                .collect();
+        let keys: Vec<PrivateKeyDer<'static>> = pkcs8_private_keys(&mut Cursor::new(&key_data))
+            .filter_map(|r| r.ok())
+            .map(PrivateKeyDer::Pkcs8)
+            .collect();
         let key = keys.into_iter().next().ok_or("No private key found")?;
 
         // Build TLS config with protocol version control
@@ -442,12 +439,14 @@ impl SyncManager {
                 .with_single_cert(cert_chain, key)?
         } else {
             // Load CA for client verification
-            let ca_path = config.ca_path.as_ref().ok_or("ca_path required for client_auth")?;
+            let ca_path = config
+                .ca_path
+                .as_ref()
+                .ok_or("ca_path required for client_auth")?;
             let ca_data = std::fs::read(ca_path)?;
-            let ca_certs: Vec<CertificateDer<'static>> =
-                certs(&mut Cursor::new(&ca_data))
-                    .filter_map(|r| r.ok())
-                    .collect();
+            let ca_certs: Vec<CertificateDer<'static>> = certs(&mut Cursor::new(&ca_data))
+                .filter_map(|r| r.ok())
+                .collect();
 
             let mut root_store = RootCertStore::empty();
             for cert in ca_certs {
@@ -486,14 +485,10 @@ impl SyncManager {
                             Ok(tls_stream) => {
                                 let stream = S2SStream::TlsServer(tls_stream);
                                 Self::handle_inbound_connection(
-                                    manager,
-                                    matrix,
-                                    registry,
-                                    db,
-                                    stream,
-                                    addr,
+                                    manager, matrix, registry, db, stream, addr,
                                     true, // is_tls
-                                ).await;
+                                )
+                                .await;
                             }
                             Err(e) => {
                                 tracing::warn!(peer = %addr, error = %e, "S2S TLS handshake failed");
@@ -534,14 +529,9 @@ impl SyncManager {
                     tokio::spawn(async move {
                         let stream = S2SStream::Plain(tcp_stream);
                         Self::handle_inbound_connection(
-                            manager,
-                            matrix,
-                            registry,
-                            db,
-                            stream,
-                            peer_addr,
-                            false, // is_tls
-                        ).await;
+                            manager, matrix, registry, db, stream, peer_addr, false, // is_tls
+                        )
+                        .await;
                     });
                 }
                 Err(e) => {
@@ -584,7 +574,13 @@ impl SyncManager {
         while let Some(result) = framed.next().await {
             if handshake_start.elapsed() > handshake_timeout {
                 tracing::warn!(peer = %remote_addr, "Inbound S2S handshake timeout");
-                let _ = framed.send(Message::from(Command::ERROR("Handshake timeout".into())).to_string().trim_end()).await;
+                let _ = framed
+                    .send(
+                        Message::from(Command::ERROR("Handshake timeout".into()))
+                            .to_string()
+                            .trim_end(),
+                    )
+                    .await;
                 return;
             }
 
@@ -606,11 +602,16 @@ impl SyncManager {
                 let sid_obj = ServerId::new(sid.clone());
                 if manager.topology.servers.contains_key(&sid_obj) {
                     tracing::error!(peer = %remote_addr, "Loop detected: {} ({})", name, sid);
-                    let _ = framed.send(
-                        Message::from(Command::ERROR(format!("Loop detected: {} ({})", name, sid)))
+                    let _ = framed
+                        .send(
+                            Message::from(Command::ERROR(format!(
+                                "Loop detected: {} ({})",
+                                name, sid
+                            )))
                             .to_string()
                             .trim_end(),
-                    ).await;
+                        )
+                        .await;
                     return;
                 }
             }
@@ -622,14 +623,19 @@ impl SyncManager {
             {
                 let password = &args[0];
                 // Find a matching link block by password (inbound verification)
-                let valid = manager.configured_links.iter().any(|l| l.password == *password);
+                let valid = manager
+                    .configured_links
+                    .iter()
+                    .any(|l| l.password == *password);
                 if !valid {
                     tracing::warn!(peer = %remote_addr, "Invalid S2S password");
-                    let _ = framed.send(
-                        Message::from(Command::ERROR("Invalid password".into()))
-                            .to_string()
-                            .trim_end(),
-                    ).await;
+                    let _ = framed
+                        .send(
+                            Message::from(Command::ERROR("Invalid password".into()))
+                                .to_string()
+                                .trim_end(),
+                        )
+                        .await;
                     return;
                 }
             }
@@ -637,7 +643,10 @@ impl SyncManager {
             match machine.step(msg.command, &manager.configured_links) {
                 Ok(responses) => {
                     for resp in responses {
-                        if let Err(e) = framed.send(Message::from(resp).to_string().trim_end()).await {
+                        if let Err(e) = framed
+                            .send(Message::from(resp).to_string().trim_end())
+                            .await
+                        {
                             tracing::error!(peer = %remote_addr, error = %e, "Failed to send handshake response");
                             return;
                         }
@@ -653,7 +662,9 @@ impl SyncManager {
                         // Generate and send burst
                         let burst = burst::generate_burst(&matrix, manager.local_id.as_str()).await;
                         for cmd in burst {
-                            if let Err(e) = framed.send(Message::from(cmd).to_string().trim_end()).await {
+                            if let Err(e) =
+                                framed.send(Message::from(cmd).to_string().trim_end()).await
+                            {
                                 tracing::error!(peer = %remote_addr, error = %e, "Failed to send burst");
                                 return;
                             }
@@ -857,15 +868,23 @@ impl SyncManager {
                 info!(hostname = %config.hostname, port = config.port, tls = config.tls, "Connecting to peer");
 
                 // Establish TCP connection
-                let tcp_stream =
-                    match TcpStream::connect(format!("{}:{}", config.hostname, config.port)).await {
-                        Ok(s) => s,
-                        Err(e) => {
-                            tracing::error!("Failed to connect to {}: {}. Retrying in 5s...", config.hostname, e);
-                            tokio::time::sleep(Duration::from_secs(5)).await;
-                            continue;
-                        }
-                    };
+                let tcp_stream = match TcpStream::connect(format!(
+                    "{}:{}",
+                    config.hostname, config.port
+                ))
+                .await
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to connect to {}: {}. Retrying in 5s...",
+                            config.hostname,
+                            e
+                        );
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                };
 
                 // Upgrade to TLS if configured
                 let stream: S2SStream = if config.tls {
@@ -874,10 +893,16 @@ impl SyncManager {
                         &config.hostname,
                         config.verify_cert,
                         config.cert_fingerprint.as_deref(),
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(tls_stream) => S2SStream::TlsClient(tls_stream),
                         Err(e) => {
-                            tracing::error!("TLS handshake failed with {}: {}. Retrying in 5s...", config.hostname, e);
+                            tracing::error!(
+                                "TLS handshake failed with {}: {}. Retrying in 5s...",
+                                config.hostname,
+                                e
+                            );
                             tokio::time::sleep(Duration::from_secs(5)).await;
                             continue;
                         }
@@ -886,331 +911,348 @@ impl SyncManager {
                     S2SStream::Plain(tcp_stream)
                 };
 
-            let mut framed = Framed::new(stream, LinesCodec::new());
+                let mut framed = Framed::new(stream, LinesCodec::new());
 
-            let mut machine = HandshakeMachine::new(
-                manager.local_id.clone(),
-                manager.local_name.clone(),
-                manager.local_desc.clone(),
-            );
-            machine.transition(HandshakeState::OutboundInitiated);
+                let mut machine = HandshakeMachine::new(
+                    manager.local_id.clone(),
+                    manager.local_name.clone(),
+                    manager.local_desc.clone(),
+                );
+                machine.transition(HandshakeState::OutboundInitiated);
 
-            // Track remote server info for netsplit handling
-            let mut remote_sid: Option<ServerId> = None;
-            let mut remote_name: Option<String> = None;
-            let mut remote_info: Option<String> = None;
+                // Track remote server info for netsplit handling
+                let mut remote_sid: Option<ServerId> = None;
+                let mut remote_name: Option<String> = None;
+                let mut remote_info: Option<String> = None;
 
-            // Send initial PASS, CAPAB, SERVER, SVINFO
-            let pass_cmd = Command::Raw(
-                "PASS".to_string(),
-                vec![
-                    config.password.clone(),
-                    "TS=6".to_string(),
+                // Send initial PASS, CAPAB, SERVER, SVINFO
+                let pass_cmd = Command::Raw(
+                    "PASS".to_string(),
+                    vec![
+                        config.password.clone(),
+                        "TS=6".to_string(),
+                        manager.local_id.as_str().to_string(),
+                    ],
+                );
+                let capab_cmd = Command::CAPAB(vec![
+                    "QS".to_string(),
+                    "ENCAP".to_string(),
+                    "EX".to_string(),
+                    "IE".to_string(),
+                    "UNKLN".to_string(),
+                    "KLN".to_string(),
+                    "GLN".to_string(),
+                    "HOPS".to_string(),
+                ]);
+                let server_cmd = Command::SERVER(
+                    manager.local_name.clone(),
+                    1,
                     manager.local_id.as_str().to_string(),
-                ],
-            );
-            let capab_cmd = Command::CAPAB(vec![
-                "QS".to_string(),
-                "ENCAP".to_string(),
-                "EX".to_string(),
-                "IE".to_string(),
-                "UNKLN".to_string(),
-                "KLN".to_string(),
-                "GLN".to_string(),
-                "HOPS".to_string(),
-            ]);
-            let server_cmd = Command::SERVER(
-                manager.local_name.clone(),
-                1,
-                manager.local_id.as_str().to_string(),
-                manager.local_desc.clone(),
-            );
-            // SAFETY: duration_since(UNIX_EPOCH) cannot fail unless system clock is before 1970
-            let svinfo_cmd = Command::SVINFO(
-                6,
-                6,
-                0,
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-            );
+                    manager.local_desc.clone(),
+                );
+                // SAFETY: duration_since(UNIX_EPOCH) cannot fail unless system clock is before 1970
+                let svinfo_cmd = Command::SVINFO(
+                    6,
+                    6,
+                    0,
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                );
 
-            if let Err(e) = framed.send(Message::from(pass_cmd).to_string().trim_end()).await {
-                tracing::error!("Failed to send PASS: {}", e);
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
-            }
-            if let Err(e) = framed.send(Message::from(capab_cmd).to_string().trim_end()).await {
-                tracing::error!("Failed to send CAPAB: {}", e);
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
-            }
-            if let Err(e) = framed.send(Message::from(server_cmd).to_string().trim_end()).await {
-                tracing::error!("Failed to send SERVER: {}", e);
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
-            }
-            if let Err(e) = framed.send(Message::from(svinfo_cmd).to_string().trim_end()).await {
-                tracing::error!("Failed to send SVINFO: {}", e);
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
-            }
-
-            let links = vec![config.clone()];
-            let mut handshake_success = false;
-
-            while let Some(Ok(line)) = framed.next().await {
-                let msg = match line.parse::<Message>() {
-                    Ok(m) => m,
-                    Err(_) => continue,
-                };
-
-                // Loop detection for SERVER command
-                if let Command::SERVER(name, _, sid, _) = &msg.command {
-                    let sid_obj = ServerId::new(sid.clone());
-                    if manager.topology.servers.contains_key(&sid_obj) {
-                        tracing::error!("Loop detected during handshake: {} ({})", name, sid);
-                        let _ = framed
-                            .send(
-                                Message::from(Command::ERROR(format!(
-                                    "Loop detected: {} ({})",
-                                    name, sid
-                                )))
-                                .to_string()
-                                .trim_end(),
-                            )
-                            .await;
-                        break;
-                    }
-                }
-
-                match machine.step(msg.command, &links) {
-                    Ok(responses) => {
-                        for resp in responses {
-                            if let Err(e) = framed.send(Message::from(resp).to_string().trim_end()).await {
-                                tracing::error!("Failed to send response: {}", e);
-                                break;
-                            }
-                        }
-
-                        if machine.state == HandshakeState::Bursting {
-                            info!(
-                                "Handshake complete (Outbound). Remote: {:?}",
-                                machine.remote_name
-                            );
-
-                            // Capture remote server info
-                            remote_sid = machine.remote_sid.clone();
-                            remote_name = machine.remote_name.clone();
-                            remote_info = machine.remote_info.clone();
-
-                            // Generate Burst
-                            let burst =
-                                burst::generate_burst(&matrix, manager.local_id.as_str()).await;
-                            for cmd in burst {
-                                if let Err(e) = framed.send(Message::from(cmd).to_string().trim_end()).await {
-                                    tracing::error!("Failed to send burst: {}", e);
-                                    // Connection failed, handle netsplit if we had a peer
-                                    if let Some(sid) = &remote_sid {
-                                        let rn = remote_name.as_deref().unwrap_or("unknown");
-                                        split::handle_netsplit(
-                                            &matrix,
-                                            sid,
-                                            &manager.local_name,
-                                            rn,
-                                        )
-                                        .await;
-                                    }
-                                    break;
-                                }
-                            }
-                            handshake_success = true;
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Handshake error with {}: {:?}", config.hostname, e);
-                        break;
-                    }
-                }
-            }
-
-            // Both handshake success AND remote_sid must be present to proceed
-            let remote_sid_val = match (handshake_success, remote_sid.clone()) {
-                (true, Some(sid)) => sid,
-                _ => {
-                    tracing::info!("Handshake failed or incomplete. Retrying in 5s...");
+                if let Err(e) = framed
+                    .send(Message::from(pass_cmd).to_string().trim_end())
+                    .await
+                {
+                    tracing::error!("Failed to send PASS: {}", e);
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
                 }
-            };
+                if let Err(e) = framed
+                    .send(Message::from(capab_cmd).to_string().trim_end())
+                    .await
+                {
+                    tracing::error!("Failed to send CAPAB: {}", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+                if let Err(e) = framed
+                    .send(Message::from(server_cmd).to_string().trim_end())
+                    .await
+                {
+                    tracing::error!("Failed to send SERVER: {}", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+                if let Err(e) = framed
+                    .send(Message::from(svinfo_cmd).to_string().trim_end())
+                    .await
+                {
+                    tracing::error!("Failed to send SVINFO: {}", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
 
-            // Register link
-            let (tx, mut rx) = mpsc::channel::<Arc<Message>>(100);
-            manager.links.insert(
-                remote_sid_val.clone(),
-                LinkState {
-                    tx,
-                    state: handshake::HandshakeState::Synced,
-                    name: remote_name.clone().unwrap_or_default(),
-                    last_pong: Instant::now(),
-                    last_ping: Instant::now(),
-                    connected_at: Instant::now(),
-                },
-            );
+                let links = vec![config.clone()];
+                let mut handshake_success = false;
 
-            // Add to topology
-            manager.topology.servers.insert(
-                remote_sid_val.clone(),
-                ServerInfo {
-                    sid: remote_sid_val.clone(),
-                    name: remote_name.clone().unwrap_or_default(),
-                    info: remote_info.clone().unwrap_or_default(),
-                    hopcount: 1,
-                    via: None,
-                },
-            );
+                while let Some(Ok(line)) = framed.next().await {
+                    let msg = match line.parse::<Message>() {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
 
-            // Create ServerState for Registry dispatch
-            let mut server_state = crate::state::ServerState {
-                name: remote_name.clone().unwrap_or_default(),
-                sid: remote_sid_val.as_str().to_string(),
-                info: String::new(),
-                hopcount: 1,
-                capabilities: std::collections::HashSet::new(),
-                is_tls: config.tls,
-                active_batch: None,
-                active_batch_ref: None,
-                batch_routing: None,
-            };
-
-            // Reply channel for handler responses
-            let (reply_tx, mut reply_rx) = mpsc::channel::<Arc<Message>>(100);
-            let remote_addr = format!("{}:{}", config.hostname, config.port)
-                .parse()
-                .unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], 0)));
-
-            loop {
-                tokio::select! {
-                    msg = rx.recv() => {
-                        match msg {
-                            Some(m) => {
-                                let s = m.as_ref().to_string();
-                                S2S_BYTES_SENT.with_label_values(&[remote_sid_val.as_str()]).inc_by(s.len() as u64 + 2);
-                                if let Err(e) = framed.send(s.trim_end()).await {
-                                     tracing::error!("Failed to send message to peer: {}", e);
-                                     break;
-                                }
-                            }
-                            None => {
-                                info!("Link channel closed (timeout or removal), closing connection");
-                                break;
-                            }
-                        }
-                    }
-                    Some(reply) = reply_rx.recv() => {
-                        let s = reply.as_ref().to_string();
-                        if let Err(e) = framed.send(s.trim_end()).await {
-                            tracing::error!("Failed to send reply to peer: {}", e);
+                    // Loop detection for SERVER command
+                    if let Command::SERVER(name, _, sid, _) = &msg.command {
+                        let sid_obj = ServerId::new(sid.clone());
+                        if manager.topology.servers.contains_key(&sid_obj) {
+                            tracing::error!("Loop detected during handshake: {} ({})", name, sid);
+                            let _ = framed
+                                .send(
+                                    Message::from(Command::ERROR(format!(
+                                        "Loop detected: {} ({})",
+                                        name, sid
+                                    )))
+                                    .to_string()
+                                    .trim_end(),
+                                )
+                                .await;
                             break;
                         }
                     }
-                    result = framed.next() => {
-                        match result {
-                            Some(Ok(line)) => {
-                                S2S_BYTES_RECEIVED.with_label_values(&[remote_sid_val.as_str()]).inc_by(line.len() as u64 + 2);
-                                let msg = match line.parse::<Message>() {
-                                    Ok(m) => m,
-                                    Err(e) => {
-                                        tracing::warn!("Failed to parse inbound message: {}", e);
-                                        continue;
-                                    }
-                                };
 
-                                S2S_COMMANDS.with_label_values(&[remote_sid_val.as_str(), msg.command.name()]).inc();
-
-                                // Check S2S rate limit before processing
-                                match manager.rate_limiter.check_command(remote_sid_val.as_str()) {
-                                    S2SRateLimitResult::Allowed => {
-                                        // Continue to dispatch below
-                                    }
-                                    S2SRateLimitResult::Limited { violations } => {
-                                        S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "limited"]).inc();
-                                        tracing::warn!(
-                                            sid = %remote_sid_val.as_str(),
-                                            violations = violations,
-                                            command = %msg.command.name(),
-                                            "S2S rate limit exceeded, dropping command"
-                                        );
-                                        continue; // Drop the command but keep connection
-                                    }
-                                    S2SRateLimitResult::Disconnect { violations } => {
-                                        S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "disconnected"]).inc();
-                                        tracing::error!(
-                                            sid = %remote_sid_val.as_str(),
-                                            violations = violations,
-                                            "S2S rate limit threshold exceeded, disconnecting peer"
-                                        );
-                                        // Send ERROR before disconnecting
-                                        let error_msg = Command::ERROR(format!(
-                                            "Rate limit exceeded ({} violations)",
-                                            violations
-                                        ));
-                                        let _ = framed.send(Message::from(error_msg).to_string().trim_end()).await;
-                                        break; // Disconnect
-                                    }
+                    match machine.step(msg.command, &links) {
+                        Ok(responses) => {
+                            for resp in responses {
+                                if let Err(e) = framed
+                                    .send(Message::from(resp).to_string().trim_end())
+                                    .await
+                                {
+                                    tracing::error!("Failed to send response: {}", e);
+                                    break;
                                 }
+                            }
 
-                                // Parse into MessageRef for Registry dispatch
-                                let raw_str = msg.to_string();
-                                if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
-                                    let mut ctx = crate::handlers::Context {
-                                        uid: "server",
-                                        matrix: &matrix,
-                                        sender: crate::handlers::ResponseMiddleware::Direct(&reply_tx),
-                                        state: &mut server_state,
-                                        db: &db,
-                                        remote_addr,
-                                        label: None,
-                                        suppress_labeled_ack: false,
-                                        active_batch_id: None,
-                                        registry: &registry,
-                                    };
+                            if machine.state == HandshakeState::Bursting {
+                                info!(
+                                    "Handshake complete (Outbound). Remote: {:?}",
+                                    machine.remote_name
+                                );
 
-                                    if let Err(e) = registry.dispatch_server(&mut ctx, &msg_ref).await {
-                                        tracing::error!("Protocol error from peer: {:?}", e);
+                                // Capture remote server info
+                                remote_sid = machine.remote_sid.clone();
+                                remote_name = machine.remote_name.clone();
+                                remote_info = machine.remote_info.clone();
+
+                                // Generate Burst
+                                let burst =
+                                    burst::generate_burst(&matrix, manager.local_id.as_str()).await;
+                                for cmd in burst {
+                                    if let Err(e) =
+                                        framed.send(Message::from(cmd).to_string().trim_end()).await
+                                    {
+                                        tracing::error!("Failed to send burst: {}", e);
+                                        // Connection failed, handle netsplit if we had a peer
+                                        if let Some(sid) = &remote_sid {
+                                            let rn = remote_name.as_deref().unwrap_or("unknown");
+                                            split::handle_netsplit(
+                                                &matrix,
+                                                sid,
+                                                &manager.local_name,
+                                                rn,
+                                            )
+                                            .await;
+                                        }
                                         break;
                                     }
                                 }
-                            }
-                            Some(Err(e)) => {
-                                tracing::error!("Stream error: {}", e);
+                                handshake_success = true;
                                 break;
                             }
-                            None => {
-                                info!("Connection closed by peer");
+                        }
+                        Err(e) => {
+                            tracing::error!("Handshake error with {}: {:?}", config.hostname, e);
+                            break;
+                        }
+                    }
+                }
+
+                // Both handshake success AND remote_sid must be present to proceed
+                let remote_sid_val = match (handshake_success, remote_sid.clone()) {
+                    (true, Some(sid)) => sid,
+                    _ => {
+                        tracing::info!("Handshake failed or incomplete. Retrying in 5s...");
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                };
+
+                // Register link
+                let (tx, mut rx) = mpsc::channel::<Arc<Message>>(100);
+                manager.links.insert(
+                    remote_sid_val.clone(),
+                    LinkState {
+                        tx,
+                        state: handshake::HandshakeState::Synced,
+                        name: remote_name.clone().unwrap_or_default(),
+                        last_pong: Instant::now(),
+                        last_ping: Instant::now(),
+                        connected_at: Instant::now(),
+                    },
+                );
+
+                // Add to topology
+                manager.topology.servers.insert(
+                    remote_sid_val.clone(),
+                    ServerInfo {
+                        sid: remote_sid_val.clone(),
+                        name: remote_name.clone().unwrap_or_default(),
+                        info: remote_info.clone().unwrap_or_default(),
+                        hopcount: 1,
+                        via: None,
+                    },
+                );
+
+                // Create ServerState for Registry dispatch
+                let mut server_state = crate::state::ServerState {
+                    name: remote_name.clone().unwrap_or_default(),
+                    sid: remote_sid_val.as_str().to_string(),
+                    info: String::new(),
+                    hopcount: 1,
+                    capabilities: std::collections::HashSet::new(),
+                    is_tls: config.tls,
+                    active_batch: None,
+                    active_batch_ref: None,
+                    batch_routing: None,
+                };
+
+                // Reply channel for handler responses
+                let (reply_tx, mut reply_rx) = mpsc::channel::<Arc<Message>>(100);
+                let remote_addr = format!("{}:{}", config.hostname, config.port)
+                    .parse()
+                    .unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], 0)));
+
+                loop {
+                    tokio::select! {
+                        msg = rx.recv() => {
+                            match msg {
+                                Some(m) => {
+                                    let s = m.as_ref().to_string();
+                                    S2S_BYTES_SENT.with_label_values(&[remote_sid_val.as_str()]).inc_by(s.len() as u64 + 2);
+                                    if let Err(e) = framed.send(s.trim_end()).await {
+                                         tracing::error!("Failed to send message to peer: {}", e);
+                                         break;
+                                    }
+                                }
+                                None => {
+                                    info!("Link channel closed (timeout or removal), closing connection");
+                                    break;
+                                }
+                            }
+                        }
+                        Some(reply) = reply_rx.recv() => {
+                            let s = reply.as_ref().to_string();
+                            if let Err(e) = framed.send(s.trim_end()).await {
+                                tracing::error!("Failed to send reply to peer: {}", e);
                                 break;
+                            }
+                        }
+                        result = framed.next() => {
+                            match result {
+                                Some(Ok(line)) => {
+                                    S2S_BYTES_RECEIVED.with_label_values(&[remote_sid_val.as_str()]).inc_by(line.len() as u64 + 2);
+                                    let msg = match line.parse::<Message>() {
+                                        Ok(m) => m,
+                                        Err(e) => {
+                                            tracing::warn!("Failed to parse inbound message: {}", e);
+                                            continue;
+                                        }
+                                    };
+
+                                    S2S_COMMANDS.with_label_values(&[remote_sid_val.as_str(), msg.command.name()]).inc();
+
+                                    // Check S2S rate limit before processing
+                                    match manager.rate_limiter.check_command(remote_sid_val.as_str()) {
+                                        S2SRateLimitResult::Allowed => {
+                                            // Continue to dispatch below
+                                        }
+                                        S2SRateLimitResult::Limited { violations } => {
+                                            S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "limited"]).inc();
+                                            tracing::warn!(
+                                                sid = %remote_sid_val.as_str(),
+                                                violations = violations,
+                                                command = %msg.command.name(),
+                                                "S2S rate limit exceeded, dropping command"
+                                            );
+                                            continue; // Drop the command but keep connection
+                                        }
+                                        S2SRateLimitResult::Disconnect { violations } => {
+                                            S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "disconnected"]).inc();
+                                            tracing::error!(
+                                                sid = %remote_sid_val.as_str(),
+                                                violations = violations,
+                                                "S2S rate limit threshold exceeded, disconnecting peer"
+                                            );
+                                            // Send ERROR before disconnecting
+                                            let error_msg = Command::ERROR(format!(
+                                                "Rate limit exceeded ({} violations)",
+                                                violations
+                                            ));
+                                            let _ = framed.send(Message::from(error_msg).to_string().trim_end()).await;
+                                            break; // Disconnect
+                                        }
+                                    }
+
+                                    // Parse into MessageRef for Registry dispatch
+                                    let raw_str = msg.to_string();
+                                    if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
+                                        let mut ctx = crate::handlers::Context {
+                                            uid: "server",
+                                            matrix: &matrix,
+                                            sender: crate::handlers::ResponseMiddleware::Direct(&reply_tx),
+                                            state: &mut server_state,
+                                            db: &db,
+                                            remote_addr,
+                                            label: None,
+                                            suppress_labeled_ack: false,
+                                            active_batch_id: None,
+                                            registry: &registry,
+                                        };
+
+                                        if let Err(e) = registry.dispatch_server(&mut ctx, &msg_ref).await {
+                                            tracing::error!("Protocol error from peer: {:?}", e);
+                                            break;
+                                        }
+                                    }
+                                }
+                                Some(Err(e)) => {
+                                    tracing::error!("Stream error: {}", e);
+                                    break;
+                                }
+                                None => {
+                                    info!("Connection closed by peer");
+                                    break;
+                                }
                             }
                         }
                     }
                 }
+
+                // Connection ended - handle netsplit
+                let rn = remote_name.as_deref().unwrap_or("unknown");
+                info!(remote_sid = %remote_sid_val.as_str(), "Peer disconnected, initiating netsplit cleanup");
+                split::handle_netsplit(&matrix, &remote_sid_val, &manager.local_name, rn).await;
+
+                // Clean up rate limiter state for this peer
+                manager.rate_limiter.remove_peer(remote_sid_val.as_str());
+
+                // Retry after disconnect
+                info!("Reconnecting to {} in 5s...", config.hostname);
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
-
-            // Connection ended - handle netsplit
-            let rn = remote_name.as_deref().unwrap_or("unknown");
-            info!(remote_sid = %remote_sid_val.as_str(), "Peer disconnected, initiating netsplit cleanup");
-            split::handle_netsplit(&matrix, &remote_sid_val, &manager.local_name, rn).await;
-
-            // Clean up rate limiter state for this peer
-            manager.rate_limiter.remove_peer(remote_sid_val.as_str());
-
-            // Retry after disconnect
-            info!("Reconnecting to {} in 5s...", config.hostname);
-            tokio::time::sleep(Duration::from_secs(5)).await;
-        }
-    });
-}
+        });
+    }
 
     /// Get a peer connection for a given server ID.
     pub fn get_peer_for_server(&self, sid: &ServerId) -> Option<LinkState> {
@@ -1250,11 +1292,7 @@ impl SyncManager {
         rx
     }
 
-    pub async fn send_burst(
-        &self,
-        sid: &ServerId,
-        matrix: &Matrix,
-    ) {
+    pub async fn send_burst(&self, sid: &ServerId, matrix: &Matrix) {
         info!("Sending burst to {}", sid.as_str());
         let commands = burst::generate_burst(matrix, self.local_id.as_str()).await;
 

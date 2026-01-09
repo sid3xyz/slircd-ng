@@ -51,7 +51,9 @@ impl ServerHandler for KillHandler {
                 let _ = sender.send(Arc::new(error_msg)).await;
             }
 
-            ctx.matrix.disconnect_user(&target_uid.to_string(), &quit_reason).await;
+            ctx.matrix
+                .disconnect_user(&target_uid.to_string(), &quit_reason)
+                .await;
         }
 
         // Propagate to other servers (split-horizon: exclude source)

@@ -126,7 +126,11 @@ mod tests {
     #[test]
     fn zero_duration_expires_immediately() {
         // A ban with 0 duration should expire almost immediately
-        let meta = BanMetadata::new("Zero dur".to_string(), Some(Duration::ZERO), "admin".to_string());
+        let meta = BanMetadata::new(
+            "Zero dur".to_string(),
+            Some(Duration::ZERO),
+            "admin".to_string(),
+        );
         // This is tricky - it expires at added_at + 0, so it depends on timing
         // The expiry equals added_at, and is_expired checks if now > expiry
         // So it won't be expired immediately, but will be expired after 1 second

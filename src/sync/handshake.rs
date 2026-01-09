@@ -136,10 +136,12 @@ impl HandshakeMachine {
             Command::CAP(_, _, _, _) => {
                 // Ignore CAP negotiation for now in S2S
             }
-            _ => return Err(HandshakeError::ProtocolError(format!(
-                "Unexpected command in OutboundInitiated: {:?}",
-                command
-            ))),
+            _ => {
+                return Err(HandshakeError::ProtocolError(format!(
+                    "Unexpected command in OutboundInitiated: {:?}",
+                    command
+                )));
+            }
         }
 
         self.check_handshake_complete(links)?;
@@ -174,10 +176,12 @@ impl HandshakeMachine {
             Command::CAP(_, _, _, _) => {
                 // Ignore CAP negotiation for now in S2S
             }
-            _ => return Err(HandshakeError::ProtocolError(format!(
-                "Unexpected command in InboundReceived: {:?}",
-                command
-            ))),
+            _ => {
+                return Err(HandshakeError::ProtocolError(format!(
+                    "Unexpected command in InboundReceived: {:?}",
+                    command
+                )));
+            }
         }
 
         if self.check_handshake_complete(links)? {
@@ -343,7 +347,10 @@ mod tests {
     fn step_from_unconnected_returns_error() {
         let mut machine = make_machine();
         let result = machine.step(Command::PING("test".to_string(), None), &[]);
-        assert!(matches!(result, Err(HandshakeError::InvalidStateTransition)));
+        assert!(matches!(
+            result,
+            Err(HandshakeError::InvalidStateTransition)
+        ));
     }
 
     // ========================================================================
