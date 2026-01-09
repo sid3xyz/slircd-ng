@@ -387,6 +387,15 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Start inbound S2S listener (TLS and/or plaintext)
+    matrix.sync_manager.start_inbound_listener(
+        matrix.clone(),
+        registry.clone(),
+        db.clone(),
+        config.s2s_tls.clone(),
+        config.s2s_listen,
+    );
+
     // Start S2S heartbeat
     matrix.sync_manager.start_heartbeat();
 

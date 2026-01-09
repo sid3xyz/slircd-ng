@@ -91,6 +91,32 @@ pub struct WebSocketConfig {
     pub proxy_protocol: bool,
 }
 
+/// Server-to-Server TLS listener configuration.
+///
+/// This is the inbound listener for TLS-encrypted S2S connections.
+/// Remote servers connecting with `tls = true` in their link block will connect here.
+#[derive(Debug, Clone, Deserialize)]
+pub struct S2STlsConfig {
+    /// Address to bind to for S2S TLS (e.g., "0.0.0.0:6900").
+    pub address: SocketAddr,
+    /// Path to certificate file (PEM format).
+    pub cert_path: String,
+    /// Path to private key file (PEM format).
+    pub key_path: String,
+    /// Whether to require TLS 1.3 only (disables TLS 1.2).
+    #[serde(default)]
+    pub tls13_only: bool,
+    /// Whether to require client certificate from connecting servers.
+    /// "none" = no client cert required (password auth only)
+    /// "optional" = accept client cert if provided (for future mTLS)
+    /// "required" = require valid client cert (mTLS mode)
+    #[serde(default)]
+    pub client_auth: ClientAuth,
+    /// Path to CA certificate file for client verification (PEM format).
+    /// Required if client_auth is "optional" or "required".
+    pub ca_path: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,5 +241,35 @@ mod tests {
         let cfg: WebSocketConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.allow_origins.len(), 2);
         assert_eq!(cfg.allow_origins[0], "https://example.com");
+    }
+
+    #[test]
+    fn s2s_tls_config_deserialize_defaults() {
+        let toml_str = r#"
+            address = "0.0.0.0:6900"
+            cert_path = "/path/to/cert.pem"
+            key_path = "/path/to/key.pem"
+        "#;
+        let cfg: S2STlsConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.address.port(), 6900);
+        assert!(!cfg.tls13_only); // default
+        assert_eq!(cfg.client_auth, ClientAuth::None); // default
+        assert!(cfg.ca_path.is_none());
+    }
+
+    #[test]
+    fn s2s_tls_config_with_mtls() {
+        let toml_str = r#"
+            address = "0.0.0.0:6900"
+            cert_path = "/path/to/cert.pem"
+            key_path = "/path/to/key.pem"
+            tls13_only = true
+            client_auth = "required"
+            ca_path = "/path/to/ca.pem"
+        "#;
+        let cfg: S2STlsConfig = toml::from_str(toml_str).unwrap();
+        assert!(cfg.tls13_only);
+        assert_eq!(cfg.client_auth, ClientAuth::Required);
+        assert_eq!(cfg.ca_path.as_deref(), Some("/path/to/ca.pem"));
     }
 }

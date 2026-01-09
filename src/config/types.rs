@@ -7,7 +7,7 @@ use thiserror::Error;
 use super::history::HistoryConfig;
 use super::limits::LimitsConfig;
 use super::links::LinkBlock;
-use super::listen::{ListenConfig, TlsConfig, WebSocketConfig};
+use super::listen::{ListenConfig, S2STlsConfig, TlsConfig, WebSocketConfig};
 use super::oper::{OperBlock, WebircBlock};
 use super::security::SecurityConfig;
 
@@ -57,6 +57,12 @@ pub struct Config {
     /// Link blocks for server peering.
     #[serde(default)]
     pub links: Vec<LinkBlock>,
+    /// Optional S2S TLS listener configuration.
+    /// When configured, servers can connect with `tls = true` in their link block.
+    pub s2s_tls: Option<S2STlsConfig>,
+    /// Optional plaintext S2S listener address.
+    /// For non-TLS server links (NOT RECOMMENDED for production).
+    pub s2s_listen: Option<std::net::SocketAddr>,
 }
 
 impl Config {
