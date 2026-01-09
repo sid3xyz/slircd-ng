@@ -48,7 +48,12 @@ impl PreRegHandler for ServerHandshakeHandler {
         );
 
         // Verify password
-        let link_block = ctx.matrix.config.links.iter().find(|l| l.name == name)
+        let link_block = ctx
+            .matrix
+            .config
+            .links
+            .iter()
+            .find(|l| l.name == name)
             .ok_or(HandlerError::AccessDenied)?;
 
         if let Some(pass) = &ctx.state.pass_received {
@@ -74,7 +79,9 @@ impl PreRegHandler for ServerHandshakeHandler {
                     ctx.matrix.server_info.sid.as_str().to_string(),
                 ],
             );
-            ctx.sender.send(slirc_proto::Message::from(pass_cmd)).await?;
+            ctx.sender
+                .send(slirc_proto::Message::from(pass_cmd))
+                .await?;
 
             // SERVER <name> <hopcount> <sid> <info>
             let server_cmd = slirc_proto::Command::SERVER(
@@ -83,7 +90,9 @@ impl PreRegHandler for ServerHandshakeHandler {
                 ctx.matrix.server_info.sid.as_str().to_string(),
                 ctx.matrix.server_info.description.clone(),
             );
-            ctx.sender.send(slirc_proto::Message::from(server_cmd)).await?;
+            ctx.sender
+                .send(slirc_proto::Message::from(server_cmd))
+                .await?;
         }
 
         // Transition to ServerState is handled by the lifecycle loop

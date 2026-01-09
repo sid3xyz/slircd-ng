@@ -34,8 +34,6 @@ pub struct Account {
     pub hide_email: bool,
 }
 
-
-
 /// Repository for account operations.
 pub struct AccountRepository<'a> {
     pool: &'a SqlitePool,
@@ -712,10 +710,7 @@ mod tests {
     fn test_verify_password_invalid_hash_format() {
         let result = verify_password("password", "not_a_valid_hash");
 
-        assert!(
-            result.is_err(),
-            "invalid hash format should return error"
-        );
+        assert!(result.is_err(), "invalid hash format should return error");
     }
 
     #[test]

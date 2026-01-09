@@ -1,7 +1,14 @@
 //! DNSBL (DNS Blocklist) Service
 //!
-//! Checks incoming connections against industry-standard blocklists (DroneBL, EFnet RBL).
-//! Used during the connection handshake to reject known botnets.
+//! **DEPRECATED**: This module is superseded by `rbl.rs` which provides:
+//! - Privacy-preserving HTTP-based APIs (StopForumSpam, AbuseIPDB)
+//! - Result caching
+//! - Optional DNS fallback
+//!
+//! This file is kept for reference but is no longer used by the codebase.
+//! It will be removed in a future version.
+
+#![allow(dead_code)]
 
 use hickory_resolver::TokioResolver;
 use hickory_resolver::config::ResolverConfig;

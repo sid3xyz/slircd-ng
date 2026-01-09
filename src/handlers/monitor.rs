@@ -434,7 +434,11 @@ pub async fn notify_extended_monitor_watchers(
     for watcher_uid in watcher_uids {
         // Check if watcher has both extended-monitor AND the required capability
         let should_send = {
-            let user_arc = matrix.user_manager.users.get(&watcher_uid).map(|u| u.clone());
+            let user_arc = matrix
+                .user_manager
+                .users
+                .get(&watcher_uid)
+                .map(|u| u.clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.caps.contains("extended-monitor") && user.caps.contains(required_cap)
@@ -444,7 +448,11 @@ pub async fn notify_extended_monitor_watchers(
         };
 
         if should_send {
-            let sender = matrix.user_manager.senders.get(&watcher_uid).map(|s| s.clone());
+            let sender = matrix
+                .user_manager
+                .senders
+                .get(&watcher_uid)
+                .map(|s| s.clone());
             if let Some(sender) = sender {
                 let _ = sender.send(Arc::new(msg.clone())).await;
             }

@@ -48,10 +48,7 @@ mod tests {
 
     #[test]
     fn test_format_user_mask_basic() {
-        assert_eq!(
-            format_user_mask("nick", "user", "host"),
-            "nick!user@host"
-        );
+        assert_eq!(format_user_mask("nick", "user", "host"), "nick!user@host");
     }
 
     #[test]
@@ -82,10 +79,7 @@ mod tests {
     #[test]
     fn test_format_user_mask_with_wildcards() {
         // Wildcards are valid in masks
-        assert_eq!(
-            format_user_mask("*", "*", "*"),
-            "*!*@*"
-        );
+        assert_eq!(format_user_mask("*", "*", "*"), "*!*@*");
         assert_eq!(
             format_user_mask("nick*", "*user", "*.example.com"),
             "nick*!*user@*.example.com"
@@ -107,7 +101,10 @@ mod tests {
         let long_user = "b".repeat(50);
         let long_host = "c".repeat(100);
         let expected = format!("{}!{}@{}", long_nick, long_user, long_host);
-        assert_eq!(format_user_mask(&long_nick, &long_user, &long_host), expected);
+        assert_eq!(
+            format_user_mask(&long_nick, &long_user, &long_host),
+            expected
+        );
     }
 
     #[test]

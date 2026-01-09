@@ -15,10 +15,22 @@ impl PreRegHandler for SvinfoHandler {
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // SVINFO <ts6_ver> <min_ver> 0 :<current_time>
-        let v = msg.arg(0).and_then(|s| s.parse().ok()).ok_or(HandlerError::NeedMoreParams)?;
-        let m = msg.arg(1).and_then(|s| s.parse().ok()).ok_or(HandlerError::NeedMoreParams)?;
-        let z = msg.arg(2).and_then(|s| s.parse().ok()).ok_or(HandlerError::NeedMoreParams)?;
-        let t = msg.arg(3).and_then(|s| s.parse().ok()).ok_or(HandlerError::NeedMoreParams)?;
+        let v = msg
+            .arg(0)
+            .and_then(|s| s.parse().ok())
+            .ok_or(HandlerError::NeedMoreParams)?;
+        let m = msg
+            .arg(1)
+            .and_then(|s| s.parse().ok())
+            .ok_or(HandlerError::NeedMoreParams)?;
+        let z = msg
+            .arg(2)
+            .and_then(|s| s.parse().ok())
+            .ok_or(HandlerError::NeedMoreParams)?;
+        let t = msg
+            .arg(3)
+            .and_then(|s| s.parse().ok())
+            .ok_or(HandlerError::NeedMoreParams)?;
 
         info!(v, m, z, t, "Received SVINFO");
         ctx.state.server_svinfo = Some((v, m, z, t));

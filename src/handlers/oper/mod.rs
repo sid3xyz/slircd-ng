@@ -97,7 +97,10 @@ mod tests {
     fn test_is_valid_hostname_too_long() {
         // Create a hostname that is exactly 254 characters (too long)
         let long_label = "a".repeat(63);
-        let long_hostname = format!("{}.{}.{}.{}", long_label, long_label, long_label, long_label);
+        let long_hostname = format!(
+            "{}.{}.{}.{}",
+            long_label, long_label, long_label, long_label
+        );
         assert!(long_hostname.len() > 253);
         assert!(!is_valid_hostname(&long_hostname));
 

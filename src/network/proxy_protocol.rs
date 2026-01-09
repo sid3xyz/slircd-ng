@@ -3,10 +3,10 @@
 //! Supports parsing PROXY protocol headers to extract the real client IP
 //! when running behind a load balancer (e.g., HAProxy, AWS ELB).
 
+use anyhow::{Result, bail};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
-use anyhow::{Result, bail};
 
 /// Max length of a PROXY protocol header.
 /// v1: 107 bytes
@@ -30,7 +30,9 @@ pub async fn parse_proxy_header(stream: &mut TcpStream) -> Result<SocketAddr> {
 
     // Check for v2 signature
     // \x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A
-    let v2_sig = [0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A];
+    let v2_sig = [
+        0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A,
+    ];
 
     if n >= 12 && buf[..12] == v2_sig {
         return parse_v2(stream).await;
@@ -156,7 +158,8 @@ async fn parse_v2(stream: &mut TcpStream) -> Result<SocketAddr> {
     stream.read_exact(&mut data).await?;
 
     match family {
-        1 => { // AF_INET (IPv4)
+        1 => {
+            // AF_INET (IPv4)
             if data.len() < 12 {
                 bail!("Invalid IPv4 data length");
             }
@@ -166,7 +169,8 @@ async fn parse_v2(stream: &mut TcpStream) -> Result<SocketAddr> {
             // dst_port at 10..12
             Ok(SocketAddr::new(IpAddr::V4(src_ip), src_port))
         }
-        2 => { // AF_INET6 (IPv6)
+        2 => {
+            // AF_INET6 (IPv6)
             if data.len() < 36 {
                 bail!("Invalid IPv6 data length");
             }

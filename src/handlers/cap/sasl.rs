@@ -4,7 +4,7 @@
 //! Post-registration SASL allows clients to re-authenticate to a different account.
 
 use super::types::{SaslState, SecureString};
-use crate::handlers::{notify_extended_monitor_watchers, Context, HandlerResult, UniversalHandler};
+use crate::handlers::{Context, HandlerResult, UniversalHandler, notify_extended_monitor_watchers};
 use crate::state::{SaslAccess, SessionState};
 use async_trait::async_trait;
 use rand::RngCore;
@@ -127,9 +127,10 @@ async fn handle_sasl_init<S: SessionState + SaslAccess>(
         // SCRAM-SHA-256: For now, we use the current nick as the account name hint.
         // The actual username will come from the client-first message.
         // We send an empty challenge; client will respond with client-first.
-        ctx.state.set_sasl_state(SaslState::WaitingForScramClientFirst {
-            account_name: nick.to_string(),
-        });
+        ctx.state
+            .set_sasl_state(SaslState::WaitingForScramClientFirst {
+                account_name: nick.to_string(),
+            });
         // Send empty challenge (AUTHENTICATE +)
         let reply = Message {
             tags: None,
@@ -517,7 +518,10 @@ async fn handle_scram_client_first<S: SessionState + SaslAccess>(
 
     // Build server-first message: r=<combined_nonce>,s=<salt>,i=<iterations>
     let salt_b64 = encode_base64(&verifiers.salt);
-    let server_first = format!("r={},s={},i={}", combined_nonce, salt_b64, verifiers.iterations);
+    let server_first = format!(
+        "r={},s={},i={}",
+        combined_nonce, salt_b64, verifiers.iterations
+    );
 
     // Build auth_message_prefix = client-first-message-bare + "," + server-first-message
     // We'll complete it with client-final-message-without-proof when we receive client-final
@@ -534,14 +538,15 @@ async fn handle_scram_client_first<S: SessionState + SaslAccess>(
     ctx.sender.send(reply).await?;
 
     // Store state for client-final processing
-    ctx.state.set_sasl_state(SaslState::WaitingForScramClientFinal {
-        account_name: username.to_string(),
-        server_nonce: combined_nonce,
-        salt: verifiers.salt,
-        iterations: verifiers.iterations,
-        hashed_password: verifiers.hashed_password,
-        auth_message: auth_message_prefix,
-    });
+    ctx.state
+        .set_sasl_state(SaslState::WaitingForScramClientFinal {
+            account_name: username.to_string(),
+            server_nonce: combined_nonce,
+            salt: verifiers.salt,
+            iterations: verifiers.iterations,
+            hashed_password: verifiers.hashed_password,
+            auth_message: auth_message_prefix,
+        });
 
     debug!(nick = %nick, username = %username, "SCRAM: sent server-first");
     Ok(())
@@ -647,7 +652,12 @@ async fn handle_scram_client_final<S: SessionState + SaslAccess>(
 
     // Compute expected client proof: ClientKey XOR ClientSignature
     let mut expected_proof = [0u8; 32];
-    for (i, (k, s)) in client_key.as_ref().iter().zip(client_signature.as_ref()).enumerate() {
+    for (i, (k, s)) in client_key
+        .as_ref()
+        .iter()
+        .zip(client_signature.as_ref())
+        .enumerate()
+    {
         expected_proof[i] = k ^ s;
     }
 
@@ -774,7 +784,8 @@ fn parse_scram_proof(client_final: &str) -> Option<[u8; 32]> {
 fn build_client_final_without_proof(client_final: &str) -> String {
     let parts: Vec<&str> = client_final.split(',').collect();
     // Find all parts except p=...
-    let without_proof: Vec<&str> = parts.iter()
+    let without_proof: Vec<&str> = parts
+        .iter()
         .filter(|p| !p.starts_with("p="))
         .copied()
         .collect();

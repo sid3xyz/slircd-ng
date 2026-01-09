@@ -230,14 +230,18 @@ mod tests {
             msg.prefix,
             Some(Prefix::ServerName("irc.example.net".to_string()))
         );
-        assert!(matches!(msg.command, Command::Response(Response::RPL_WELCOME, ref p) if *p == params));
+        assert!(
+            matches!(msg.command, Command::Response(Response::RPL_WELCOME, ref p) if *p == params)
+        );
         assert!(msg.tags.is_none());
     }
 
     #[test]
     fn test_server_reply_with_empty_params() {
         let msg = server_reply("srv", Response::RPL_LUSERCLIENT, vec![]);
-        assert!(matches!(msg.command, Command::Response(Response::RPL_LUSERCLIENT, ref p) if p.is_empty()));
+        assert!(
+            matches!(msg.command, Command::Response(Response::RPL_LUSERCLIENT, ref p) if p.is_empty())
+        );
     }
 
     #[test]
@@ -267,7 +271,10 @@ mod tests {
 
         // Check the label tag was added
         let tags = labeled.tags.expect("Tags should be Some");
-        assert!(tags.iter().any(|t| t.0 == "label" && t.1.as_deref() == Some("abc123")));
+        assert!(
+            tags.iter()
+                .any(|t| t.0 == "label" && t.1.as_deref() == Some("abc123"))
+        );
     }
 
     #[test]
@@ -296,7 +303,10 @@ mod tests {
 
         // Check label tag
         let tags = msg.tags.expect("Tags should be Some");
-        assert!(tags.iter().any(|t| t.0 == "label" && t.1.as_deref() == Some("xyz789")));
+        assert!(
+            tags.iter()
+                .any(|t| t.0 == "label" && t.1.as_deref() == Some("xyz789"))
+        );
     }
 
     #[test]
@@ -305,7 +315,10 @@ mod tests {
 
         // Empty label is valid (though unusual)
         let tags = msg.tags.expect("Tags should be Some");
-        assert!(tags.iter().any(|t| t.0 == "label" && t.1.as_deref() == Some("")));
+        assert!(
+            tags.iter()
+                .any(|t| t.0 == "label" && t.1.as_deref() == Some(""))
+        );
     }
 
     #[test]

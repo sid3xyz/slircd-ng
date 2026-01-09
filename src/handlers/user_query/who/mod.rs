@@ -10,8 +10,8 @@ pub mod v3;
 use crate::handlers::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
-use slirc_proto::{ChannelExt, MessageRef, Response};
 use common::WhoxFields;
+use slirc_proto::{ChannelExt, MessageRef, Response};
 
 /// Handler for WHO command.
 ///
@@ -68,7 +68,15 @@ impl PostRegHandler for WhoHandler {
             let is_channel = mask_str.is_channel_name();
 
             if let Some(fields) = whox {
-                v3::execute(ctx, mask_str, is_channel, operators_only, multi_prefix, &fields).await?;
+                v3::execute(
+                    ctx,
+                    mask_str,
+                    is_channel,
+                    operators_only,
+                    multi_prefix,
+                    &fields,
+                )
+                .await?;
             } else {
                 legacy::execute(ctx, mask_str, is_channel, operators_only, multi_prefix).await?;
             }

@@ -27,7 +27,7 @@ pub use links::LinkBlock;
 pub use listen::{ClientAuth, ListenConfig, S2STlsConfig, StsConfig, TlsConfig, WebSocketConfig};
 pub use oper::{OperBlock, WebircBlock};
 #[allow(unused_imports)]
-pub use security::{HeuristicsConfig, RateLimitConfig, SecurityConfig, SpamConfig};
+pub use security::{HeuristicsConfig, RateLimitConfig, RblConfig, SecurityConfig, SpamConfig};
 #[allow(unused_imports)]
 pub use types::{
     AccountRegistrationConfig, Config, ConfigError, DatabaseConfig, IdleTimeoutsConfig, MotdConfig,

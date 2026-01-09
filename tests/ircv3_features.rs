@@ -1,4 +1,4 @@
-use slirc_proto::{Command, Message, Tag, BatchSubCommand};
+use slirc_proto::{BatchSubCommand, Command, Message, Tag};
 
 #[test]
 fn test_batch_command_serialization() {
@@ -19,7 +19,7 @@ fn test_batch_command_serialization() {
 fn test_labeled_response_tag() {
     let mut msg = Message::from(Command::ACK);
     msg.tags = Some(vec![Tag::new("label", Some("12345".to_string()))]);
-    
+
     assert_eq!(msg.to_string(), "@label=12345 ACK\r\n");
 }
 

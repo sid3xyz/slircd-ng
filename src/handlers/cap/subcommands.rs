@@ -1,4 +1,4 @@
-use super::helpers::{build_cap_list_tokens, pack_cap_ls_lines, CapListParams};
+use super::helpers::{CapListParams, build_cap_list_tokens, pack_cap_ls_lines};
 use super::types::SUPPORTED_CAPS;
 use crate::handlers::{Context, HandlerResult};
 use crate::state::SessionState;
@@ -29,7 +29,12 @@ pub async fn handle_ls<S: SessionState>(
     let server_name = ctx.server_name();
 
     // Get STS config if TLS is configured
-    let sts_cfg = ctx.matrix.config.tls.as_ref().and_then(|tls| tls.sts.as_ref());
+    let sts_cfg = ctx
+        .matrix
+        .config
+        .tls
+        .as_ref()
+        .and_then(|tls| tls.sts.as_ref());
 
     // Build capability tokens (include EXTERNAL if TLS with cert)
     let caps = build_cap_list_tokens(&CapListParams {
