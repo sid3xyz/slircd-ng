@@ -18,7 +18,7 @@ use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_pr
 use super::common::{
     ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult,
     route_to_channel_with_snapshot, route_to_user_with_snapshot, send_cannot_send,
-    send_no_such_channel, send_no_such_nick,
+    send_no_such_channel,
 };
 use super::errors::*;
 use super::validation::{ErrorStrategy, validate_message_send};
@@ -394,7 +394,7 @@ async fn route_to_user_target(
             }
         }
         UserRouteResult::NoSuchNick => {
-            send_no_such_nick(ctx, &snapshot.nick, target).await?;
+            crate::handlers::send_no_such_nick(ctx, "PRIVMSG", target).await?;
         }
         UserRouteResult::BlockedRegisteredOnly => {
             let reply = slirc_proto::Response::err_needreggednick(&snapshot.nick, target);

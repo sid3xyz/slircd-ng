@@ -115,37 +115,23 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
 
         // Parse arguments: KLINE [duration] target [:reason]
         // Duration is optional and can be a time specifier like "1d2h30m" or "3600"
-        let (target, duration, reason) = match msg.arg(0) {
-            Some(first_arg) if !first_arg.is_empty() => {
-                // Try to parse first arg as duration
-                if let Some(dur) = parse_duration(first_arg) {
-                    // First arg is duration, second is target
-                    match msg.arg(1) {
-                        Some(t) if !t.is_empty() => {
-                            let r = msg.arg(2).unwrap_or("No reason given");
-                            (t, Some(dur), r)
-                        }
-                        _ => {
-                            let reply = Response::err_needmoreparams(nick, cmd_name)
-                                .with_prefix(ctx.server_prefix());
-                            ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply)
-                                .await?;
-                            return Ok(());
-                        }
-                    }
-                } else {
-                    // First arg is target
-                    let r = msg.arg(1).unwrap_or("No reason given");
-                    (first_arg, None, r)
-                }
-            }
-            _ => {
-                let reply =
-                    Response::err_needmoreparams(nick, cmd_name).with_prefix(ctx.server_prefix());
-                ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply)
-                    .await?;
-                return Ok(());
-            }
+        let first_arg = match crate::require_arg_or_reply!(ctx, msg, 0, cmd_name) {
+            Some(arg) => arg,
+            None => return Ok(()),
+        };
+
+        let (target, duration, reason) = if let Some(dur) = parse_duration(first_arg) {
+            // First arg is duration, second is target
+            let target = match crate::require_arg_or_reply!(ctx, msg, 1, cmd_name) {
+                Some(arg) => arg,
+                None => return Ok(()),
+            };
+            let reason = msg.arg(2).unwrap_or("No reason given");
+            (target, Some(dur), reason)
+        } else {
+            // First arg is target
+            let reason = msg.arg(1).unwrap_or("No reason given");
+            (first_arg, None, reason)
         };
 
         // Add to database
@@ -245,15 +231,8 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
         }
 
         // Parse target
-        let target = match msg.arg(0) {
-            Some(t) if !t.is_empty() => t,
-            _ => {
-                let reply =
-                    Response::err_needmoreparams(nick, cmd_name).with_prefix(ctx.server_prefix());
-                ctx.send_error(cmd_name, "ERR_NEEDMOREPARAMS", reply)
-                    .await?;
-                return Ok(());
-            }
+        let Some(target) = crate::require_arg_or_reply!(ctx, msg, 0, cmd_name) else {
+            return Ok(());
         };
 
         // Remove from database

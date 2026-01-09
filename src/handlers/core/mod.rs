@@ -32,7 +32,7 @@ pub mod traits;
 // Re-export commonly used types
 pub use context::{
     Context, HandlerError, HandlerResult, get_nick_or_star, get_oper_info, is_user_in_channel,
-    resolve_nick_to_uid, user_mask_from_state,
+    resolve_nick_or_nosuchnick, user_mask_from_state,
 };
 pub use middleware::ResponseMiddleware;
 pub use registry::Registry;

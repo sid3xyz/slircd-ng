@@ -25,21 +25,10 @@ impl PostRegHandler for UserhostHandler {
         let nick = &ctx.state.nick;
 
         // USERHOST <nick> [<nick> ...]
-        let nicks = msg.args();
-
-        if nicks.is_empty() {
-            let reply = server_reply(
-                server_name,
-                Response::ERR_NEEDMOREPARAMS,
-                vec![
-                    nick.clone(),
-                    "USERHOST".to_string(),
-                    "Not enough parameters".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
+        let Some(_) = crate::require_arg_or_reply!(ctx, msg, 0, "USERHOST") else {
             return Ok(());
-        }
+        };
+        let nicks = msg.args();
 
         // Build response (up to 5 nicks)
         let mut replies = Vec::with_capacity(5);

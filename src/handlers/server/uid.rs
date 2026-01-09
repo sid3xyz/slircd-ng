@@ -80,12 +80,12 @@ impl ServerHandler for UidHandler {
 //=============================================================================
 
 /// Converts TS6 UID parameters to UserCrdt for lossless CRDT merge.
-/// 
+///
 /// Timestamp Layering Strategy:
 /// - Base timestamp: User registration timestamp
 /// - Incremented: User modes (ensures modes update)
 /// - Double-incremented: (reserved for future hierarchical fields)
-/// 
+///
 /// This guarantees LWW updates apply when merging concurrent state.
 #[allow(clippy::too_many_arguments)] // TS6 protocol has 8 params
 fn uid_to_crdt(

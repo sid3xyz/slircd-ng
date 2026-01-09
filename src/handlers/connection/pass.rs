@@ -35,14 +35,8 @@ impl PreRegHandler for PassHandler {
         }
 
         // PASS <password>
-        let password = match msg.arg(0) {
-            Some(p) if !p.is_empty() => p,
-            _ => {
-                let reply =
-                    Response::err_needmoreparams("*", "PASS").with_prefix(ctx.server_prefix());
-                ctx.sender.send(reply).await?;
-                return Ok(());
-            }
+        let Some(password) = crate::require_arg_or_reply!(ctx, msg, 0, "PASS") else {
+            return Ok(());
         };
 
         ctx.state.pass_received = Some(password.to_string());

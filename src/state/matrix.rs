@@ -100,6 +100,8 @@ pub struct MatrixConfig {
     pub history: crate::config::HistoryConfig,
     /// Link blocks for server peering.
     pub links: Vec<crate::config::LinkBlock>,
+    /// TLS configuration (for STS capability advertising).
+    pub tls: Option<crate::config::TlsConfig>,
 }
 
 /// This server's identity information.
@@ -222,6 +224,7 @@ impl Matrix {
                     limits: config.limits.clone(),
                     history: config.history.clone(),
                     links: config.links.clone(),
+                    tls: config.tls.clone(),
                 },
                 router_tx,
             },

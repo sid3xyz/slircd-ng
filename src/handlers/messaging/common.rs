@@ -555,13 +555,6 @@ pub async fn send_no_such_channel<S>(
     Ok(())
 }
 
-/// Send ERR_NOSUCHNICK.
-pub async fn send_no_such_nick<S>(ctx: &Context<'_, S>, nick: &str, target: &str) -> HandlerResult {
-    let reply = Response::err_nosuchnick(nick, target).with_prefix(ctx.server_prefix());
-    ctx.send_error("PRIVMSG", "ERR_NOSUCHNICK", reply).await?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

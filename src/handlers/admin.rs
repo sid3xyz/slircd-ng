@@ -8,7 +8,7 @@
 
 use super::{
     Context, HandlerResult, PostRegHandler, TargetUser, force_join_channel, force_part_channel,
-    format_modes_for_log, resolve_nick_to_uid, server_notice,
+    format_modes_for_log, resolve_nick_or_nosuchnick, server_notice,
 };
 use crate::state::MemberModes;
 use crate::state::RegisteredState;
@@ -38,9 +38,6 @@ impl PostRegHandler for SajoinHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = ctx.server_name();
-        let oper_nick = ctx.nick();
-
         let Some(_cap) = require_admin_cap!(ctx, "SAJOIN") else {
             return Ok(());
         };
@@ -52,12 +49,12 @@ impl PostRegHandler for SajoinHandler {
         };
 
         // Find target user
-        let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            let reply =
-                Response::err_nosuchnick(oper_nick, target_nick).with_prefix(ctx.server_prefix());
-            ctx.send_error("SAJOIN", "ERR_NOSUCHNICK", reply).await?;
+        let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "SAJOIN", target_nick).await? else {
             return Ok(());
         };
+
+        let server_name = ctx.server_name();
+        let oper_nick = ctx.nick();
 
         // Validate channel name
         if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
@@ -132,9 +129,6 @@ impl PostRegHandler for SapartHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = ctx.server_name();
-        let oper_nick = ctx.nick();
-
         let Some(_cap) = require_admin_cap!(ctx, "SAPART") else {
             return Ok(());
         };
@@ -146,12 +140,12 @@ impl PostRegHandler for SapartHandler {
         };
 
         // Find target user
-        let Some(target_uid) = resolve_nick_to_uid(ctx, target_nick) else {
-            let reply =
-                Response::err_nosuchnick(oper_nick, target_nick).with_prefix(ctx.server_prefix());
-            ctx.send_error("SAPART", "ERR_NOSUCHNICK", reply).await?;
+        let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "SAPART", target_nick).await? else {
             return Ok(());
         };
+
+        let server_name = ctx.server_name();
+        let oper_nick = ctx.nick();
 
         let channel_lower = irc_to_lower(channel_name);
 
@@ -212,9 +206,6 @@ impl PostRegHandler for SanickHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        let server_name = ctx.server_name();
-        let oper_nick = ctx.nick();
-
         let Some(_cap) = require_admin_cap!(ctx, "SANICK") else {
             return Ok(());
         };
@@ -227,12 +218,12 @@ impl PostRegHandler for SanickHandler {
 
         // Find target user
         let old_lower = irc_to_lower(old_nick);
-        let Some(target_uid) = resolve_nick_to_uid(ctx, old_nick) else {
-            let reply =
-                Response::err_nosuchnick(oper_nick, old_nick).with_prefix(ctx.server_prefix());
-            ctx.send_error("SANICK", "ERR_NOSUCHNICK", reply).await?;
+        let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "SANICK", old_nick).await? else {
             return Ok(());
         };
+
+        let server_name = ctx.server_name();
+        let oper_nick = ctx.nick();
 
         // Check if new nick is already in use
         let new_lower = irc_to_lower(new_nick);

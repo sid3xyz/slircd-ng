@@ -25,6 +25,11 @@ pub struct SecurityConfig {
     /// Rate limiting configuration.
     #[serde(default)]
     pub rate_limits: RateLimitConfig,
+    /// Require SASL authentication for all connections.
+    /// When true, clients that don't authenticate via SASL will be disconnected
+    /// after registration with ERR_SASLFAIL message.
+    #[serde(default)]
+    pub require_sasl: bool,
 }
 
 impl Default for SecurityConfig {
@@ -35,6 +40,7 @@ impl Default for SecurityConfig {
             spam_detection_enabled: default_spam_detection_enabled(),
             spam: SpamConfig::default(),
             rate_limits: RateLimitConfig::default(),
+            require_sasl: false,
         }
     }
 }

@@ -5,8 +5,8 @@
 //! Uses CapabilityAuthority (Innovation 4) for centralized authorization.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, server_notice, server_reply,
-    user_mask_from_state,
+    Context, HandlerError, HandlerResult, PostRegHandler, resolve_nick_or_nosuchnick,
+    server_notice, server_reply, user_mask_from_state,
 };
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
@@ -85,14 +85,8 @@ impl PostRegHandler for InviteHandler {
         }
 
         // Check if target exists
-        let target_uid = match ctx.matrix.user_manager.nicks.get(&target_lower) {
-            Some(uid) => uid.value().clone(),
-            None => {
-                let reply =
-                    Response::err_nosuchnick(&nick, target_nick).with_prefix(ctx.server_prefix());
-                ctx.send_error("INVITE", "ERR_NOSUCHNICK", reply).await?;
-                return Ok(());
-            }
+        let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "INVITE", target_nick).await? else {
+            return Ok(());
         };
 
         // Check if channel exists

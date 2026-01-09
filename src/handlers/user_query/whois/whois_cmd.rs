@@ -321,16 +321,13 @@ async fn send_no_such_nick(
     ctx: &mut Context<'_, crate::state::RegisteredState>,
     target: &str,
 ) -> HandlerResult {
-    let nick = &ctx.state.nick;
-
-    let reply = Response::err_nosuchnick(nick, target).with_prefix(ctx.server_prefix());
-    ctx.send_error("WHOIS", "ERR_NOSUCHNICK", reply).await?;
+    crate::handlers::send_no_such_nick(ctx, "WHOIS", target).await?;
 
     // Also send end of whois - attach label for labeled-response
     ctx.send_reply(
         Response::RPL_ENDOFWHOIS,
         vec![
-            nick.clone(),
+            ctx.nick().to_string(),
             target.to_string(),
             "End of WHOIS list".to_string(),
         ],

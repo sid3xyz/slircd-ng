@@ -13,7 +13,7 @@ use super::registry::Registry;
 use crate::caps::CapabilityAuthority;
 use crate::db::Database;
 use crate::state::actor::ChannelEvent;
-use crate::state::{Matrix, RegisteredState};
+use crate::state::{Matrix, RegisteredState, SessionState};
 use slirc_proto::Prefix;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -113,6 +113,21 @@ impl<'a, S> Context<'a, S> {
 }
 
 // ============================================================================
+// SessionState convenience methods
+// ============================================================================
+
+impl<'a, S: SessionState> Context<'a, S> {
+    /// Get the nick or "*" for error messages.
+    ///
+    /// Works for both RegisteredState (returns nick) and UnregisteredState
+    /// (returns nick or "*").
+    #[inline]
+    pub fn nick(&self) -> &str {
+        self.state.nick_or_star()
+    }
+}
+
+// ============================================================================
 // RegisteredState convenience methods
 // ============================================================================
 
@@ -121,12 +136,6 @@ impl<'a, S> Context<'a, S> {
 /// These provide the same API as the old `TypedContext<Registered>` but without
 /// the wrapper - the type system guarantees nick/user are present.
 impl<'a> Context<'a, RegisteredState> {
-    /// Get the user's nickname (guaranteed present for registered connections).
-    #[inline]
-    pub fn nick(&self) -> &str {
-        &self.state.nick
-    }
-
     /// Get the username (guaranteed present for registered connections).
     #[inline]
     pub fn user(&self) -> &str {
@@ -178,6 +187,24 @@ pub fn resolve_nick_to_uid<S>(ctx: &Context<'_, S>, nick: &str) -> Option<String
         .nicks
         .get(&lower)
         .map(|r| r.value().clone())
+}
+
+/// Resolve a nickname or send ERR_NOSUCHNICK.
+///
+/// Returns `Ok(Some(uid))` when found, or `Ok(None)` after sending ERR_NOSUCHNICK
+/// with metrics + labeling.
+pub async fn resolve_nick_or_nosuchnick<S: crate::state::SessionState>(
+    ctx: &mut Context<'_, S>,
+    cmd: &str,
+    nick: &str,
+) -> Result<Option<String>, HandlerError> {
+    Ok(match resolve_nick_to_uid(ctx, nick) {
+        Some(uid) => Some(uid),
+        None => {
+            crate::handlers::send_no_such_nick(ctx, cmd, nick).await?;
+            None
+        }
+    })
 }
 
 /// Get the current user's nick, falling back to "*" if not found.

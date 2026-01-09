@@ -54,6 +54,7 @@ pub const SUPPORTED_CAPS: &[Capability] = &[
     Capability::ChatHistory,
     Capability::EventPlayback,
     Capability::Tls, // STARTTLS - only useful on plaintext connections
+    Capability::Sts, // Strict Transport Security - advertised dynamically based on config
 ];
 
 /// Maximum bytes allowed in a multiline batch message.
@@ -70,6 +71,24 @@ pub enum SaslState {
     WaitingForData,
     /// Waiting for EXTERNAL response (empty or authzid).
     WaitingForExternal,
+    /// Waiting for SCRAM client-first message.
+    WaitingForScramClientFirst {
+        /// The account name being authenticated.
+        account_name: String,
+    },
+    /// Sent server-first, waiting for SCRAM client-final message.
+    WaitingForScramClientFinal {
+        /// The account name being authenticated.
+        account_name: String,
+        /// Server nonce (combines client nonce + our random part).
+        server_nonce: String,
+        /// SCRAM verifiers from database.
+        salt: Vec<u8>,
+        iterations: u32,
+        hashed_password: Vec<u8>,
+        /// Auth message for final verification.
+        auth_message: String,
+    },
     Authenticated,
 }
 

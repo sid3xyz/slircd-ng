@@ -3,7 +3,7 @@
 use super::super::{Context, HandlerResult, UniversalHandler, with_label};
 use crate::state::SessionState;
 use async_trait::async_trait;
-use slirc_proto::{Message, MessageRef, Response};
+use slirc_proto::{Message, MessageRef};
 
 pub struct PingHandler;
 
@@ -13,18 +13,8 @@ impl<S: SessionState> UniversalHandler<S> for PingHandler {
         // PING <token>
         // Response: :<server> PONG <server> <token>
         // Per RFC 1459: PING requires at least one parameter
-        let token = match msg.arg(0) {
-            Some(t) if !t.is_empty() => t,
-            _ => {
-                // No token provided - return ERR_NEEDMOREPARAMS (461)
-                let nick = ctx.state.nick_or_star();
-                let reply =
-                    Response::err_needmoreparams(nick, "PING").with_prefix(ctx.server_prefix());
-                let reply = with_label(reply, ctx.label.as_deref());
-                ctx.sender.send(reply).await?;
-                crate::metrics::record_command_error("PING", "ERR_NEEDMOREPARAMS");
-                return Ok(());
-            }
+        let Some(token) = crate::require_arg_or_reply!(ctx, msg, 0, "PING") else {
+            return Ok(());
         };
         let server_name = ctx.server_name();
 

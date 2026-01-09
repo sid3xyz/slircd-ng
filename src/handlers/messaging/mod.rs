@@ -33,7 +33,7 @@ use uuid::Uuid;
 use common::{
     ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult, is_shunned_with_snapshot,
     route_to_channel_with_snapshot, route_to_user_with_snapshot, send_cannot_send,
-    send_no_such_channel, send_no_such_nick,
+    send_no_such_channel,
 };
 
 // ============================================================================
@@ -344,7 +344,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                     }
                 }
             } else {
-                send_no_such_nick(ctx, &snapshot.nick, target).await?;
+                crate::handlers::send_no_such_nick(ctx, "TAGMSG", target).await?;
             }
         }
 

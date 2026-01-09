@@ -30,38 +30,8 @@ impl PostRegHandler for KnockHandler {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
         // KNOCK <channel> [message]
-        let channel_name = match msg.arg(0) {
-            Some(c) if !c.is_empty() => c,
-            _ => {
-                // ERR_NEEDMOREPARAMS (461)
-                let server_name = ctx.server_name();
-                let nick = {
-                    if let Some(user_arc) = ctx
-                        .matrix
-                        .user_manager
-                        .users
-                        .get(ctx.uid)
-                        .map(|u| u.value().clone())
-                    {
-                        let user = user_arc.read().await;
-                        user.nick.clone()
-                    } else {
-                        "*".to_string()
-                    }
-                };
-
-                let reply = server_reply(
-                    server_name,
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![
-                        nick,
-                        "KNOCK".to_string(),
-                        "Not enough parameters".to_string(),
-                    ],
-                );
-                ctx.sender.send(reply).await?;
-                return Ok(());
-            }
+        let Some(channel_name) = crate::require_arg_or_reply!(ctx, msg, 0, "KNOCK") else {
+            return Ok(());
         };
 
         let server_name = ctx.server_name().to_string();

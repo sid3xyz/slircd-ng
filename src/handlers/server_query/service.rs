@@ -91,20 +91,8 @@ impl PostRegHandler for SqueryHandler {
 
         let nick = ctx.nick();
 
-        let service_name = match msg.arg(0) {
-            Some(s) if !s.is_empty() => s,
-            _ => {
-                ctx.send_reply(
-                    Response::ERR_NEEDMOREPARAMS,
-                    vec![
-                        nick.to_string(),
-                        "SQUERY".to_string(),
-                        "Not enough parameters".to_string(),
-                    ],
-                )
-                .await?;
-                return Ok(());
-            }
+        let Some(service_name) = crate::require_arg_or_reply!(ctx, msg, 0, "SQUERY") else {
+            return Ok(());
         };
 
         let text = match msg.arg(1) {

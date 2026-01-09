@@ -143,13 +143,9 @@ impl PostRegHandler for UseripHandler {
         }
 
         // Need at least one nickname
-        if msg.arg(0).is_none() {
-            let reply =
-                Response::err_needmoreparams(nick, "USERIP").with_prefix(ctx.server_prefix());
-            ctx.send_error("USERIP", "ERR_NEEDMOREPARAMS", reply)
-                .await?;
+        let Some(_) = crate::require_arg_or_reply!(ctx, msg, 0, "USERIP") else {
             return Ok(());
-        }
+        };
 
         // Collect all target nicknames from arguments
         let mut results = Vec::with_capacity(16);
