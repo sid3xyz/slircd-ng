@@ -48,10 +48,18 @@ pub async fn disconnect_matching_ban<S>(
 ) -> usize {
     let mut to_disconnect = Vec::with_capacity(4); // Ban typically affects few users
 
+    // Collect user Arc + UID pairs to release DashMap lock before awaiting
+    let user_data: Vec<_> = ctx
+        .matrix
+        .user_manager
+        .users
+        .iter()
+        .map(|e| (e.key().clone(), e.value().clone()))
+        .collect();
+
     // Collect matching users
-    for entry in ctx.matrix.user_manager.users.iter() {
-        let uid = entry.key().clone();
-        let user = entry.value().read().await;
+    for (uid, user_arc) in user_data {
+        let user = user_arc.read().await;
 
         let matches = match ban_type {
             BanType::Kline | BanType::Gline => {

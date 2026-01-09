@@ -244,10 +244,18 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
                 command: Command::UserMODE(nick, vec![Mode::plus(UserMode::Registered, None)]),
             };
 
-            for entry in matrix.user_manager.users.iter() {
-                let user = entry.value().read().await;
+            // Collect user Arc + UID pairs to release DashMap lock before awaiting
+            let user_data: Vec<_> = matrix
+                .user_manager
+                .users
+                .iter()
+                .map(|e| (e.key().clone(), e.value().clone()))
+                .collect();
+
+            for (uid, user_arc) in user_data {
+                let user = user_arc.read().await;
                 if user.caps.contains("account-notify")
-                    && let Some(tx) = matrix.user_manager.senders.get(&user.uid)
+                    && let Some(tx) = matrix.user_manager.senders.get(&uid)
                 {
                     let _ = tx.send(Arc::new(mode_msg.clone())).await;
                 }

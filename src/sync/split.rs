@@ -83,8 +83,9 @@ pub async fn handle_netsplit(
 
     // 3. Process each affected user
     for uid in &affected_users {
-        // Get user info before removal for QUIT message
-        let quit_msg = if let Some(user_arc) = matrix.user_manager.users.get(uid) {
+        // Clone Arc to release DashMap lock before awaiting
+        let user_arc = matrix.user_manager.users.get(uid).map(|r| r.value().clone());
+        let quit_msg = if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             let nick = user.nick.clone();
             let user_str = user.user.clone();

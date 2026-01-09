@@ -69,8 +69,17 @@ impl PostRegHandler for StatsHandler {
             }
             'o' | 'O' => {
                 // RPL_STATSOLINE (243): List online operators
-                for user_entry in ctx.matrix.user_manager.users.iter() {
-                    let user_guard = user_entry.value().read().await;
+                // Collect user Arcs to release DashMap lock before awaiting
+                let user_arcs: Vec<_> = ctx
+                    .matrix
+                    .user_manager
+                    .users
+                    .iter()
+                    .map(|e| e.value().clone())
+                    .collect();
+
+                for user_arc in user_arcs {
+                    let user_guard = user_arc.read().await;
                     if user_guard.modes.oper {
                         // :server 243 nick O * <oper_nick> * :<realname>
                         ctx.send_reply(

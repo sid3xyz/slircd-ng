@@ -67,7 +67,9 @@ impl UserManager {
     #[allow(clippy::collapsible_if)]
     pub async fn notify_observer(&self, uid: &str, source: Option<ServerId>) {
         if let Some(observer) = &self.observer {
-            if let Some(user_arc) = self.users.get(uid) {
+            // Clone Arc to release DashMap lock before awaiting
+            let user_arc = self.users.get(uid).map(|r| r.value().clone());
+            if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 let crdt = user.to_crdt();
                 observer.on_user_update(&crdt, source);
@@ -78,9 +80,11 @@ impl UserManager {
     /// Export all users as CRDTs for a BURST.
     #[allow(dead_code)]
     pub async fn to_crdt(&self) -> Vec<slirc_crdt::user::UserCrdt> {
-        let mut crdts = Vec::new();
-        for entry in self.users.iter() {
-            let user = entry.value().read().await;
+        // Collect all Arcs first to release DashMap locks before awaiting
+        let user_arcs: Vec<_> = self.users.iter().map(|e| e.value().clone()).collect();
+        let mut crdts = Vec::with_capacity(user_arcs.len());
+        for user_arc in user_arcs {
+            let user = user_arc.read().await;
             crdts.push(user.to_crdt());
         }
         crdts
@@ -91,9 +95,11 @@ impl UserManager {
     /// This excludes service pseudoclients (NickServ, ChanServ) from the count,
     /// as they are not actual users and should not be reported in LUSERS.
     pub async fn real_user_count(&self) -> usize {
+        // Collect all Arcs first to release DashMap locks before awaiting
+        let user_arcs: Vec<_> = self.users.iter().map(|e| e.value().clone()).collect();
         let mut count = 0;
-        for entry in self.users.iter() {
-            let user = entry.value().read().await;
+        for user_arc in user_arcs {
+            let user = user_arc.read().await;
             if !user.modes.service {
                 count += 1;
             }
@@ -139,12 +145,16 @@ impl UserManager {
         let incoming_ts = crdt.nick.timestamp();
 
         // Check for Nick Collision
+        // Clone Arc and UID to release DashMap lock before awaiting
         let collision_info = if let Some(existing_uid) = self.nicks.get(&incoming_nick_lower) {
             if *existing_uid != uid {
                 // Collision found. Get TS.
-                if let Some(user_arc) = self.users.get(&*existing_uid) {
+                let existing_uid_cloned = existing_uid.clone();
+                let user_arc = self.users.get(&*existing_uid).map(|r| r.value().clone());
+                drop(existing_uid); // Release nicks lock
+                if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
-                    Some((existing_uid.clone(), user.last_modified))
+                    Some((existing_uid_cloned, user.last_modified))
                 } else {
                     None
                 }
@@ -176,7 +186,9 @@ impl UserManager {
 
                 // Restore the existing user's nick index, because perform_merge overwrote it
                 // and kill_user removed it.
-                if let Some(existing_user_arc) = self.users.get(&existing_uid) {
+                // Clone Arc to release DashMap lock before awaiting
+                let existing_user_arc = self.users.get(&existing_uid).map(|r| r.value().clone());
+                if let Some(existing_user_arc) = existing_user_arc {
                     let existing_user = existing_user_arc.read().await;
                     let nick_lower = slirc_proto::irc_to_lower(&existing_user.nick);
                     self.nicks.insert(nick_lower, existing_uid.clone());
@@ -202,8 +214,10 @@ impl UserManager {
     async fn perform_merge(&self, crdt: slirc_crdt::user::UserCrdt, source: Option<ServerId>) {
         let uid = crdt.uid.clone();
 
-        if let Some(user_arc) = self.users.get(&uid) {
-            let mut user = user_arc.value().write().await;
+        // Clone Arc to release DashMap lock before awaiting
+        let user_arc = self.users.get(&uid).map(|r| r.value().clone());
+        if let Some(user_arc) = user_arc {
+            let mut user = user_arc.write().await;
             let old_nick_lower = slirc_proto::irc_to_lower(&user.nick);
             user.merge(crdt);
             let new_nick_lower = slirc_proto::irc_to_lower(&user.nick);
@@ -256,10 +270,17 @@ impl UserManager {
             ),
         });
 
-        for user_entry in self.users.iter() {
-            let user_guard = user_entry.value().read().await;
+        // Collect user Arc + UID pairs to release DashMap lock before awaiting
+        let user_data: Vec<_> = self
+            .users
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect();
+
+        for (uid, user_arc) in user_data {
+            let user_guard = user_arc.read().await;
             if user_guard.modes.has_snomask(mask)
-                && let Some(sender) = self.senders.get(&user_guard.uid)
+                && let Some(sender) = self.senders.get(&uid)
             {
                 let _ = sender.send(notice_msg.clone()).await;
             }
