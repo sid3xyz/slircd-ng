@@ -36,8 +36,8 @@ impl ServerHandler for SJoinHandler {
              return Err(HandlerError::NeedMoreParams);
         }
 
-        // The last argument is the user list
-        let user_list_str = msg.arg(arg_count - 1).unwrap();
+        // The last argument is the user list (validated by arg_count check above)
+        let user_list_str = msg.arg(arg_count - 1).ok_or(HandlerError::NeedMoreParams)?;
 
         // Arguments between modes and the last argument are mode args
         let mut mode_args = Vec::new();

@@ -1,4 +1,4 @@
-use super::super::{Context, HandlerResult, PostRegHandler};
+use super::super::{Context, HandlerError, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -15,9 +15,14 @@ impl PostRegHandler for AcceptHandler {
     ) -> HandlerResult {
         let args = msg.arg(0).unwrap_or("");
 
-        // Get user lock
-        // We know the user exists because this is a PostRegHandler
-        let user_arc = ctx.matrix.user_manager.users.get(ctx.uid).unwrap().clone();
+        // Get user from matrix - should always exist for a registered session
+        let user_arc = ctx
+            .matrix
+            .user_manager
+            .users
+            .get(ctx.uid)
+            .ok_or(HandlerError::NickOrUserMissing)?
+            .clone();
 
         if args.is_empty() || args == "*" {
             // List entries
