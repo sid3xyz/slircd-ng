@@ -60,12 +60,21 @@ impl PostRegHandler for WallopsHandler {
         // Always echo WALLOPS back to sender (per Modern IRC spec: servers MAY do this)
         let _ = ctx.sender.send(wallops_msg.clone()).await;
 
+        // Collect user Arc + UID pairs to release DashMap lock before awaiting
+        let user_data: Vec<_> = ctx
+            .matrix
+            .user_manager
+            .users
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect();
+
         // Send to all users with +w (wallops) or +o (oper) modes, except the sender
-        for user_entry in ctx.matrix.user_manager.users.iter() {
-            let user = user_entry.read().await;
-            if user.uid != ctx.uid
+        for (uid, user_arc) in user_data {
+            let user = user_arc.read().await;
+            if uid != ctx.uid
                 && (user.modes.wallops || user.modes.oper)
-                && let Some(sender) = ctx.matrix.user_manager.senders.get(&user.uid)
+                && let Some(sender) = ctx.matrix.user_manager.senders.get(&uid)
             {
                 let _ = sender.send(Arc::new(wallops_msg.clone())).await;
             }

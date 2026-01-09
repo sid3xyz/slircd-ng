@@ -70,8 +70,16 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
     // But for the first hop, we definitely burst our local users.
     // Let's burst ALL users in the user_manager.
 
-    for entry in state.user_manager.users.iter() {
-        let user = entry.value().read().await;
+    // Collect user Arcs to release DashMap lock before awaiting
+    let user_arcs: Vec<_> = state
+        .user_manager
+        .users
+        .iter()
+        .map(|e| e.value().clone())
+        .collect();
+
+    for user_arc in user_arcs {
+        let user = user_arc.read().await;
 
         // UID nick hopcount timestamp username hostname uid modes realname
         // For local users, hopcount is 1. For remote users, increment on relay.
