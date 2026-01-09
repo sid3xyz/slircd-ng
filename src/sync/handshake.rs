@@ -208,6 +208,7 @@ impl HandshakeMachine {
                     self.local_sid.as_str().to_string(),
                     self.local_desc.clone(),
                 ),
+                // SAFETY: duration_since(UNIX_EPOCH) cannot fail unless system clock is before 1970
                 Command::SVINFO(
                     6,
                     6,
