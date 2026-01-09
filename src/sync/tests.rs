@@ -99,6 +99,7 @@ async fn test_sync_manager_peer_registration() {
         "test.server".to_string(),
         "Test Server".to_string(),
         vec![],
+        &crate::config::RateLimitConfig::default(),
     );
 
     // Register a peer
@@ -139,6 +140,7 @@ async fn test_state_observer_split_horizon() {
         "test.server".to_string(),
         "Test Server".to_string(),
         vec![],
+        &crate::config::RateLimitConfig::default(),
     );
 
     // Register two peers
@@ -211,6 +213,7 @@ async fn test_state_observer_skip_source() {
         "test.server".to_string(),
         "Test Server".to_string(),
         vec![],
+        &crate::config::RateLimitConfig::default(),
     );
 
     // Register a peer

@@ -187,6 +187,13 @@ lazy_static! {
         Opts::new("slircd_s2s_commands_total", "S2S commands processed"),
         &["peer_sid", "command"]
     ).expect("S2S_COMMANDS metric creation failed");
+
+    /// S2S rate limit events.
+    /// Labels: peer_sid, result (limited, disconnected)
+    pub static ref S2S_RATE_LIMITED: IntCounterVec = IntCounterVec::new(
+        Opts::new("slircd_s2s_rate_limited_total", "S2S rate limit events"),
+        &["peer_sid", "result"]
+    ).expect("S2S_RATE_LIMITED metric creation failed");
 }
 
 /// Initialize the Prometheus metrics registry.
@@ -260,6 +267,9 @@ pub fn init() {
     }
     if let Err(e) = REGISTRY.register(Box::new(S2S_COMMANDS.clone())) {
         tracing::warn!(error = %e, "Failed to register metric slircd_s2s_commands_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(S2S_RATE_LIMITED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric slircd_s2s_rate_limited_total");
     }
 }
 

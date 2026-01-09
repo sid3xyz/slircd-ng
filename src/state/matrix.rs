@@ -166,6 +166,7 @@ impl Matrix {
             config.server.name.clone(),
             config.server.description.clone(),
             config.links.clone(),
+            &config.security.rate_limits,
         );
         let sync_manager_arc = Arc::new(sync_manager);
         let mut user_manager =
