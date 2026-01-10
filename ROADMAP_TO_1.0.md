@@ -459,10 +459,10 @@ abuseipdb_threshold = 50   # Minimum confidence score (0-100)
    - ✅ Path traversal review: All file paths config-controlled, no user-controlled paths
    - ✅ Buffer overflow review: slirc-proto handles all parsing safely
    - ✅ Integer overflow review: All arithmetic uses .min(), .clamp(), .saturating_*()
-   - ✅ Race condition review: Fixed DashMap+await deadlock pattern in 7 files (commit 6495664)
+    - ✅ Race condition review: Fixed DashMap+await deadlock pattern (initial fix: 6495664; follow-up sweep: 008f370)
      - Pattern: DashMap.get()/iter() held shard lock across .read().await/.write().await
      - Fix: Clone Arc before await to release DashMap lock immediately
-     - Affected: user.rs, wallops.rs, burst.rs, stats.rs, common.rs, mod.rs, split.rs
+       - Affected: multiple handlers/services; follow-up sweep also added a small helper (`DashMapExt`) to standardize safe access
 
 2. **Third-party audit** (40 hours budget for vendor)
    - Hire security firm

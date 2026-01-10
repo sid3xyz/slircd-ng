@@ -70,6 +70,7 @@ impl Config {
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
         let content = std::fs::read_to_string(path)?;
         let config: Config = toml::from_str(&content)?;
+        config.security.warn_deprecated_and_unused();
         Ok(config)
     }
 }

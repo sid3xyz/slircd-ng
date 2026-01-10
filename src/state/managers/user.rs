@@ -3,6 +3,7 @@
 //! This module contains the `UserManager` struct, which isolates all
 //! user-related state and logic from the main Matrix struct.
 
+use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{Uid, UidGenerator, User, WhowasEntry, observer::StateObserver};
 use dashmap::DashMap;
 use slirc_crdt::clock::ServerId;
@@ -77,19 +78,6 @@ impl UserManager {
         }
     }
 
-    /// Export all users as CRDTs for a BURST.
-    #[allow(dead_code)]
-    pub async fn to_crdt(&self) -> Vec<slirc_crdt::user::UserCrdt> {
-        // Collect all Arcs first to release DashMap locks before awaiting
-        let user_arcs: Vec<_> = self.users.iter().map(|e| e.value().clone()).collect();
-        let mut crdts = Vec::with_capacity(user_arcs.len());
-        for user_arc in user_arcs {
-            let user = user_arc.read().await;
-            crdts.push(user.to_crdt());
-        }
-        crdts
-    }
-
     /// Count the number of real (non-service) users.
     ///
     /// This excludes service pseudoclients (NickServ, ChanServ) from the count,
@@ -133,7 +121,6 @@ impl UserManager {
     }
 
     /// Merge a UserCrdt into the local state.
-    #[allow(dead_code)] // Reserved for S2S CRDT sync
     pub async fn merge_user_crdt(
         &self,
         crdt: slirc_crdt::user::UserCrdt,
@@ -210,7 +197,6 @@ impl UserManager {
     }
 
     /// Helper to perform the actual merge logic.
-    #[allow(dead_code)] // Reserved for S2S CRDT sync
     async fn perform_merge(&self, crdt: slirc_crdt::user::UserCrdt, source: Option<ServerId>) {
         let uid = crdt.uid.clone();
 
@@ -219,7 +205,7 @@ impl UserManager {
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
             let old_nick_lower = slirc_proto::irc_to_lower(&user.nick);
-            user.merge(crdt);
+            user.merge_crdt(crdt);
             let new_nick_lower = slirc_proto::irc_to_lower(&user.nick);
 
             if old_nick_lower != new_nick_lower {
@@ -280,7 +266,7 @@ impl UserManager {
         for (uid, user_arc) in user_data {
             let user_guard = user_arc.read().await;
             if user_guard.modes.has_snomask(mask)
-                && let Some(sender) = self.senders.get(&uid)
+                && let Some(sender) = self.senders.get_cloned(&uid)
             {
                 let _ = sender.send(notice_msg.clone()).await;
             }

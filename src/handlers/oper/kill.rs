@@ -62,7 +62,7 @@ impl PostRegHandler for KillHandler {
             .user_manager
             .senders
             .get(&target_uid)
-            .map(|s| s.clone());
+            .map(|s| s.value().clone());
         if let Some(target_sender) = target_sender {
             let error_msg = Message {
                 tags: None,

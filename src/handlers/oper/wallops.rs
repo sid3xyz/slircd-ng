@@ -5,6 +5,7 @@
 
 use super::super::{Context, HandlerResult, PostRegHandler, user_mask_from_state};
 use crate::state::RegisteredState;
+use crate::state::dashmap_ext::DashMapExt;
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
@@ -74,7 +75,7 @@ impl PostRegHandler for WallopsHandler {
             let user = user_arc.read().await;
             if uid != ctx.uid
                 && (user.modes.wallops || user.modes.oper)
-                && let Some(sender) = ctx.matrix.user_manager.senders.get(&uid)
+                && let Some(sender) = ctx.matrix.user_manager.senders.get_cloned(&uid)
             {
                 let _ = sender.send(Arc::new(wallops_msg.clone())).await;
             }

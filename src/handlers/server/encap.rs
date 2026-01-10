@@ -101,17 +101,17 @@ impl ServerHandler for EncapHandler {
             let source_sid = ServerId::new(ctx.state.sid.clone());
 
             // Reconstruct the ENCAP message for propagation
-            let mut args: Vec<String> = vec![target.to_string(), subcommand.to_string()];
             let mut idx = 2;
+            let mut params: Vec<String> = Vec::new();
             while let Some(arg) = msg.arg(idx) {
-                args.push(arg.to_string());
+                params.push(arg.to_string());
                 idx += 1;
             }
 
             let encap_msg = Message {
                 tags: None,
                 prefix: Some(slirc_proto::Prefix::new_from_str(&source)),
-                command: Command::Raw("ENCAP".to_string(), args),
+                command: Command::ENCAP(target.to_string(), subcommand.to_string(), params),
             };
 
             ctx.matrix

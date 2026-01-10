@@ -103,7 +103,14 @@ pub(super) async fn join_channel(
             ),
         };
         ctx.sender.send(notice).await?;
-        info!(nick = %nick, channel = %channel_name, mask = %akick.mask, "AKICK triggered");
+        info!(
+            nick = %nick,
+            channel = %channel_name,
+            mask = %akick.mask,
+            akick_id = akick.id,
+            akick_channel_id = akick.channel_id,
+            "AKICK triggered"
+        );
         return Ok(());
     }
 
@@ -205,7 +212,7 @@ pub(super) async fn join_channel(
             .user_manager
             .senders
             .get(ctx.uid)
-            .map(|s| s.clone())
+            .map(|s| s.value().clone())
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         let _ = channel_sender

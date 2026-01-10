@@ -43,9 +43,6 @@ pub trait SaslAccess {
     fn sasl_buffer(&self) -> &str;
     /// Get mutable access to the SASL buffer.
     fn sasl_buffer_mut(&mut self) -> &mut String;
-    /// Get the account name (if authenticated).
-    #[allow(dead_code)] // Future use: post-registration account queries
-    fn account(&self) -> Option<&str>;
     /// Set the account name.
     fn set_account(&mut self, account: Option<String>);
 }
@@ -99,7 +96,6 @@ pub trait SessionState: Send {
     fn active_batch_ref(&self) -> Option<&str>;
 
     /// Whether this is a server connection.
-    #[allow(dead_code)]
     fn is_server(&self) -> bool;
 
     /// Get batch routing decision (Server only).
@@ -215,10 +211,6 @@ impl SaslAccess for ServerState {
     fn sasl_buffer_mut(&mut self) -> &mut String {
         // This should never be called for servers
         panic!("ServerState does not support SASL buffer access")
-    }
-
-    fn account(&self) -> Option<&str> {
-        None
     }
 
     fn set_account(&mut self, _account: Option<String>) {
@@ -363,10 +355,6 @@ impl SaslAccess for UnregisteredState {
 
     fn sasl_buffer_mut(&mut self) -> &mut String {
         &mut self.sasl_buffer
-    }
-
-    fn account(&self) -> Option<&str> {
-        self.account.as_deref()
     }
 
     fn set_account(&mut self, account: Option<String>) {
@@ -599,10 +587,6 @@ impl SaslAccess for RegisteredState {
 
     fn sasl_buffer_mut(&mut self) -> &mut String {
         &mut self.sasl_buffer
-    }
-
-    fn account(&self) -> Option<&str> {
-        self.account.as_deref()
     }
 
     fn set_account(&mut self, account: Option<String>) {

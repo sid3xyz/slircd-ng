@@ -31,9 +31,7 @@ pub struct ChannelAccess {
 /// A channel AKICK entry.
 #[derive(Debug, Clone)]
 pub struct ChannelAkick {
-    #[allow(dead_code)] // DB primary key - stored for completeness
     pub id: i64,
-    #[allow(dead_code)] // DB field - query uses channel_id param directly
     pub channel_id: i64,
     pub mask: String,
     pub reason: Option<String>,

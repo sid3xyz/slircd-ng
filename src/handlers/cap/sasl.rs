@@ -5,6 +5,7 @@
 
 use super::types::{SaslState, SecureString};
 use crate::handlers::{Context, HandlerResult, UniversalHandler, notify_extended_monitor_watchers};
+use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{SaslAccess, SessionState};
 use async_trait::async_trait;
 use rand::RngCore;
@@ -310,8 +311,8 @@ async fn broadcast_account_change<S: SessionState + SaslAccess>(
     };
 
     // Update the account in the user state
-    if let Some(user_arc_ref) = ctx.matrix.user_manager.users.get(&uid) {
-        let mut user = user_arc_ref.write().await;
+    if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(&uid) {
+        let mut user = user_arc.write().await;
         user.account = Some(account_name.to_string());
     }
 

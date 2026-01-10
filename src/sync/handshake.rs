@@ -6,6 +6,7 @@
 use crate::config::LinkBlock;
 use slirc_crdt::clock::ServerId;
 use slirc_proto::Command;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HandshakeState {
@@ -16,7 +17,6 @@ pub enum HandshakeState {
     OutboundInitiated,
     /// We received a connection (inbound).
     /// We are waiting for PASS and SERVER.
-    #[allow(dead_code)] // Reserved for inbound S2S implementation
     InboundReceived,
     /// Handshake complete, exchanging burst data.
     Bursting,
@@ -28,17 +28,31 @@ pub enum HandshakeState {
 pub enum HandshakeError {
     InvalidStateTransition,
     AuthenticationFailed,
-    #[allow(dead_code)]
     ProtocolError(String),
-    #[allow(dead_code)]
     UnknownServer(String),
 }
+
+impl fmt::Display for HandshakeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HandshakeError::InvalidStateTransition => {
+                write!(f, "invalid handshake state transition")
+            }
+            HandshakeError::AuthenticationFailed => write!(f, "handshake authentication failed"),
+            HandshakeError::ProtocolError(msg) => write!(f, "handshake protocol error: {msg}"),
+            HandshakeError::UnknownServer(name) => write!(f, "unknown server: {name}"),
+        }
+    }
+}
+
+impl std::error::Error for HandshakeError {}
 
 pub struct HandshakeMachine {
     pub state: HandshakeState,
     pub remote_name: Option<String>,
     pub remote_pass: Option<String>,
     pub remote_sid: Option<ServerId>,
+    pub remote_sid_from_pass: Option<ServerId>,
     pub remote_info: Option<String>,
     pub remote_capab: Option<Vec<String>>,
     pub remote_svinfo: Option<(u32, u32, u32, u64)>,
@@ -56,6 +70,7 @@ impl HandshakeMachine {
             remote_name: None,
             remote_pass: None,
             remote_sid: None,
+            remote_sid_from_pass: None,
             remote_info: None,
             remote_capab: None,
             remote_svinfo: None,
@@ -114,12 +129,26 @@ impl HandshakeMachine {
         links: &[LinkBlock],
     ) -> Result<Vec<Command>, HandshakeError> {
         match command {
-            Command::PASS(pass) => {
-                self.remote_pass = Some(pass);
+            Command::PASS(_) => {
+                return Err(HandshakeError::ProtocolError(
+                    "S2S handshake requires TS6 PASS (PASS <password> TS 6 :<sid>)".to_string(),
+                ));
             }
-            Command::Raw(cmd, args) if cmd == "PASS" => {
-                if let Some(pass) = args.first() {
-                    self.remote_pass = Some(pass.clone());
+            Command::PassTs6 { password, sid } => {
+                self.remote_pass = Some(password);
+                let pass_sid = ServerId::new(&sid);
+                self.remote_sid_from_pass = Some(pass_sid.clone());
+
+                if let Some(existing) = &self.remote_sid {
+                    if existing != &pass_sid {
+                        return Err(HandshakeError::ProtocolError(format!(
+                            "PASS/SERVER SID mismatch (PASS={}, SERVER={})",
+                            pass_sid.as_str(),
+                            existing.as_str(),
+                        )));
+                    }
+                } else {
+                    self.remote_sid = Some(pass_sid);
                 }
             }
             Command::CAPAB(caps) => {
@@ -130,7 +159,17 @@ impl HandshakeMachine {
             }
             Command::SERVER(name, _hopcount, sid, info) => {
                 self.remote_name = Some(name.clone());
-                self.remote_sid = Some(ServerId::new(&sid));
+                let server_sid = ServerId::new(&sid);
+                if let Some(pass_sid) = &self.remote_sid_from_pass
+                    && pass_sid != &server_sid
+                {
+                    return Err(HandshakeError::ProtocolError(format!(
+                        "PASS/SERVER SID mismatch (PASS={}, SERVER={})",
+                        pass_sid.as_str(),
+                        server_sid.as_str(),
+                    )));
+                }
+                self.remote_sid = Some(server_sid);
                 self.remote_info = Some(info);
             }
             Command::CAP(_, _, _, _) => {
@@ -154,12 +193,26 @@ impl HandshakeMachine {
         links: &[LinkBlock],
     ) -> Result<Vec<Command>, HandshakeError> {
         match command {
-            Command::PASS(pass) => {
-                self.remote_pass = Some(pass);
+            Command::PASS(_) => {
+                return Err(HandshakeError::ProtocolError(
+                    "S2S handshake requires TS6 PASS (PASS <password> TS 6 :<sid>)".to_string(),
+                ));
             }
-            Command::Raw(cmd, args) if cmd == "PASS" => {
-                if let Some(pass) = args.first() {
-                    self.remote_pass = Some(pass.clone());
+            Command::PassTs6 { password, sid } => {
+                self.remote_pass = Some(password);
+                let pass_sid = ServerId::new(&sid);
+                self.remote_sid_from_pass = Some(pass_sid.clone());
+
+                if let Some(existing) = &self.remote_sid {
+                    if existing != &pass_sid {
+                        return Err(HandshakeError::ProtocolError(format!(
+                            "PASS/SERVER SID mismatch (PASS={}, SERVER={})",
+                            pass_sid.as_str(),
+                            existing.as_str(),
+                        )));
+                    }
+                } else {
+                    self.remote_sid = Some(pass_sid);
                 }
             }
             Command::CAPAB(caps) => {
@@ -170,7 +223,17 @@ impl HandshakeMachine {
             }
             Command::SERVER(name, _hopcount, sid, info) => {
                 self.remote_name = Some(name.clone());
-                self.remote_sid = Some(ServerId::new(&sid));
+                let server_sid = ServerId::new(&sid);
+                if let Some(pass_sid) = &self.remote_sid_from_pass
+                    && pass_sid != &server_sid
+                {
+                    return Err(HandshakeError::ProtocolError(format!(
+                        "PASS/SERVER SID mismatch (PASS={}, SERVER={})",
+                        pass_sid.as_str(),
+                        server_sid.as_str(),
+                    )));
+                }
+                self.remote_sid = Some(server_sid);
                 self.remote_info = Some(info);
             }
             Command::CAP(_, _, _, _) => {
@@ -186,16 +249,19 @@ impl HandshakeMachine {
 
         if self.check_handshake_complete(links)? {
             let link = self.verify_credentials(links)?;
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| {
+                    HandshakeError::ProtocolError(format!("system clock before UNIX_EPOCH: {e}"))
+                })?
+                .as_secs();
+
             // Send our credentials
             let responses = vec![
-                Command::Raw(
-                    "PASS".to_string(),
-                    vec![
-                        link.password.clone(),
-                        "TS=6".to_string(),
-                        self.local_sid.as_str().to_string(),
-                    ],
-                ),
+                Command::PassTs6 {
+                    password: link.password.clone(),
+                    sid: self.local_sid.as_str().to_string(),
+                },
                 Command::CAPAB(vec![
                     "QS".to_string(),
                     "ENCAP".to_string(),
@@ -212,16 +278,7 @@ impl HandshakeMachine {
                     self.local_sid.as_str().to_string(),
                     self.local_desc.clone(),
                 ),
-                // SAFETY: duration_since(UNIX_EPOCH) cannot fail unless system clock is before 1970
-                Command::SVINFO(
-                    6,
-                    6,
-                    0,
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                ),
+                Command::SVINFO(6, 6, 0, now_secs),
             ];
             Ok(responses)
         } else {

@@ -8,6 +8,8 @@ use slirc_crdt::clock::{HybridTimestamp, ServerId};
 use slirc_proto::MessageRef;
 use tracing::warn;
 
+use crate::handlers::server::source::extract_source_sid;
+
 /// Handler for the SJOIN command (Safe Join).
 ///
 /// SJOIN is used to sync channel state (modes, topic, members) during bursts
@@ -81,20 +83,7 @@ impl ServerHandler for SJoinHandler {
 
         // Convert TS6 SJOIN to CRDT for lossless merge semantics
         // Extract source SID from message prefix (e.g., ":00A SJOIN ...")
-        let source_sid = msg
-            .prefix
-            .as_ref()
-            .and_then(|p| {
-                if p.is_server() {
-                    p.raw.split('.').next() // Get SID portion if server name
-                } else {
-                    // For server messages, raw prefix is often just the SID (e.g., "00A")
-                    Some(p.raw)
-                }
-            })
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "000".to_string());
-        let source = ServerId::new(source_sid);
+        let source = extract_source_sid(msg).unwrap_or_else(|| ServerId::new("000".to_string()));
 
         let crdt = sjoin_to_crdt(channel_name, ts, modes, &mode_args, &users, &source);
 

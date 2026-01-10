@@ -247,14 +247,16 @@ impl StateObserver for SyncManager {
         // Build the ban command: GLINE/ZLINE/RLINE/SHUN mask :reason
         // Format: :<setter> GLINE <mask> :<reason>
         // For timed bans, we could use extended syntax but keep it simple for now
-        let cmd_name = ban_type.command_name();
+        let command = match ban_type {
+            GlobalBanType::Gline => Command::GLINE(mask.to_string(), Some(reason.to_string())),
+            GlobalBanType::Zline => Command::ZLINE(mask.to_string(), Some(reason.to_string())),
+            GlobalBanType::Rline => Command::RLINE(mask.to_string(), Some(reason.to_string())),
+            GlobalBanType::Shun => Command::SHUN(mask.to_string(), Some(reason.to_string())),
+        };
         let msg = Arc::new(Message {
             tags: None,
             prefix: Some(slirc_proto::Prefix::ServerName(self.local_name.clone())),
-            command: Command::Raw(
-                cmd_name.to_string(),
-                vec![mask.to_string(), format!(":{}", reason)],
-            ),
+            command,
         });
 
         let links = self.links.clone();
@@ -277,11 +279,16 @@ impl StateObserver for SyncManager {
 
         info!(ban_type = ?ban_type, mask = %mask, "Broadcasting ban removal to peers");
 
-        let cmd_name = ban_type.unset_command_name();
+        let command = match ban_type {
+            GlobalBanType::Gline => Command::UNGLINE(mask.to_string()),
+            GlobalBanType::Zline => Command::UNZLINE(mask.to_string()),
+            GlobalBanType::Rline => Command::UNRLINE(mask.to_string()),
+            GlobalBanType::Shun => Command::UNSHUN(mask.to_string()),
+        };
         let msg = Arc::new(Message {
             tags: None,
             prefix: Some(slirc_proto::Prefix::ServerName(self.local_name.clone())),
-            command: Command::Raw(cmd_name.to_string(), vec![mask.to_string()]),
+            command,
         });
 
         let links = self.links.clone();

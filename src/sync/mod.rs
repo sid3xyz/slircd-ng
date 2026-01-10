@@ -131,7 +131,6 @@ pub struct SyncManager {
     pub local_id: ServerId,
     pub local_name: String,
     pub local_desc: String,
-    #[allow(dead_code)] // Reserved for inbound S2S link verification
     pub configured_links: Vec<LinkBlock>,
     /// Connected peers (Direct connections).
     pub links: Arc<DashMap<ServerId, LinkState>>,
@@ -273,14 +272,8 @@ impl SyncManager {
             return false;
         }
 
-        // 3. Find next hop
-        let next_hop = self
-            .topology
-            .get_route(&target_sid)
-            .unwrap_or(target_sid.clone());
-
-        // 4. Send to link
-        if let Some(link) = self.links.get(&next_hop) {
+        // 3. Find next hop (must be a directly connected peer)
+        if let Some(link) = self.get_next_hop(&target_sid) {
             let _ = link.tx.send(msg).await;
             crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
                 .with_label_values(&[self.local_id.as_str(), target_sid.as_str(), "success"])
@@ -616,30 +609,6 @@ impl SyncManager {
                 }
             }
 
-            // Verify password from configured links
-            if let Command::Raw(cmd, args) = &msg.command
-                && cmd.eq_ignore_ascii_case("PASS")
-                && !args.is_empty()
-            {
-                let password = &args[0];
-                // Find a matching link block by password (inbound verification)
-                let valid = manager
-                    .configured_links
-                    .iter()
-                    .any(|l| l.password == *password);
-                if !valid {
-                    tracing::warn!(peer = %remote_addr, "Invalid S2S password");
-                    let _ = framed
-                        .send(
-                            Message::from(Command::ERROR("Invalid password".into()))
-                                .to_string()
-                                .trim_end(),
-                        )
-                        .await;
-                    return;
-                }
-            }
-
             match machine.step(msg.command, &manager.configured_links) {
                 Ok(responses) => {
                     for resp in responses {
@@ -703,16 +672,13 @@ impl SyncManager {
             },
         );
 
-        // Add to topology
-        manager.topology.servers.insert(
+        // Add to topology (direct peer's parent/uplink is the local server)
+        manager.topology.add_server(
             remote_sid_val.clone(),
-            ServerInfo {
-                sid: remote_sid_val.clone(),
-                name: remote_name.clone().unwrap_or_default(),
-                info: remote_info.clone().unwrap_or_default(),
-                hopcount: 1,
-                via: None,
-            },
+            remote_name.clone().unwrap_or_default(),
+            remote_info.clone().unwrap_or_default(),
+            1,
+            Some(manager.local_id.clone()),
         );
 
         info!(
@@ -926,14 +892,10 @@ impl SyncManager {
                 let mut remote_info: Option<String> = None;
 
                 // Send initial PASS, CAPAB, SERVER, SVINFO
-                let pass_cmd = Command::Raw(
-                    "PASS".to_string(),
-                    vec![
-                        config.password.clone(),
-                        "TS=6".to_string(),
-                        manager.local_id.as_str().to_string(),
-                    ],
-                );
+                let pass_cmd = Command::PassTs6 {
+                    password: config.password.clone(),
+                    sid: manager.local_id.as_str().to_string(),
+                };
                 let capab_cmd = Command::CAPAB(vec![
                     "QS".to_string(),
                     "ENCAP".to_string(),
@@ -950,16 +912,16 @@ impl SyncManager {
                     manager.local_id.as_str().to_string(),
                     manager.local_desc.clone(),
                 );
-                // SAFETY: duration_since(UNIX_EPOCH) cannot fail unless system clock is before 1970
-                let svinfo_cmd = Command::SVINFO(
-                    6,
-                    6,
-                    0,
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                );
+                let now_secs =
+                    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                        Ok(d) => d.as_secs(),
+                        Err(e) => {
+                            tracing::error!("System clock before UNIX_EPOCH: {}", e);
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
+                    };
+                let svinfo_cmd = Command::SVINFO(6, 6, 0, now_secs);
 
                 if let Err(e) = framed
                     .send(Message::from(pass_cmd).to_string().trim_end())
@@ -1088,6 +1050,19 @@ impl SyncManager {
                     }
                 };
 
+                if let Some(expected_sid) = config.sid.as_deref()
+                    && expected_sid != remote_sid_val.as_str()
+                {
+                    tracing::error!(
+                        link = %config.name,
+                        expected_sid = %expected_sid,
+                        got_sid = %remote_sid_val.as_str(),
+                        "Outbound S2S link SID mismatch; refusing connection"
+                    );
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+
                 // Register link
                 let (tx, mut rx) = mpsc::channel::<Arc<Message>>(100);
                 manager.links.insert(
@@ -1102,16 +1077,13 @@ impl SyncManager {
                     },
                 );
 
-                // Add to topology
-                manager.topology.servers.insert(
+                // Add to topology (direct peer's parent/uplink is the local server)
+                manager.topology.add_server(
                     remote_sid_val.clone(),
-                    ServerInfo {
-                        sid: remote_sid_val.clone(),
-                        name: remote_name.clone().unwrap_or_default(),
-                        info: remote_info.clone().unwrap_or_default(),
-                        hopcount: 1,
-                        via: None,
-                    },
+                    remote_name.clone().unwrap_or_default(),
+                    remote_info.clone().unwrap_or_default(),
+                    1,
+                    Some(manager.local_id.clone()),
                 );
 
                 // Create ServerState for Registry dispatch
@@ -1256,10 +1228,10 @@ impl SyncManager {
 
     /// Get a peer connection for a given server ID.
     pub fn get_peer_for_server(&self, sid: &ServerId) -> Option<LinkState> {
-        self.links.get(sid).map(|l| l.clone())
+        self.links.get(sid).map(|l| l.value().clone())
     }
 
-    // Legacy/Stub methods to satisfy existing code
+    /// Register a direct peer connection for the sync loop.
     pub async fn register_peer(
         &self,
         sid: ServerId,
@@ -1267,9 +1239,10 @@ impl SyncManager {
         hopcount: u32,
         info: String,
     ) -> mpsc::Receiver<Arc<Message>> {
+        let peer_sid = sid.clone();
         let (tx, rx) = mpsc::channel(1000);
         self.links.insert(
-            sid.clone(),
+            peer_sid.clone(),
             LinkState {
                 tx,
                 state: handshake::HandshakeState::Synced,
@@ -1280,13 +1253,13 @@ impl SyncManager {
             },
         );
         self.topology.servers.insert(
-            sid.clone(),
+            peer_sid.clone(),
             ServerInfo {
-                sid,
+                sid: peer_sid.clone(),
                 name,
                 info,
                 hopcount,
-                via: None, // Direct peer
+                via: Some(peer_sid), // Direct peer routes through itself
             },
         );
         rx
@@ -1296,7 +1269,8 @@ impl SyncManager {
         info!("Sending burst to {}", sid.as_str());
         let commands = burst::generate_burst(matrix, self.local_id.as_str()).await;
 
-        if let Some(link) = self.links.get(sid) {
+        let link = self.links.get(sid).map(|l| l.value().clone());
+        if let Some(link) = link {
             for cmd in commands {
                 let msg = Arc::new(Message::from(cmd));
                 if let Err(e) = link.tx.send(msg).await {
@@ -1317,18 +1291,19 @@ impl SyncManager {
     ///
     /// Implements split-horizon: we never echo a message back to its origin.
     pub async fn broadcast(&self, msg: Arc<Message>, source: Option<&ServerId>) {
-        for entry in self.links.iter() {
-            let peer_sid = entry.key();
+        let peers: Vec<(ServerId, LinkState)> = self
+            .links
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect();
 
+        for (peer_sid, link) in peers {
             // Split-horizon: don't send back to source
-            if let Some(src) = source
-                && peer_sid == src
-            {
+            if source.is_some_and(|src| src == &peer_sid) {
                 tracing::debug!(peer = %peer_sid.as_str(), "Skipping source peer (split-horizon)");
                 continue;
             }
 
-            let link: LinkState = entry.value().clone();
             if let Err(e) = link.tx.send(msg.clone()).await {
                 tracing::warn!(peer = %peer_sid.as_str(), error = %e, "Failed to send to peer");
             } else {
@@ -1338,11 +1313,22 @@ impl SyncManager {
     }
 
     pub fn get_next_hop(&self, target: &ServerId) -> Option<LinkState> {
-        // Stub: just check if it's a direct link for now
-        self.links.get(target).map(|l| l.clone())
-    }
+        use std::collections::HashSet;
 
-    pub fn register_route(&self, _target: ServerId, _via: ServerId) {
-        // Stub
+        let mut current = target.clone();
+        let mut visited = HashSet::new();
+
+        loop {
+            if let Some(link) = self.links.get(&current).map(|l| l.value().clone()) {
+                return Some(link);
+            }
+
+            if !visited.insert(current.clone()) {
+                return None;
+            }
+
+            let parent = self.topology.get_route(&current)?;
+            current = parent;
+        }
     }
 }

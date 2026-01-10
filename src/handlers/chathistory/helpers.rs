@@ -4,6 +4,7 @@
 
 use crate::handlers::{Context, HandlerError};
 use crate::state::RegisteredState;
+use crate::state::dashmap_ext::DashMapExt;
 use slirc_proto::{MessageReference, parse_server_time};
 
 /// Maximum messages per CHATHISTORY request.
@@ -111,10 +112,10 @@ pub async fn resolve_dm_key(
 
     // Resolve target to account
     let target_lower = slirc_proto::irc_to_lower(target);
-    let target_account = if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(&target_lower) {
-        let uid = uid_ref.value();
-        if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
-            let u = user.read().await;
+    let target_account = if let Some(uid) = ctx.matrix.user_manager.nicks.get_cloned(&target_lower)
+    {
+        if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(&uid) {
+            let u = user_arc.read().await;
             u.account.clone()
         } else {
             None

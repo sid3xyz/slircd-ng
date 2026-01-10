@@ -138,12 +138,7 @@ pub enum ChannelEvent {
         requester_uid: Option<Uid>,
         reply_tx: oneshot::Sender<ChannelInfo>,
     },
-    /// Request CRDT representation of the channel (Innovation 2).
-    GetCrdt {
-        reply_tx: oneshot::Sender<slirc_crdt::channel::ChannelCrdt>,
-    },
     /// Merge a CRDT representation into the channel (Innovation 2).
-    #[allow(dead_code)] // Reserved for S2S CRDT sync
     MergeCrdt {
         crdt: Box<slirc_crdt::channel::ChannelCrdt>,
         source: Option<slirc_crdt::clock::ServerId>,
@@ -218,7 +213,6 @@ pub enum ChannelEvent {
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Incoming TMODE from a peer server.
-    #[allow(dead_code)] // Reserved for S2S mode propagation
     RemoteMode {
         ts: u64,
         setter: String,
@@ -226,14 +220,12 @@ pub enum ChannelEvent {
         args: Vec<String>,
     },
     /// Incoming TOPIC from a peer server.
-    #[allow(dead_code)] // Reserved for S2S topic sync
     RemoteTopic {
         ts: u64,
         setter: String,
         topic: String,
     },
     /// Incoming KICK from a peer server.
-    #[allow(dead_code)] // Reserved for S2S kick propagation
     RemoteKick {
         sender: String,
         target: String,

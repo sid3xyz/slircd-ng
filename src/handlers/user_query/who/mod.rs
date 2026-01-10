@@ -55,7 +55,7 @@ impl PostRegHandler for WhoHandler {
             .user_manager
             .users
             .get(ctx.uid)
-            .map(|u| u.clone())
+            .map(|u| u.value().clone())
             .map(|arc| {
                 arc.try_read()
                     .map(|u| u.caps.contains("multi-prefix"))

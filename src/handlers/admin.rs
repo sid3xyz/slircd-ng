@@ -247,7 +247,7 @@ impl PostRegHandler for SanickHandler {
                 .user_manager
                 .users
                 .get(&target_uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 (user.user.clone(), user.host.clone())
@@ -276,7 +276,7 @@ impl PostRegHandler for SanickHandler {
             .user_manager
             .users
             .get(&target_uid)
-            .map(|u| u.clone());
+            .map(|u| u.value().clone());
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
             user.nick = new_nick.to_string();
@@ -289,7 +289,7 @@ impl PostRegHandler for SanickHandler {
                 .user_manager
                 .users
                 .get(&target_uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.channels.iter().cloned().collect::<Vec<_>>()
@@ -310,7 +310,7 @@ impl PostRegHandler for SanickHandler {
             .user_manager
             .senders
             .get(&target_uid)
-            .map(|s| s.clone());
+            .map(|s| s.value().clone());
         if let Some(sender) = sender {
             let _ = sender.send(Arc::new(nick_msg)).await;
         }
@@ -366,7 +366,7 @@ impl PostRegHandler for SamodeHandler {
 
         // Get channel
         let channel = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
-            Some(c) => c.clone(),
+            Some(c) => c.value().clone(),
             None => {
                 let reply = Response::err_nosuchchannel(oper_nick, channel_name)
                     .with_prefix(ctx.server_prefix());

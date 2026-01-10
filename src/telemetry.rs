@@ -35,19 +35,8 @@ pub fn extract_msgid(msg: &slirc_proto::MessageRef<'_>) -> Option<String> {
 }
 
 /// Standardized span constructors for IRC observability.
-#[allow(dead_code)]
 pub mod spans {
     use tracing::{Span, info_span};
-
-    /// Create a span for a client connection.
-    pub fn connection(uid: &str, ip: &str) -> Span {
-        info_span!("connection", uid = %uid, ip = %ip)
-    }
-
-    /// Create a span for a server connection.
-    pub fn peer(sid: &str, name: &str) -> Span {
-        info_span!("peer", sid = %sid, name = %name)
-    }
 
     /// Create a span for a command execution.
     pub fn command(name: &str, source: &str, target: Option<&str>) -> Span {

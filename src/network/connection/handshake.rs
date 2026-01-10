@@ -76,16 +76,10 @@ pub async fn run_handshake_loop(
 
         // Send PASS
         // Format: PASS <password> TS 6 :<sid>
-        // Note: We use Raw command because slirc-proto might not support TS6 PASS fully typed yet
-        let pass_cmd = Command::Raw(
-            "PASS".to_string(),
-            vec![
-                init_data.remote_password.clone(),
-                "TS".to_string(),
-                "6".to_string(),
-                matrix.server_info.sid.clone(),
-            ],
-        );
+        let pass_cmd = Command::PassTs6 {
+            password: init_data.remote_password.clone(),
+            sid: matrix.server_info.sid.clone(),
+        };
         let pass_msg = Message::from(pass_cmd);
         transport
             .write_message(&pass_msg)
@@ -106,14 +100,11 @@ pub async fn run_handshake_loop(
 
         // Send SERVER
         // Format: SERVER <name> <hopcount> <sid> <info>
-        let server_cmd = Command::Raw(
-            "SERVER".to_string(),
-            vec![
-                matrix.server_info.name.clone(),
-                "1".to_string(),
-                matrix.server_info.sid.clone(),
-                matrix.server_info.description.clone(),
-            ],
+        let server_cmd = Command::SERVER(
+            matrix.server_info.name.clone(),
+            1,
+            matrix.server_info.sid.clone(),
+            matrix.server_info.description.clone(),
         );
         let server_msg = Message::from(server_cmd);
         transport

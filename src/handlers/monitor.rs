@@ -5,6 +5,7 @@
 
 use super::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
 use crate::state::RegisteredState;
+use crate::state::dashmap_ext::DashMapExt;
 use async_trait::async_trait;
 use dashmap::DashSet;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
@@ -117,13 +118,8 @@ async fn handle_add(
             .insert(ctx.uid.to_string());
 
         // Check if target is online
-        if let Some(target_uid) = ctx.matrix.user_manager.nicks.get(&target_lower) {
-            let user_arc = ctx
-                .matrix
-                .user_manager
-                .users
-                .get(target_uid.value())
-                .map(|u| u.value().clone());
+        if let Some(target_uid) = ctx.matrix.user_manager.nicks.get_cloned(&target_lower) {
+            let user_arc = ctx.matrix.user_manager.users.get_cloned(&target_uid);
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 online.push(format!("{}!{}@{}", user.nick, user.user, user.visible_host));
@@ -215,19 +211,22 @@ async fn handle_list(
     nick: &str,
     server_name: &str,
 ) -> HandlerResult {
-    if let Some(user_monitors) = ctx.matrix.monitor_manager.monitors.get(ctx.uid) {
-        // Collect all monitored nicks
-        let targets: Vec<String> = user_monitors.iter().map(|r| r.clone()).collect();
+    let targets: Vec<String> = ctx
+        .matrix
+        .monitor_manager
+        .monitors
+        .get(ctx.uid)
+        .map(|monitors| monitors.iter().map(|r| r.clone()).collect())
+        .unwrap_or_default();
 
-        // Send in batches to avoid line length limits
-        for chunk in targets.chunks(10) {
-            let reply = server_reply(
-                server_name,
-                Response::RPL_MONLIST,
-                vec![nick.to_string(), chunk.join(",")],
-            );
-            ctx.sender.send(reply).await?;
-        }
+    // Send in batches to avoid line length limits
+    for chunk in targets.chunks(10) {
+        let reply = server_reply(
+            server_name,
+            Response::RPL_MONLIST,
+            vec![nick.to_string(), chunk.join(",")],
+        );
+        ctx.sender.send(reply).await?;
     }
 
     // Send end of list with label
@@ -255,13 +254,13 @@ async fn handle_status(
 
     if let Some(user_monitors) = ctx.matrix.monitor_manager.monitors.get(ctx.uid) {
         for target_lower in user_monitors.iter() {
-            if let Some(target_uid) = ctx.matrix.user_manager.nicks.get(target_lower.as_str()) {
-                let user_arc = ctx
-                    .matrix
-                    .user_manager
-                    .users
-                    .get(target_uid.value())
-                    .map(|u| u.value().clone());
+            if let Some(target_uid) = ctx
+                .matrix
+                .user_manager
+                .nicks
+                .get_cloned(target_lower.as_str())
+            {
+                let user_arc = ctx.matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
                     online.push(format!("{}!{}@{}", user.nick, user.user, user.visible_host));
@@ -333,11 +332,7 @@ pub async fn notify_monitors_online(matrix: &Arc<Matrix>, nick: &str, user: &str
     );
 
     for watcher_uid in watcher_uids {
-        let sender = matrix
-            .user_manager
-            .senders
-            .get(&watcher_uid)
-            .map(|s| s.clone());
+        let sender = matrix.user_manager.senders.get_cloned(&watcher_uid);
         if let Some(sender) = sender {
             let _ = sender.send(Arc::new(reply.clone())).await;
         }
@@ -370,11 +365,7 @@ pub async fn notify_monitors_offline(matrix: &Arc<Matrix>, nick: &str) {
     );
 
     for watcher_uid in watcher_uids {
-        let sender = matrix
-            .user_manager
-            .senders
-            .get(&watcher_uid)
-            .map(|s| s.clone());
+        let sender = matrix.user_manager.senders.get_cloned(&watcher_uid);
         if let Some(sender) = sender {
             let _ = sender.send(Arc::new(reply.clone())).await;
         }
@@ -434,11 +425,7 @@ pub async fn notify_extended_monitor_watchers(
     for watcher_uid in watcher_uids {
         // Check if watcher has both extended-monitor AND the required capability
         let should_send = {
-            let user_arc = matrix
-                .user_manager
-                .users
-                .get(&watcher_uid)
-                .map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get_cloned(&watcher_uid);
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.caps.contains("extended-monitor") && user.caps.contains(required_cap)
@@ -448,11 +435,7 @@ pub async fn notify_extended_monitor_watchers(
         };
 
         if should_send {
-            let sender = matrix
-                .user_manager
-                .senders
-                .get(&watcher_uid)
-                .map(|s| s.clone());
+            let sender = matrix.user_manager.senders.get_cloned(&watcher_uid);
             if let Some(sender) = sender {
                 let _ = sender.send(Arc::new(msg.clone())).await;
             }
