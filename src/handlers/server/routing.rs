@@ -1,6 +1,7 @@
 use crate::handlers::core::traits::ServerHandler;
 use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::ServerState;
+use crate::state::dashmap_ext::DashMapExt;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Tag};
 use std::sync::Arc;
@@ -59,7 +60,7 @@ impl ServerHandler for RoutedMessageHandler {
         debug!(from = %source_uid, to = %target_uid, "Routing message");
 
         // 1. Is the target local?
-        if let Some(sender) = ctx.matrix.user_manager.senders.get(target_uid) {
+        if let Some(sender) = ctx.matrix.user_manager.senders.get_cloned(target_uid) {
             // Local delivery!
             crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
                 .with_label_values(&[source_sid, target_sid, "success"])
@@ -69,30 +70,30 @@ impl ServerHandler for RoutedMessageHandler {
             // But wait, the client expects :Nick!User@Host PRIVMSG TargetNick :text
 
             // We need to resolve the source UID to a full mask
-            let source_mask = if let Some(user_arc) = ctx.matrix.user_manager.users.get(source_uid)
-            {
-                let user = user_arc.read().await;
-                Prefix::Nickname(
-                    user.nick.clone(),
-                    user.user.clone(),
-                    user.visible_host.clone(),
-                )
-            } else {
-                // Unknown source user? Maybe it's a server message?
-                // Or we haven't received the UID burst yet?
-                warn!("Unknown source UID {} for routed message", source_uid);
-                Prefix::new_from_str(source_uid)
-            };
+            let source_mask =
+                if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(source_uid) {
+                    let user = user_arc.read().await;
+                    Prefix::Nickname(
+                        user.nick.clone(),
+                        user.user.clone(),
+                        user.visible_host.clone(),
+                    )
+                } else {
+                    // Unknown source user? Maybe it's a server message?
+                    // Or we haven't received the UID burst yet?
+                    warn!("Unknown source UID {} for routed message", source_uid);
+                    Prefix::new_from_str(source_uid)
+                };
 
             // Resolve target UID to Nickname for the command
-            let target_nick = if let Some(user_arc) = ctx.matrix.user_manager.users.get(target_uid)
-            {
-                let user = user_arc.read().await;
-                user.nick.clone()
-            } else {
-                // Should not happen if we found the sender
-                target_uid.to_string()
-            };
+            let target_nick =
+                if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(target_uid) {
+                    let user = user_arc.read().await;
+                    user.nick.clone()
+                } else {
+                    // Should not happen if we found the sender
+                    target_uid.to_string()
+                };
 
             // Parse tags from raw string
             let tags = if let Some(tags_str) = msg.tags {

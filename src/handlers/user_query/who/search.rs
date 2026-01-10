@@ -19,7 +19,7 @@ where
     let channel_lower = irc_to_lower(channel_name);
 
     let channel_sender = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
-        Some(c) => c.clone(),
+        Some(c) => c.value().clone(),
         None => return Ok(()),
     };
 
@@ -68,7 +68,7 @@ where
         }
 
         let member_arc = match ctx.matrix.user_manager.users.get(&member_uid) {
-            Some(u) => u.clone(),
+            Some(u) => u.value().clone(),
             None => continue,
         };
         let user = member_arc.read().await;
@@ -136,7 +136,7 @@ where
         .user_manager
         .users
         .get(ctx.uid)
-        .map(|u| u.clone())
+        .map(|u| u.value().clone())
         .map(|arc| {
             // We need to check synchronously - use try_read
             arc.try_read().map(|u| u.modes.oper).unwrap_or(false)
@@ -149,7 +149,7 @@ where
         .user_manager
         .users
         .get(ctx.uid)
-        .map(|u| u.clone())
+        .map(|u| u.value().clone())
         .map(|arc| {
             arc.try_read()
                 .map(|u| u.channels.iter().cloned().collect())

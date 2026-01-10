@@ -3,6 +3,7 @@
 //! This module handles conversion between the actor's internal state
 //! and the CRDT representation used for distributed synchronization.
 
+use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{ListEntry, MemberModes, Topic};
 use slirc_crdt::channel::{ChannelCrdt, ListEntryCrdt, TopicCrdt};
 use slirc_crdt::clock::{HybridTimestamp, ServerId};
@@ -130,8 +131,8 @@ impl ChannelActor {
                 if !self.senders.contains_key(uid) {
                     if let Some(matrix) = self.matrix.upgrade() {
                         // Try to get sender from UserManager (local user)
-                        if let Some(sender) = matrix.user_manager.senders.get(uid) {
-                            self.senders.insert(uid.clone(), sender.clone());
+                        if let Some(sender) = matrix.user_manager.senders.get_cloned(uid) {
+                            self.senders.insert(uid.clone(), sender);
                         } else {
                             // Remote user - use router
                             self.senders.insert(uid.clone(), matrix.router_tx.clone());

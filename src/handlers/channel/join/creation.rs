@@ -205,7 +205,7 @@ pub(super) async fn join_channel(
             .user_manager
             .senders
             .get(ctx.uid)
-            .map(|s| s.clone())
+            .map(|s| s.value().clone())
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         let _ = channel_sender

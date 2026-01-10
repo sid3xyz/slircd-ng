@@ -30,7 +30,11 @@ pub async fn handle_set(
     }
 
     // Check if user is identified and get their account name
-    let user_arc = matrix.user_manager.users.get(uid).map(|u| u.clone());
+    let user_arc = matrix
+        .user_manager
+        .users
+        .get(uid)
+        .map(|u| u.value().clone());
     let account_name = if let Some(user_arc) = user_arc {
         let user = user_arc.read().await;
         if !user.modes.registered {

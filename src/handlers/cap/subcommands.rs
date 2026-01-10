@@ -2,6 +2,7 @@ use super::helpers::{CapListParams, build_cap_list_tokens, pack_cap_ls_lines};
 use super::types::SUPPORTED_CAPS;
 use crate::handlers::{Context, HandlerResult};
 use crate::state::SessionState;
+use crate::state::dashmap_ext::DashMapExt;
 use slirc_proto::{CapSubCommand, Command, Message};
 use tracing::{debug, info};
 
@@ -170,11 +171,11 @@ pub async fn handle_req<S: SessionState>(
 
         // If user is registered, sync capabilities to their User in Matrix
         // This enables mid-session CAP REQ (e.g., requesting message-tags after registration)
-        #[allow(clippy::collapsible_if)]
         if ctx.state.is_registered() {
-            if let Some(user_ref) = ctx.matrix.user_manager.users.get(ctx.uid) {
+            let user_arc = ctx.matrix.user_manager.users.get_cloned(ctx.uid);
+            if let Some(user_arc) = user_arc {
                 let (channels, new_caps) = {
-                    let mut user = user_ref.write().await;
+                    let mut user = user_arc.write().await;
                     user.caps = ctx.state.capabilities().clone();
                     (
                         user.channels.iter().cloned().collect::<Vec<_>>(),
@@ -186,7 +187,12 @@ pub async fn handle_req<S: SessionState>(
                 // Without this, capability-gated broadcasts (e.g., setname, away-notify) can be wrong
                 // if the user negotiates capabilities after joining channels.
                 for channel_lower in channels {
-                    if let Some(sender) = ctx.matrix.channel_manager.channels.get(&channel_lower) {
+                    if let Some(sender) = ctx
+                        .matrix
+                        .channel_manager
+                        .channels
+                        .get_cloned(&channel_lower)
+                    {
                         let _ = sender
                             .send(crate::state::actor::ChannelEvent::UpdateCaps {
                                 uid: ctx.uid.to_string(),

@@ -1,6 +1,7 @@
 use crate::handlers::core::traits::ServerHandler;
 use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::ServerState;
+use crate::state::dashmap_ext::DashMapExt;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef};
 use std::sync::Arc;
@@ -42,7 +43,7 @@ impl ServerHandler for KillHandler {
             // Send ERROR to the user before disconnecting
             let quit_reason = format!("Killed ({})", reason);
 
-            if let Some(sender) = ctx.matrix.user_manager.senders.get(target_uid) {
+            if let Some(sender) = ctx.matrix.user_manager.senders.get_cloned(target_uid) {
                 let error_msg = Message {
                     tags: None,
                     prefix: None,

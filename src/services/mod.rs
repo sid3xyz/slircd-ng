@@ -11,6 +11,7 @@ pub mod traits;
 pub use traits::Service;
 
 use crate::handlers::notify_extended_monitor_watchers;
+use crate::state::dashmap_ext::DashMapExt;
 use crate::state::observer::StateObserver;
 use crate::{handlers::ResponseMiddleware, state::Matrix};
 use slirc_proto::{ChannelMode, Command, Message, Mode, Prefix, UserMode, irc_to_lower};
@@ -179,15 +180,14 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
             mut msg,
         } => {
             // Resolve the target nickname for the NOTICE command
-            let target_nick = if let Some(user_arc) = matrix.user_manager.users.get(&target_uid) {
-                user_arc.read().await.nick.clone()
-            } else {
-                // User not found (disconnected?)
-                return;
+            let user_arc = match matrix.user_manager.users.get_cloned(&target_uid) {
+                Some(user_arc) => user_arc,
+                None => return, // User not found (disconnected?)
             };
+            let target_nick = user_arc.read().await.nick.clone();
 
             // Try local sender first (for local users)
-            if let Some(target_tx) = matrix.user_manager.senders.get(&target_uid) {
+            if let Some(target_tx) = matrix.user_manager.senders.get_cloned(&target_uid) {
                 if let Command::NOTICE(_, text) = msg.command {
                     msg.command = Command::NOTICE(target_nick, text);
                 }
@@ -211,11 +211,7 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
             account,
         } => {
             let nick = {
-                let user_arc = matrix
-                    .user_manager
-                    .users
-                    .get(&target_uid)
-                    .map(|u| u.clone());
+                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
                     user.nick.clone()
@@ -226,11 +222,7 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
 
             info!(uid = %target_uid, account = %account, "Remote user identified to account");
 
-            let user_arc = matrix
-                .user_manager
-                .users
-                .get(&target_uid)
-                .map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.modes.registered = true;
@@ -245,17 +237,12 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
             };
 
             // Collect user Arc + UID pairs to release DashMap lock before awaiting
-            let user_data: Vec<_> = matrix
-                .user_manager
-                .users
-                .iter()
-                .map(|e| (e.key().clone(), e.value().clone()))
-                .collect();
+            let user_data = matrix.user_manager.users.iter_cloned();
 
             for (uid, user_arc) in user_data {
                 let user = user_arc.read().await;
                 if user.caps.contains("account-notify")
-                    && let Some(tx) = matrix.user_manager.senders.get(&uid)
+                    && let Some(tx) = matrix.user_manager.senders.get_cloned(&uid)
                 {
                     let _ = tx.send(Arc::new(mode_msg.clone())).await;
                 }
@@ -263,11 +250,7 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
         }
 
         ServiceEffect::AccountClear { target_uid } => {
-            let user_arc = matrix
-                .user_manager
-                .users
-                .get(&target_uid)
-                .map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.modes.registered = false;
@@ -312,15 +295,14 @@ pub async fn apply_effect(
             mut msg,
         } => {
             // 1. Resolve the target nickname for the NOTICE command
-            let target_nick = if let Some(user_arc) = matrix.user_manager.users.get(&target_uid) {
-                user_arc.read().await.nick.clone()
-            } else {
-                // User not found (disconnected?)
-                return;
+            let user_arc = match matrix.user_manager.users.get_cloned(&target_uid) {
+                Some(user_arc) => user_arc,
+                None => return, // User not found (disconnected?)
             };
+            let target_nick = user_arc.read().await.nick.clone();
 
             // 2. Route the message to the target's sender channel
-            if let Some(target_tx) = matrix.user_manager.senders.get(&target_uid) {
+            if let Some(target_tx) = matrix.user_manager.senders.get_cloned(&target_uid) {
                 // Update the NOTICE command with the correct target nick
                 // Move text out of old command to avoid clone
                 if let Command::NOTICE(_, text) = msg.command {
@@ -345,11 +327,7 @@ pub async fn apply_effect(
         } => {
             // Get user info for MODE broadcast before we modify the user
             let nick = {
-                let user_arc = matrix
-                    .user_manager
-                    .users
-                    .get(&target_uid)
-                    .map(|u| u.clone());
+                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
                     user.nick.clone()
@@ -361,11 +339,7 @@ pub async fn apply_effect(
             info!(uid = %target_uid, account = %account, "User identified to account");
 
             // Set +r mode and account on user
-            let user_arc = matrix
-                .user_manager
-                .users
-                .get(&target_uid)
-                .map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.modes.registered = true;
@@ -393,11 +367,7 @@ pub async fn apply_effect(
                 ),
             };
 
-            let sender = matrix
-                .user_manager
-                .senders
-                .get(&target_uid)
-                .map(|s| s.clone());
+            let sender = matrix.user_manager.senders.get_cloned(&target_uid);
             if let Some(sender) = sender {
                 let _ = sender.send(Arc::new(mode_msg)).await;
             }
@@ -406,11 +376,7 @@ pub async fn apply_effect(
         ServiceEffect::AccountClear { target_uid } => {
             // Get user info for MODE broadcast
             let nick = {
-                let user_arc = matrix
-                    .user_manager
-                    .users
-                    .get(&target_uid)
-                    .map(|u| u.clone());
+                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
                     user.nick.clone()
@@ -420,11 +386,7 @@ pub async fn apply_effect(
             };
 
             // Clear +r mode and account on user
-            let user_arc = matrix
-                .user_manager
-                .users
-                .get(&target_uid)
-                .map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.modes.registered = false;
@@ -449,11 +411,7 @@ pub async fn apply_effect(
                 ),
             };
 
-            let sender = matrix
-                .user_manager
-                .senders
-                .get(&target_uid)
-                .map(|s| s.clone());
+            let sender = matrix.user_manager.senders.get_cloned(&target_uid);
             if let Some(sender) = sender {
                 let _ = sender.send(Arc::new(mode_msg)).await;
             }
@@ -485,11 +443,7 @@ pub async fn apply_effect(
             adding,
         } => {
             // Get target nick for MODE message
-            let user_arc = matrix
-                .user_manager
-                .users
-                .get(&target_uid)
-                .map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
             let target_nick = if let Some(user_arc) = user_arc {
                 user_arc.read().await.nick.clone()
             } else {
@@ -499,7 +453,7 @@ pub async fn apply_effect(
             let channel_lower = irc_to_lower(&channel);
             let channel_sender =
                 if let Some(c) = matrix.channel_manager.channels.get(&channel_lower) {
-                    c.clone()
+                    c.value().clone()
                 } else {
                     return;
                 };
@@ -550,11 +504,7 @@ pub async fn apply_effect(
             reason,
         } => {
             // Get target nick for KICK message
-            let user_arc = matrix
-                .user_manager
-                .users
-                .get(&target_uid)
-                .map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
             let target_nick = if let Some(user_arc) = user_arc {
                 user_arc.read().await.nick.clone()
             } else {
@@ -564,7 +514,7 @@ pub async fn apply_effect(
             let channel_lower = irc_to_lower(&channel);
             let channel_sender =
                 if let Some(c) = matrix.channel_manager.channels.get(&channel_lower) {
-                    c.clone()
+                    c.value().clone()
                 } else {
                     return;
                 };
@@ -591,11 +541,7 @@ pub async fn apply_effect(
             {
                 // Success
                 // Remove channel from user's channel list
-                let user_arc = matrix
-                    .user_manager
-                    .users
-                    .get(&target_uid)
-                    .map(|u| u.clone());
+                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
                     let mut user_guard = user_arc.write().await;
                     user_guard.channels.remove(&channel_lower);
@@ -612,11 +558,7 @@ pub async fn apply_effect(
         } => {
             // Get user info for NICK message before we modify
             let (username, hostname, channels) = {
-                let user_arc = matrix
-                    .user_manager
-                    .users
-                    .get(&target_uid)
-                    .map(|u| u.clone());
+                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
                     (
@@ -639,11 +581,7 @@ pub async fn apply_effect(
                 .nicks
                 .insert(new_nick_lower, target_uid.clone());
 
-            let user_arc = matrix
-                .user_manager
-                .users
-                .get(&target_uid)
-                .map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.nick = new_nick.clone();
@@ -665,11 +603,7 @@ pub async fn apply_effect(
             }
 
             // Also send to the user themselves
-            let sender = matrix
-                .user_manager
-                .senders
-                .get(&target_uid)
-                .map(|s| s.clone());
+            let sender = matrix.user_manager.senders.get_cloned(&target_uid);
             if let Some(sender) = sender {
                 let _ = sender.send(Arc::new(nick_msg)).await;
             }
@@ -683,11 +617,7 @@ pub async fn apply_effect(
         } => {
             // Get user info for ACCOUNT broadcast
             let (nick, user_str, host, channels) = {
-                let user_arc = matrix
-                    .user_manager
-                    .users
-                    .get(&target_uid)
-                    .map(|u| u.clone());
+                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
                     (
@@ -723,11 +653,7 @@ pub async fn apply_effect(
             }
 
             // Also send to the user themselves
-            let sender = matrix
-                .user_manager
-                .senders
-                .get(&target_uid)
-                .map(|s| s.clone());
+            let sender = matrix.user_manager.senders.get_cloned(&target_uid);
             if let Some(sender) = sender {
                 let _ = sender.send(Arc::new(account_msg.clone())).await;
             }

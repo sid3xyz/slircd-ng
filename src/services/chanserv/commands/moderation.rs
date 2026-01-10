@@ -85,7 +85,7 @@ impl ChanServ {
 
         // Common setup for all commands
         let channel_sender = if let Some(c) = matrix.channel_manager.channels.get(&channel_lower) {
-            c.clone()
+            c.value().clone()
         } else {
             return self.error_reply(
                 uid,

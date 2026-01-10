@@ -32,7 +32,11 @@ where
     M: Fn(&str, Vec<&str>) -> Vec<ServiceEffect>,
 {
     // User must be logged in
-    let user_arc = matrix.user_manager.users.get(uid).map(|u| u.clone());
+    let user_arc = matrix
+        .user_manager
+        .users
+        .get(uid)
+        .map(|u| u.value().clone());
     let Some(user_arc) = user_arc else {
         return vec![reply(uid, "You are not connected.")];
     };
@@ -100,7 +104,11 @@ where
     F: Fn(&str, &str) -> ServiceEffect,
 {
     // Get user's current certfp from their connection
-    let user_arc = matrix.user_manager.users.get(uid).map(|u| u.clone());
+    let user_arc = matrix
+        .user_manager
+        .users
+        .get(uid)
+        .map(|u| u.value().clone());
     let Some(user_arc) = user_arc else {
         return vec![reply(uid, "You are not connected.")];
     };
