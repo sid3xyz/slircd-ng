@@ -332,7 +332,7 @@ mod tests {
         let (target, channel, first) = parse_invite_params(&msg).unwrap();
         assert_eq!(target, "nick");
         assert_eq!(channel, "#channel");
-        assert_eq!(first, false);
+        assert!(!first);
     }
 
     #[test]
@@ -350,7 +350,7 @@ mod tests {
         let (target, channel, first) = parse_invite_params(&msg).unwrap();
         assert_eq!(target, "nick");
         assert_eq!(channel, "&channel");
-        assert_eq!(first, true);
+        assert!(first);
     }
 
     #[test]
