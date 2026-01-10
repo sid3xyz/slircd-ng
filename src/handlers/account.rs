@@ -16,14 +16,10 @@ fn fail_response(server_name: &str, code: &str, context: &str, description: &str
     Message {
         tags: None,
         prefix: Some(Prefix::new_from_str(server_name)),
-        command: Command::Raw(
-            "FAIL".to_string(),
-            vec![
-                "REGISTER".to_string(),
-                code.to_string(),
-                context.to_string(),
-                description.to_string(),
-            ],
+        command: Command::FAIL(
+            "REGISTER".to_string(),
+            code.to_string(),
+            vec![context.to_string(), description.to_string()],
         ),
     }
 }
@@ -170,14 +166,10 @@ impl<S: SessionState> UniversalHandler<S> for RegisterHandler {
                 let success_msg = Message {
                     tags: None,
                     prefix: Some(Prefix::new_from_str(server_name)),
-                    command: Command::Raw(
-                        "REGISTER".to_string(),
-                        vec![
-                            "SUCCESS".to_string(),
-                            target_account.to_string(),
-                            "Account created".to_string(),
-                        ],
-                    ),
+                    command: Command::REGISTER {
+                        account: target_account.to_string(),
+                        message: Some("Account created".to_string()),
+                    },
                 };
                 ctx.sender.send(success_msg).await?;
             }

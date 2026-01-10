@@ -45,6 +45,24 @@ impl Default for SecurityConfig {
     }
 }
 
+impl SecurityConfig {
+    /// Emit warnings for deprecated/unused config knobs that are still accepted for compatibility.
+    pub fn warn_deprecated_and_unused(&self) {
+        if let Some(value) = self.spam.dnsbl_enabled {
+            tracing::warn!(
+                value,
+                "[security.spam].dnsbl_enabled is deprecated and ignored; use [security.spam.rbl].dns_enabled instead"
+            );
+        }
+
+        if self.spam.rbl.stopforumspam_api_key.is_some() {
+            tracing::warn!(
+                "[security.spam.rbl].stopforumspam_api_key is configured but not currently used"
+            );
+        }
+    }
+}
+
 fn default_cloak_secret() -> String {
     let secret: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
@@ -72,9 +90,8 @@ fn default_spam_detection_enabled() -> bool {
 pub struct SpamConfig {
     /// Enable DNS Blocklist checks (default: true).
     /// DEPRECATED: Use `rbl.dns_enabled` instead. This field is ignored.
-    #[serde(default = "default_true")]
-    #[allow(dead_code)]
-    pub dnsbl_enabled: bool,
+    #[serde(default)]
+    pub dnsbl_enabled: Option<bool>,
     /// Enable Reputation system (default: true).
     #[serde(default = "default_true")]
     pub reputation_enabled: bool,
@@ -89,7 +106,7 @@ pub struct SpamConfig {
 impl Default for SpamConfig {
     fn default() -> Self {
         Self {
-            dnsbl_enabled: true,
+            dnsbl_enabled: None,
             reputation_enabled: true,
             heuristics: HeuristicsConfig::default(),
             rbl: RblConfig::default(),
@@ -119,7 +136,6 @@ pub struct RblConfig {
     pub cache_max_size: usize,
     /// StopForumSpam API key (optional, enables higher rate limits).
     /// Not currently used, but reserved for future rate limit bypass.
-    #[allow(dead_code)]
     pub stopforumspam_api_key: Option<String>,
     /// AbuseIPDB API key (optional, required for AbuseIPDB provider).
     pub abuseipdb_api_key: Option<String>,
@@ -392,7 +408,7 @@ mod tests {
     #[test]
     fn spam_config_default_dnsbl_enabled() {
         let config = SpamConfig::default();
-        assert!(config.dnsbl_enabled);
+        assert!(config.dnsbl_enabled.is_none());
     }
 
     #[test]

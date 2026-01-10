@@ -33,11 +33,9 @@ pub struct StoredMessage {
     pub msgid: String,
     /// Target channel (lowercased for lookup).
     /// Selected from DB for struct completeness; envelope.target has display name.
-    #[allow(dead_code)] // DB field - accessed via envelope.target instead
     pub target: String,
     /// Sender nickname.
     /// Selected from DB for struct completeness; envelope.prefix has full sender.
-    #[allow(dead_code)] // DB field - accessed via envelope.prefix instead
     pub sender: String,
     pub envelope: MessageEnvelope,
     pub nanotime: i64,

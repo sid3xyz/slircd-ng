@@ -29,21 +29,13 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
     // 0. Burst Global Bans (before users/channels to prevent race conditions)
     // G-lines
     for (mask, reason, _expires) in state.security_manager.ban_cache.iter_glines() {
-        commands.push(Command::Raw("GLINE".to_string(), vec![mask, reason]));
+        commands.push(Command::GLINE(mask, Some(reason)));
     }
 
     // Shuns
     for entry in state.security_manager.shuns.iter() {
         let shun = entry.value();
-        commands.push(Command::Raw(
-            "SHUN".to_string(),
-            vec![
-                shun.mask.clone(),
-                shun.reason
-                    .clone()
-                    .unwrap_or_else(|| "No reason".to_string()),
-            ],
-        ));
+        commands.push(Command::SHUN(shun.mask.clone(), shun.reason.clone()));
     }
 
     // Z-lines (IP bans from ip_deny_list)
@@ -52,10 +44,7 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
     if let Ok(ip_deny) = state.security_manager.ip_deny_list.read() {
         for (ip_mask, meta) in ip_deny.iter() {
             if !meta.is_expired() {
-                commands.push(Command::Raw(
-                    "ZLINE".to_string(),
-                    vec![ip_mask.clone(), meta.reason.clone()],
-                ));
+                commands.push(Command::ZLINE(ip_mask.clone(), Some(meta.reason.clone())));
             }
         }
     } else {

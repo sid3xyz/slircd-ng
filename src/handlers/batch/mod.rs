@@ -600,13 +600,10 @@ async fn send_fail<S>(ctx: &mut Context<'_, S>, code: &str, message: &str) -> Ha
     let reply = Message {
         tags: None,
         prefix: Some(ctx.server_prefix()),
-        command: Command::Raw(
-            "FAIL".to_string(),
-            vec![
-                "BATCH".to_string(),
-                code.to_string(),
-                format!(":{}", message),
-            ],
+        command: Command::FAIL(
+            "BATCH".to_string(),
+            code.to_string(),
+            vec![message.to_string()],
         ),
     };
     ctx.sender.send(reply).await?;

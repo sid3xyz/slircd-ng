@@ -57,7 +57,7 @@ pub async fn handle_netsplit(
     );
 
     // Build the quit reason
-    let quit_reason = format!("{} {}", local_name, remote_name);
+    let quit_reason = netsplit_reason(local_name, remote_name);
 
     // 2. Mass quit: Find and remove all users from affected servers
     let mut affected_users = Vec::new();
@@ -205,8 +205,7 @@ async fn broadcast_to_local_users(matrix: &Matrix, msg: Message) {
 }
 
 /// Calculate the netsplit quit reason from server names.
-#[allow(dead_code)] // Used for netsplit QUIT message formatting
-pub fn netsplit_reason(local_name: &str, remote_name: &str) -> String {
+fn netsplit_reason(local_name: &str, remote_name: &str) -> String {
     format!("{} {}", local_name, remote_name)
 }
 

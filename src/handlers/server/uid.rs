@@ -8,6 +8,8 @@ use slirc_crdt::user::UserCrdt;
 use slirc_proto::MessageRef;
 use tracing::info;
 
+use crate::handlers::server::source::extract_source_sid;
+
 /// Handler for the UID command (User ID).
 ///
 /// UID introduces a new user to the network.
@@ -39,20 +41,7 @@ impl ServerHandler for UidHandler {
             HandlerError::ProtocolError(format!("Invalid timestamp: {}", timestamp_str))
         })?;
 
-        // Extract source SID from message prefix
-        let source_sid = msg
-            .prefix
-            .as_ref()
-            .and_then(|p| {
-                if p.is_server() {
-                    p.raw.split('.').next()
-                } else {
-                    Some(p.raw)
-                }
-            })
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "000".to_string());
-        let source = ServerId::new(source_sid);
+        let source = extract_source_sid(msg).unwrap_or_else(|| ServerId::new("000".to_string()));
 
         // Convert TS6 UID to CRDT for lossless merge
         let crdt = uid_to_crdt(

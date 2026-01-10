@@ -204,13 +204,10 @@ impl PostRegHandler for SetnameHandler {
                 let fail = slirc_proto::Message {
                     tags: None,
                     prefix: None,
-                    command: Command::Raw(
-                        "FAIL".to_string(),
-                        vec![
-                            "SETNAME".to_string(),
-                            "INVALID_REALNAME".to_string(),
-                            "Realname is not valid".to_string(),
-                        ],
+                    command: Command::FAIL(
+                        "SETNAME".to_string(),
+                        "INVALID_REALNAME".to_string(),
+                        vec!["Realname is not valid".to_string()],
                     ),
                 };
                 ctx.sender.send(fail).await?;

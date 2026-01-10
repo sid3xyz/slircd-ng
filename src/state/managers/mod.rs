@@ -9,5 +9,4 @@ pub mod lifecycle;
 pub mod monitor;
 pub mod security;
 pub mod service;
-pub mod tombstone;
 pub mod user;

@@ -38,7 +38,6 @@ use server_loop::run_server_loop;
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::state::{InitiatorData, Matrix, UnregisteredState};
-use crate::sync::ServerInfo;
 use slirc_crdt::clock::ServerId;
 use slirc_proto::Message;
 use slirc_proto::transport::ZeroCopyTransportEnum;
@@ -119,13 +118,6 @@ impl Connection {
             starttls_acceptor: None, // Already TLS, no STARTTLS needed
             initiator_data: None,
         }
-    }
-
-    /// Set initiator data for outgoing server connections.
-    #[allow(dead_code)]
-    pub fn with_initiator_data(mut self, data: InitiatorData) -> Self {
-        self.initiator_data = Some(data);
-        self
     }
 
     /// Create a new WebSocket connection handler.
@@ -280,16 +272,13 @@ impl Connection {
                     "Server registered - starting sync loop"
                 );
 
-                // Add to topology
-                self.matrix.sync_manager.topology.servers.insert(
+                // Add to topology (direct peer's parent/uplink is the local server)
+                self.matrix.sync_manager.topology.add_server(
                     ServerId::new(server_state.sid.clone()),
-                    ServerInfo {
-                        sid: ServerId::new(server_state.sid.clone()),
-                        name: server_state.name.clone(),
-                        info: server_state.info.clone(),
-                        hopcount: server_state.hopcount,
-                        via: None, // Direct link
-                    },
+                    server_state.name.clone(),
+                    server_state.info.clone(),
+                    server_state.hopcount,
+                    Some(self.matrix.sync_manager.local_id.clone()),
                 );
 
                 // Phase 2: Server Sync Loop

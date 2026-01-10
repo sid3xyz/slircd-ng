@@ -30,18 +30,7 @@ pub struct ChannelManager {
 }
 
 impl ChannelManager {
-    /// Create a new ChannelManager.
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self {
-            channels: DashMap::new(),
-            registered_channels: DashSet::new(),
-            observer: None,
-        }
-    }
-
     /// Get an existing channel actor or create a new one.
-    #[allow(dead_code)] // Reserved for S2S SJOIN handling
     pub async fn get_or_create_actor(
         &self,
         name: String,
@@ -145,63 +134,6 @@ impl ChannelManager {
                     fallback_msg: fallback_msg.map(Box::new),
                 })
                 .await;
-        }
-    }
-
-    /// Export all channels as CRDTs for a BURST.
-    #[allow(dead_code)]
-    pub async fn to_crdt(&self) -> Vec<slirc_crdt::channel::ChannelCrdt> {
-        use crate::state::actor::ChannelEvent;
-        let mut crdts = Vec::new();
-        for entry in self.channels.iter() {
-            let channel_tx = entry.value();
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            if channel_tx
-                .send(ChannelEvent::GetCrdt { reply_tx: tx })
-                .await
-                .is_ok()
-                && let Ok(crdt) = rx.await
-            {
-                crdts.push(crdt);
-            }
-        }
-        crdts
-    }
-
-    /// Merge a ChannelCrdt into the local state.
-    #[allow(dead_code)] // Reserved for S2S CRDT sync
-    pub async fn merge_channel_crdt(
-        &self,
-        crdt: slirc_crdt::channel::ChannelCrdt,
-        matrix: std::sync::Weak<crate::state::Matrix>,
-        source: Option<slirc_crdt::clock::ServerId>,
-    ) {
-        use crate::state::actor::{ChannelActor, ChannelEvent};
-        let name_lower = crdt.name.to_lowercase();
-
-        if let Some(channel_tx) = self.channels.get(&name_lower) {
-            let _ = channel_tx
-                .send(ChannelEvent::MergeCrdt {
-                    crdt: Box::new(crdt),
-                    source,
-                })
-                .await;
-        } else {
-            let tx = ChannelActor::spawn_with_capacity(
-                crdt.name.clone(),
-                matrix,
-                None,
-                100,
-                self.observer.clone(),
-            );
-            let _ = tx
-                .send(ChannelEvent::MergeCrdt {
-                    crdt: Box::new(crdt),
-                    source,
-                })
-                .await;
-            self.channels.insert(name_lower, tx);
-            crate::metrics::ACTIVE_CHANNELS.inc();
         }
     }
 }
