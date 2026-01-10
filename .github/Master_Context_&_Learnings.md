@@ -1,25 +1,40 @@
 # Master Context & Learnings (slircd-ng)
 
-## Current Focus (Post-Protocol-First)
+## Current Focus (Integration Testing Framework - Tier 1.2)
 
-**Status**: ✅ **Protocol-first architectural enforcement COMPLETE**
+**Status**: 🟡 **IN PROGRESS** — Building comprehensive integration test suite
 
-All standard IRC/S2S commands now use typed `Command` variants from `slirc-proto`. The daemon is free of:
-- Stringly-typed command construction (only 1 legitimate `Raw` remains for synthetic CHATHISTORY batch responses)
-- DashMap guard leaks across await points
-- Dead code/unused imports
-- Warning suppressors (#[allow] attributes)
+**Branch**: `test/integration-framework`
 
-**Next Phase Candidates** (per ROADMAP_TO_1.0.md):
-1. **Integration Testing** (Tier 1.2) — Only 3 integration tests exist; need comprehensive test suite
-2. **Error Handling Audit Completion** (Tier 1.1) — Hot paths clean; need CI enforcement
-3. **Production Deployment Testing** (Tier 1.4) — Zero production deployments yet
-4. **S2S Feature Hardening** — Burst/DELTA cycle testing, netsplit recovery, topology repair
+**Objective**: Implement Tier 1.2 from ROADMAP (Integration Testing Framework)
+- **Current Phase**: 1.2.2.2 — Command integration tests (81 commands)
+- **Foundation Complete**: TestServer + TestClient infrastructure operational
 
-**Recommended Next Action**: Merge current branch to main, then tackle Tier 1.2 (Integration Testing) or Tier 1.4 (Staging Deployment).
+**Why This Matters**: 
+- Only 3 integration tests existed (chrono + CRDT + IRCv3 features)
+- Zero end-to-end connection/command tests before this work
+- Unknown failure modes in production scenarios
+- BLOCKING for Alpha release
+
+**Implementation Plan**:
+1. ✅ Merge protocol-first work to main
+2. ✅ Create connection lifecycle integration tests (5 tests, infrastructure complete)
+3. 🟡 Command integration tests (all 81 commands) — **NEXT**
+4. ⏳ Channel operation tests
+5. ⏳ Service integration tests
+6. ⏳ Load testing infrastructure
+7. ⏳ Chaos engineering tests
+8. ⏳ Fuzz testing setup
+
+**Latest Milestone** (commit `2962079`):
+- TestServer: Process lifecycle management, config generation, health checks
+- TestClient: Async IRC client with slirc_proto integration
+- 5 connection lifecycle tests: registration, duplicate nick, ping/pong, concurrent connections
+- Pattern established: spawn → register → consume welcome burst → test → verify
 
 ## Truth Timeline (key commits)
 
+- `2962079`: Integration test infrastructure complete (TestServer + TestClient + 5 connection lifecycle tests).
 - `e33133c`: S2S rate limiting implemented (Tier 1.3.1.2).
 - `265cc6b`: S2S TLS support implemented (Tier 1.3.1.1).
 - `ff79d31` / `7db5701`: Privacy-preserving RBL service landed (Tier 1.3.1.3).
