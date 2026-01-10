@@ -6,6 +6,8 @@ use slirc_crdt::clock::ServerId;
 use slirc_proto::MessageRef;
 use tracing::info;
 
+use crate::handlers::server::source::extract_source_sid;
+
 /// Handler for the SID command (Server ID).
 ///
 /// SID introduces a new server to the network topology.
@@ -31,8 +33,8 @@ impl ServerHandler for SidHandler {
 
         let sid = ServerId::new(sid_str.to_string());
 
-        // The server we received this from is the "via" route.
-        let via = ServerId::new(ctx.state.sid.clone());
+        // Topology: record the immediate uplink/introducer (from prefix when available).
+        let via = extract_source_sid(msg).unwrap_or_else(|| ServerId::new(ctx.state.sid.clone()));
 
         ctx.matrix.sync_manager.topology.add_server(
             sid.clone(),

@@ -124,13 +124,11 @@ impl ServiceManager {
     }
 
     /// Check if a UID belongs to a service.
-    #[allow(dead_code)] // Reserved for S2S service routing
     pub fn is_service_uid(&self, uid: &str) -> bool {
         uid == self.nickserv_uid || uid == self.chanserv_uid
     }
 
     /// Get service name by UID.
-    #[allow(dead_code)]
     pub fn get_service_name(&self, uid: &str) -> Option<&'static str> {
         if uid == self.nickserv_uid {
             Some("NickServ")

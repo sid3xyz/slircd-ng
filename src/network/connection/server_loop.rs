@@ -46,25 +46,27 @@ pub async fn run_server_loop(
         info!("Sending server handshake to {}", server_state.name);
 
         // Find the link block for this server to get the password
-        let link_block = matrix
+        let password = matrix
             .config
             .links
             .iter()
-            .find(|l| l.name == server_state.name);
-        let password = link_block
+            .find(|l| l.name == server_state.name)
             .map(|l| l.password.clone())
-            .unwrap_or_else(|| "password".to_string());
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "Missing LinkBlock for peer server '{}' during handshake",
+                        server_state.name
+                    ),
+                )
+            })?;
 
         // Send PASS
-        let pass_cmd = Command::Raw(
-            "PASS".to_string(),
-            vec![
-                password,
-                "TS".to_string(),
-                "6".to_string(),
-                matrix.server_info.sid.clone(),
-            ],
-        );
+        let pass_cmd = Command::PassTs6 {
+            password,
+            sid: matrix.server_info.sid.clone(),
+        };
         let _ = transport.write_message(&Message::from(pass_cmd)).await;
 
         // Send CAP LS
@@ -77,14 +79,11 @@ pub async fn run_server_loop(
         let _ = transport.write_message(&cap_ls).await;
 
         // Send SERVER
-        let server_cmd = Command::Raw(
-            "SERVER".to_string(),
-            vec![
-                matrix.server_info.name.clone(),
-                "1".to_string(),
-                matrix.server_info.sid.clone(),
-                matrix.server_info.description.clone(),
-            ],
+        let server_cmd = Command::SERVER(
+            matrix.server_info.name.clone(),
+            1,
+            matrix.server_info.sid.clone(),
+            matrix.server_info.description.clone(),
         );
         let _ = transport.write_message(&Message::from(server_cmd)).await;
     }

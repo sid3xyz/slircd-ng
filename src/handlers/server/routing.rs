@@ -1,5 +1,6 @@
 use crate::handlers::core::traits::ServerHandler;
 use crate::handlers::{Context, HandlerError, HandlerResult};
+use crate::services::traits::Service;
 use crate::state::ServerState;
 use crate::state::dashmap_ext::DashMapExt;
 use async_trait::async_trait;
@@ -137,6 +138,44 @@ impl ServerHandler for RoutedMessageHandler {
 
             let _ = sender.send(Arc::new(out_msg)).await;
         } else {
+            // 1b. Is this message addressed to a local service pseudoclient?
+            if ctx.matrix.service_manager.is_service_uid(target_uid) {
+                let source_nick =
+                    if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(source_uid) {
+                        user_arc.read().await.nick.clone()
+                    } else {
+                        source_uid.to_string()
+                    };
+
+                let service_name = ctx.matrix.service_manager.get_service_name(target_uid);
+                debug!(
+                    from = %source_uid,
+                    to = %target_uid,
+                    service = ?service_name,
+                    "Handling routed service message"
+                );
+
+                let effects = if target_uid == ctx.matrix.service_manager.nickserv_uid {
+                    ctx.matrix
+                        .service_manager
+                        .nickserv
+                        .handle(ctx.matrix, source_uid, &source_nick, text)
+                        .await
+                } else if target_uid == ctx.matrix.service_manager.chanserv_uid {
+                    ctx.matrix
+                        .service_manager
+                        .chanserv
+                        .handle(ctx.matrix, source_uid, &source_nick, text)
+                        .await
+                } else {
+                    // Unknown service UID (shouldn't happen if is_service_uid returned true)
+                    Vec::new()
+                };
+
+                crate::services::apply_effects_no_sender(ctx.matrix, &source_nick, effects).await;
+                return Ok(());
+            }
+
             // 2. Target is remote?
             // If we received it, and we are not the target, we should route it forward?
             // But we are a star topology or mesh?

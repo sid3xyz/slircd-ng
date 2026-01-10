@@ -9,12 +9,15 @@ use tracing::{info, warn};
 
 pub mod capab;
 pub mod encap;
+pub mod kick;
 pub mod kill;
 pub mod routing;
 pub mod sid;
 pub mod sjoin;
+pub mod source;
 pub mod svinfo;
 pub mod tmode;
+pub mod topic;
 pub mod uid;
 
 /// Handler for the SERVER command (server-to-server handshake).
@@ -66,19 +69,28 @@ impl PreRegHandler for ServerHandshakeHandler {
             return Err(HandlerError::AccessDenied);
         }
 
+        // Optional SID validation (prevents misrouting/misconfiguration).
+        if let Some(expected_sid) = link_block.sid.as_deref()
+            && expected_sid != sid
+        {
+            warn!(
+                name = %name,
+                expected_sid = %expected_sid,
+                got_sid = %sid,
+                "Server SID mismatch for configured link"
+            );
+            return Err(HandlerError::AccessDenied);
+        }
+
         // Only send credentials if we are NOT the initiator.
         // Initiators send credentials in run_handshake_loop before receiving anything.
         if ctx.state.initiator_data.is_none() {
             // Send credentials
-            // PASS <password> TS=6 :<sid>
-            let pass_cmd = slirc_proto::Command::Raw(
-                "PASS".to_string(),
-                vec![
-                    link_block.password.clone(),
-                    "TS=6".to_string(),
-                    ctx.matrix.server_info.sid.as_str().to_string(),
-                ],
-            );
+            // PASS <password> TS 6 :<sid>
+            let pass_cmd = slirc_proto::Command::PassTs6 {
+                password: link_block.password.clone(),
+                sid: ctx.matrix.server_info.sid.as_str().to_string(),
+            };
             ctx.sender
                 .send(slirc_proto::Message::from(pass_cmd))
                 .await?;
@@ -137,34 +149,28 @@ impl ServerHandler for ServerPropagationHandler {
             return Ok(());
         }
 
-        // 2. Register route
-        // The peer we received this from is the next hop
+        // Split-horizon: don't send back to the direct peer we received this from.
         let peer_sid = ServerId::new(ctx.state.sid.clone());
 
-        ctx.matrix
-            .sync_manager
-            .register_route(sid.clone(), peer_sid.clone());
+        // Topology: record the immediate uplink/introducer (from prefix when available).
+        let uplink_sid = crate::handlers::server::source::extract_source_sid(msg)
+            .unwrap_or_else(|| peer_sid.clone());
 
-        // 3. Update Topology
-        let server_info = crate::sync::ServerInfo {
-            sid: sid.clone(),
-            name: name.to_string(),
+        // 2. Update topology
+        ctx.matrix.sync_manager.topology.add_server(
+            sid.clone(),
+            name.to_string(),
+            info.to_string(),
             hopcount,
-            info: info.to_string(),
-            via: Some(peer_sid.clone()),
-        };
-        ctx.matrix
-            .sync_manager
-            .topology
-            .servers
-            .insert(sid.clone(), server_info);
+            Some(uplink_sid),
+        );
 
         info!(
             "Learned about new server {} ({}) via {}",
             name, sid_str, ctx.state.name
         );
 
-        // 4. Propagate to other peers (Split Horizon)
+        // 3. Propagate to other peers (Split Horizon)
         // We increment hopcount
         let new_hopcount = hopcount + 1;
         let cmd = slirc_proto::Command::SERVER(

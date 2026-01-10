@@ -39,7 +39,6 @@ pub struct User {
     /// Unix timestamp when this user connected (for S2S UID burst).
     pub created_at: i64,
     /// Last modified timestamp for CRDT synchronization.
-    #[allow(dead_code)]
     pub last_modified: HybridTimestamp,
 }
 
@@ -107,7 +106,6 @@ impl UserModes {
     }
 
     /// Create UserModes from a CRDT representation.
-    #[allow(dead_code)] // Reserved for S2S CRDT sync
     pub fn from_crdt(crdt: &UserModesCrdt) -> Self {
         Self {
             invisible: *crdt.invisible.value(),
@@ -125,7 +123,6 @@ impl UserModes {
     }
 
     /// Convert to CRDT representation.
-    #[allow(dead_code)]
     pub fn to_crdt(&self, timestamp: HybridTimestamp) -> UserModesCrdt {
         let mut crdt = UserModesCrdt::new(timestamp);
         crdt.invisible = LwwRegister::new(self.invisible, timestamp);
@@ -214,7 +211,6 @@ impl User {
     }
 
     /// Convert to CRDT representation.
-    #[allow(dead_code)]
     pub fn to_crdt(&self) -> UserCrdt {
         let mut crdt = UserCrdt::new(
             self.uid.clone(),
@@ -244,7 +240,6 @@ impl User {
     }
 
     /// Create a User from a CRDT representation.
-    #[allow(dead_code)] // Reserved for S2S CRDT sync
     pub fn from_crdt(crdt: UserCrdt) -> Self {
         let last_modified = crdt.nick.timestamp();
         Self {
@@ -269,26 +264,32 @@ impl User {
         }
     }
 
-    /// Merge a UserCrdt into this user.
-    #[allow(dead_code)] // Reserved for S2S CRDT sync
-    pub fn merge(&mut self, other: UserCrdt) {
-        use slirc_crdt::traits::Crdt;
-        let mut current_crdt = self.to_crdt();
-        current_crdt.merge(&other);
+    pub fn merge_crdt(&mut self, incoming: UserCrdt) {
+        use slirc_crdt::Crdt;
 
-        // Update self from merged CRDT
-        self.nick = current_crdt.nick.value().clone();
-        self.user = current_crdt.user.value().clone();
-        self.realname = current_crdt.realname.value().clone();
-        self.host = current_crdt.host.value().clone();
-        self.visible_host = current_crdt.visible_host.value().clone();
-        self.account = current_crdt.account.value().clone();
-        self.away = current_crdt.away.value().clone();
-        self.channels = current_crdt.channels.iter().cloned().collect();
-        self.caps = current_crdt.caps.iter().cloned().collect();
-        self.modes = UserModes::from_crdt(&current_crdt.modes);
-        self.silence_list = current_crdt.silence_list.iter().cloned().collect();
-        self.last_modified = current_crdt.nick.timestamp();
+        let mut merged = self.to_crdt();
+        merged.merge(&incoming);
+
+        self.nick = merged.nick.value().clone();
+        self.user = merged.user.value().clone();
+        self.realname = merged.realname.value().clone();
+        self.host = merged.host.value().clone();
+        self.visible_host = merged.visible_host.value().clone();
+        self.channels = merged.channels.iter().cloned().collect();
+        self.modes = UserModes::from_crdt(&merged.modes);
+        self.account = merged.account.value().clone();
+        self.away = merged.away.value().clone();
+        self.caps = merged.caps.iter().cloned().collect();
+        self.silence_list = merged.silence_list.iter().cloned().collect();
+        self.accept_list = merged.accept_list.iter().cloned().collect();
+
+        self.last_modified = merged.nick.timestamp();
+
+        // Remote users have a nil session_id; for them, keep created_at derived from CRDT.
+        // For local users, preserve the local created_at.
+        if self.session_id.is_nil() {
+            self.created_at = self.last_modified.millis / 1000;
+        }
     }
 }
 

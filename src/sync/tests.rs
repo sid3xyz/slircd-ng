@@ -37,10 +37,10 @@ fn test_handshake_flow() {
     machine2.transition(HandshakeState::InboundReceived);
 
     // 1 sends PASS, CAPAB, SERVER, SVINFO (simulated full TS6 handshake)
-    let pass1 = Command::Raw(
-        "PASS".to_string(),
-        vec!["secret".to_string(), "TS=6".to_string(), "001".to_string()],
-    );
+    let pass1 = Command::PassTs6 {
+        password: "secret".to_string(),
+        sid: "001".to_string(),
+    };
     let capab1 = Command::CAPAB(vec!["QS".to_string(), "ENCAP".to_string()]);
     let server1 = Command::SERVER(
         "server1".to_string(),

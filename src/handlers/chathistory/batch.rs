@@ -42,6 +42,8 @@ pub async fn send_history_batch(
     };
     ctx.sender.send(batch_start).await?;
 
+    let expected_target_lower = slirc_proto::irc_to_lower(target);
+
     // Send each message with batch tag
     for msg in messages {
         if msg.envelope.command == "TARGET" {
@@ -53,13 +55,32 @@ pub async fn send_history_batch(
                     "CHATHISTORY".to_string(),
                     vec![
                         "TARGETS".to_string(),
-                        msg.envelope.target.clone(),
+                        msg.target.clone(),
                         msg.envelope.text.clone(),
                     ],
                 ),
             };
             ctx.sender.send(history_msg).await?;
             continue;
+        }
+
+        // These fields are selected/stored separately for lookup; validate they remain consistent.
+        if !msg.target.is_empty() && msg.target != expected_target_lower {
+            warn!(
+                expected = %expected_target_lower,
+                db_target = %msg.target,
+                env_target = %msg.envelope.target,
+                msgid = %msg.msgid,
+                "History target mismatch"
+            );
+        }
+        if !msg.sender.is_empty() && !msg.envelope.prefix.starts_with(&msg.sender) {
+            warn!(
+                sender = %msg.sender,
+                prefix = %msg.envelope.prefix,
+                msgid = %msg.msgid,
+                "History sender mismatch"
+            );
         }
 
         // Filter events based on event-playback capability
@@ -109,7 +130,12 @@ pub async fn send_history_batch(
             "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
             _ => {
                 // Unknown command type - skip
-                warn!(command = %command_type, "Unknown history command type");
+                warn!(
+                    command = %command_type,
+                    sender = %msg.sender,
+                    target = %msg.target,
+                    "Unknown history command type"
+                );
                 continue;
             }
         };
