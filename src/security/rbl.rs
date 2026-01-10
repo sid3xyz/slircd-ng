@@ -47,10 +47,8 @@ pub enum RblResult {
     /// IP is listed in one or more blocklists.
     Listed {
         /// Which provider(s) listed the IP.
-        #[allow(dead_code)]
         providers: Vec<String>,
         /// Overall confidence score (0-100).
-        #[allow(dead_code)]
         confidence: u8,
     },
 }
@@ -122,7 +120,13 @@ impl RblService {
     pub async fn check_ip(&self, ip: IpAddr) -> bool {
         match self.lookup(ip).await {
             RblResult::Clean => false,
-            RblResult::Listed { .. } => true,
+            RblResult::Listed {
+                providers,
+                confidence,
+            } => {
+                debug!(ip = %ip, confidence = confidence, providers = ?providers, "RBL listed");
+                true
+            }
         }
     }
 

@@ -273,7 +273,11 @@ impl Matrix {
 
         // Get user info before removal
         let (nick, user, host, realname, user_channels) = {
-            let user_arc = self.user_manager.users.get(target_uid).map(|u| u.clone());
+            let user_arc = self
+                .user_manager
+                .users
+                .get(target_uid)
+                .map(|u| u.value().clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 (
@@ -311,7 +315,7 @@ impl Matrix {
                 .channel_manager
                 .channels
                 .get(channel_name)
-                .map(|s| s.clone());
+                .map(|s| s.value().clone());
             if let Some(channel_tx) = channel_tx {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 let _ = channel_tx

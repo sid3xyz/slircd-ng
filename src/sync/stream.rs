@@ -20,16 +20,7 @@ pub enum S2SStream {
     /// TLS-encrypted client connection (outbound).
     TlsClient(ClientTlsStream<TcpStream>),
     /// TLS-encrypted server connection (inbound).
-    #[allow(dead_code)] // Will be used when inbound TLS listener is implemented
     TlsServer(ServerTlsStream<TcpStream>),
-}
-
-impl S2SStream {
-    /// Returns true if this is a TLS-encrypted connection.
-    #[allow(dead_code)]
-    pub fn is_tls(&self) -> bool {
-        !matches!(self, Self::Plain(_))
-    }
 }
 
 impl AsyncRead for S2SStream {

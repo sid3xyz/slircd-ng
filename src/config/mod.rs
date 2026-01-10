@@ -19,17 +19,10 @@ mod types;
 
 // Re-export all public types for convenient access
 // Some may be unused currently but are part of the public API
-#[allow(unused_imports)]
-pub use history::{HistoryConfig, HistoryEventsConfig};
+pub use history::HistoryConfig;
 pub use limits::LimitsConfig;
 pub use links::LinkBlock;
-#[allow(unused_imports)]
 pub use listen::{ClientAuth, ListenConfig, S2STlsConfig, StsConfig, TlsConfig, WebSocketConfig};
 pub use oper::{OperBlock, WebircBlock};
-#[allow(unused_imports)]
-pub use security::{HeuristicsConfig, RateLimitConfig, RblConfig, SecurityConfig, SpamConfig};
-#[allow(unused_imports)]
-pub use types::{
-    AccountRegistrationConfig, Config, ConfigError, DatabaseConfig, IdleTimeoutsConfig, MotdConfig,
-    ServerConfig,
-};
+pub use security::{HeuristicsConfig, RateLimitConfig, RblConfig, SecurityConfig};
+pub use types::{AccountRegistrationConfig, Config, IdleTimeoutsConfig, ServerConfig};

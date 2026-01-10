@@ -57,7 +57,7 @@ pub async fn handle_netsplit(
     );
 
     // Build the quit reason
-    let quit_reason = format!("{} {}", local_name, remote_name);
+    let quit_reason = netsplit_reason(local_name, remote_name);
 
     // 2. Mass quit: Find and remove all users from affected servers
     let mut affected_users = Vec::new();
@@ -84,7 +84,11 @@ pub async fn handle_netsplit(
     // 3. Process each affected user
     for uid in &affected_users {
         // Clone Arc to release DashMap lock before awaiting
-        let user_arc = matrix.user_manager.users.get(uid).map(|r| r.value().clone());
+        let user_arc = matrix
+            .user_manager
+            .users
+            .get(uid)
+            .map(|r| r.value().clone());
         let quit_msg = if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             let nick = user.nick.clone();
@@ -147,7 +151,12 @@ pub async fn handle_netsplit(
 /// Remove a user from all channels they are in.
 async fn remove_user_from_channels(matrix: &Matrix, uid: &str) {
     // Get list of channels the user is in
-    let channels: Vec<String> = if let Some(user_arc) = matrix.user_manager.users.get(uid) {
+    let channels: Vec<String> = if let Some(user_arc) = matrix
+        .user_manager
+        .users
+        .get(uid)
+        .map(|u| u.value().clone())
+    {
         let user = user_arc.read().await;
         user.channels.iter().cloned().collect()
     } else {
@@ -158,7 +167,13 @@ async fn remove_user_from_channels(matrix: &Matrix, uid: &str) {
     for channel_name in channels {
         let channel_lower = slirc_proto::irc_to_lower(&channel_name);
 
-        if let Some(channel_tx) = matrix.channel_manager.channels.get(&channel_lower) {
+        let channel_tx = matrix
+            .channel_manager
+            .channels
+            .get(&channel_lower)
+            .map(|c| c.value().clone());
+
+        if let Some(channel_tx) = channel_tx {
             use crate::state::actor::ChannelEvent;
 
             // Send a netsplit removal event
@@ -178,15 +193,19 @@ async fn remove_user_from_channels(matrix: &Matrix, uid: &str) {
 /// Broadcast a message to all local users.
 async fn broadcast_to_local_users(matrix: &Matrix, msg: Message) {
     let msg_arc = Arc::new(msg);
-    for entry in matrix.user_manager.senders.iter() {
-        let sender = entry.value();
+    let senders: Vec<_> = matrix
+        .user_manager
+        .senders
+        .iter()
+        .map(|e| e.value().clone())
+        .collect();
+    for sender in senders {
         let _ = sender.send(msg_arc.clone()).await;
     }
 }
 
 /// Calculate the netsplit quit reason from server names.
-#[allow(dead_code)] // Used for netsplit QUIT message formatting
-pub fn netsplit_reason(local_name: &str, remote_name: &str) -> String {
+fn netsplit_reason(local_name: &str, remote_name: &str) -> String {
     format!("{} {}", local_name, remote_name)
 }
 

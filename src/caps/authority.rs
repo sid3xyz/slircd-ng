@@ -130,7 +130,7 @@ impl CapabilityAuthority {
         let channel_lower = slirc_proto::irc_to_lower(channel);
 
         let channel_tx = match self.matrix.channel_manager.channels.get(&channel_lower) {
-            Some(tx) => tx.clone(),
+            Some(tx) => tx.value().clone(),
             None => return false,
         };
 
@@ -155,7 +155,7 @@ impl CapabilityAuthority {
         let channel_lower = slirc_proto::irc_to_lower(channel);
 
         let channel_tx = match self.matrix.channel_manager.channels.get(&channel_lower) {
-            Some(tx) => tx.clone(),
+            Some(tx) => tx.value().clone(),
             None => return false,
         };
 

@@ -26,6 +26,7 @@ use crate::history::types::MessageTag as HistoryTag;
 use crate::history::{MessageEnvelope, StoredMessage};
 use crate::services::route_service_message;
 use crate::state::RegisteredState;
+use crate::state::dashmap_ext::DashMapExt;
 use crate::telemetry::spans;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -421,10 +422,9 @@ async fn compute_dm_key(
         format!("u:{}", irc_to_lower(&snapshot.nick))
     };
 
-    let target_account = if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(target_lower) {
-        let uid = uid_ref.value();
-        if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
-            let u = user.read().await;
+    let target_account = if let Some(uid) = ctx.matrix.user_manager.nicks.get_cloned(target_lower) {
+        if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(&uid) {
+            let u = user_arc.read().await;
             u.account.clone()
         } else {
             None

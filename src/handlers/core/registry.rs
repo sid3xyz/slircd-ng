@@ -28,8 +28,9 @@ use crate::handlers::{
     monitor::MonitorHandler,
     server::{
         ServerHandshakeHandler, ServerPropagationHandler, capab::CapabHandler, encap::EncapHandler,
-        kill::KillHandler, routing::RoutedMessageHandler, sid::SidHandler, sjoin::SJoinHandler,
-        svinfo::SvinfoHandler, tmode::TModeHandler, uid::UidHandler,
+        kick::KickHandler, kill::KillHandler, routing::RoutedMessageHandler, sid::SidHandler,
+        sjoin::SJoinHandler, svinfo::SvinfoHandler, tmode::TModeHandler, topic::TopicHandler,
+        uid::UidHandler,
     },
     service_aliases::{CsHandler, NsHandler},
     user_status::{AwayHandler, SetnameHandler, SilenceHandler},
@@ -110,6 +111,8 @@ impl Registry {
         server_handlers.insert("UID", Box::new(UidHandler));
         server_handlers.insert("SID", Box::new(SidHandler));
         server_handlers.insert("ENCAP", Box::new(EncapHandler));
+        server_handlers.insert("TOPIC", Box::new(TopicHandler));
+        server_handlers.insert("KICK", Box::new(KickHandler));
         server_handlers.insert("KILL", Box::new(KillHandler));
         server_handlers.insert(
             "BATCH",

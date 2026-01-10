@@ -70,7 +70,7 @@ pub(super) async fn leave_channel_internal<S>(
 ) -> HandlerResult {
     // Check if channel exists
     let channel_sender = match ctx.matrix.channel_manager.channels.get(channel_lower) {
-        Some(c) => c.clone(),
+        Some(c) => c.value().clone(),
         None => {
             let reply =
                 Response::err_nosuchchannel(nick, channel_lower).with_prefix(ctx.server_prefix());
@@ -99,8 +99,14 @@ pub(super) async fn leave_channel_internal<S>(
         Ok(Ok(remaining_members)) => {
             // Success
             // Remove channel from user's list
-            if let Some(user) = ctx.matrix.user_manager.users.get(ctx.uid) {
-                let mut user = user.write().await;
+            let user_arc = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(ctx.uid)
+                .map(|u| u.value().clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
                 user.channels.remove(channel_lower);
             }
 

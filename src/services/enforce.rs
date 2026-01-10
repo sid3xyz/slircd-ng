@@ -6,6 +6,7 @@
 use crate::handlers::ResponseMiddleware;
 use crate::services::{ServiceEffect, apply_effect};
 use crate::state::Matrix;
+use crate::state::dashmap_ext::DashMapExt;
 use rand::Rng;
 use slirc_proto::{Command, Message, Prefix, irc_to_lower};
 use std::sync::Arc;
@@ -48,7 +49,7 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
 
         // Get user info
         let old_nick = {
-            let user_arc = matrix.user_manager.users.get(&uid).map(|u| u.clone());
+            let user_arc = matrix.user_manager.users.get_cloned(&uid);
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.nick.clone()
@@ -69,8 +70,8 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
         );
 
         // Get sender for the user
-        let sender = if let Some(s) = matrix.user_manager.senders.get(&uid) {
-            s.clone()
+        let sender = if let Some(s) = matrix.user_manager.senders.get_cloned(&uid) {
+            s
         } else {
             debug!(uid = %uid, "No sender found for user, cannot send enforcement messages");
             continue;

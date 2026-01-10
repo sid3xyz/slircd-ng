@@ -156,7 +156,7 @@ impl<'a> Context<'a, RegisteredState> {
     ) -> Result<mpsc::Sender<ChannelEvent>, HandlerError> {
         let channel_lower = slirc_proto::irc_to_lower(channel);
         if let Some(sender) = self.matrix.channel_manager.channels.get(&channel_lower) {
-            Ok(sender.clone())
+            Ok(sender.value().clone())
         } else {
             Err(HandlerError::NoSuchChannel(channel.to_string()))
         }
@@ -214,7 +214,7 @@ pub async fn get_nick_or_star<S>(ctx: &Context<'_, S>) -> String {
         .user_manager
         .users
         .get(ctx.uid)
-        .map(|u| u.clone());
+        .map(|u| u.value().clone());
     if let Some(user_arc) = user_arc {
         user_arc.read().await.nick.clone()
     } else {
@@ -227,7 +227,12 @@ pub async fn user_mask_from_state<S>(
     ctx: &Context<'_, S>,
     uid: &str,
 ) -> Option<(String, String, String)> {
-    let user_arc = ctx.matrix.user_manager.users.get(uid).map(|u| u.clone())?;
+    let user_arc = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(uid)
+        .map(|u| u.value().clone())?;
     let user = user_arc.read().await;
     Some((
         user.nick.clone(),
@@ -243,7 +248,7 @@ pub async fn get_oper_info<S>(ctx: &Context<'_, S>) -> Option<(String, bool)> {
         .user_manager
         .users
         .get(ctx.uid)
-        .map(|u| u.clone())?;
+        .map(|u| u.value().clone())?;
     let user = user_arc.read().await;
     Some((user.nick.clone(), user.modes.oper))
 }
@@ -252,7 +257,12 @@ pub async fn get_oper_info<S>(ctx: &Context<'_, S>) -> Option<(String, bool)> {
 ///
 /// Returns true if the user (identified by uid) is a member of the channel.
 pub async fn is_user_in_channel<S>(ctx: &Context<'_, S>, uid: &str, channel_lower: &str) -> bool {
-    let user_arc = ctx.matrix.user_manager.users.get(uid).map(|u| u.clone());
+    let user_arc = ctx
+        .matrix
+        .user_manager
+        .users
+        .get(uid)
+        .map(|u| u.value().clone());
     if let Some(user_arc) = user_arc {
         let user = user_arc.read().await;
         user.channels.contains(channel_lower)

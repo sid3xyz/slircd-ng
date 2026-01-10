@@ -9,6 +9,7 @@
 //! not just markers. See [`session`] for details.
 
 mod channel;
+pub mod dashmap_ext;
 pub mod managers;
 mod matrix;
 pub mod observer;

@@ -9,7 +9,6 @@ use std::collections::HashSet;
 
 /// Information about a server in the network.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Fields used for network introspection and future features
 pub struct ServerInfo {
     /// Server ID (3-character unique identifier).
     pub sid: ServerId,
@@ -19,8 +18,10 @@ pub struct ServerInfo {
     pub info: String,
     /// Number of hops from this server.
     pub hopcount: u32,
-    /// The SID of the server we route through to reach this one.
-    /// `None` for our own server.
+    /// The SID of the server that introduced this one (its uplink/parent in the spanning tree).
+    ///
+    /// This preserves the full tree for accurate remote netsplit handling.
+    /// `None` is reserved for our own local server entry.
     pub via: Option<ServerId>,
 }
 
@@ -52,8 +53,7 @@ impl TopologyGraph {
     /// * `name` - The server's name
     /// * `info` - The server's description
     /// * `hopcount` - Hops to reach this server
-    /// * `via` - The SID we route through to reach this server (None for direct peers)
-    #[allow(dead_code)] // Part of public API for topology management
+    /// * `via` - Uplink/parent SID that introduced this server
     pub fn add_server(
         &self,
         sid: ServerId,
@@ -74,26 +74,7 @@ impl TopologyGraph {
         );
     }
 
-    /// Remove a server from the topology.
-    #[allow(dead_code)] // Part of public API for topology management
-    pub fn remove_server(&self, sid: &ServerId) -> Option<ServerInfo> {
-        self.servers.remove(sid).map(|(_, info)| info)
-    }
-
-    /// Check if a server exists in the topology.
-    #[allow(dead_code)] // Part of public API for topology management
-    pub fn contains(&self, sid: &ServerId) -> bool {
-        self.servers.contains_key(sid)
-    }
-
-    /// Get information about a server.
-    #[allow(dead_code)] // Part of public API for topology management
-    pub fn get(&self, sid: &ServerId) -> Option<ServerInfo> {
-        self.servers.get(sid).map(|r| r.clone())
-    }
-
-    /// Get the SID we route through to reach a target server.
-    #[allow(dead_code)] // Part of public API for topology management
+    /// Get the uplink/parent SID for a target server.
     pub fn get_route(&self, target: &ServerId) -> Option<ServerId> {
         self.servers.get(target).and_then(|info| info.via.clone())
     }
@@ -134,24 +115,6 @@ impl TopologyGraph {
         result
     }
 
-    /// Get all server SIDs in the topology.
-    #[allow(dead_code)] // Part of public API for topology management
-    pub fn all_sids(&self) -> Vec<ServerId> {
-        self.servers.iter().map(|e| e.key().clone()).collect()
-    }
-
-    /// Get the number of servers in the topology.
-    #[allow(dead_code)] // Part of public API for topology management
-    pub fn len(&self) -> usize {
-        self.servers.len()
-    }
-
-    /// Check if the topology is empty.
-    #[allow(dead_code)] // Part of public API for topology management
-    pub fn is_empty(&self) -> bool {
-        self.servers.is_empty()
-    }
-
     /// Remove multiple servers from the topology.
     pub fn remove_servers(&self, sids: &[ServerId]) {
         for sid in sids {
@@ -172,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_downstream_sids_linear() {
-        // Linear topology: Local -> A -> B -> C
+        // Linear topology (parent pointers): Local -> A -> B -> C
         let graph = TopologyGraph::new();
 
         let local = ServerId::new("001".to_string());
@@ -214,8 +177,7 @@ mod tests {
 
     #[test]
     fn test_downstream_sids_tree() {
-        // Tree topology: Local -> A -> B
-        //                      -> C
+        // Tree topology (parent pointers): Local -> A -> {B, C}
         let graph = TopologyGraph::new();
 
         let local = ServerId::new("001".to_string());
@@ -242,17 +204,17 @@ mod tests {
             c.clone(),
             "serverC".to_string(),
             "".to_string(),
-            1,
-            Some(local.clone()),
+            2,
+            Some(a.clone()),
         );
 
-        // If A disconnects, we lose A and B, but not C
+        // If A disconnects, we lose all servers routed via A (A, B, and C)
         let downstream = graph.get_downstream_sids(&a);
         assert!(downstream.contains(&a));
         assert!(downstream.contains(&b));
-        assert!(!downstream.contains(&c));
+        assert!(downstream.contains(&c));
         assert!(!downstream.contains(&local));
-        assert_eq!(downstream.len(), 2);
+        assert_eq!(downstream.len(), 3);
     }
 
     #[test]

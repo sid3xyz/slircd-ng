@@ -86,7 +86,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 .user_manager
                 .users
                 .get(ctx.uid)
-                .map(|u| u.clone())
+                .map(|u| u.value().clone())
         {
             let user = user_arc.read().await;
             for channel_lower in &user.channels {
@@ -95,7 +95,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                     .channel_manager
                     .channels
                     .get(channel_lower)
-                    .map(|c| c.clone());
+                    .map(|c| c.value().clone());
                 if let Some(channel_sender) = channel_sender {
                     let (tx, rx) = tokio::sync::oneshot::channel();
                     let _ = channel_sender
@@ -167,7 +167,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 .user_manager
                 .users
                 .get(ctx.uid)
-                .map(|u| u.clone())
+                .map(|u| u.value().clone())
             {
                 let user = user_arc.read().await;
                 let msg = Message {
@@ -212,7 +212,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                     .channel_manager
                     .channels
                     .get(channel_lower)
-                    .map(|c| c.clone());
+                    .map(|c| c.value().clone());
                 if let Some(channel_sender) = channel_sender {
                     let _ = channel_sender
                         .send(crate::state::actor::ChannelEvent::NickChange {
@@ -229,7 +229,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 .user_manager
                 .users
                 .get(ctx.uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.nick = nick.to_string();
@@ -248,7 +248,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 .user_manager
                 .users
                 .get(ctx.uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 notify_monitors_online(ctx.matrix, nick, &user.user, &user.visible_host).await;
@@ -264,7 +264,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             .user_manager
             .users
             .get(ctx.uid)
-            .map(|u| u.clone());
+            .map(|u| u.value().clone());
         let is_identified = if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             user.modes.registered

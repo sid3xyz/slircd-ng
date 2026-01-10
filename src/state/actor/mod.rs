@@ -202,10 +202,6 @@ impl ChannelActor {
                 };
                 let _ = reply_tx.send(info);
             }
-            ChannelEvent::GetCrdt { reply_tx } => {
-                let crdt = self.to_crdt();
-                let _ = reply_tx.send(crdt);
-            }
             ChannelEvent::MergeCrdt { crdt, source } => {
                 self.handle_merge_crdt(*crdt, source).await;
             }

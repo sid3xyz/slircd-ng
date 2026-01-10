@@ -44,7 +44,7 @@ impl PostRegHandler for AwayHandler {
                 .user_manager
                 .users
                 .get(ctx.uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             let channels = if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.channels.iter().cloned().collect::<Vec<_>>()
@@ -58,7 +58,7 @@ impl PostRegHandler for AwayHandler {
                 .user_manager
                 .users
                 .get(ctx.uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.away = Some(away_text.to_string());
@@ -111,7 +111,7 @@ impl PostRegHandler for AwayHandler {
             .user_manager
             .users
             .get(ctx.uid)
-            .map(|u| u.clone());
+            .map(|u| u.value().clone());
         let channels = if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             user.channels.iter().cloned().collect::<Vec<_>>()
@@ -125,7 +125,7 @@ impl PostRegHandler for AwayHandler {
             .user_manager
             .users
             .get(ctx.uid)
-            .map(|u| u.clone());
+            .map(|u| u.value().clone());
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
             user.away = None;
@@ -204,13 +204,10 @@ impl PostRegHandler for SetnameHandler {
                 let fail = slirc_proto::Message {
                     tags: None,
                     prefix: None,
-                    command: Command::Raw(
-                        "FAIL".to_string(),
-                        vec![
-                            "SETNAME".to_string(),
-                            "INVALID_REALNAME".to_string(),
-                            "Realname is not valid".to_string(),
-                        ],
+                    command: Command::FAIL(
+                        "SETNAME".to_string(),
+                        "INVALID_REALNAME".to_string(),
+                        vec!["Realname is not valid".to_string()],
                     ),
                 };
                 ctx.sender.send(fail).await?;
@@ -224,7 +221,7 @@ impl PostRegHandler for SetnameHandler {
             .user_manager
             .users
             .get(ctx.uid)
-            .map(|u| u.clone());
+            .map(|u| u.value().clone());
         let (nick, user, visible_host) = if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
             user.realname = new_realname.to_string();
@@ -253,7 +250,7 @@ impl PostRegHandler for SetnameHandler {
             .user_manager
             .users
             .get(ctx.uid)
-            .map(|u| u.clone());
+            .map(|u| u.value().clone());
         let channels: Vec<String> = if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             user.channels.iter().cloned().collect()
@@ -323,7 +320,7 @@ impl PostRegHandler for SilenceHandler {
                 .user_manager
                 .users
                 .get(ctx.uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
 
@@ -377,7 +374,7 @@ impl PostRegHandler for SilenceHandler {
             .user_manager
             .users
             .get(ctx.uid)
-            .map(|u| u.clone());
+            .map(|u| u.value().clone());
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
 

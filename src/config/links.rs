@@ -31,6 +31,5 @@ pub struct LinkBlock {
     #[serde(default)]
     pub autoconnect: bool,
     /// Expected remote SID (optional, for validation).
-    #[allow(dead_code)] // Will be used for SID validation in handshake
     pub sid: Option<String>,
 }

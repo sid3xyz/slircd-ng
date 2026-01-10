@@ -4,6 +4,7 @@
 
 use super::super::{Context, HandlerResult, PostRegHandler, get_oper_info};
 use crate::state::RegisteredState;
+use crate::state::dashmap_ext::DashMapExt;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
@@ -158,14 +159,8 @@ impl PostRegHandler for UseripHandler {
 
             // Look up the user by nick
             let lower_nick = slirc_proto::irc_to_lower(target_nick);
-            if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(&lower_nick) {
-                let uid = uid_ref.value();
-                let user_arc = ctx
-                    .matrix
-                    .user_manager
-                    .users
-                    .get(uid)
-                    .map(|u| u.value().clone());
+            if let Some(uid) = ctx.matrix.user_manager.nicks.get_cloned(&lower_nick) {
+                let user_arc = ctx.matrix.user_manager.users.get_cloned(&uid);
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
                     // Format: nick[*]=+user@host

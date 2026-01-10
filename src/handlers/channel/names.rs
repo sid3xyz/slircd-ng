@@ -77,11 +77,15 @@ impl PostRegHandler for NamesHandler {
                     truncated = true;
                     break;
                 }
-                let Some(channel_arc) = ctx.matrix.channel_manager.channels.get(&channel_lower)
+                let Some(sender) = ctx
+                    .matrix
+                    .channel_manager
+                    .channels
+                    .get(&channel_lower)
+                    .map(|c| c.value().clone())
                 else {
                     continue;
                 };
-                let sender = channel_arc.value();
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 let _ = sender
                     .send(crate::state::actor::ChannelEvent::GetInfo {
@@ -211,7 +215,14 @@ impl PostRegHandler for NamesHandler {
         for (idx, chan) in channels.iter().enumerate() {
             let channel_lower = irc_to_lower(chan);
 
-            if let Some(channel_sender) = ctx.matrix.channel_manager.channels.get(&channel_lower) {
+            let channel_sender = ctx
+                .matrix
+                .channel_manager
+                .channels
+                .get(&channel_lower)
+                .map(|c| c.value().clone());
+
+            if let Some(channel_sender) = channel_sender {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 let _ = channel_sender
                     .send(crate::state::actor::ChannelEvent::GetInfo {

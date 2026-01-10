@@ -99,7 +99,7 @@ pub async fn force_join_channel<S>(
             .user_manager
             .senders
             .get(target.uid)
-            .map(|s| s.clone());
+            .map(|s| s.value().clone());
         (user.caps.clone(), context, sender, user.session_id)
     } else {
         return Ok(());
@@ -281,7 +281,7 @@ pub async fn force_part_channel<S>(
 ) -> Result<bool, super::super::HandlerError> {
     // Get channel reference
     let channel_sender = match ctx.matrix.channel_manager.channels.get(channel_lower) {
-        Some(c) => c.clone(),
+        Some(c) => c.value().clone(),
         None => return Ok(false),
     };
 
@@ -309,8 +309,14 @@ pub async fn force_part_channel<S>(
         Ok(Ok(remaining_members)) => {
             // Success
             // Remove channel from user's list
-            if let Some(user) = ctx.matrix.user_manager.users.get(target.uid) {
-                let mut user = user.write().await;
+            let user_arc = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(target.uid)
+                .map(|u| u.value().clone());
+            if let Some(user_arc) = user_arc {
+                let mut user = user_arc.write().await;
                 user.channels.remove(channel_lower);
             }
 
