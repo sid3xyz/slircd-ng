@@ -1,10 +1,22 @@
 # Master Context & Learnings (slircd-ng)
 
-## Current Focus
+## Current Focus (Post-Protocol-First)
 
-Architectural enforcement to prevent async deadlocks/contention by ensuring **no DashMap shard-lock guard survives across any `.await`**.
+**Status**: ✅ **Protocol-first architectural enforcement COMPLETE**
 
-Secondary focus (this branch): pre-flight sanitation + S2S correctness hardening without regressions.
+All standard IRC/S2S commands now use typed `Command` variants from `slirc-proto`. The daemon is free of:
+- Stringly-typed command construction (only 1 legitimate `Raw` remains for synthetic CHATHISTORY batch responses)
+- DashMap guard leaks across await points
+- Dead code/unused imports
+- Warning suppressors (#[allow] attributes)
+
+**Next Phase Candidates** (per ROADMAP_TO_1.0.md):
+1. **Integration Testing** (Tier 1.2) — Only 3 integration tests exist; need comprehensive test suite
+2. **Error Handling Audit Completion** (Tier 1.1) — Hot paths clean; need CI enforcement
+3. **Production Deployment Testing** (Tier 1.4) — Zero production deployments yet
+4. **S2S Feature Hardening** — Burst/DELTA cycle testing, netsplit recovery, topology repair
+
+**Recommended Next Action**: Merge current branch to main, then tackle Tier 1.2 (Integration Testing) or Tier 1.4 (Staging Deployment).
 
 ## Truth Timeline (key commits)
 
