@@ -89,29 +89,33 @@ impl ChanServ {
         // Verify target is in the channel
         let target_nick_lower = irc_to_lower(target_nick);
         let target_uid = match matrix.user_manager.nicks.get(&target_nick_lower) {
-            Some(uid_ref) => uid_ref.clone(),
+            Some(uid_ref) => uid_ref.value().clone(),
             None => {
                 return self.error_reply(uid, &format!("\x02{}\x02 is not online.", target_nick));
             }
         };
 
         // Check if target is in channel
-        let in_channel =
-            if let Some(channel_ref) = matrix.channel_manager.channels.get(&channel_lower) {
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = channel_ref
-                    .send(crate::state::actor::ChannelEvent::GetMemberModes {
-                        uid: target_uid.clone(),
-                        reply_tx: tx,
-                    })
-                    .await;
-                matches!(rx.await, Ok(Some(_)))
-            } else {
-                return self.error_reply(
-                    uid,
-                    &format!("Channel \x02{}\x02 does not exist.", channel_name),
-                );
-            };
+        let in_channel = if let Some(channel_sender) = matrix
+            .channel_manager
+            .channels
+            .get(&channel_lower)
+            .map(|c| c.value().clone())
+        {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = channel_sender
+                .send(crate::state::actor::ChannelEvent::GetMemberModes {
+                    uid: target_uid.clone(),
+                    reply_tx: tx,
+                })
+                .await;
+            matches!(rx.await, Ok(Some(_)))
+        } else {
+            return self.error_reply(
+                uid,
+                &format!("Channel \x02{}\x02 does not exist.", channel_name),
+            );
+        };
 
         if !in_channel {
             return self.error_reply(

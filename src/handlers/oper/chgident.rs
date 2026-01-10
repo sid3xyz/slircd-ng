@@ -7,6 +7,7 @@ use super::super::{
     resolve_nick_or_nosuchnick, server_notice,
 };
 use crate::state::RegisteredState;
+use crate::state::dashmap_ext::DashMapExt;
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
@@ -90,10 +91,10 @@ impl PostRegHandler for ChgIdentHandler {
                 .await;
         }
 
-        if let Some(target_sender) = ctx.matrix.user_manager.senders.get(&target_uid)
-            && let Some(user_ref) = ctx.matrix.user_manager.users.get(&target_uid)
-        {
-            let user = user_ref.read().await;
+        let target_sender = ctx.matrix.user_manager.senders.get_cloned(&target_uid);
+        let target_user_arc = ctx.matrix.user_manager.users.get_cloned(&target_uid);
+        if let (Some(target_sender), Some(target_user_arc)) = (target_sender, target_user_arc) {
+            let user = target_user_arc.read().await;
             if user.caps.contains("chghost") {
                 let _ = target_sender.send(Arc::new(chghost_msg.clone())).await;
             }

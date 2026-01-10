@@ -54,7 +54,7 @@ impl SenderSnapshot {
             .user_manager
             .users
             .get(ctx.uid)
-            .map(|u| u.clone())?;
+            .map(|u| u.value().clone())?;
         let user = user_arc.read().await;
         Some(Self {
             nick: user.nick.clone(),
@@ -171,7 +171,7 @@ pub async fn route_to_channel_with_snapshot(
         .channel_manager
         .channels
         .get(channel_lower)
-        .map(|c| c.clone());
+        .map(|c| c.value().clone());
     let Some(channel_tx) = channel_tx else {
         return ChannelRouteResult::NoSuchChannel;
     };
@@ -255,7 +255,7 @@ pub async fn route_to_user_with_snapshot(
             .user_manager
             .users
             .get(&target_uid)
-            .map(|u| u.clone());
+            .map(|u| u.value().clone());
         if let Some(target_user_arc) = target_user_arc {
             let (target_nick, away_msg) = {
                 let target_user = target_user_arc.read().await;
@@ -279,7 +279,7 @@ pub async fn route_to_user_with_snapshot(
         .user_manager
         .users
         .get(&target_uid)
-        .map(|u| u.clone());
+        .map(|u| u.value().clone());
     if let Some(target_user_arc) = target_user_arc {
         let target_user = target_user_arc.read().await;
         debug!(
@@ -388,7 +388,7 @@ pub async fn route_to_user_with_snapshot(
         .user_manager
         .senders
         .get(&target_uid)
-        .map(|s| s.clone());
+        .map(|s| s.value().clone());
 
     if let Some(target_sender) = target_sender {
         // LOCAL USER: Check target's capabilities and build appropriate message
@@ -397,7 +397,7 @@ pub async fn route_to_user_with_snapshot(
             .user_manager
             .users
             .get(&target_uid)
-            .map(|u| u.clone())
+            .map(|u| u.value().clone())
         {
             let user = user_arc.read().await;
             let has_message_tags = user.caps.contains("message-tags");

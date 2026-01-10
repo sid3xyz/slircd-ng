@@ -3,6 +3,7 @@
 //! This module contains the `UserManager` struct, which isolates all
 //! user-related state and logic from the main Matrix struct.
 
+use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{Uid, UidGenerator, User, WhowasEntry, observer::StateObserver};
 use dashmap::DashMap;
 use slirc_crdt::clock::ServerId;
@@ -280,7 +281,7 @@ impl UserManager {
         for (uid, user_arc) in user_data {
             let user_guard = user_arc.read().await;
             if user_guard.modes.has_snomask(mask)
-                && let Some(sender) = self.senders.get(&uid)
+                && let Some(sender) = self.senders.get_cloned(&uid)
             {
                 let _ = sender.send(notice_msg.clone()).await;
             }

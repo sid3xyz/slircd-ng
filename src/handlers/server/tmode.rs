@@ -37,7 +37,14 @@ impl ServerHandler for TModeHandler {
         }
 
         // Find channel
-        if let Some(tx) = ctx.matrix.channel_manager.channels.get(channel_name) {
+        let tx = ctx
+            .matrix
+            .channel_manager
+            .channels
+            .get(channel_name)
+            .map(|t| t.value().clone());
+
+        if let Some(tx) = tx {
             // Send to actor
             let event = ChannelEvent::RemoteMode {
                 ts,

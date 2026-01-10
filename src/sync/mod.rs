@@ -1256,7 +1256,7 @@ impl SyncManager {
 
     /// Get a peer connection for a given server ID.
     pub fn get_peer_for_server(&self, sid: &ServerId) -> Option<LinkState> {
-        self.links.get(sid).map(|l| l.clone())
+        self.links.get(sid).map(|l| l.value().clone())
     }
 
     // Legacy/Stub methods to satisfy existing code
@@ -1339,7 +1339,7 @@ impl SyncManager {
 
     pub fn get_next_hop(&self, target: &ServerId) -> Option<LinkState> {
         // Stub: just check if it's a direct link for now
-        self.links.get(target).map(|l| l.clone())
+        self.links.get(target).map(|l| l.value().clone())
     }
 
     pub fn register_route(&self, _target: ServerId, _via: ServerId) {

@@ -114,7 +114,7 @@ pub async fn handle_channel_mode(
 
     // Get channel
     let channel = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
-        Some(c) => c.clone(),
+        Some(c) => c.value().clone(),
         None => {
             let reply =
                 Response::err_nosuchchannel(&nick, channel_name).with_prefix(ctx.server_prefix());

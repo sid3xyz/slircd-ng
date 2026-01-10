@@ -95,7 +95,7 @@ impl PostRegHandler for InviteHandler {
             .channel_manager
             .channels
             .get(&channel_lower)
-            .map(|c| c.clone());
+            .map(|c| c.value().clone());
         if let Some(channel_tx) = channel_tx {
             // Check if user is on channel
             let user_arc = ctx
@@ -103,7 +103,7 @@ impl PostRegHandler for InviteHandler {
                 .user_manager
                 .users
                 .get(ctx.uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             let user_in_channel = if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
                 user.channels.contains(&channel_lower)
@@ -174,7 +174,7 @@ impl PostRegHandler for InviteHandler {
                         .user_manager
                         .users
                         .get(ctx.uid)
-                        .map(|u| u.clone());
+                        .map(|u| u.value().clone());
                     let sender_account: Option<String> = if let Some(sender_arc) = sender_arc {
                         let sender_user = sender_arc.read().await;
                         sender_user.account.clone()
@@ -191,7 +191,7 @@ impl PostRegHandler for InviteHandler {
                         .user_manager
                         .users
                         .get(&target_uid)
-                        .map(|u| u.clone());
+                        .map(|u| u.value().clone());
                     if let (Some(account), Some(target_arc)) = (sender_account.as_ref(), target_arc)
                     {
                         let target_user = target_arc.read().await;
@@ -218,7 +218,7 @@ impl PostRegHandler for InviteHandler {
                         .user_manager
                         .senders
                         .get(&target_uid)
-                        .map(|s| s.clone());
+                        .map(|s| s.value().clone());
                     if let Some(target_sender) = target_sender {
                         let _ = target_sender.send(Arc::new(invite_msg)).await;
                     }
@@ -257,7 +257,7 @@ impl PostRegHandler for InviteHandler {
                 .user_manager
                 .users
                 .get(ctx.uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             let sender_account: Option<String> = if let Some(sender_arc) = sender_arc {
                 let sender_user = sender_arc.read().await;
                 sender_user.account.clone()
@@ -272,7 +272,7 @@ impl PostRegHandler for InviteHandler {
                 .user_manager
                 .users
                 .get(&target_uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             if let (Some(account), Some(target_arc)) = (sender_account.as_ref(), target_arc) {
                 let target_user = target_arc.read().await;
                 if target_user.caps.contains("account-tag") {
@@ -299,7 +299,7 @@ impl PostRegHandler for InviteHandler {
                 .user_manager
                 .senders
                 .get(&target_uid)
-                .map(|s| s.clone());
+                .map(|s| s.value().clone());
             if let Some(target_sender) = target_sender {
                 let _ = target_sender.send(Arc::new(invite_msg)).await;
             }

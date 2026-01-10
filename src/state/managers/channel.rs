@@ -89,7 +89,7 @@ impl ChannelManager {
         msg: Message,
         exclude: Option<&str>,
     ) {
-        let channel_tx = self.channels.get(channel_name).map(|s| s.clone());
+        let channel_tx = self.channels.get(channel_name).map(|s| s.value().clone());
         if let Some(channel_tx) = channel_tx {
             let _ = channel_tx
                 .send(ChannelEvent::Broadcast {
@@ -135,7 +135,7 @@ impl ChannelManager {
         required_cap: Option<&str>,
         fallback_msg: Option<Message>,
     ) {
-        let channel_tx = self.channels.get(channel_name).map(|s| s.clone());
+        let channel_tx = self.channels.get(channel_name).map(|s| s.value().clone());
         if let Some(channel_tx) = channel_tx {
             let _ = channel_tx
                 .send(ChannelEvent::BroadcastWithCap {

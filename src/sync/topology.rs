@@ -89,7 +89,7 @@ impl TopologyGraph {
     /// Get information about a server.
     #[allow(dead_code)] // Part of public API for topology management
     pub fn get(&self, sid: &ServerId) -> Option<ServerInfo> {
-        self.servers.get(sid).map(|r| r.clone())
+        self.servers.get(sid).map(|r| r.value().clone())
     }
 
     /// Get the SID we route through to reach a target server.

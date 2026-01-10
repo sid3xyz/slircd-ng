@@ -108,7 +108,7 @@ impl PostRegHandler for WhoisHandler {
                 .user_manager
                 .users
                 .get(&target_uid)
-                .map(|u| u.clone());
+                .map(|u| u.value().clone());
             if let Some(target_user_arc) = target_user_arc {
                 // Clone needed data, drop lock immediately to prevent holding during async ops
                 let (
@@ -174,7 +174,7 @@ impl PostRegHandler for WhoisHandler {
                         .user_manager
                         .users
                         .get(ctx.uid)
-                        .map(|u| u.clone());
+                        .map(|u| u.value().clone());
                     if let Some(requester_arc) = requester_arc {
                         let requester = requester_arc.read().await;
                         for ch in &target_channels {
@@ -192,13 +192,17 @@ impl PostRegHandler for WhoisHandler {
                 if show_channels && !target_channels.is_empty() {
                     let mut channel_list = Vec::with_capacity(target_channels.len());
                     for channel_name in &target_channels {
-                        let Some(channel_sender) =
-                            ctx.matrix.channel_manager.channels.get(channel_name)
+                        let Some(channel_sender) = ctx
+                            .matrix
+                            .channel_manager
+                            .channels
+                            .get(channel_name)
+                            .map(|c| c.value().clone())
                         else {
                             continue;
                         };
                         if let Some(display) = get_channel_display_info(
-                            channel_sender.value(),
+                            &channel_sender,
                             ctx.uid,
                             &target_uid_owned,
                             channel_name,
