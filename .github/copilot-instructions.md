@@ -56,7 +56,12 @@ Before writing code:
 
 1. **Check slirc-proto**: Does the `Command` variant exist? Is the numeric reply defined?
    - ✅ If yes: Proceed to handler implementation
-   - ❌ If no: **STOP.** Output: `"🛑 Blocking: slirc-proto needs [Command::X / Numeric::RPL_Y]. Do not hack with Command::Raw."`
+   - ❌ If no: **STOP.** Immediately document the blocker in [PROTO_REQUIREMENTS.md](../PROTO_REQUIREMENTS.md) with:
+     - What feature is blocked
+     - How many tests/features depend on it
+     - Proposed solution (with options if applicable)
+     - Then pause implementation until proto team responds
+   - **Never** hack with `Command::Raw` or work around missing proto support
 
 2. **Check ARCHITECTURE.md**: Verify phase alignment and design principles.
 
