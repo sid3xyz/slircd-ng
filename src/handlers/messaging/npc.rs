@@ -66,13 +66,17 @@ impl PostRegHandler for NpcHandler {
         }
 
         // Build sender snapshot for routing
-        let snapshot = SenderSnapshot::build(ctx)
+        let mut snapshot = SenderSnapshot::build(ctx)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Create the NPC message with special prefix
         // Format: *<npc_nick>*!<real_nick>@npc (asterisks on both sides per Ergo spec)
         let wrapped_npc_nick = format!("*{}*", npc_nick);
+        
+        // Override snapshot nick so routing uses the NPC character name, not real nick
+        snapshot.nick = wrapped_npc_nick.clone();
+        
         let npc_msg = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(
@@ -89,7 +93,7 @@ impl PostRegHandler for NpcHandler {
             status_prefix: None,
         };
 
-        let _ = route_to_channel_with_snapshot(
+        let route_result = route_to_channel_with_snapshot(
             ctx,
             &channel_lower,
             npc_msg,
@@ -103,8 +107,9 @@ impl PostRegHandler for NpcHandler {
         debug!(
             channel = %channel,
             npc_nick = %npc_nick,
-            real_nick = %snapshot.nick,
-            "NPC message sent"
+            real_nick = %ctx.state.nick,
+            route_result = ?route_result,
+            "NPC message routing complete"
         );
 
         Ok(())
