@@ -94,19 +94,20 @@ pub enum MetadataSubcommand {
 **Test Impact**: metadata.py (9 failures → 0 expected)
 
 #### 4. ROLEPLAY: NPC Command + MODE +E
-**Status**: NOT IN PROTO
+**Status**: PROTO READY, DAEMON STUB
 **Severity**: MEDIUM
-**Proposal**: Add two proto features:
-- `Command::NPC { channel: String, nick: String, text: String }`
-- `ChannelMode::Roleplay` (+E flag)
-**Impact**: Enables 2 tests (NPC + MODE +E mode setting)
+**Current**: `Command::NPC` exists in proto, daemon has stub handler (commit 57da60c)
+**Proposal**: 
+- Full NPC handler implementation (check channel membership, roleplay mode +E)
+- Add `ChannelMode::Roleplay` (+E flag) if not present
+**Impact**: Enables 1-2 tests (NPC + MODE +E mode setting if separate test)
 **Test Impact**: roleplay.py (1 failure → 0 expected)
 
 #### 5. RELAYMSG Command
-**Status**: NOT IN PROTO
+**Status**: PROTO READY, DAEMON STUB
 **Severity**: LOW
-**Spec**: Not widely adopted, Ergo extension
-**Proposal**: Add `Command::RelayMsg { relay_from: String, target: String, msg: String }`
+**Current**: `Command::RELAYMSG` exists in proto, daemon has stub handler (commit 57da60c)
+**Proposal**: Full RELAYMSG handler implementation (oper-only, relay prefix handling)
 **Impact**: Enables 1 test
 **Test Impact**: relaymsg.py (1 failure → 0 expected)
 
