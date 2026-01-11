@@ -13,6 +13,12 @@ use crate::error::HandlerError;
 pub(super) enum ReadErrorAction {
     /// Recoverable line-too-long error - send ERR_INPUTTOOLONG (417) and continue
     InputTooLong,
+    /// Recoverable invalid UTF-8 error - send FAIL <command> INVALID_UTF8 and continue
+    InvalidUtf8 {
+        command_hint: Option<String>,
+        raw_line: Vec<u8>,
+        details: String,
+    },
     /// Fatal protocol violation - send ERROR message and disconnect
     FatalProtocolError { error_msg: String },
     /// I/O error - connection is broken, just log and disconnect
@@ -38,8 +44,10 @@ pub(super) fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
                         error_msg: format!("Malformed message: {cause} (input: {string:?})"),
                     }
                 }
-                ProtocolError::InvalidUtf8(details) => ReadErrorAction::FatalProtocolError {
-                    error_msg: format!("Invalid UTF-8 in message: {details}"),
+                ProtocolError::InvalidUtf8 { command_hint, raw_line, details, .. } => ReadErrorAction::InvalidUtf8 {
+                    command_hint: command_hint.clone(),
+                    raw_line: raw_line.clone(),
+                    details: details.clone(),
                 },
                 // Handle other variants that might be added in the future
                 _ => ReadErrorAction::FatalProtocolError {
@@ -51,6 +59,42 @@ pub(super) fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
         // Handle future variants gracefully
         _ => ReadErrorAction::IoError,
     }
+}
+
+/// Extract label tag from raw message bytes (ASCII safe).
+/// Returns None if no label tag found or if parsing fails.
+pub(super) fn extract_label_from_raw(raw_line: &[u8]) -> Option<String> {
+    // Tags start with @ and end at first space
+    if raw_line.first()? != &b'@' {
+        return None;
+    }
+
+    // Find the end of tags section (first space)
+    let tags_end = raw_line.iter().position(|&b| b == b' ')?;
+    let tags_section = &raw_line[1..tags_end]; // Skip '@'
+
+    // Split by semicolon to get individual tags
+    let mut start = 0;
+    for (idx, &byte) in tags_section.iter().enumerate() {
+        if byte == b';' || idx == tags_section.len() - 1 {
+            let end = if idx == tags_section.len() - 1 { idx + 1 } else { idx };
+            let tag = &tags_section[start..end];
+            
+            // Check if this is a label tag
+            if let Some(eq_pos) = tag.iter().position(|&b| b == b'=') {
+                let key = &tag[..eq_pos];
+                if key == b"label" {
+                    let value = &tag[eq_pos + 1..];
+                    // Convert to string, lossy since labels should be ASCII
+                    return Some(String::from_utf8_lossy(value).into_owned());
+                }
+            }
+            
+            start = idx + 1;
+        }
+    }
+
+    None
 }
 
 /// Convert a HandlerError to an appropriate IRC error reply using an owned Message.
