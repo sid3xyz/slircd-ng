@@ -7,7 +7,7 @@
 **Branch**: `test/integration-framework`
 
 **Objective**: Implement Tier 1.2 from ROADMAP (Integration Testing Framework)
-- **Current Phase**: 1.2.2.3 — Channel operation tests (PART, TOPIC, INVITE, KICK, NAMES, WHOIS complete)
+- **Current Phase**: 1.2.2.2 — Command integration tests (continuing expansion)
 - **Foundation Complete**: TestServer + TestClient infrastructure operational
 
 **Why This Matters**: 
@@ -20,18 +20,16 @@
 1. ✅ Merge protocol-first work to main
 2. ✅ Create connection lifecycle integration tests (5 tests, infrastructure complete)
 3. ✅ Channel operation tests (5 tests: PART, TOPIC, INVITE, KICK, NAMES/WHOIS)
-4. 🟡 Command integration tests (remaining commands) — **NEXT**
+4. 🟡 Command integration tests (11 tests added: AWAY, NICK, MODE, USERHOST, QUIT, LIST, WHO, WHOWAS) — **IN PROGRESS**
 5. ⏳ Service integration tests
 6. ⏳ Load testing infrastructure
 7. ⏳ Chaos engineering tests
 8. ⏳ Fuzz testing setup
 
 **Latest Milestone** (Jan 11, 2026):
-- TestClient: Added `mode_channel_op()` helper for MODE command testing
-- Channel operation tests: 5/5 passing (PART, TOPIC, INVITE, KICK, NAMES/WHOIS)
-- Deterministic testing patterns established: sequential JOINs with delays, drain timing, flexible response matching
-- Auto-op behavior documented: first user to JOIN channel receives +o automatically
-- Test suite: 630 total tests passing (611 unit + 19 integration)
+- User command tests: 6 tests (AWAY, NICK changes, MODE self, USERHOST, QUIT with reason)
+- Channel query tests: 5 tests (LIST, LIST with pattern, WHO channel, WHO nick, WHOWAS)
+- Test suite: 641 total tests passing (611 unit + 30 integration)
 
 ## Truth Timeline (key commits)
 
