@@ -13,6 +13,9 @@ cargo test                      # Run 604+ tests
 cargo clippy -- -D warnings     # Lint (must pass)
 cargo fmt -- --check            # Format check
 ./target/release/slircd config.toml  # Run daemon
+
+# Memory-safe irctest (never run full suite without a hard cap)
+MEM_MAX=4G SWAP_MAX=0 KILL_SLIRCD=1 ./scripts/irctest_safe.sh irctest/server_tests/utf8.py
 ```
 
 ---
