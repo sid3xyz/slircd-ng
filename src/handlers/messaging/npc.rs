@@ -8,7 +8,7 @@
 //! The message appears in the channel as if sent by the specified nick (roleplay character),
 //! but with a special prefix indicating the actual sender.
 
-use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, is_user_in_channel, server_reply};
+use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, is_user_in_channel, channel_has_mode, server_reply};
 use super::common::{SenderSnapshot, RouteOptions, route_to_channel_with_snapshot};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
@@ -53,8 +53,17 @@ impl PostRegHandler for NpcHandler {
             return Ok(());
         };
 
-        // TODO: Check channel mode +E (roleplay enabled) - feature not yet in proto
-        // For now, allow NPC in any channel if user is a member
+        // Check channel mode +E (roleplay enabled) - required for NPC messages
+        if !channel_has_mode(ctx, &channel_lower, crate::state::actor::ChannelMode::Roleplay).await
+        {
+            let reply = server_reply(
+                &ctx.matrix.server_info.name,
+                Response::ERR_CANNOTSENDRP,
+                vec![ctx.state.nick.clone(), channel.to_string(), "Roleplay mode not enabled (+E)".to_string()],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
 
         // Build sender snapshot for routing
         let snapshot = SenderSnapshot::build(ctx)
@@ -62,11 +71,12 @@ impl PostRegHandler for NpcHandler {
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Create the NPC message with special prefix
-        // Format: <npc_nick>!<real_nick>@npc
+        // Format: *<npc_nick>*!<real_nick>@npc (asterisks on both sides per Ergo spec)
+        let wrapped_npc_nick = format!("*{}*", npc_nick);
         let npc_msg = Message {
             tags: None,
             prefix: Some(Prefix::Nickname(
-                npc_nick.to_string(),
+                wrapped_npc_nick.clone(),
                 snapshot.user.clone(),
                 "npc".to_string(),
             )),
