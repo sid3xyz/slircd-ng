@@ -25,7 +25,21 @@ UTF-8 nick support (not yet implemented).
 
 ---
 
-## EVALUATION: Commands Implemented vs. Missing
+## ✅ RESOLVED: RELAYMSG Parameter Order
+
+**Status**: RESOLVED (commit in slirc-proto crates/slirc-proto/)
+
+**Summary**: Proto parser had parameter order backwards:
+- **Was**: `Command::RELAYMSG { relay_from: args[0], target: args[1], text: args[2] }`
+- **Fixed**: `Command::RELAYMSG { relay_from: args[1], target: args[0], text: args[2] }`
+
+The IRC protocol sends: `RELAYMSG <target> <relay_from> <text>` but the proto parsed it as `<relay_from> <target> <text>`.
+
+**Tests Passing**: relaymsg.py validation tests (invalid nick detection, format checking). Full test still has labeled-response tag echo issue (framework-level, not proto).
+
+---
+
+---
 
 **Current Implementation** (60+ handlers):
 - ✅ Core: NICK, USER, PASS, CAP, QUIT, PING, PONG, REGISTER, SERVICE, SQURY
@@ -128,6 +142,37 @@ pub enum MetadataSubcommand {
 **Proposal**: Proto doesn't need changes; daemon needs confusables detection library
 **Impact**: Enables 1 test (confusables.py)
 **Daemon Impact**: Pure daemon feature, no proto needed
+
+### Test Failure Analysis (Current Session)
+
+#### METADATA Handler Status
+**Tests Run**: metadata.py (8 failed, 1 passed)
+**Issue**: Handler returns stub 704 (RPL_HELPSTART) instead of implementing actual metadata storage
+**Expected**: Numeric 761 (RPL_KEYVALUE) responses with proper GET/SET/LIST functionality
+**Blocker**: No metadata storage structure in Matrix. Requires:
+- Adding metadata HashMap to Matrix or user/channel state
+- Parsing METADATA GET/SET/LIST subcommands  
+- Returning proper 761/762/763 numerics (not in Response enum yet)
+**Status**: Handler recognized and callable; stub working correctly; full impl blocked
+
+#### NPC Handler Status
+**Tests Run**: roleplay.py::testRoleplay (1 failed)
+**Issue**: Handler doesn't enforce channel mode +E (roleplay enabled)
+**Expected**: Return ERR_CANNOTSENDRP when channel lacks +E mode
+**Blocker**: ERR_CANNOTSENDRP (approx 927) not defined in slirc-proto Response enum
+**Missing Proto Feature**: Channel mode +E flag and its validation
+**Status**: Handler executes but test fails due to missing proto support
+
+#### RELAYMSG Handler Status
+**Tests Run**: relaymsg.py::testRelaymsg (1 failed, progress made)
+**Prior Issue**: Handler validated oper status BEFORE relay_from nick format
+**Fixed**: Reordered validation - now checks nick format first, returns FAIL RELAYMSG INVALID_NICK for invalid relay_from
+**Fixed**: Proto parser had parameter order backwards (args[0]=relay_from, args[1]=target) - fixed in slirc-proto to match irctest expectations
+**Fixed**: Prefix handling - overrode snapshot.nick with relay_from so routed messages appear from the relay source nick
+**Current Issue**: labeled-response tag handling - when client sends `@label=x RELAYMSG ...`, the response should echo the label tag. Currently returns ACK instead. This is a framework issue, not RELAYMSG-specific.
+**Status**: Handler core logic working, prefix correct, validation order correct. Label tag echo needs framework-level fix.
+
+---
 
 ### Low Priority (Advanced Features)
 

@@ -23,7 +23,7 @@ use crate::handlers::{
     cap::{AuthenticateHandler, CapHandler},
     chathistory::ChatHistoryHandler,
     helpers::with_label,
-    messaging::{AcceptHandler, NoticeHandler, NpcHandler, PrivmsgHandler, RelayMsgHandler, TagmsgHandler},
+    messaging::{AcceptHandler, MetadataHandler, NoticeHandler, NpcHandler, PrivmsgHandler, RelayMsgHandler, TagmsgHandler},
     mode::ModeHandler,
     monitor::MonitorHandler,
     server::{
@@ -132,6 +132,7 @@ impl Registry {
         post_reg_handlers.insert("NOTICE", Box::new(NoticeHandler));
         post_reg_handlers.insert("TAGMSG", Box::new(TagmsgHandler));
         post_reg_handlers.insert("ACCEPT", Box::new(AcceptHandler));
+        post_reg_handlers.insert("METADATA", Box::new(MetadataHandler));
         post_reg_handlers.insert("NPC", Box::new(NpcHandler));
         post_reg_handlers.insert("RELAYMSG", Box::new(RelayMsgHandler));
 

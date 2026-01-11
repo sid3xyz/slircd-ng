@@ -11,6 +11,7 @@
 mod accept;
 mod common;
 mod errors;
+mod metadata;
 mod notice;
 mod npc;
 mod privmsg;
@@ -18,6 +19,7 @@ mod relaymsg;
 mod validation;
 
 pub use accept::AcceptHandler;
+pub use metadata::MetadataHandler;
 pub use notice::NoticeHandler;
 pub use npc::NpcHandler;
 pub use privmsg::PrivmsgHandler;

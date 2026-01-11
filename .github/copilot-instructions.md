@@ -30,6 +30,7 @@ MEM_MAX=4G SWAP_MAX=0 KILL_SLIRCD=1 ./scripts/irctest_safe.sh irctest/server_tes
 | Error handling | Use `?` propagation; avoid `unwrap()`/`expect()` except in main.rs |
 | Allocation discipline | Zero-copy hot loop using `MessageRef<'a>` from slirc-proto |
 | RFC compliance | Strict adherence to RFC 1459, RFC 2812, IRCv3 |
+| **PROTO-FIRST RULE** | **NEVER create daemon workarounds for proto bugs. ALWAYS fix slirc-proto first, then update daemon. Document proto issues in PROTO_REQUIREMENTS.md before implementing any workaround.** |
 
 ---
 
