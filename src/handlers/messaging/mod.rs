@@ -12,12 +12,16 @@ mod accept;
 mod common;
 mod errors;
 mod notice;
+mod npc;
 mod privmsg;
+mod relaymsg;
 mod validation;
 
 pub use accept::AcceptHandler;
 pub use notice::NoticeHandler;
+pub use npc::NpcHandler;
 pub use privmsg::PrivmsgHandler;
+pub use relaymsg::RelayMsgHandler;
 
 use super::{HandlerError, HandlerResult, user_prefix};
 use crate::history::types::MessageTag as HistoryTag;

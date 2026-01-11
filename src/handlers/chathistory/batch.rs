@@ -48,6 +48,9 @@ pub async fn send_history_batch(
     for msg in messages {
         if msg.envelope.command == "TARGET" {
             // Special handling for TARGETS response
+            // Format: CHATHISTORY TARGETS <target> <count>
+            // Note: Command::CHATHISTORY is designed for requests, not TARGETS responses
+            // which have a different parameter structure. Using Command::Raw is correct here.
             let history_msg = Message {
                 tags: Some(vec![Tag::new("batch", Some(batch_id.clone()))]),
                 prefix: None,
