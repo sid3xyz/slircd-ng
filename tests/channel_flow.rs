@@ -60,6 +60,11 @@ async fn test_channel_privmsg_flow() {
     }));
 
     // Cleanly disconnect both clients
-    alice.quit(Some("done".to_string())).await.expect("Alice quit failed");
-    bob.quit(Some("done".to_string())).await.expect("Bob quit failed");
+    alice
+        .quit(Some("done".to_string()))
+        .await
+        .expect("Alice quit failed");
+    bob.quit(Some("done".to_string()))
+        .await
+        .expect("Bob quit failed");
 }

@@ -38,9 +38,11 @@ async fn test_away_command() {
         .await
         .expect("Failed to receive RPL_NOWAWAY");
 
-    assert!(messages
-        .iter()
-        .any(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 306)));
+    assert!(
+        messages
+            .iter()
+            .any(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 306))
+    );
 
     // Unset AWAY
     alice
@@ -54,9 +56,11 @@ async fn test_away_command() {
         .await
         .expect("Failed to receive RPL_UNAWAY");
 
-    assert!(messages
-        .iter()
-        .any(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 305)));
+    assert!(
+        messages
+            .iter()
+            .any(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 305))
+    );
 
     alice
         .quit(Some("done".to_string()))
@@ -97,7 +101,11 @@ async fn test_nick_change() {
         .await
         .expect("Failed to receive NICK echo");
 
-    assert!(messages.iter().any(|m| matches!(&m.command, Command::NICK(new_nick) if new_nick == "alice2")));
+    assert!(
+        messages
+            .iter()
+            .any(|m| matches!(&m.command, Command::NICK(new_nick) if new_nick == "alice2"))
+    );
 
     alice
         .quit(Some("done".to_string()))
@@ -160,11 +168,17 @@ async fn test_nick_collision_with_channel() {
 
     // Bob should receive NICK notification
     let messages = bob
-        .recv_until(|msg| matches!(&msg.command, Command::NICK(new_nick) if new_nick == "alice_new"))
+        .recv_until(
+            |msg| matches!(&msg.command, Command::NICK(new_nick) if new_nick == "alice_new"),
+        )
         .await
         .expect("Bob failed to receive NICK notification");
 
-    assert!(messages.iter().any(|m| matches!(&m.command, Command::NICK(new_nick) if new_nick == "alice_new")));
+    assert!(
+        messages
+            .iter()
+            .any(|m| matches!(&m.command, Command::NICK(new_nick) if new_nick == "alice_new"))
+    );
 
     alice
         .quit(Some("done".to_string()))
@@ -281,7 +295,10 @@ async fn test_userhost_command() {
         _ => false,
     });
 
-    assert!(has_userhost, "USERHOST response should contain alice's info");
+    assert!(
+        has_userhost,
+        "USERHOST response should contain alice's info"
+    );
 
     alice
         .quit(Some("done".to_string()))
@@ -344,11 +361,17 @@ async fn test_quit_with_reason() {
 
     // Bob should receive QUIT notification
     let messages = bob
-        .recv_until(|msg| matches!(&msg.command, Command::QUIT(Some(reason)) if reason.contains("Testing")))
+        .recv_until(
+            |msg| matches!(&msg.command, Command::QUIT(Some(reason)) if reason.contains("Testing")),
+        )
         .await
         .expect("Bob failed to receive QUIT notification");
 
-    assert!(messages.iter().any(|m| matches!(&m.command, Command::QUIT(Some(reason)) if reason.contains("Testing"))));
+    assert!(
+        messages.iter().any(
+            |m| matches!(&m.command, Command::QUIT(Some(reason)) if reason.contains("Testing"))
+        )
+    );
 
     bob.quit(Some("done".to_string()))
         .await

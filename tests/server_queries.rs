@@ -21,14 +21,13 @@ async fn test_version_command() {
 
     // Drain welcome burst
     tokio::time::sleep(Duration::from_millis(100)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 
     // Send VERSION command
-    client.send_raw("VERSION").await.expect("Failed to send VERSION");
+    client
+        .send_raw("VERSION")
+        .await
+        .expect("Failed to send VERSION");
 
     // Expect RPL_VERSION (351)
     let messages = client
@@ -36,12 +35,16 @@ async fn test_version_command() {
         .await
         .expect("RPL_VERSION expected");
 
-    let version_msg = messages.iter().find(|m| {
-        matches!(&m.command, Command::Response(resp, _) if resp.code() == 351)
-    }).expect("VERSION response not found");
+    let version_msg = messages
+        .iter()
+        .find(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 351))
+        .expect("VERSION response not found");
 
     if let Command::Response(_, params) = &version_msg.command {
-        assert!(!params.is_empty(), "VERSION response should have parameters");
+        assert!(
+            !params.is_empty(),
+            "VERSION response should have parameters"
+        );
     }
 }
 
@@ -60,11 +63,7 @@ async fn test_time_command() {
 
     // Drain welcome burst
     tokio::time::sleep(Duration::from_millis(100)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 
     // Send TIME command
     client.send_raw("TIME").await.expect("Failed to send TIME");
@@ -75,9 +74,11 @@ async fn test_time_command() {
         .await
         .expect("RPL_TIME expected");
 
-    assert!(messages.iter().any(|m| {
-        matches!(&m.command, Command::Response(resp, _) if resp.code() == 391)
-    }));
+    assert!(
+        messages
+            .iter()
+            .any(|m| { matches!(&m.command, Command::Response(resp, _) if resp.code() == 391) })
+    );
 }
 
 #[tokio::test]
@@ -95,11 +96,7 @@ async fn test_info_command() {
 
     // Drain welcome burst
     tokio::time::sleep(Duration::from_millis(100)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 
     // Send INFO command
     client.send_raw("INFO").await.expect("Failed to send INFO");
@@ -122,7 +119,10 @@ async fn test_info_command() {
         }
     }
 
-    assert!(info_count > 0, "INFO should return at least one RPL_INFO line");
+    assert!(
+        info_count > 0,
+        "INFO should return at least one RPL_INFO line"
+    );
 }
 
 #[tokio::test]
@@ -140,14 +140,13 @@ async fn test_admin_command() {
 
     // Drain welcome burst
     tokio::time::sleep(Duration::from_millis(100)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 
     // Send ADMIN command
-    client.send_raw("ADMIN").await.expect("Failed to send ADMIN");
+    client
+        .send_raw("ADMIN")
+        .await
+        .expect("Failed to send ADMIN");
 
     // Expect RPL_ADMINME (256) first
     let messages = client
@@ -155,17 +154,15 @@ async fn test_admin_command() {
         .await
         .expect("RPL_ADMINME expected");
 
-    assert!(messages.iter().any(|m| {
-        matches!(&m.command, Command::Response(resp, _) if resp.code() == 256)
-    }));
+    assert!(
+        messages
+            .iter()
+            .any(|m| { matches!(&m.command, Command::Response(resp, _) if resp.code() == 256) })
+    );
 
     // Drain remaining admin replies (257, 258, 259)
     tokio::time::sleep(Duration::from_millis(50)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 }
 
 #[tokio::test]
@@ -183,11 +180,7 @@ async fn test_motd_command() {
 
     // Drain welcome burst
     tokio::time::sleep(Duration::from_millis(100)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 
     // Send MOTD command
     client.send_raw("MOTD").await.expect("Failed to send MOTD");
@@ -244,14 +237,13 @@ async fn test_lusers_command() {
 
     // Drain welcome burst
     tokio::time::sleep(Duration::from_millis(100)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 
     // Send LUSERS command
-    client.send_raw("LUSERS").await.expect("Failed to send LUSERS");
+    client
+        .send_raw("LUSERS")
+        .await
+        .expect("Failed to send LUSERS");
 
     // Expect RPL_LUSERCLIENT (251)
     let messages = client
@@ -259,9 +251,11 @@ async fn test_lusers_command() {
         .await
         .expect("RPL_LUSERCLIENT expected");
 
-    assert!(messages.iter().any(|m| {
-        matches!(&m.command, Command::Response(resp, _) if resp.code() == 251)
-    }));
+    assert!(
+        messages
+            .iter()
+            .any(|m| { matches!(&m.command, Command::Response(resp, _) if resp.code() == 251) })
+    );
 
     // Drain remaining LUSER replies until RPL_LUSERME (255)
     let _luserme = client
@@ -285,14 +279,13 @@ async fn test_stats_u_command() {
 
     // Drain welcome burst
     tokio::time::sleep(Duration::from_millis(100)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 
     // Send STATS u command (uptime)
-    client.send_raw("STATS u").await.expect("Failed to send STATS u");
+    client
+        .send_raw("STATS u")
+        .await
+        .expect("Failed to send STATS u");
 
     // Expect RPL_STATSUPTIME (242) or RPL_ENDOFSTATS (219)
     let messages = client
@@ -308,9 +301,14 @@ async fn test_stats_u_command() {
     }));
 
     // Drain until RPL_ENDOFSTATS (219)
-    if !messages.iter().any(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 219)) {
+    if !messages
+        .iter()
+        .any(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 219))
+    {
         let _end = client
-            .recv_until(|msg| matches!(&msg.command, Command::Response(resp, _) if resp.code() == 219))
+            .recv_until(
+                |msg| matches!(&msg.command, Command::Response(resp, _) if resp.code() == 219),
+            )
             .await
             .expect("RPL_ENDOFSTATS expected");
     }
@@ -331,24 +329,24 @@ async fn test_stats_l_command() {
 
     // Drain welcome burst
     tokio::time::sleep(Duration::from_millis(100)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 
     // Send STATS l command (connections)
-    client.send_raw("STATS l").await.expect("Failed to send STATS l");
+    client
+        .send_raw("STATS l")
+        .await
+        .expect("Failed to send STATS l");
 
     // Expect RPL_STATSLINKINFO (211) and/or RPL_ENDOFSTATS (219)
-    let mut link_count = 0;
     loop {
         let msg = client.recv_timeout(Duration::from_millis(500)).await;
         match msg {
             Ok(m) => match &m.command {
+                // Optionally observe link info replies (211)
                 Command::Response(resp, _) if resp.code() == 211 => {
-                    link_count += 1;
+                    // ignore, just draining
                 }
+                // End of stats (219) terminates the loop
                 Command::Response(resp, _) if resp.code() == 219 => {
                     break;
                 }
@@ -357,7 +355,4 @@ async fn test_stats_l_command() {
             Err(_) => panic!("STATS l timed out without RPL_ENDOFSTATS"),
         }
     }
-
-    // Should have at least one link (our connection) - or none if not implemented
-    // Just verify we got the end marker
 }

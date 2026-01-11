@@ -171,6 +171,7 @@ impl TestClient {
     #[allow(dead_code)]
     pub async fn mode_channel_op(&mut self, channel: &str, nick: &str) -> anyhow::Result<()> {
         // Use raw MODE to avoid guessing slirc-proto variant shapes.
-        self.send_raw(&format!("MODE {} +o {}", channel, nick)).await
+        self.send_raw(&format!("MODE {} +o {}", channel, nick))
+            .await
     }
 }

@@ -41,6 +41,19 @@ async fn test_part_broadcast() {
     alice.join("#ops").await.expect("Alice join failed");
     bob.join("#ops").await.expect("Bob join failed");
 
+    // Drain JOIN responses to ensure both are fully in the channel
+    tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+    while alice
+        .recv_timeout(tokio::time::Duration::from_millis(10))
+        .await
+        .is_ok()
+    {}
+    while bob
+        .recv_timeout(tokio::time::Duration::from_millis(10))
+        .await
+        .is_ok()
+    {}
+
     // Alice parts the channel
     alice
         .part("#ops", Some("bye"))
@@ -59,7 +72,9 @@ async fn test_part_broadcast() {
     }));
 
     // Cleanly disconnect
-    bob.quit(Some("done".to_string())).await.expect("Bob quit failed");
+    bob.quit(Some("done".to_string()))
+        .await
+        .expect("Bob quit failed");
 }
 
 #[tokio::test]
@@ -130,8 +145,13 @@ async fn test_topic_broadcast() {
     }));
 
     // Cleanly disconnect
-    alice.quit(Some("done".to_string())).await.expect("Alice quit failed");
-    bob.quit(Some("done".to_string())).await.expect("Bob quit failed");
+    alice
+        .quit(Some("done".to_string()))
+        .await
+        .expect("Alice quit failed");
+    bob.quit(Some("done".to_string()))
+        .await
+        .expect("Bob quit failed");
 }
 
 #[tokio::test]
@@ -175,7 +195,9 @@ async fn test_invite_flow() {
     // Bob should receive an INVITE for #invite
     let messages = bob
         .recv_until(|msg| match &msg.command {
-            Command::INVITE(a, b) => (a == "#invite" && b == "bob") || (a == "bob" && b == "#invite"),
+            Command::INVITE(a, b) => {
+                (a == "#invite" && b == "bob") || (a == "bob" && b == "#invite")
+            }
             _ => false,
         })
         .await
@@ -190,8 +212,13 @@ async fn test_invite_flow() {
     bob.join("#invite").await.expect("Bob join failed");
 
     // Cleanly disconnect
-    alice.quit(Some("done".to_string())).await.expect("Alice quit failed");
-    bob.quit(Some("done".to_string())).await.expect("Bob quit failed");
+    alice
+        .quit(Some("done".to_string()))
+        .await
+        .expect("Alice quit failed");
+    bob.quit(Some("done".to_string()))
+        .await
+        .expect("Bob quit failed");
 }
 
 #[tokio::test]
@@ -274,7 +301,10 @@ async fn test_kick_requires_op_and_succeeds_with_op() {
         .await
         .expect("Bob did not receive KICK");
 
-    alice.quit(Some("done".to_string())).await.expect("Alice quit failed");
+    alice
+        .quit(Some("done".to_string()))
+        .await
+        .expect("Alice quit failed");
 }
 
 #[tokio::test]
@@ -328,14 +358,17 @@ async fn test_names_and_whois() {
         .recv_until(|msg| matches!(&msg.command, Command::Response(resp, _) if resp.code() == 366))
         .await
         .expect("Alice did not receive END OF NAMES");
-    
+
     // Find RPL_NAMREPLY and check it contains both nicks
     let has_names = names_messages.iter().any(|m| match &m.command {
         Command::Response(resp, params) if resp.code() == 353 => {
             // params should be ["alice", "=", "#ops", "@alice bob"] or similar
-            params.len() >= 4 
+            params.len() >= 4
                 && params.iter().any(|p| p == "#ops")
-                && params.last().map(|names| names.contains("alice") && names.contains("bob")).unwrap_or(false)
+                && params
+                    .last()
+                    .map(|names| names.contains("alice") && names.contains("bob"))
+                    .unwrap_or(false)
         }
         _ => false,
     });
@@ -350,7 +383,7 @@ async fn test_names_and_whois() {
         .recv_until(|msg| matches!(&msg.command, Command::Response(resp, _) if resp.code() == 318))
         .await
         .expect("Alice did not receive END OF WHOIS");
-    
+
     let has_whois = whois_messages.iter().any(|m| match &m.command {
         Command::Response(resp, params) if resp.code() == 311 => {
             params.iter().any(|p| p.contains("bob"))
@@ -359,6 +392,11 @@ async fn test_names_and_whois() {
     });
     assert!(has_whois, "WHOIS response should contain bob's info");
 
-    alice.quit(Some("done".to_string())).await.expect("Alice quit failed");
-    bob.quit(Some("done".to_string())).await.expect("Bob quit failed");
+    alice
+        .quit(Some("done".to_string()))
+        .await
+        .expect("Alice quit failed");
+    bob.quit(Some("done".to_string()))
+        .await
+        .expect("Bob quit failed");
 }

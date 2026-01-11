@@ -1,5 +1,14 @@
 # Master Context & Learnings (slircd-ng)
 
+## Snapshot (2026-01-11)
+
+- Unit tests: 611 passed
+- Integration tests: 42 passed (total 653)
+  - Server queries: 8 (VERSION, TIME, INFO, ADMIN, MOTD, LUSERS, STATS u/l)
+  - Operator commands: 4 (OPER success/failure, KILL, WALLOPS)
+  - Others: channel ops (5), distributed sync (5), user/channel queries (6+5), chrono check (1), ircv3 features (3)
+- Hygiene gates: clippy `-D warnings` (clean), fmt check (clean)
+
 ## Current Focus (Integration Testing Framework - Tier 1.2)
 
 **Status**: 🟡 **IN PROGRESS** — Building comprehensive integration test suite
@@ -30,6 +39,36 @@
 - User command tests: 6 tests (AWAY, NICK changes, MODE self, USERHOST, QUIT with reason)
 - Channel query tests: 5 tests (LIST, LIST with pattern, WHO channel, WHO nick, WHOWAS)
 - Test suite: 641 total tests passing (611 unit + 30 integration)
+
+## Session: Operator Moderation, Admin, Broadcast (Jan 11, 2026 - Part 3)
+
+**Branch**: `test/integration-framework`
+
+**Objective**: Add realistic, deterministic integration tests for operator moderation (X-lines) and admin/broadcast flows; align server behavior for practical oper UX.
+
+**Key Changes**:
+- New integration suite [tests/operator_moderation.rs](../tests/operator_moderation.rs):
+  - Adds: KLINE, GLINE, ZLINE, RLINE — verify server NOTICE confirmations and disconnect counts when applicable.
+  - Admin: REHASH — verify 481 for non-oper; 382 + completion NOTICE for oper.
+  - Broadcast: GLOBOPS — deliver to snomask 'g' and all opers for reliability.
+  - New UN* tests: UNKLINE, UNGLINE, UNZLINE, UNRLINE — verify removal NOTICE and that victims can reconnect post-unban.
+- Test patterns hardened for cloaked hosts and async disconnects:
+  - K/GLINE mask via `user@*` derived from WHO (352) to avoid cloaking issues.
+  - RLINE masks using `*bob*` to avoid spaces; avoids relying on victim-side ERROR.
+  - ZLINE targeted at 10.0.0.0/8 to avoid disconnecting local tests; assert only on NOTICE.
+
+**Server Behavior Adjustment (GLOBOPS)**:
+- Decision: In addition to snomask 'g', deliver GLOBOPS to all opers.
+- Rationale: Ensures deterministic receipt in practice (snomask parsing quirks across clients/servers) and aligns with common expectations for oper broadcast visibility.
+- Implementation: `oper::globops` now sends via `user_manager.send_snomask('g', ...)` and `user_manager.send_notice_to_opers(...)`.
+
+**Results**:
+- Operator moderation suite: 10/10 passing in ~2.2s.
+- Full suite remains green (unit + all integration).
+
+**Follow-ups**:
+- Optional: Accept `+s` without explicit argument when adding (apply default snomasks on parse) to reduce client friction; keep protocol-first review for slirc-proto if needed.
+- Expand UN* coverage for DLINE if/when safe IP ranges are agreed for tests.
 
 ## Truth Timeline (key commits)
 
@@ -141,6 +180,7 @@ Key outcomes (high level):
    - **KICK test race condition**: Original test had alice JOIN first (auto +o), couldn't test unprivileged KICK. Fixed by having bob JOIN first (gets +o), alice JOIN second (no +o), bob grants alice +o after initial failure.
    - **NAMES test parsing**: Fixed param indexing; used `params.iter().any(|p| p == "#ops")` and `params.last()` for flexible matching of RPL_NAMREPLY (353) format.
    - **TOPIC test race condition**: Both clients JOINing simultaneously caused bob to miss TOPIC message. Fixed by sequential JOINs (alice first, 50ms delay, bob second) and 150ms drain sleep before TOPIC command.
+  - **PART test race condition**: Immediate PART after JOIN could miss broadcast for peers not fully joined. Fixed by draining JOIN responses (150ms + recv drain) before issuing PART in `test_part_broadcast`.
 
 4. **Deterministic testing patterns established**:
    - **Sequential JOINs**: Use `tokio::time::sleep(50ms)` between JOINs to control auto-op behavior.

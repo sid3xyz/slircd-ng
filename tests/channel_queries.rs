@@ -39,10 +39,7 @@ async fn test_list_command() {
     {}
 
     // Request channel LIST
-    alice
-        .send_raw("LIST")
-        .await
-        .expect("Failed to send LIST");
+    alice.send_raw("LIST").await.expect("Failed to send LIST");
 
     // Expect RPL_LISTSTART (321), RPL_LIST (322) entries, RPL_LISTEND (323)
     let messages = alice
@@ -255,10 +252,7 @@ async fn test_who_command_nick() {
     {}
 
     // Alice sends WHO for bob's nick
-    alice
-        .send_raw("WHO bob")
-        .await
-        .expect("Failed to send WHO");
+    alice.send_raw("WHO bob").await.expect("Failed to send WHO");
 
     // Expect RPL_WHOREPLY (352) and RPL_ENDOFWHO (315)
     let messages = alice

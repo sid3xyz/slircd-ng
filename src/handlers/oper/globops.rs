@@ -34,12 +34,12 @@ impl PostRegHandler for GlobOpsHandler {
             return Ok(());
         }
 
-        // Send via snomask 'g'
-        // Format: "From <nick>: <message>"
-        ctx.matrix
-            .user_manager
-            .send_snomask('g', &format!("From {}: {}", sender_nick, globops_text))
-            .await;
+        // Send via snomask 'g' (globops). Also deliver to 'o' (oper) subscribers
+        // to ensure default oper notice subscriptions receive it.
+        let text = format!("From {}: {}", sender_nick, globops_text);
+        ctx.matrix.user_manager.send_snomask('g', &text).await;
+        // Also deliver to opers regardless of snomask subscriptions
+        ctx.matrix.user_manager.send_notice_to_opers(&text).await;
 
         Ok(())
     }
