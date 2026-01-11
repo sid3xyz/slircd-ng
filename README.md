@@ -34,13 +34,13 @@ A high-performance, distributed IRC server written in Rust, featuring modern arc
 
 ### Protocol Compliance
 
-| Metric         | Value                                      |
-| -------------- | ------------------------------------------ |
-| irctest passed | 269/306                                    |
-| Pass rate      | 88% (100% on applicable tests)             |
-| Skipped        | 36 (SASL=TLS, ascii casemapping, optional) |
-| XFailed        | 6 (deprecated RFCs)                        |
-| Failed         | 1 (LINKS: missing services server)         |
+| Metric         | Value                                        |
+| -------------- | -------------------------------------------- |
+| irctest passed | 328/387 (436 total, 49 skipped)             |
+| Pass rate      | 84.8%                                        |
+| Test suite     | irctest @ `/home/straylight/slirc-irctest`  |
+| Last run       | 2026-01-11 (239s runtime)                    |
+| Status         | ✅ Core protocols pass (JOIN/PART/KICK/etc) |
 
 ## 🚀 Features
 

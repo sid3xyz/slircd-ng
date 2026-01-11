@@ -278,7 +278,8 @@ ls -la *.md  # Should only be: README, ARCHITECTURE, CHANGELOG, ROADMAP, DEPLOYM
 
 - **Unit tests**: 637+ tests, run with `cargo test`
 - **Integration tests**: `tests/` directory (ircv3_features, distributed_sync)
-- **irctest compliance**: 269/306 passing (88%)
+- **irctest compliance**: 328/387 passing (84.8%) - see `/home/straylight/slirc-irctest/IRCTEST_RESULTS.md`
+- **irctest invocation**: `cd /home/straylight/slirc-irctest && SLIRCD_BIN=/home/straylight/target/release/slircd pytest --controller=irctest.controllers.slircd irctest/server_tests/`
 - **Round-trip tests**: Parse → Handle → Serialize → Parse
 - **No load/fuzz tests yet**: See ROADMAP_TO_1.0.md
 
