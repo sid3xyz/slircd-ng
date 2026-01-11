@@ -10,8 +10,6 @@ use tokio::time::sleep;
 /// A test server instance.
 pub struct TestServer {
     child: Child,
-    #[allow(dead_code)]
-    config_path: PathBuf,
     port: u16,
     data_dir: PathBuf,
 }
@@ -39,6 +37,9 @@ address = "127.0.0.1:{}"
 
 [database]
 path = "{}/test.db"
+
+    [timeouts]
+    registration_timeout = 2
 
 [security]
 cloak_secret = "TestSecret-2026-Secure!9X"
@@ -78,7 +79,6 @@ host = "*@*"
 
         let server = Self {
             child,
-            config_path,
             port,
             data_dir,
         };
@@ -101,12 +101,6 @@ host = "*@*"
             sleep(Duration::from_millis(100)).await;
         }
         anyhow::bail!("Server failed to start within 3 seconds")
-    }
-
-    /// Get the port the server is listening on.
-    #[allow(dead_code)]
-    pub fn port(&self) -> u16 {
-        self.port
     }
 
     /// Get the server address.

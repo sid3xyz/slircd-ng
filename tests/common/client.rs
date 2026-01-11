@@ -112,6 +112,9 @@ impl TestClient {
     }
 
     /// Join a channel.
+    ///
+    /// Note: Shared across multiple integration tests; clippy may flag it
+    /// as unused in a single test binary.
     #[allow(dead_code)]
     pub async fn join(&mut self, channel: &str) -> anyhow::Result<()> {
         self.send(Command::JOIN(channel.to_string(), None, None))
@@ -120,6 +123,9 @@ impl TestClient {
     }
 
     /// Send a PRIVMSG.
+    ///
+    /// Note: Shared across multiple integration tests; clippy may flag it
+    /// as unused in a single test binary.
     #[allow(dead_code)]
     pub async fn privmsg(&mut self, target: &str, text: &str) -> anyhow::Result<()> {
         self.send(Command::PRIVMSG(target.to_string(), text.to_string()))
@@ -131,5 +137,40 @@ impl TestClient {
     pub async fn quit(&mut self, reason: Option<String>) -> anyhow::Result<()> {
         self.send(Command::QUIT(reason)).await?;
         Ok(())
+    }
+
+    /// Part a channel.
+    ///
+    /// Note: Shared across multiple integration tests; clippy may flag it
+    /// as unused in a single test binary.
+    #[allow(dead_code)]
+    pub async fn part(&mut self, channel: &str, reason: Option<&str>) -> anyhow::Result<()> {
+        self.send(Command::PART(
+            channel.to_string(),
+            reason.map(|r| r.to_string()),
+        ))
+        .await?;
+        Ok(())
+    }
+
+    /// Set a channel topic.
+    ///
+    /// Note: Shared across multiple integration tests; clippy may flag it
+    /// as unused in a single test binary.
+    #[allow(dead_code)]
+    pub async fn topic(&mut self, channel: &str, topic: &str) -> anyhow::Result<()> {
+        self.send(Command::TOPIC(channel.to_string(), Some(topic.to_string())))
+            .await?;
+        Ok(())
+    }
+
+    /// Grant +o to a user in a channel via MODE.
+    ///
+    /// Note: Shared across multiple integration tests; clippy may flag it
+    /// as unused in a single test binary.
+    #[allow(dead_code)]
+    pub async fn mode_channel_op(&mut self, channel: &str, nick: &str) -> anyhow::Result<()> {
+        // Use raw MODE to avoid guessing slirc-proto variant shapes.
+        self.send_raw(&format!("MODE {} +o {}", channel, nick)).await
     }
 }
