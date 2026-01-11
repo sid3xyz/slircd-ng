@@ -65,3 +65,4 @@ tls/
 # Service files with paths
 *.service
 !*.service.example
+crates/

@@ -5,14 +5,24 @@ edition = "2024"
 license = "Unlicense"
 description = "Straylight IRC Daemon - Next Generation"
 
+[workspace]
+members = [".", "crates/slirc-proto", "crates/slirc-crdt"]
+resolver = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+
 [[bin]]
 name = "slircd"
 path = "src/main.rs"
 
 [dependencies]
-# Protocol core (use path for workspace dev, git for standalone builds)
-slirc-proto = { path = "../slirc-proto", features = ["tokio"] }
-slirc-crdt = { path = "../slirc-crdt" }
+# Protocol core (use workspace path)
+slirc-proto = { path = "crates/slirc-proto", features = ["tokio"] }
+slirc-crdt = { path = "crates/slirc-crdt" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
