@@ -157,6 +157,10 @@ pub enum ChannelEvent {
         uid: Uid,
         reply_tx: oneshot::Sender<Option<MemberModes>>,
     },
+    /// Request channel modes.
+    GetModes {
+        reply_tx: oneshot::Sender<HashSet<ChannelMode>>,
+    },
     /// Apply mode changes.
     ApplyModes {
         params: ModeParams,
@@ -331,6 +335,8 @@ pub enum ChannelMode {
     Permanent,
     /// +R: Registered-only (only identified users can join)
     RegisteredOnly,
+    /// +E: Roleplay enabled (allows NPC command, Ergo extension)
+    Roleplay,
     /// +k <key>: Channel key required to join
     Key(String, slirc_crdt::clock::HybridTimestamp),
     /// +l <limit>: User limit

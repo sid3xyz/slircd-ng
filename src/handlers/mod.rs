@@ -44,7 +44,7 @@ mod user_status;
 // Re-export core types
 pub use core::{
     Context, HandlerError, HandlerResult, Registry, ResponseMiddleware, get_nick_or_star,
-    get_oper_info, is_user_in_channel, resolve_nick_or_nosuchnick, user_mask_from_state,
+    get_oper_info, is_user_in_channel, channel_has_mode, resolve_nick_or_nosuchnick, user_mask_from_state,
 };
 
 // Re-export typestate handler traits (Innovation 1)
