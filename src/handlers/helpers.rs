@@ -6,7 +6,7 @@
 //! remain in `mod.rs` because they depend on `Context` which is defined there.
 
 use super::{Context, HandlerResult};
-use slirc_proto::{Command, Message, Prefix, Response, Tag};
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response, Tag};
 
 // Re-export hostmask matching from proto for use by handlers
 pub use slirc_proto::matches_hostmask;
@@ -185,6 +185,42 @@ pub fn labeled_ack(server_name: &str, label: &str) -> Message {
         prefix: Some(Prefix::ServerName(server_name.to_string())),
         command: Command::ACK,
     }
+}
+
+// ============================================================================
+// MessageRef argument helpers
+// ============================================================================
+
+/// Collect all arguments starting at `start_idx` into owned Strings.
+///
+/// Useful for server-side commands that forward arbitrary parameter lists.
+pub fn collect_message_args(msg: &MessageRef<'_>, start_idx: usize) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    let mut idx = start_idx;
+    while let Some(arg) = msg.arg(idx) {
+        args.push(arg.to_string());
+        idx += 1;
+    }
+    args
+}
+
+/// Join all arguments starting at `start_idx` using spaces.
+///
+/// This is primarily used by ROLEPLAY-style commands like NPC/SCENE, where some
+/// clients may omit the IRC trailing-parameter `:` and still expect the server
+/// to treat remaining args as freeform text.
+pub fn join_message_args(msg: &MessageRef<'_>, start_idx: usize) -> Option<String> {
+    let mut out = String::new();
+    let mut idx = start_idx;
+    while let Some(arg) = msg.arg(idx) {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(arg);
+        idx += 1;
+    }
+
+    if out.is_empty() { None } else { Some(out) }
 }
 
 /// Helper to create a user prefix (nick!user@host).
