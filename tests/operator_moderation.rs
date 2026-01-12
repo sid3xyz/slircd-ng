@@ -9,11 +9,7 @@ use std::time::Duration;
 
 async fn drain(client: &mut TestClient) {
     tokio::time::sleep(Duration::from_millis(120)).await;
-    while client
-        .recv_timeout(Duration::from_millis(10))
-        .await
-        .is_ok()
-    {}
+    while client.recv_timeout(Duration::from_millis(10)).await.is_ok() {}
 }
 
 async fn become_oper(client: &mut TestClient) {
@@ -29,8 +25,7 @@ async fn become_oper(client: &mut TestClient) {
 }
 
 async fn who_get_user_host(oper: &mut TestClient, nick: &str) -> (String, String) {
-    oper
-        .send_raw(&format!("WHO {}", nick))
+    oper.send_raw(&format!("WHO {}", nick))
         .await
         .expect("Failed to send WHO");
 
@@ -79,8 +74,7 @@ async fn test_kline_disconnects_target_and_confirms_notice() {
     let (user, _host) = who_get_user_host(&mut oper, "bob").await;
     let mask = format!("{}@*", user);
 
-    oper
-        .send_raw(&format!("KLINE {} :test kline", mask))
+    oper.send_raw(&format!("KLINE {} :test kline", mask))
         .await
         .expect("send KLINE");
 
@@ -117,8 +111,7 @@ async fn test_gline_disconnects_target_and_confirms_notice() {
     let (user, _host) = who_get_user_host(&mut oper, "bob").await;
     let mask = format!("{}@*", user);
 
-    oper
-        .send_raw(&format!("GLINE {} :test gline", mask))
+    oper.send_raw(&format!("GLINE {} :test gline", mask))
         .await
         .expect("send GLINE");
 
@@ -153,16 +146,21 @@ async fn test_zline_disconnects_target_ip_and_confirms_notice() {
 
     // We cannot reliably obtain the victim's real IP/host from WHO (cloaked).
     // Exercise handler path and confirmation formatting only.
-    oper
-        .send_raw("ZLINE 10.0.0.0/8 :test zline")
+    oper.send_raw("ZLINE 10.0.0.0/8 :test zline")
         .await
         .expect("send ZLINE");
 
     let oper_msgs = oper
-        .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("ZLINE added")))
+        .recv_until(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("ZLINE added")),
+        )
         .await
         .expect("oper should receive ZLINE confirmation notice");
-    assert!(oper_msgs.iter().any(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("ZLINE added"))));
+    assert!(
+        oper_msgs.iter().any(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("ZLINE added"))
+        )
+    );
     // Do not assert disconnect for ZLINE to avoid disconnecting oper (matching 127.0.0.1)
 }
 
@@ -189,8 +187,7 @@ async fn test_rline_disconnects_target_realname_and_confirms_notice() {
     become_oper(&mut oper).await;
 
     // Match realname using space-less pattern that still matches: *bob*
-    oper
-        .send_raw("RLINE *bob* :test rline")
+    oper.send_raw("RLINE *bob* :test rline")
         .await
         .expect("send RLINE");
 
@@ -228,9 +225,10 @@ async fn test_rehash_requires_cap_and_succeeds_for_oper() {
         .recv_until(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 382))
         .await
         .expect("Expected RPL_REHASHING (382)");
-    assert!(msgs
-        .iter()
-        .any(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 382)));
+    assert!(
+        msgs.iter()
+            .any(|m| matches!(&m.command, Command::Response(resp, _) if resp.code() == 382))
+    );
 
     // And a server NOTICE indicating completion/warning
     let _ = user
@@ -262,10 +260,7 @@ async fn test_globops_delivered_to_g_subscribers() {
     become_oper(&mut oper).await;
 
     // Recipient subscribes to server notices via +s (defaults include 'o').
-    recipient
-        .send_raw("MODE bob +s")
-        .await
-        .expect("set +s");
+    recipient.send_raw("MODE bob +s").await.expect("set +s");
     // Also OPER to mirror common server behavior where snomasks are for opers
     recipient
         .send_raw("OPER testop testpass")
@@ -278,8 +273,7 @@ async fn test_globops_delivered_to_g_subscribers() {
     drain(&mut recipient).await;
 
     // Send GLOBOPS
-    oper
-        .send_raw("GLOBOPS :test globops message")
+    oper.send_raw("GLOBOPS :test globops message")
         .await
         .expect("send GLOBOPS");
 
@@ -288,7 +282,11 @@ async fn test_globops_delivered_to_g_subscribers() {
         .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("globops")))
         .await
         .expect("recipient should receive globops notice");
-    assert!(rec_msgs.iter().any(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("globops"))));
+    assert!(
+        rec_msgs
+            .iter()
+            .any(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("globops")))
+    );
 }
 
 #[tokio::test]
@@ -318,22 +316,24 @@ async fn test_unkline_removes_ban_and_allows_reconnect() {
     let mask = format!("{}@*", user);
 
     // Apply KLINE and expect confirmation
-    oper
-        .send_raw(&format!("KLINE {} :kline for test", mask))
+    oper.send_raw(&format!("KLINE {} :kline for test", mask))
         .await
         .expect("send KLINE");
     let _ = oper
-        .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("KLINE added")))
+        .recv_until(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("KLINE added")),
+        )
         .await
         .expect("oper should receive KLINE confirmation");
 
     // Remove the KLINE and expect removal notice
-    oper
-        .send_raw(&format!("UNKLINE {}", mask))
+    oper.send_raw(&format!("UNKLINE {}", mask))
         .await
         .expect("send UNKLINE");
     let _ = oper
-        .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("KLINE removed")))
+        .recv_until(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("KLINE removed")),
+        )
         .await
         .expect("oper should receive KLINE removed notice");
 
@@ -372,22 +372,24 @@ async fn test_ungline_removes_ban_and_allows_reconnect() {
     let mask = format!("{}@*", user);
 
     // Apply GLINE and expect confirmation
-    oper
-        .send_raw(&format!("GLINE {} :gline for test", mask))
+    oper.send_raw(&format!("GLINE {} :gline for test", mask))
         .await
         .expect("send GLINE");
     let _ = oper
-        .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("GLINE added")))
+        .recv_until(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("GLINE added")),
+        )
         .await
         .expect("oper should receive GLINE confirmation");
 
     // Remove the GLINE and expect removal notice
-    oper
-        .send_raw(&format!("UNGLINE {}", mask))
+    oper.send_raw(&format!("UNGLINE {}", mask))
         .await
         .expect("send UNGLINE");
     let _ = oper
-        .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("GLINE removed")))
+        .recv_until(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("GLINE removed")),
+        )
         .await
         .expect("oper should receive GLINE removed notice");
 
@@ -415,21 +417,23 @@ async fn test_unzline_removes_ban_confirms_notice() {
     become_oper(&mut oper).await;
 
     // Add benign ZLINE for 10.0.0.0/8, then remove it
-    oper
-        .send_raw("ZLINE 10.0.0.0/8 :temporary test zline")
+    oper.send_raw("ZLINE 10.0.0.0/8 :temporary test zline")
         .await
         .expect("send ZLINE");
     let _ = oper
-        .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("ZLINE added")))
+        .recv_until(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("ZLINE added")),
+        )
         .await
         .expect("oper should receive ZLINE added notice");
 
-    oper
-        .send_raw("UNZLINE 10.0.0.0/8")
+    oper.send_raw("UNZLINE 10.0.0.0/8")
         .await
         .expect("send UNZLINE");
     let _ = oper
-        .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("ZLINE removed")))
+        .recv_until(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("ZLINE removed")),
+        )
         .await
         .expect("oper should receive ZLINE removed notice");
 }
@@ -457,21 +461,21 @@ async fn test_unrline_removes_ban_and_allows_reconnect() {
     become_oper(&mut oper).await;
 
     // Apply RLINE on *bob* pattern then remove it
-    oper
-        .send_raw("RLINE *bob* :rline for test")
+    oper.send_raw("RLINE *bob* :rline for test")
         .await
         .expect("send RLINE");
     let _ = oper
-        .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("RLINE added")))
+        .recv_until(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("RLINE added")),
+        )
         .await
         .expect("oper should receive RLINE confirmation");
 
-    oper
-        .send_raw("UNRLINE *bob*")
-        .await
-        .expect("send UNRLINE");
+    oper.send_raw("UNRLINE *bob*").await.expect("send UNRLINE");
     let _ = oper
-        .recv_until(|m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("RLINE removed")))
+        .recv_until(
+            |m| matches!(&m.command, Command::NOTICE(_, text) if text.contains("RLINE removed")),
+        )
         .await
         .expect("oper should receive RLINE removed notice");
 
