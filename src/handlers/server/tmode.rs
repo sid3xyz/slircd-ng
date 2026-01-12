@@ -1,4 +1,5 @@
 use crate::handlers::core::traits::ServerHandler;
+use crate::handlers::helpers::collect_message_args;
 use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::ServerState;
 use crate::state::actor::ChannelEvent;
@@ -29,12 +30,7 @@ impl ServerHandler for TModeHandler {
             .map_err(|_| HandlerError::ProtocolError(format!("Invalid timestamp: {}", ts_str)))?;
 
         // Collect mode arguments
-        let mut mode_args = Vec::new();
-        let mut arg_idx = 3;
-        while let Some(arg) = msg.arg(arg_idx) {
-            mode_args.push(arg.to_string());
-            arg_idx += 1;
-        }
+        let mode_args = collect_message_args(msg, 3);
 
         // Find channel
         let tx = ctx
