@@ -287,11 +287,7 @@ pub async fn channel_has_mode<S>(
     };
 
     let (reply_tx, reply_rx) = oneshot::channel();
-    if tx
-        .send(ChannelEvent::GetModes { reply_tx })
-        .await
-        .is_err()
-    {
+    if tx.send(ChannelEvent::GetModes { reply_tx }).await.is_err() {
         return false;
     }
 

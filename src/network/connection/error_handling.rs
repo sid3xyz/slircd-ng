@@ -44,7 +44,12 @@ pub(super) fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
                         error_msg: format!("Malformed message: {cause} (input: {string:?})"),
                     }
                 }
-                ProtocolError::InvalidUtf8 { command_hint, raw_line, details, .. } => ReadErrorAction::InvalidUtf8 {
+                ProtocolError::InvalidUtf8 {
+                    command_hint,
+                    raw_line,
+                    details,
+                    ..
+                } => ReadErrorAction::InvalidUtf8 {
                     command_hint: command_hint.clone(),
                     raw_line: raw_line.clone(),
                     details: details.clone(),
@@ -77,9 +82,13 @@ pub(super) fn extract_label_from_raw(raw_line: &[u8]) -> Option<String> {
     let mut start = 0;
     for (idx, &byte) in tags_section.iter().enumerate() {
         if byte == b';' || idx == tags_section.len() - 1 {
-            let end = if idx == tags_section.len() - 1 { idx + 1 } else { idx };
+            let end = if idx == tags_section.len() - 1 {
+                idx + 1
+            } else {
+                idx
+            };
             let tag = &tags_section[start..end];
-            
+
             // Check if this is a label tag
             if let Some(eq_pos) = tag.iter().position(|&b| b == b'=') {
                 let key = &tag[..eq_pos];
@@ -89,7 +98,7 @@ pub(super) fn extract_label_from_raw(raw_line: &[u8]) -> Option<String> {
                     return Some(String::from_utf8_lossy(value).into_owned());
                 }
             }
-            
+
             start = idx + 1;
         }
     }

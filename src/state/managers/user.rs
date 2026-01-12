@@ -278,10 +278,7 @@ impl UserManager {
         let notice_msg = Arc::new(Message {
             tags: None,
             prefix: Some(Prefix::ServerName(self.server_name.clone())),
-            command: Command::NOTICE(
-                "*".to_string(),
-                format!("*** Notice -- {}", message),
-            ),
+            command: Command::NOTICE("*".to_string(), format!("*** Notice -- {}", message)),
         });
 
         let user_data: Vec<_> = self
