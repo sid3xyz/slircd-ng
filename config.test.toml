@@ -70,3 +70,8 @@ enabled = true
 before_connect = false     # Test that server correctly enforces this restriction
 email_required = false
 custom_account_name = true
+
+[history]
+enabled = true
+backend = "redb"
+path = "data/history-test.redb"

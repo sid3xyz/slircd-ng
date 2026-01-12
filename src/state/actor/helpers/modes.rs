@@ -33,6 +33,7 @@ impl ChannelActor {
             ChannelMode::NoCtcp => Some('C'),
             ChannelMode::Permanent => Some('P'),
             ChannelMode::RegisteredOnly => Some('R'),
+            ChannelMode::Roleplay => Some('E'),
             ChannelMode::Key(_, _) | ChannelMode::Limit(_, _) => None, // Parametric modes use separate timestamp fields
         }
     }

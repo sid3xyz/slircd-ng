@@ -148,12 +148,18 @@ mod tests {
         assert_eq!(MULTILINE_MAX_LINES, 100);
 
         // Sanity check: bytes should be much larger than lines
-        assert!(MULTILINE_MAX_BYTES > MULTILINE_MAX_LINES);
+        #[allow(clippy::assertions_on_constants)]
+        {
+            assert!(MULTILINE_MAX_BYTES > MULTILINE_MAX_LINES);
+        }
     }
 
     #[test]
     fn test_supported_caps_not_empty() {
-        assert!(!SUPPORTED_CAPS.is_empty());
+        #[allow(clippy::const_is_empty)]
+        {
+            assert!(!SUPPORTED_CAPS.is_empty());
+        }
         // Should include common caps
         assert!(SUPPORTED_CAPS.contains(&Capability::Sasl));
         assert!(SUPPORTED_CAPS.contains(&Capability::MultiPrefix));

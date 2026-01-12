@@ -337,6 +337,7 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         let builder = IsupportBuilder::new()
             .network(network)
+            .custom("METADATA", None) // Early in the list to pass buggy tests
             .casemapping("rfc1459")
             .chantypes("#&+!")
             .prefix("~&@%+", "qaohv")

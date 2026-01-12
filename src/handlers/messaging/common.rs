@@ -149,6 +149,15 @@ pub struct RouteOptions {
     pub status_prefix: Option<char>,
 }
 
+/// Extra per-message metadata for routing.
+///
+/// Grouped into a struct to keep routing helpers readable and clippy-clean.
+pub struct RouteMeta {
+    pub timestamp: Option<String>,
+    pub msgid: Option<String>,
+    pub override_nick: Option<String>,
+}
+
 // ============================================================================
 // Routing Functions
 // ============================================================================
@@ -162,10 +171,15 @@ pub async fn route_to_channel_with_snapshot(
     channel_lower: &str,
     msg: Message,
     opts: &RouteOptions,
-    timestamp: Option<String>,
-    msgid: Option<String>,
+    meta: RouteMeta,
     snapshot: &SenderSnapshot,
 ) -> ChannelRouteResult {
+    let RouteMeta {
+        timestamp,
+        msgid,
+        override_nick,
+    } = meta;
+
     let channel_tx = ctx
         .matrix
         .channel_manager
@@ -207,6 +221,7 @@ pub async fn route_to_channel_with_snapshot(
             status_prefix: opts.status_prefix,
             timestamp,
             msgid,
+            override_nick,
         }),
         reply_tx,
     };

@@ -51,6 +51,8 @@ pub struct ChannelActor {
     pub topic_timestamp: Option<HybridTimestamp>,
     /// Server ID for generating hybrid timestamps.
     pub server_id: slirc_crdt::ServerId,
+    /// Channel metadata (Ergo extension)
+    pub metadata: HashMap<String, String>,
     pub topic: Option<Topic>,
     pub created: i64,
 
@@ -111,6 +113,7 @@ impl ChannelActor {
             mode_timestamps: HashMap::new(),
             topic_timestamp: None,
             server_id,
+            metadata: HashMap::new(),
             topic: initial_topic,
             created: Utc::now().timestamp(),
             bans: Vec::new(),
@@ -222,6 +225,9 @@ impl ChannelActor {
                 let modes = self.members.get(&uid).cloned();
                 let _ = reply_tx.send(modes);
             }
+            ChannelEvent::GetModes { reply_tx } => {
+                let _ = reply_tx.send(self.modes.clone());
+            }
             ChannelEvent::ApplyModes { params, reply_tx } => {
                 self.handle_apply_modes(params, reply_tx).await;
             }
@@ -278,6 +284,9 @@ impl ChannelActor {
                 self.user_nicks.remove(&uid);
                 self.user_caps.remove(&uid);
                 let _ = reply_tx.send(());
+            }
+            ChannelEvent::Metadata { command, reply_tx } => {
+                let _ = reply_tx.send(self.handle_metadata(command));
             }
         }
     }
@@ -347,6 +356,7 @@ mod tests {
             matrix: Weak::new(),
             state: ActorState::Active,
             observer: None,
+            metadata: HashMap::new(),
         }
     }
 

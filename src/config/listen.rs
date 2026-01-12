@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn client_auth_clone_and_copy() {
         let auth = ClientAuth::Optional;
-        let cloned = auth.clone();
+        let cloned = auth;
         let copied = auth; // Copy
         assert_eq!(auth, cloned);
         assert_eq!(auth, copied);

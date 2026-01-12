@@ -89,6 +89,7 @@ impl ChannelActor {
             status_prefix,
             timestamp,
             msgid,
+            override_nick,
         } = params;
 
         let is_member = self.members.contains_key(&sender_uid);
@@ -233,7 +234,10 @@ impl ChannelActor {
         let base_msg = Message {
             tags: tags.clone(),
             prefix: Some(slirc_proto::Prefix::new(
-                user_context.nickname.clone(),
+                override_nick
+                    .as_ref()
+                    .unwrap_or(&user_context.nickname)
+                    .clone(),
                 user_context.username.clone(),
                 user_context.hostname.clone(),
             )),
@@ -267,7 +271,7 @@ impl ChannelActor {
 
             if uid == &sender_uid {
                 // Echo back to sender if they have echo-message capability
-                if !sender_has_echo {
+                if !sender_has_echo && override_nick.is_none() {
                     continue;
                 }
 

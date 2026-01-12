@@ -86,6 +86,7 @@ impl ChannelActor {
                 ProtoChannelMode::OperOnly => self.set_flag_mode(ChannelMode::OperOnly, adding),
                 ProtoChannelMode::FreeInvite => self.set_flag_mode(ChannelMode::FreeInvite, adding),
                 ProtoChannelMode::TlsOnly => self.set_flag_mode(ChannelMode::TlsOnly, adding),
+                ProtoChannelMode::Roleplay => self.set_flag_mode(ChannelMode::Roleplay, adding),
                 ProtoChannelMode::Ban => {
                     if let Some(mask) = arg {
                         Self::apply_list_mode(

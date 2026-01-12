@@ -28,6 +28,8 @@ pub struct User {
     pub account: Option<String>,
     /// Away message if user is marked away (RFC 2812).
     pub away: Option<String>,
+    /// User metadata (key-value pairs) - Ergo extension.
+    pub metadata: std::collections::HashMap<String, String>,
     /// IRCv3 capabilities negotiated by this client.
     pub caps: HashSet<String>,
     /// TLS certificate fingerprint (SHA-256 hex) if client presented one.
@@ -201,6 +203,7 @@ impl User {
             modes: UserModes::default(),
             account: None,
             away: None,
+            metadata: std::collections::HashMap::new(),
             caps,
             certfp,
             silence_list: HashSet::new(),
@@ -255,6 +258,7 @@ impl User {
             modes: UserModes::from_crdt(&crdt.modes),
             account: crdt.account.value().clone(),
             away: crdt.away.value().clone(),
+            metadata: std::collections::HashMap::new(),
             caps: crdt.caps.iter().cloned().collect(),
             certfp: None,
             silence_list: crdt.silence_list.iter().cloned().collect(),
