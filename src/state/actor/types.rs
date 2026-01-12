@@ -105,6 +105,9 @@ pub struct ChannelMessageParams {
     pub status_prefix: Option<char>,
     pub timestamp: Option<String>,
     pub msgid: Option<String>,
+    /// Override the nickname in the broadcast prefix (for NPC/RELAYMSG).
+    /// If None, uses user_context.nickname. If Some, uses this value instead.
+    pub override_nick: Option<String>,
 }
 
 /// Events that can be sent to a Channel Actor.
@@ -240,7 +243,21 @@ pub enum ChannelEvent {
         uid: Uid,
         reply_tx: oneshot::Sender<()>,
     },
+    /// Metadata operation (GET, SET, LIST).
+    Metadata {
+        command: MetadataCommand,
+        reply_tx: oneshot::Sender<MetadataResult>,
+    },
 }
+
+#[derive(Debug)]
+pub enum MetadataCommand {
+    Get { key: String },
+    Set { key: String, value: Option<String> },
+    List,
+}
+
+pub type MetadataResult = Result<HashMap<String, String>, ChannelError>;
 
 /// Target for CLEAR command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

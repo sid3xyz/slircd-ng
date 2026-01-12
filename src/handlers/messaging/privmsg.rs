@@ -16,7 +16,7 @@
 
 use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_prefix};
 use super::common::{
-    ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult,
+    ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult,
     route_to_channel_with_snapshot, route_to_user_with_snapshot, send_cannot_send,
     send_no_such_channel,
 };
@@ -290,8 +290,11 @@ async fn route_to_channel_target(
             &channel_lower,
             prepared.out_msg.clone(),
             &opts,
-            Some(prepared.timestamp_iso.clone()),
-            Some(prepared.msgid.clone()),
+            RouteMeta {
+                timestamp: Some(prepared.timestamp_iso.clone()),
+                msgid: Some(prepared.msgid.clone()),
+                override_nick: None,
+            },
             snapshot,
         )
         .await
@@ -522,8 +525,19 @@ pub(super) async fn route_statusmsg(
         status_prefix: Some(prefix_char),
     };
 
-    if route_to_channel_with_snapshot(ctx, channel_lower, msg, &opts, timestamp, msgid, snapshot)
-        .await
+    if route_to_channel_with_snapshot(
+        ctx,
+        channel_lower,
+        msg,
+        &opts,
+        RouteMeta {
+            timestamp,
+            msgid,
+            override_nick: None,
+        },
+        snapshot,
+    )
+    .await
         == ChannelRouteResult::NoSuchChannel
     {
         send_no_such_channel(ctx, &snapshot.nick, original_target).await?;

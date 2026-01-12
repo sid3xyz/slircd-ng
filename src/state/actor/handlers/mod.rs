@@ -10,6 +10,7 @@ pub mod invite_knock;
 pub mod join;
 pub mod kick;
 pub mod message;
+pub mod metadata;
 pub mod modes;
 pub mod part_quit;
 pub mod remote;
