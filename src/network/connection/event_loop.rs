@@ -1,5 +1,7 @@
 use super::context::{ConnectionContext, LifecycleChannels};
-use super::error_handling::{ReadErrorAction, classify_read_error, extract_label_from_raw, handler_error_to_reply_owned};
+use super::error_handling::{
+    ReadErrorAction, classify_read_error, extract_label_from_raw, handler_error_to_reply_owned,
+};
 use super::helpers::{
     batch_end_msg, batch_start_msg, closing_link_error, excess_flood_error, flood_warning_notice,
     input_too_long_response,
@@ -192,11 +194,11 @@ pub async fn run_event_loop(
                             ReadErrorAction::InvalidUtf8 { command_hint, raw_line, details } => {
                                 warn!(command = ?command_hint, details = %details, "Invalid UTF-8 in message");
                                 let command_name = command_hint.unwrap_or_else(|| "PRIVMSG".to_string());
-                                
+
                                 // Extract label from raw bytes if present
                                 let label = extract_label_from_raw(&raw_line);
                                 let tags = label.map(|l| vec![Tag::new("label", Some(l))]);
-                                
+
                                 // Send FAIL response per IRCv3 spec
                                 let fail_msg = Message {
                                     tags,

@@ -215,14 +215,18 @@ pub async fn run_handshake_loop(
                         let _ = transport.write_message(&reply).await;
                         continue;
                     }
-                    ReadErrorAction::InvalidUtf8 { command_hint, raw_line, details } => {
+                    ReadErrorAction::InvalidUtf8 {
+                        command_hint,
+                        raw_line,
+                        details,
+                    } => {
                         warn!(command = ?command_hint, details = %details, "Invalid UTF-8 during handshake");
                         let command_name = command_hint.unwrap_or_else(|| "PRIVMSG".to_string());
-                        
+
                         // Extract label from raw bytes if present
                         let label = super::error_handling::extract_label_from_raw(&raw_line);
                         let tags = label.map(|l| vec![slirc_proto::Tag::new("label", Some(l))]);
-                        
+
                         let fail_msg = Message {
                             tags,
                             prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
