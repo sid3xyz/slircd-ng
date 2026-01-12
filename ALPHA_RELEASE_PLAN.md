@@ -132,6 +132,40 @@ After alpha release, focus on:
 
 ---
 
+## irctest Gaps (30 remaining failures)
+
+Current: **92.2% passing (357/387)**. Target: **95%+**
+
+### Already Fixed in Proto
+| Test | Status | Notes |
+|------|--------|-------|
+| CHATHISTORY TARGETS | ✅ | Fixed timestamp format |
+| InvalidUtf8 | ✅ | Preserves command name |
+| METADATA | ✅ 9/9 | Binary data supported |
+| ROLEPLAY (NPC) | ✅ | Handler implemented |
+| RELAYMSG param order | ✅ | Proto fixed |
+
+### Remaining Gaps by Category
+
+| Category | Failures | Effort | Priority |
+|----------|----------|--------|----------|
+| Bouncer resumption | 7 | VERY HIGH | ❌ 2.0 |
+| READQ (16KB limit) | 2 | LOW | ⚠️ Maybe 1.0 |
+| Channel +f forwarding | 1 | MEDIUM | ⚠️ Maybe 1.0 |
+| Unicode confusables | 1 | MEDIUM | ❌ Post-1.0 |
+| ZNC playback | 1 | MEDIUM | ❌ Post-1.0 |
+| SAREGISTER | 1 | LOW | ⚠️ Maybe 1.0 |
+| RELAYMSG label echo | 1 | LOW | ✅ Fix now |
+| Misc protocol edge cases | ~16 | VARIES | Review |
+
+### Quick Wins (Fix for Alpha)
+
+1. **RELAYMSG label echo** - Framework-level labeled-response fix
+2. **READQ disconnect** - Return 417 + disconnect instead of continue
+3. **SAREGISTER** - NickServ command variant
+
+---
+
 ## Not Required for Alpha
 
 These items are explicitly **deferred** to post-alpha:
@@ -201,6 +235,45 @@ These items are explicitly **deferred** to post-alpha:
 | Phase 2: Docs | 2 hours | Today |
 | Phase 3: Release | 1 hour | Today |
 | **Total** | **7 hours** | **January 12, 2026** |
+
+---
+
+## Competitive Position Summary
+
+See [COMPETITIVE_ANALYSIS.md](COMPETITIVE_ANALYSIS.md) for detailed comparison.
+
+### slircd-ng Unique Advantages (No Other IRCd Has)
+
+1. **SASL SCRAM-SHA-256** - Secure password authentication
+2. **Zero-copy message parsing** - Unique performance architecture  
+3. **CRDT-based federation** - Automatic conflict resolution
+4. **Native Prometheus metrics** - Built-in observability
+5. **Rust memory safety** - Entire class of security bugs eliminated
+6. **Channel actor model** - Per-channel task isolation
+7. **Typestate handlers** - Compile-time protocol state enforcement
+
+### Competitive Gaps for 1.0
+
+| Feature | Competitor | Priority | Decision |
+|---------|------------|----------|----------|
+| GeoIP/ASN lookup | UnrealIRCd | MEDIUM | ⏳ Maybe 1.0 |
+| Extended bans (full) | All | MEDIUM | ⏳ Maybe 1.0 |
+| Confusables detection | Ergo | MEDIUM | ❌ Post-1.0 |
+| JSON-RPC API | Ergo/UnrealIRCd | MEDIUM | ❌ Post-1.0 |
+| Advanced spamfilter | UnrealIRCd | MEDIUM | ❌ Post-1.0 |
+
+### Major Features Deferred to 2.0
+
+| Feature | Competitor | Reason |
+|---------|------------|--------|
+| Multi-device bouncer | Ergo | Requires major rearchitecture |
+| Always-on clients | Ergo | Session persistence rewrite |
+| Push notifications | Ergo | External service dependency |
+| Admin webpanel | UnrealIRCd | Large standalone project |
+
+### Conclusion
+
+**slircd-ng is already competitive** with major IRC servers. Release 1.0 focused on current strengths: IRCv3 compliance, integrated services, federation, security, and unique performance architecture.
 
 ---
 
