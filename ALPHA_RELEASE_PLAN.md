@@ -174,10 +174,39 @@ These items are explicitly **deferred** to post-alpha:
 |------|--------|--------|
 | PostgreSQL backend | Nice-to-have, SQLite works | 1.1+ |
 | Redis caching | Optimization, not required | 1.1+ |
-| Bouncer resumption | Advanced feature | 1.2+ |
-| ZNC integration | Niche feature | 1.2+ |
+| Bouncer features | **Major feature, see BOUNCER_DESIGN.md** | 1.2+ |
+| ZNC integration | Part of bouncer feature set | 1.2+ |
 | Third-party audit | Expensive, do after stable | 1.0+ |
 | Crates.io publish | Monorepo works fine | 1.0+ |
+
+---
+
+## Bouncer Feature Roadmap (1.2+)
+
+A comprehensive bouncer design has been created to **exceed Ergo's capabilities**.
+
+See: **[BOUNCER_DESIGN.md](BOUNCER_DESIGN.md)**
+
+### Key Advantages Over Ergo
+
+| Feature | Ergo | slircd-ng (Planned) |
+|---------|------|---------------------|
+| History Storage | MySQL required | **Redb embedded** |
+| Read Markers | 256 max, no sync | **CRDT-synced, unlimited** |
+| Federation | ❌ Single instance | ✅ **Multi-server bouncer** |
+| Encryption | ❌ | ✅ **AES-256-GCM at rest** |
+
+### Implementation Phases
+
+| Phase | Feature | Duration |
+|-------|---------|----------|
+| 1 | Multiclient (multiple sessions/nick) | 2 weeks |
+| 2 | Always-On persistence | 2 weeks |
+| 3 | History playback (better than Ergo) | 1 week |
+| 4 | **Distributed bouncer (unique!)** | 3 weeks |
+| 5 | Push notifications, encryption | 2 weeks |
+
+**Total**: ~10 weeks post-1.0
 
 ---
 

@@ -158,17 +158,25 @@ This document compares slircd-ng against the major IRC server implementations:
 | **Push notifications** | ❌ | ✅ | ❌ | ❌ | ❌ |
 
 ### Bouncer Gap Analysis (slircd-ng)
-This is Ergo's major differentiator. To match:
+This is Ergo's major differentiator. A comprehensive design has been created to **exceed Ergo's capabilities**.
 
-| Feature | Priority | Effort | Complexity |
-|---------|----------|--------|------------|
-| Multi-device same nick | HIGH | VERY HIGH | Major architecture change |
-| Always-on clients | HIGH | VERY HIGH | Requires session persistence |
-| Device-specific history | MEDIUM | HIGH | Database schema changes |
-| ZNC playback | LOW | MEDIUM | Protocol emulation |
-| Push notifications | LOW | HIGH | External service integration |
+**See: [BOUNCER_DESIGN.md](BOUNCER_DESIGN.md)**
 
-**Recommendation**: Defer bouncer features to 2.0. They require fundamental architecture changes.
+| Feature | Priority | Effort | slircd-ng Advantage |
+|---------|----------|--------|---------------------|
+| Multi-device same nick | HIGH | HIGH | Parity with Ergo |
+| Always-on clients | HIGH | HIGH | **Redb embedded (no MySQL)** |
+| Device-specific history | MEDIUM | MEDIUM | **CRDT read markers** |
+| ZNC playback | LOW | MEDIUM | Parity with Ergo |
+| **Distributed bouncer** | HIGH | VERY HIGH | **Unique to slircd-ng!** |
+| Push notifications | LOW | HIGH | Parity with Ergo |
+| **Encryption at rest** | MEDIUM | MEDIUM | **Unique to slircd-ng!** |
+
+**Key Innovation**: slircd-ng will offer **federated bouncer features** across multiple servers,
+which is architecturally impossible in Ergo (single-server only). Combined with CRDT-synced
+read markers, this creates a compelling advantage.
+
+**Timeline**: Bouncer features targeted for 1.2+ release (~10 weeks implementation).
 
 ---
 
