@@ -253,7 +253,7 @@ let _ = route_to_channel_with_snapshot(...).await;
 
 ### Test Invocation
 ```bash
-cd /home/straylight/slirc-irctest
+cd /home/straylight/slircd-ng/slirc-irctest
 
 # Single test
 SLIRCD_BIN=/home/straylight/slircd-ng/target/release/slircd \
@@ -387,9 +387,9 @@ ctx.sender.send(reply).await?;
 - `src/handlers/messaging/privmsg.rs` - Reference handler implementation
 
 **Irctest**:
-- `/home/straylight/slirc-irctest/irctest/server_tests/metadata.py` - METADATA test cases
-- `/home/straylight/slirc-irctest/irctest/server_tests/roleplay.py` - NPC/SCENE test cases
-- `/home/straylight/slirc-irctest/irctest/server_tests/relaymsg.py` - RELAYMSG test cases
+- `/home/straylight/slircd-ng/slirc-irctest/irctest/server_tests/metadata.py` - METADATA test cases
+- `/home/straylight/slircd-ng/slirc-irctest/irctest/server_tests/roleplay.py` - NPC/SCENE test cases
+- `/home/straylight/slircd-ng/slirc-irctest/irctest/server_tests/relaymsg.py` - RELAYMSG test cases
 
 **Numerics Reference**:
 - `ERR_CANNOTSENDRP` = 573 (roleplay disabled)

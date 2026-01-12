@@ -107,6 +107,36 @@ pub struct ServerConfig {
     /// Modes o, r, Z, s, S are special and cannot be set via default.
     #[serde(default)]
     pub default_user_modes: Option<String>,
+
+    /// IRC CASEMAPPING token / nickname case mapping policy.
+    ///
+    /// - `rfc1459` (default): traditional IRC case mapping (ASCII + []\\~ folding)
+    /// - `precis`: Ergo-style Unicode-aware nickname policy (enables some UTF-8 nicks)
+    #[serde(default)]
+    pub casemapping: Casemapping,
+}
+
+/// IRC casemapping policy.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Casemapping {
+    Rfc1459,
+    Precis,
+}
+
+impl Default for Casemapping {
+    fn default() -> Self {
+        Self::Rfc1459
+    }
+}
+
+impl Casemapping {
+    pub fn as_isupport_value(self) -> &'static str {
+        match self {
+            Self::Rfc1459 => "rfc1459",
+            Self::Precis => "precis",
+        }
+    }
 }
 
 /// Idle timeout configuration for client connection keepalive.
