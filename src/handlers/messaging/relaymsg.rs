@@ -14,7 +14,10 @@
 //! Only IRC operators can use this command (security measure).
 
 use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, server_reply};
-use super::common::{SenderSnapshot, RouteOptions, route_to_channel_with_snapshot, route_to_user_with_snapshot};
+use super::common::{
+    RouteMeta, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot,
+    route_to_user_with_snapshot,
+};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Prefix, Response, irc_to_lower};
@@ -24,7 +27,11 @@ pub struct RelayMsgHandler;
 
 #[async_trait]
 impl PostRegHandler for RelayMsgHandler {
-    async fn handle(&self, ctx: &mut Context<'_, RegisteredState>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(
+        &self,
+        ctx: &mut Context<'_, RegisteredState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // Extract RELAYMSG parameters
         // Proto now correctly parses: RELAYMSG <target> <relay_from> <text>
         let relay_from = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
@@ -52,13 +59,10 @@ impl PostRegHandler for RelayMsgHandler {
             return Ok(());
         }
 
-        // Build sender snapshot for routing, but override nick with relay_from
-        let mut snapshot = SenderSnapshot::build(ctx)
+        // Build sender snapshot for routing
+        let snapshot = SenderSnapshot::build(ctx)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
-        
-        // Override the snapshot nick to be the relay_from so the message appears from that nick
-        snapshot.nick = relay_from.to_string();
 
         // Create the relayed message with relay prefix
         let relay_prefix = Prefix::Nickname(
@@ -72,18 +76,26 @@ impl PostRegHandler for RelayMsgHandler {
             prefix: Some(relay_prefix),
             command: slirc_proto::Command::PRIVMSG(target.to_string(), text.to_string()),
         };
-
         // Determine if target is a channel or user
         if target.is_channel_name() {
             // Channel target
             let target_lower = irc_to_lower(target);
 
             // Check if channel exists
-            if !ctx.matrix.channel_manager.channels.contains_key(&target_lower) {
+            if !ctx
+                .matrix
+                .channel_manager
+                .channels
+                .contains_key(&target_lower)
+            {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHCHANNEL,
-                    vec![ctx.state.nick.clone(), target.to_string(), "No such channel".to_string()],
+                    vec![
+                        ctx.state.nick.clone(),
+                        target.to_string(),
+                        "No such channel".to_string(),
+                    ],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());
@@ -99,8 +111,11 @@ impl PostRegHandler for RelayMsgHandler {
                 &target_lower,
                 relayed_msg,
                 &route_opts,
-                None,
-                None,
+                RouteMeta {
+                    timestamp: None,
+                    msgid: None,
+                    override_nick: Some(relay_from.to_string()),
+                },
                 &snapshot,
             )
             .await;
@@ -119,7 +134,11 @@ impl PostRegHandler for RelayMsgHandler {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHNICK,
-                    vec![ctx.state.nick.clone(), target.to_string(), "No such nick".to_string()],
+                    vec![
+                        ctx.state.nick.clone(),
+                        target.to_string(),
+                        "No such nick".to_string(),
+                    ],
                 );
                 ctx.sender.send(reply).await?;
                 return Ok(());

@@ -1,12 +1,11 @@
-//! NPC command handler (ROLEPLAY extension).
+//! SCENE command handler (ROLEPLAY extension).
 //!
-//! The NPC command allows users to send messages to a channel as a different character/nick.
-//! This is part of the ROLEPLAY IRCv3 extension from Ergo.
+//! SCENE is strictly equivalent to `NPC <channel> scene <text>`.
+//! It allows users to set the scene/atmosphere in a roleplay channel.
 //!
-//! Format: `NPC <channel> <nick> :<text>`
+//! Format: `SCENE <channel> <text>`
 //!
-//! The message appears in the channel as if sent by the specified nick (roleplay character),
-//! but with a special prefix indicating the actual sender.
+//! The message appears as `*scene*!user@npc PRIVMSG <channel> :<text>`.
 
 use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, channel_has_mode, is_user_in_channel,
@@ -22,21 +21,26 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 use uuid::Uuid;
 
-pub struct NpcHandler;
+pub struct SceneHandler;
 
 #[async_trait]
-impl PostRegHandler for NpcHandler {
+impl PostRegHandler for SceneHandler {
     async fn handle(
         &self,
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        // Extract NPC parameters: channel, nick, text
+        // Extract parameters: channel, text
+        // SCENE <channel> <text...>
         let channel = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let npc_nick = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
 
         // Join remaining args to handle spaces without IRC trailing ':'
-        let text = join_message_args(msg, 2).ok_or(HandlerError::NeedMoreParams)?;
+        let text = join_message_args(msg, 1).ok_or(HandlerError::NeedMoreParams)?;
+        let npc_nick = "Scene"; // Capitalized for SCENE command
+
+        if channel.is_empty() {
+            return Err(HandlerError::NeedMoreParams);
+        }
 
         // Must be a valid channel name
         if !channel.is_channel_name() {
@@ -70,7 +74,7 @@ impl PostRegHandler for NpcHandler {
             return Ok(());
         };
 
-        // Check channel mode +E (roleplay enabled) - required for NPC messages
+        // Check channel mode +E (roleplay enabled) - required for SCENE/NPC messages
         if !channel_has_mode(
             ctx,
             &channel_lower,
@@ -97,8 +101,8 @@ impl PostRegHandler for NpcHandler {
             .ok_or(HandlerError::NickOrUserMissing)?;
 
         // Create the NPC message with special prefix
-        // Format: *<npc_nick>*!<real_user>@npc (asterisks on both sides per Ergo spec)
-        let wrapped_npc_nick = format!("*{}*", npc_nick);
+        // Format: =Scene=!<real_user>@npc for SCENE command
+        let wrapped_npc_nick = format!("={}=", npc_nick);
 
         let npc_msg = Message {
             tags: None,
@@ -130,6 +134,8 @@ impl PostRegHandler for NpcHandler {
         let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let msgid = Uuid::new_v4().to_string();
 
+        // Reuse route_to_channel_with_snapshot logic
+        // This handles actor dispatch and internal routing
         let route_result = route_to_channel_with_snapshot(
             ctx,
             &channel_lower,
@@ -176,13 +182,7 @@ impl PostRegHandler for NpcHandler {
             }
         }
 
-        debug!(
-            channel = %channel,
-            npc_nick = %npc_nick,
-            real_nick = %ctx.state.nick,
-            route_result = ?route_result,
-            "NPC message routing complete"
-        );
+        debug!(channel = %channel, route_result = ?route_result, "SCENE message routing complete");
 
         Ok(())
     }
