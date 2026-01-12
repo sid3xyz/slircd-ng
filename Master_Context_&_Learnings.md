@@ -9,12 +9,13 @@
 
 **Version**: 1.0.0-alpha.1  
 **irctest Compliance**: 92.2% (357/387)  
-**Unit Tests**: 664 passing  
+**Unit Tests**: 642 passing  
 
 ### Recent Milestones
 
 | Date | Achievement |
 |------|-------------|
+| 2026-01-12 | Phase 1 bouncer/multiclient foundation complete |
 | 2026-01-12 | v1.0.0-alpha.1 release preparation |
 | 2026-01-12 | PRECIS casemapping for UTF-8 nicknames |
 | 2026-01-12 | Monorepo: absorbed slirc-proto and slirc-crdt |
@@ -435,6 +436,125 @@ ctx.sender.send(reply).await?;
 - `RPL_KEYVALUE` = 761 (metadata key-value)
 - `RPL_METADATA_LIST` = 762 (metadata list)
 - `RPL_METADATA_NOMATCH` = 763 (no metadata)
+
+---
+
+## BOUNCER/MULTICLIENT ARCHITECTURE (Phase 1 Complete)
+
+### Overview
+
+Bouncer functionality enables multiple IRC clients to connect to the same account, with persistent state across disconnections (always-on mode). This is implemented via a session/client separation pattern.
+
+### Core Data Model
+
+```
+Many TCP Connections (Sessions) → One Client (Account State) → One User (Virtual Presence)
+```
+
+#### Session (Connection-Level)
+- **SessionId**: `uuid::Uuid` generated via `Uuid::new_v4()` on registration
+- **DeviceId**: Optional `String` extracted from SASL username (e.g., `alice@phone` → device `"phone"`)
+- Stored in `RegisteredState.session_id` and `RegisteredState.device_id`
+
+#### Client (Account-Level)
+- **File**: `src/state/client.rs`
+- Persists across session disconnects (if always-on enabled)
+- Tracks:
+  - Active sessions (`HashSet<SessionId>`)
+  - Channel memberships with modes
+  - Devices with last-seen timestamps
+  - Always-on and auto-away settings
+  - Dirty bits for selective persistence
+
+#### User (Virtual Presence)
+- Existing `User` struct in `src/state/user.rs`
+- One-to-one with `Client` for single-account scenarios
+- Tracks IRC-visible state (nick, modes, channels)
+
+### Key Files
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `src/state/client.rs` | Client struct, dirty bits, devices | ~300 |
+| `src/state/managers/client.rs` | ClientManager with attach/detach logic | ~450 |
+| `src/config/multiclient.rs` | MulticlientConfig, AlwaysOnPolicy, AutoAwayPolicy | ~250 |
+| `src/services/nickserv/commands/sessions.rs` | NickServ SESSIONS command | ~130 |
+
+### Session Lifecycle
+
+#### Attach (SASL Authentication)
+```rust
+// In src/handlers/cap/sasl.rs
+let (account, device_id) = extract_device_id(&username);
+attach_session_to_client(ctx, &account, device_id).await;
+```
+
+Returns `AttachResult`:
+- `Created` - New client created for account
+- `Attached { reattach, first_session }` - Session added to existing client
+- `MulticlientNotAllowed` - Account doesn't allow multiple sessions
+- `TooManySessions` - Session limit reached
+
+#### Detach (Disconnect)
+```rust
+// In src/state/matrix.rs disconnect_user()
+let result = self.client_manager.detach_session(session_id).await;
+```
+
+Returns `DetachResult`:
+- `Detached { remaining_sessions }` - Other sessions still connected
+- `Persisting` - Client persisting in always-on mode
+- `Destroyed` - Client destroyed (no always-on)
+- `NotFound` - Session wasn't tracked
+
+### Configuration
+
+```toml
+[multiclient]
+enabled = true                    # Enable multiclient functionality
+allowed_by_default = true         # Allow by default (can be per-account)
+always_on = "opt-in"             # Disabled, OptIn, OptOut, Mandatory
+always_on_expiration = "30d"     # How long to persist disconnected clients
+auto_away = "opt-out"            # Disabled, OptIn, OptOut
+max_sessions_per_account = 10    # Session limit per account
+```
+
+### NickServ SESSIONS Command
+
+```
+/msg NickServ SESSIONS           # List your own active sessions
+/msg NickServ SESSIONS <account> # List sessions for account (opers only)
+```
+
+Output:
+```
+Active sessions for alice (2 total):
+  1. Connected since: 2026-01-12 21:00:00 UTC (device: phone)
+  2. Connected since: 2026-01-12 20:30:00 UTC (device: laptop)
+End of session list.
+```
+
+### Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Client struct | ✅ Complete | Sessions, channels, devices, dirty bits |
+| ClientManager | ✅ Complete | Attach/detach/expiration logic |
+| SASL integration | ✅ Complete | Device ID extraction, session attachment |
+| Disconnect integration | ✅ Complete | Session detachment, persist check |
+| NickServ SESSIONS | ✅ Complete | List active sessions |
+| MulticlientConfig | ✅ Complete | Policies, duration parsing |
+| Always-on persistence | ⚠️ Partial | Logic present, DB persistence pending |
+| Auto-away | 🔲 Pending | Skeleton only |
+| Channel playback | 🔲 Pending | Phase 2 feature |
+
+### Next Steps (Phase 2)
+
+1. **Always-on persistence**: Save/restore client state to database
+2. **Auto-away automation**: Mark user away when no sessions connected
+3. **Channel history playback**: Send missed messages on reconnect
+4. **Device management**: NickServ commands for device naming/removal
+5. **Per-account settings**: Allow per-account multiclient/always-on config
 
 ---
 
