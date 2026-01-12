@@ -134,6 +134,10 @@ impl TestClient {
     }
 
     /// Send QUIT and close the connection.
+    ///
+    /// Note: Shared across multiple integration tests; clippy may flag it
+    /// as unused in a single test binary.
+    #[allow(dead_code)]
     pub async fn quit(&mut self, reason: Option<String>) -> anyhow::Result<()> {
         self.send(Command::QUIT(reason)).await?;
         Ok(())
