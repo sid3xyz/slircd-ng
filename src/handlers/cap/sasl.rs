@@ -5,6 +5,7 @@
 
 use super::types::{SaslState, SecureString};
 use crate::handlers::{Context, HandlerResult, UniversalHandler, notify_extended_monitor_watchers};
+use crate::state::client::DeviceId;
 use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{SaslAccess, SessionState};
 use async_trait::async_trait;
@@ -14,6 +15,108 @@ use slirc_proto::{Command, Message, MessageRef, Prefix, Response};
 use subtle::ConstantTimeEq;
 use tracing::{debug, info, warn};
 use zeroize::Zeroize;
+
+/// Extract device ID from SASL username.
+///
+/// SASL usernames can be in the format `account@device` where `device` is
+/// used as the device identifier for bouncer/multiclient functionality.
+///
+/// Examples:
+/// - `alice` → (account: "alice", device: None)
+/// - `alice@phone` → (account: "alice", device: Some("phone"))
+/// - `alice@` → (account: "alice", device: None) // empty device ignored
+/// - `@phone` → (account: "", device: Some("phone")) // invalid account handled upstream
+///
+/// Returns the account name and optional device ID.
+fn extract_device_id(username: &str) -> (String, Option<DeviceId>) {
+    if let Some(at_pos) = username.rfind('@') {
+        let account = username[..at_pos].to_string();
+        let device = &username[at_pos + 1..];
+        if device.is_empty() {
+            (account, None)
+        } else {
+            (account, Some(device.to_string()))
+        }
+    } else {
+        (username.to_string(), None)
+    }
+}
+
+/// Attach session to client manager after successful SASL authentication.
+///
+/// This is the integration point between SASL auth and the multiclient system.
+/// Called after successful authentication to register the session with the
+/// account's bouncer client state.
+async fn attach_session_to_client<S: SessionState + SaslAccess>(
+    ctx: &mut Context<'_, S>,
+    account: &str,
+    device_id: Option<DeviceId>,
+) {
+    // Skip if multiclient is disabled
+    if !ctx.matrix.config.multiclient.enabled {
+        return;
+    }
+
+    // Get session_id from the session state
+    let session_id = ctx.state.session_id();
+
+    // Get nick for client tracking
+    let nick = ctx.state.nick_or_star();
+
+    // For now, we use an empty IP string (could be enhanced to track actual IP)
+    let ip = String::new();
+
+    // Check if account is allowed for multiclient (could be account-level in future)
+    let multiclient_allowed = ctx.matrix.config.multiclient.allowed_by_default;
+
+    // Attach to client manager
+    let result = ctx.matrix.client_manager.attach_session(
+        account,
+        nick,
+        session_id,
+        device_id.clone(),
+        ip,
+        multiclient_allowed,
+    ).await;
+
+    match &result {
+        crate::state::managers::client::AttachResult::Created => {
+            debug!(
+                account = %account,
+                session_id = %session_id,
+                device = ?device_id,
+                "Created new client for account"
+            );
+        }
+        crate::state::managers::client::AttachResult::Attached { reattach, first_session } => {
+            debug!(
+                account = %account,
+                session_id = %session_id,
+                device = ?device_id,
+                reattach = %reattach,
+                first_session = %first_session,
+                "Attached session to existing client"
+            );
+        }
+        crate::state::managers::client::AttachResult::MulticlientNotAllowed => {
+            warn!(
+                account = %account,
+                "Multiclient not allowed for this account"
+            );
+        }
+        crate::state::managers::client::AttachResult::TooManySessions => {
+            warn!(
+                account = %account,
+                "Too many sessions for account"
+            );
+        }
+    }
+
+    // Store device_id in session state if we have one
+    if device_id.is_some() {
+        ctx.state.set_device_id(device_id);
+    }
+}
 
 /// Base64 encode data for SASL responses.
 fn encode_base64(data: &[u8]) -> String {
@@ -53,6 +156,7 @@ impl<S: SessionState + SaslAccess> UniversalHandler<S> for AuthenticateHandler {
             }
             SaslState::WaitingForScramClientFinal {
                 account_name,
+                device_id,
                 server_nonce,
                 salt,
                 iterations,
@@ -64,6 +168,7 @@ impl<S: SessionState + SaslAccess> UniversalHandler<S> for AuthenticateHandler {
                     &nick,
                     data,
                     &account_name,
+                    device_id,
                     &server_nonce,
                     &salt,
                     iterations,
@@ -161,7 +266,24 @@ async fn handle_sasl_external<S: SessionState + SaslAccess>(
         return Ok(());
     }
 
-    // EXTERNAL data is usually empty (+) or authzid. We ignore authzid for now and use certfp.
+    // EXTERNAL data is usually empty (+) or authzid which may contain device ID.
+    // Extract device_id from authzid if in format "account@device" or just "device"
+    let device_id = if data != "+" && !data.is_empty() {
+        // Decode the authzid to check for device_id
+        if let Ok(decoded) = slirc_proto::sasl::decode_base64(data) {
+            if let Ok(authzid) = String::from_utf8(decoded) {
+                let (_, device) = extract_device_id(&authzid);
+                device
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     // Certfp was verified in handle_sasl_init, but handle defensively
     let certfp = match ctx.state.certfp() {
         Some(fp) => fp.to_string(),
@@ -180,7 +302,10 @@ async fn handle_sasl_external<S: SessionState + SaslAccess>(
             let account_name = account.name.clone();
             send_sasl_success(ctx, nick, &account_name).await?;
             ctx.state.set_sasl_state(SaslState::Authenticated);
-            ctx.state.set_account(Some(account.name));
+            ctx.state.set_account(Some(account.name.clone()));
+
+            // Attach session to client manager for bouncer functionality
+            attach_session_to_client(ctx, &account.name, device_id).await;
 
             // Broadcast account change if post-registration
             if ctx.state.is_registered() {
@@ -238,9 +363,12 @@ async fn handle_sasl_plain_data<S: SessionState + SaslAccess>(
 
     match result {
         Ok((authzid, authcid, password)) => {
-            // Validate against database (password is SecureString, zeroized on drop)
+            // Extract device_id from authcid (e.g., "alice@phone" -> device "phone")
+            let (account_from_authcid, device_id) = extract_device_id(&authcid);
+
+            // Determine account name: prefer authzid, fall back to authcid (without device)
             let account_name_ref = if authzid.is_empty() {
-                &authcid
+                &account_from_authcid
             } else {
                 &authzid
             };
@@ -252,11 +380,14 @@ async fn handle_sasl_plain_data<S: SessionState + SaslAccess>(
                 .await
             {
                 Ok(account) => {
-                    info!(nick = %nick, account = %account.name, "SASL PLAIN authentication successful");
+                    info!(nick = %nick, account = %account.name, device = ?device_id, "SASL PLAIN authentication successful");
                     let account_name = account.name.clone();
                     send_sasl_success(ctx, nick, &account_name).await?;
                     ctx.state.set_sasl_state(SaslState::Authenticated);
-                    ctx.state.set_account(Some(account.name));
+                    ctx.state.set_account(Some(account.name.clone()));
+
+                    // Attach session to client manager for bouncer functionality
+                    attach_session_to_client(ctx, &account.name, device_id).await;
 
                     // Broadcast account change if post-registration
                     if ctx.state.is_registered() {
@@ -487,6 +618,9 @@ async fn handle_scram_client_first<S: SessionState + SaslAccess>(
         }
     };
 
+    // Extract device_id from username (e.g., "alice@phone" -> account "alice", device "phone")
+    let (account_name, device_id) = extract_device_id(&username);
+
     let client_nonce = match parse_scram_nonce(&client_first) {
         Some(n) => n,
         None => {
@@ -496,17 +630,17 @@ async fn handle_scram_client_first<S: SessionState + SaslAccess>(
         }
     };
 
-    // Look up SCRAM verifiers for this username
-    let verifiers = match ctx.db.accounts().get_scram_verifiers(&username).await {
+    // Look up SCRAM verifiers for the account (without device suffix)
+    let verifiers = match ctx.db.accounts().get_scram_verifiers(&account_name).await {
         Ok(Some(v)) => v,
         Ok(None) => {
-            warn!(nick = %nick, username = %username, "SCRAM: no verifiers for account");
+            warn!(nick = %nick, account = %account_name, device = ?device_id, "SCRAM: no verifiers for account");
             send_sasl_fail(ctx, nick, "Account not found or SCRAM not available").await?;
             ctx.state.set_sasl_state(SaslState::None);
             return Ok(());
         }
         Err(e) => {
-            warn!(nick = %nick, username = %username, error = ?e, "SCRAM: database error");
+            warn!(nick = %nick, account = %account_name, error = ?e, "SCRAM: database error");
             send_sasl_fail(ctx, nick, "Database error").await?;
             ctx.state.set_sasl_state(SaslState::None);
             return Ok(());
@@ -541,7 +675,8 @@ async fn handle_scram_client_first<S: SessionState + SaslAccess>(
     // Store state for client-final processing
     ctx.state
         .set_sasl_state(SaslState::WaitingForScramClientFinal {
-            account_name: username.to_string(),
+            account_name: account_name.clone(),
+            device_id: device_id.clone(),
             server_nonce: combined_nonce,
             salt: verifiers.salt,
             iterations: verifiers.iterations,
@@ -549,7 +684,7 @@ async fn handle_scram_client_first<S: SessionState + SaslAccess>(
             auth_message: auth_message_prefix,
         });
 
-    debug!(nick = %nick, username = %username, "SCRAM: sent server-first");
+    debug!(nick = %nick, account = %account_name, device = ?device_id, "SCRAM: sent server-first");
     Ok(())
 }
 
@@ -562,6 +697,7 @@ async fn handle_scram_client_final<S: SessionState + SaslAccess>(
     nick: &str,
     data: &str,
     account_name: &str,
+    device_id: Option<DeviceId>,
     server_nonce: &str,
     _salt: &[u8],
     _iterations: u32,
@@ -685,10 +821,13 @@ async fn handle_scram_client_final<S: SessionState + SaslAccess>(
         };
         ctx.sender.send(reply).await?;
 
-        info!(nick = %nick, account = %account_name, "SASL SCRAM-SHA-256 authentication successful");
+        info!(nick = %nick, account = %account_name, device = ?device_id, "SASL SCRAM-SHA-256 authentication successful");
         send_sasl_success(ctx, nick, account_name).await?;
         ctx.state.set_sasl_state(SaslState::Authenticated);
         ctx.state.set_account(Some(account_name.to_string()));
+
+        // Attach session to client manager for bouncer functionality
+        attach_session_to_client(ctx, account_name, device_id).await;
 
         // Broadcast account change if post-registration
         if ctx.state.is_registered() {
@@ -791,4 +930,52 @@ fn build_client_final_without_proof(client_final: &str) -> String {
         .copied()
         .collect();
     without_proof.join(",")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_device_id_no_device() {
+        let (account, device) = extract_device_id("alice");
+        assert_eq!(account, "alice");
+        assert!(device.is_none());
+    }
+
+    #[test]
+    fn test_extract_device_id_with_device() {
+        let (account, device) = extract_device_id("alice@phone");
+        assert_eq!(account, "alice");
+        assert_eq!(device, Some("phone".to_string()));
+    }
+
+    #[test]
+    fn test_extract_device_id_empty_device() {
+        let (account, device) = extract_device_id("alice@");
+        assert_eq!(account, "alice");
+        assert!(device.is_none());
+    }
+
+    #[test]
+    fn test_extract_device_id_multiple_at_signs() {
+        // Uses last @ as separator
+        let (account, device) = extract_device_id("alice@foo@phone");
+        assert_eq!(account, "alice@foo");
+        assert_eq!(device, Some("phone".to_string()));
+    }
+
+    #[test]
+    fn test_extract_device_id_empty_account() {
+        let (account, device) = extract_device_id("@phone");
+        assert_eq!(account, "");
+        assert_eq!(device, Some("phone".to_string()));
+    }
+
+    #[test]
+    fn test_extract_device_id_complex_device_name() {
+        let (account, device) = extract_device_id("alice@my-iphone-12");
+        assert_eq!(account, "alice");
+        assert_eq!(device, Some("my-iphone-12".to_string()));
+    }
 }

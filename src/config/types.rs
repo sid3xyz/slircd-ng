@@ -8,6 +8,7 @@ use super::history::HistoryConfig;
 use super::limits::LimitsConfig;
 use super::links::LinkBlock;
 use super::listen::{ListenConfig, S2STlsConfig, TlsConfig, WebSocketConfig};
+use super::multiclient::MulticlientConfig;
 use super::oper::{OperBlock, WebircBlock};
 use super::security::SecurityConfig;
 
@@ -48,6 +49,9 @@ pub struct Config {
     /// Account registration (draft/account-registration) configuration.
     #[serde(default)]
     pub account_registration: AccountRegistrationConfig,
+    /// Multiclient/bouncer configuration.
+    #[serde(default)]
+    pub multiclient: MulticlientConfig,
     /// Message of the Day configuration.
     #[serde(default)]
     pub motd: MotdConfig,

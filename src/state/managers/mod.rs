@@ -5,6 +5,7 @@
 //! the codebase easier to maintain and test.
 
 pub mod channel;
+pub mod client;
 pub mod lifecycle;
 pub mod monitor;
 pub mod security;

@@ -9,6 +9,7 @@
 //! not just markers. See [`session`] for details.
 
 mod channel;
+pub mod client;
 pub mod dashmap_ext;
 pub mod managers;
 mod matrix;
@@ -19,7 +20,9 @@ mod user;
 
 pub use crate::sync::SyncManager;
 pub use channel::{ListEntry, MemberModes, Topic};
+pub use client::{Client, DeviceId, SessionId, ChannelMembership, DeviceInfo, SessionAttachment};
 pub use managers::channel::ChannelManager;
+pub use managers::client::ClientManager;
 pub use managers::lifecycle::LifecycleManager;
 pub use managers::monitor::MonitorManager;
 pub use managers::security::{SecurityManager, SecurityManagerParams};

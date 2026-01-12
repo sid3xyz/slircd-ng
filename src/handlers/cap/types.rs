@@ -1,3 +1,4 @@
+use crate::state::client::DeviceId;
 use slirc_proto::Capability;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -80,6 +81,8 @@ pub enum SaslState {
     WaitingForScramClientFinal {
         /// The account name being authenticated.
         account_name: String,
+        /// Device identifier extracted from SCRAM username (for bouncer/multiclient).
+        device_id: Option<DeviceId>,
         /// Server nonce (combines client nonce + our random part).
         server_nonce: String,
         /// SCRAM verifiers from database.
