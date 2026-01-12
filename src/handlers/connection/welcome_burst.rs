@@ -338,7 +338,7 @@ impl<'a> WelcomeBurstWriter<'a> {
         let builder = IsupportBuilder::new()
             .network(network)
             .custom("METADATA", None) // Early in the list to pass buggy tests
-            .casemapping("rfc1459")
+            .casemapping(self.matrix.config.server.casemapping.as_isupport_value())
             .chantypes("#&+!")
             .prefix("~&@%+", "qaohv")
             .chanmodes_typed(chanmodes)

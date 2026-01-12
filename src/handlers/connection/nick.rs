@@ -31,6 +31,8 @@ use slirc_proto::{Command, Message, MessageRef, NickExt, Prefix, Response, irc_t
 use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
+const DEFAULT_NICK_MAX_LEN: usize = 30;
+
 #[allow(clippy::result_large_err)]
 fn parse_nick_params<'a>(msg: &MessageRef<'a>) -> Result<&'a str, HandlerError> {
     let nick = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
@@ -48,6 +50,36 @@ fn validate_nick(nick: &str) -> Result<(), HandlerError> {
     Ok(())
 }
 
+fn is_special(c: char) -> bool {
+    matches!(c, '[' | ']' | '\\' | '`' | '_' | '^' | '{' | '|' | '}')
+}
+
+fn is_valid_nick_precis(nick: &str) -> bool {
+    if nick.is_empty() {
+        return false;
+    }
+
+    // Keep the same limit we advertise in ISUPPORT (NICKLEN=30).
+    // For now we treat this as a byte limit, matching existing RFC1459 validation.
+    if nick.len() > DEFAULT_NICK_MAX_LEN {
+        return false;
+    }
+
+    let mut chars = nick.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+
+    // Under PRECIS, allow Unicode letters as the first character,
+    // plus RFC special characters.
+    if !(first.is_alphabetic() || is_special(first)) {
+        return false;
+    }
+
+    // Remaining characters: Unicode letters/digits, RFC specials, or hyphen.
+    chars.all(|c| c.is_alphanumeric() || is_special(c) || c == '-')
+}
+
 pub struct NickHandler;
 
 #[async_trait]
@@ -55,7 +87,15 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
     async fn handle(&self, ctx: &mut Context<'_, S>, msg: &MessageRef<'_>) -> HandlerResult {
         // NICK <nickname>
         let nick = parse_nick_params(msg)?;
-        validate_nick(nick)?;
+
+        match ctx.matrix.config.server.casemapping {
+            crate::config::Casemapping::Rfc1459 => validate_nick(nick)?,
+            crate::config::Casemapping::Precis => {
+                if !is_valid_nick_precis(nick) {
+                    return Err(HandlerError::ErroneousNickname(nick.to_string()));
+                }
+            }
+        }
 
         let nick_lower = irc_to_lower(nick);
 
@@ -353,5 +393,12 @@ mod tests {
 
         let err = validate_nick("").unwrap_err();
         assert!(matches!(err, HandlerError::ErroneousNickname(_)));
+    }
+
+    #[test]
+    fn test_validate_nick_precis_unicode() {
+        assert!(is_valid_nick_precis("Işıl"));
+        assert!(!is_valid_nick_precis("1Işıl"));
+        assert!(!is_valid_nick_precis("Işıl space"));
     }
 }

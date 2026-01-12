@@ -11,6 +11,9 @@ data/
 slircd.log
 *.log
 
+# External irctest checkout (kept local, not committed)
+slirc-irctest/
+
 # Secrets and Keys
 *.pem
 *.key
@@ -65,4 +68,3 @@ tls/
 # Service files with paths
 *.service
 !*.service.example
-crates/

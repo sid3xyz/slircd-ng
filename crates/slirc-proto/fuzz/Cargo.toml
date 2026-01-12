@@ -1,0 +1,39 @@
+[package]
+name = "slirc-proto-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.slirc-proto]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[[bin]]
+name = "message_parser"
+path = "fuzz_targets/message_parser.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "ctcp_parser"
+path = "fuzz_targets/ctcp_parser.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "prefix_parser"
+path = "fuzz_targets/prefix_parser.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "mode_parser"
+path = "fuzz_targets/mode_parser.rs"
+test = false
+doc = false

@@ -6,8 +6,9 @@ set -euo pipefail
 # - Disables pytest output capture to avoid large in-memory buffers.
 # - Runs under a systemd user scope with a hard memory cap to prevent OOM reboots.
 
-IRCTEST_ROOT=${IRCTEST_ROOT:-/home/straylight/slirc-irctest}
-SLIRCD_BIN=${SLIRCD_BIN:-/home/straylight/target/release/slircd}
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+IRCTEST_ROOT=${IRCTEST_ROOT:-"$REPO_ROOT/slirc-irctest"}
+SLIRCD_BIN=${SLIRCD_BIN:-"$REPO_ROOT/target/release/slircd"}
 MEM_MAX=${MEM_MAX:-4G}
 SWAP_MAX=${SWAP_MAX:-0}
 KILL_SLIRCD=${KILL_SLIRCD:-1}
@@ -19,7 +20,7 @@ fi
 
 if [[ ! -x "$SLIRCD_BIN" ]]; then
   echo "SLIRCD_BIN not found or not executable: $SLIRCD_BIN" >&2
-  echo "Build with: (cd /home/straylight/slircd-ng && cargo build --release)" >&2
+  echo "Build with: (cd $REPO_ROOT && cargo build --release)" >&2
   exit 2
 fi
 
