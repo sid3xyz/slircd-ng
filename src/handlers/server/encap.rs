@@ -1,4 +1,5 @@
 use crate::handlers::core::traits::ServerHandler;
+use crate::handlers::helpers::collect_message_args;
 use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::ServerState;
 use async_trait::async_trait;
@@ -101,12 +102,7 @@ impl ServerHandler for EncapHandler {
             let source_sid = ServerId::new(ctx.state.sid.clone());
 
             // Reconstruct the ENCAP message for propagation
-            let mut idx = 2;
-            let mut params: Vec<String> = Vec::new();
-            while let Some(arg) = msg.arg(idx) {
-                params.push(arg.to_string());
-                idx += 1;
-            }
+            let params = collect_message_args(msg, 2);
 
             let encap_msg = Message {
                 tags: None,

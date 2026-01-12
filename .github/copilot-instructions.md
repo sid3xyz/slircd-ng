@@ -13,6 +13,9 @@ cargo test                      # Run 604+ tests
 cargo clippy -- -D warnings     # Lint (must pass)
 cargo fmt -- --check            # Format check
 ./target/release/slircd config.toml  # Run daemon
+
+# Memory-safe irctest (never run full suite without a hard cap)
+MEM_MAX=4G SWAP_MAX=0 KILL_SLIRCD=1 ./scripts/irctest_safe.sh irctest/server_tests/utf8.py
 ```
 
 ---
@@ -27,6 +30,7 @@ cargo fmt -- --check            # Format check
 | Error handling | Use `?` propagation; avoid `unwrap()`/`expect()` except in main.rs |
 | Allocation discipline | Zero-copy hot loop using `MessageRef<'a>` from slirc-proto |
 | RFC compliance | Strict adherence to RFC 1459, RFC 2812, IRCv3 |
+| **PROTO-FIRST RULE** | **NEVER create daemon workarounds for proto bugs. ALWAYS fix slirc-proto first, then update daemon. Document proto issues in PROTO_REQUIREMENTS.md before implementing any workaround.** |
 
 ---
 
@@ -56,7 +60,12 @@ Before writing code:
 
 1. **Check slirc-proto**: Does the `Command` variant exist? Is the numeric reply defined?
    - ✅ If yes: Proceed to handler implementation
-   - ❌ If no: **STOP.** Output: `"🛑 Blocking: slirc-proto needs [Command::X / Numeric::RPL_Y]. Do not hack with Command::Raw."`
+   - ❌ If no: **STOP.** Immediately document the blocker in [PROTO_REQUIREMENTS.md](../PROTO_REQUIREMENTS.md) with:
+     - What feature is blocked
+     - How many tests/features depend on it
+     - Proposed solution (with options if applicable)
+     - Then pause implementation until proto team responds
+   - **Never** hack with `Command::Raw` or work around missing proto support
 
 2. **Check ARCHITECTURE.md**: Verify phase alignment and design principles.
 
@@ -278,7 +287,8 @@ ls -la *.md  # Should only be: README, ARCHITECTURE, CHANGELOG, ROADMAP, DEPLOYM
 
 - **Unit tests**: 637+ tests, run with `cargo test`
 - **Integration tests**: `tests/` directory (ircv3_features, distributed_sync)
-- **irctest compliance**: 269/306 passing (88%)
+- **irctest compliance**: 328/387 passing (84.8%) - see `/home/straylight/slirc-irctest/IRCTEST_RESULTS.md`
+- **irctest invocation**: `cd /home/straylight/slirc-irctest && SLIRCD_BIN=/home/straylight/target/release/slircd pytest --controller=irctest.controllers.slircd irctest/server_tests/`
 - **Round-trip tests**: Parse → Handle → Serialize → Parse
 - **No load/fuzz tests yet**: See ROADMAP_TO_1.0.md
 

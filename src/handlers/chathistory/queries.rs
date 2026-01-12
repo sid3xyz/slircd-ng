@@ -309,8 +309,12 @@ impl QueryExecutor {
         start_str: &str,
         end_str: &str,
     ) -> Result<Vec<StoredMessage>, HandlerError> {
+        // Parse start parameter
+        // If "*", default to 30 days ago (staleness filter)
+        // Otherwise, use explicit timestamp
         let start = if start_str == "*" {
-            0
+            let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+            now - (30 * 24 * 60 * 60 * 1_000_000_000i64) // 30 days ago
         } else {
             MessageReference::parse(start_str)
                 .ok()

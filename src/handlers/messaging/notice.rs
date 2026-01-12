@@ -4,7 +4,7 @@
 
 use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_prefix};
 use super::common::{
-    ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult,
+    ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult,
     route_to_channel_with_snapshot, route_to_user_with_snapshot,
 };
 use super::validation::{ErrorStrategy, validate_message_send};
@@ -153,8 +153,11 @@ impl PostRegHandler for NoticeHandler {
                 &channel_lower,
                 out_msg,
                 &opts,
-                Some(timestamp_iso.clone()),
-                Some(msgid.clone()),
+                RouteMeta {
+                    timestamp: Some(timestamp_iso.clone()),
+                    msgid: Some(msgid.clone()),
+                    override_nick: None,
+                },
                 &snapshot,
             )
             .await

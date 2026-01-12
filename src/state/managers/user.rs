@@ -273,6 +273,30 @@ impl UserManager {
         }
     }
 
+    /// Send a server notice to all IRC operators, regardless of snomask subscriptions.
+    pub async fn send_notice_to_opers(&self, message: &str) {
+        let notice_msg = Arc::new(Message {
+            tags: None,
+            prefix: Some(Prefix::ServerName(self.server_name.clone())),
+            command: Command::NOTICE("*".to_string(), format!("*** Notice -- {}", message)),
+        });
+
+        let user_data: Vec<_> = self
+            .users
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect();
+
+        for (uid, user_arc) in user_data {
+            let user_guard = user_arc.read().await;
+            if user_guard.modes.oper
+                && let Some(sender) = self.senders.get_cloned(&uid)
+            {
+                let _ = sender.send(notice_msg.clone()).await;
+            }
+        }
+    }
+
     /// Record a WHOWAS entry for a user who is disconnecting.
     ///
     /// Entries are stored per-nick (lowercase) with most recent first.

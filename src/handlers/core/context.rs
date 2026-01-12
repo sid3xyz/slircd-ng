@@ -270,3 +270,29 @@ pub async fn is_user_in_channel<S>(ctx: &Context<'_, S>, uid: &str, channel_lowe
         false
     }
 }
+/// Check if a channel has a specific mode set.
+///
+/// Returns true if the channel has the mode, false otherwise (including if channel doesn't exist).
+pub async fn channel_has_mode<S>(
+    ctx: &Context<'_, S>,
+    channel_lower: &str,
+    mode: crate::state::actor::ChannelMode,
+) -> bool {
+    use crate::state::actor::ChannelEvent;
+    use tokio::sync::oneshot;
+
+    let tx = match ctx.matrix.channel_manager.channels.get(channel_lower) {
+        Some(tx_ref) => tx_ref.value().clone(),
+        None => return false,
+    };
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    if tx.send(ChannelEvent::GetModes { reply_tx }).await.is_err() {
+        return false;
+    }
+
+    match reply_rx.await {
+        Ok(modes) => modes.contains(&mode),
+        Err(_) => false,
+    }
+}

@@ -48,17 +48,15 @@ pub async fn send_history_batch(
     for msg in messages {
         if msg.envelope.command == "TARGET" {
             // Special handling for TARGETS response
+            // Format: CHATHISTORY TARGETS <target> <timestamp>
+            let timestamp = msg.envelope.text.clone();
             let history_msg = Message {
                 tags: Some(vec![Tag::new("batch", Some(batch_id.clone()))]),
                 prefix: None,
-                command: Command::Raw(
-                    "CHATHISTORY".to_string(),
-                    vec![
-                        "TARGETS".to_string(),
-                        msg.target.clone(),
-                        msg.envelope.text.clone(),
-                    ],
-                ),
+                command: Command::ChatHistoryTargets {
+                    target: msg.target.clone(),
+                    timestamp,
+                },
             };
             ctx.sender.send(history_msg).await?;
             continue;

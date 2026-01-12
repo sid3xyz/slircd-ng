@@ -11,13 +11,21 @@
 mod accept;
 mod common;
 mod errors;
+mod metadata;
 mod notice;
+mod npc;
 mod privmsg;
+mod relaymsg;
+mod scene;
 mod validation;
 
 pub use accept::AcceptHandler;
+pub use metadata::MetadataHandler;
 pub use notice::NoticeHandler;
+pub use npc::NpcHandler;
 pub use privmsg::PrivmsgHandler;
+pub use relaymsg::RelayMsgHandler;
+pub use scene::SceneHandler;
 
 use super::{HandlerError, HandlerResult, user_prefix};
 use crate::history::types::MessageTag as HistoryTag;
@@ -32,9 +40,9 @@ use tracing::debug;
 use uuid::Uuid;
 
 use common::{
-    ChannelRouteResult, RouteOptions, SenderSnapshot, UserRouteResult, is_shunned_with_snapshot,
-    route_to_channel_with_snapshot, route_to_user_with_snapshot, send_cannot_send,
-    send_no_such_channel,
+    ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult,
+    is_shunned_with_snapshot, route_to_channel_with_snapshot, route_to_user_with_snapshot,
+    send_cannot_send, send_no_such_channel,
 };
 
 // ============================================================================
@@ -148,8 +156,11 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                 &channel_lower,
                 out_msg,
                 &opts,
-                None,
-                Some(msgid.clone()),
+                RouteMeta {
+                    timestamp: None,
+                    msgid: Some(msgid.clone()),
+                    override_nick: None,
+                },
                 &snapshot,
             )
             .await

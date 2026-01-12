@@ -214,6 +214,16 @@ impl Database {
             info!("Database migrations applied (006_reputation)");
         }
 
+        // 007_scram_verifiers.sql: SCRAM-SHA-256 columns for SASL authentication.
+        if !column_exists(pool, "accounts", "scram_salt").await {
+            Self::run_migration_file(
+                pool,
+                include_str!("../../migrations/007_scram_verifiers.sql"),
+            )
+            .await;
+            info!("Database migrations applied (007_scram_verifiers)");
+        }
+
         // Best-effort informational log.
         if core_ok
             && table_exists(pool, "shuns").await
@@ -224,6 +234,7 @@ impl Database {
             && column_exists(pool, "accounts", "certfp").await
             && column_exists(pool, "channels", "topic_text").await
             && table_exists(pool, "reputation").await
+            && column_exists(pool, "accounts", "scram_salt").await
         {
             info!("Database already initialized");
         }
