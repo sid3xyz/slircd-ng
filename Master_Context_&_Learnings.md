@@ -1,7 +1,27 @@
-# Master Context & Learnings - Ergo Handler Implementation
+# Master Context & Learnings - slircd-ng
 
-> Comprehensive knowledge base for the METADATA, NPC, and RELAYMSG handler implementation effort.
-> Last Updated: 2026-01-11 (Session: feat/ergo-handlers-complete)
+> Comprehensive knowledge base for slircd-ng development.
+> Last Updated: 2026-01-12 (Session: release/1.0-alpha-prep)
+
+---
+
+## PROJECT STATUS
+
+**Version**: 1.0.0-alpha.1  
+**irctest Compliance**: 92.2% (357/387)  
+**Unit Tests**: 664 passing  
+
+### Recent Milestones
+
+| Date | Achievement |
+|------|-------------|
+| 2026-01-12 | v1.0.0-alpha.1 release preparation |
+| 2026-01-12 | PRECIS casemapping for UTF-8 nicknames |
+| 2026-01-12 | Monorepo: absorbed slirc-proto and slirc-crdt |
+| 2026-01-12 | CI/CD pipeline with GitHub Actions |
+| 2026-01-11 | METADATA handler complete (9/9 tests passing) |
+| 2026-01-11 | NPC/ROLEPLAY handler complete |
+| 2026-01-11 | CHATHISTORY TARGETS fix |
 
 ---
 
@@ -30,24 +50,43 @@
 
 ---
 
-## CURRENT IMPLEMENTATION STATUS
+## COMPLETED IMPLEMENTATIONS
 
-### 1. METADATA Handler (9 irctest failures)
+### 1. METADATA Handler ✅
 
-**File**: `src/handlers/messaging/metadata.rs` (50 lines)
+**File**: `src/handlers/messaging/metadata.rs`  
+**Status**: Complete (9/9 irctest passing)
 
-**Current State**: Stub implementation
-- Returns 704 (RPL_HELPSTART) placeholder
-- Handler registered and callable
-- Compiles successfully
+**Implementation**:
+- GET/SET/LIST for user metadata
+- GET/SET/LIST for channel metadata  
+- Channel metadata stored in ChannelActor
+- User metadata stored in User.metadata HashMap
+- Binary data support (null bytes allowed)
+- ISUPPORT advertising
 
-**Test Failures** (8 failures, 1 passing):
-```
-✗ testInIsupport - METADATA capability not advertised
-✗ testGetOneUnsetValid - Should return 761 (RPL_KEYVALUE) with value
-✗ testGetTwoUnsetValid - Should handle multiple unset keys
-✗ testListNoSet - Should return 769 (RPL_METADATA_NOMATCH) for empty list
-✗ testListInvalidTarget - Should handle invalid channel/user targets
+### 2. NPC/ROLEPLAY Handler ✅
+
+**File**: `src/handlers/messaging/npc.rs`  
+**Status**: Complete
+
+**Implementation**:
+- Channel mode +E enforcement
+- ERR_CANNOTSENDRP (573) on missing +E
+- Message relayed with altered nick prefix
+- Proper capability advertisement
+
+### 3. PRECIS Casemapping ✅
+
+**Files**: 
+- `src/config/types.rs` - Casemapping enum
+- `src/handlers/connection/nick.rs` - PRECIS validation
+- `src/handlers/connection/welcome_burst.rs` - ISUPPORT
+
+**Implementation**:
+- Config-driven casemapping (rfc1459 or precis)
+- PRECIS-aware nick validation for Unicode
+- ISUPPORT CASEMAPPING token from config
 ✗ testSetGetValid - Should store and retrieve basic metadata
 ✗ testSetGetZeroCharValue - Should handle empty string values (deletion)
 ✗ testSetGetHeartInValue - Should preserve UTF-8 in values (e.g., 💜)

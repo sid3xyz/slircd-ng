@@ -1,9 +1,13 @@
 [package]
 name = "slircd-ng"
-version = "0.1.0"
+version = "1.0.0-alpha.1"
 edition = "2024"
 license = "Unlicense"
 description = "Straylight IRC Daemon - Next Generation"
+repository = "https://github.com/sid3xyz/slircd-ng"
+readme = "README.md"
+keywords = ["irc", "ircd", "server", "async", "tokio"]
+categories = ["network-programming"]
 
 [workspace]
 members = [".", "crates/slirc-proto", "crates/slirc-crdt"]

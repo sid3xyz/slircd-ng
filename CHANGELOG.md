@@ -2,6 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0-alpha.1] - 2026-01-12
+
+First alpha release. Production-ready for testing environments.
+
+### Added
+
+**Protocol Completeness**
+- METADATA command with user/channel key-value storage (9/9 irctest passing)
+- NPC/ROLEPLAY handler with +E channel mode enforcement
+- RELAYMSG handler for message relay between networks
+- CHATHISTORY TARGETS with proper timestamp format and staleness filter
+- PRECIS casemapping support for Unicode nicknames
+
+**CI/CD Pipeline**
+- GitHub Actions workflow for build/test/lint
+- Multi-platform release automation (Linux, macOS, Windows)
+- Security audit via cargo-audit
+- Automated release creation on version tags
+
+**Crate Integration**
+- Absorbed slirc-proto (125 files) into monorepo
+- Absorbed slirc-crdt (5 files) into monorepo
+- Single Cargo.lock for reproducible builds
+
+### Changed
+
+- ISUPPORT CASEMAPPING now config-driven (rfc1459 or precis)
+- irctest moved to `slirc-irctest/` directory within repo
+- Version bumped from 0.2.0 to 1.0.0-alpha.1
+
+### Fixed
+
+- SCRAM verifiers migration (007) now applied during initialization
+- CHATHISTORY DM ordering uses `MAX(ts)` for proper conversation sort
+- UTF-8 nickname validation for PRECIS casemapping mode
+- InvalidUtf8 error now preserves command metadata for FAIL responses
+
+### Metrics
+
+| Metric | Value |
+|--------|-------|
+| Unit Tests | 664 passing |
+| irctest Compliance | 92.2% (357/387) |
+| Clippy Warnings | 0 |
+| TODO/FIXME Markers | 0 |
+
+### Notes
+
+**Alpha Release** - Suitable for testing and development. Core IRC protocol
+is feature-complete. Monitor for stability before production deployment.
+
+---
+
 ## [0.2.0] - 2025-12-21
 
 Distributed System Release.

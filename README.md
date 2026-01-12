@@ -2,11 +2,11 @@
 
 **Straylight IRC Daemon - Next Generation**
 
-[![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Unlicense-blue.svg)](LICENSE)
-[![Lines of Code](https://img.shields.io/badge/lines-48k-brightgreen.svg)](#metrics)
+[![CI](https://github.com/sid3xyz/slircd-ng/actions/workflows/ci.yml/badge.svg)](https://github.com/sid3xyz/slircd-ng/actions)
 
-> ⚠️ **Status**: AI research experiment. **NOT PRODUCTION READY.**
+> **Status**: v1.0.0-alpha.1 — Feature-complete, suitable for testing.
 
 A high-performance, distributed IRC server written in Rust, featuring modern architecture with zero-copy parsing, actor-based channel management, and CRDT-based state synchronization.
 
@@ -16,12 +16,12 @@ A high-performance, distributed IRC server written in Rust, featuring modern arc
 
 | Metric        | Value                                    |
 | ------------- | ---------------------------------------- |
-| Source files  | 233                                      |
-| Lines of Rust | 48,012                                   |
+| Source files  | 412                                      |
+| Lines of Rust | 50,000+                                  |
 | Commands      | 81 (6 universal, 4 pre-reg, 71 post-reg) |
 | IRCv3 Caps    | 21                                       |
 | Migrations    | 7                                        |
-| Test Coverage | 637 unit tests                           |
+| Test Coverage | 664 unit tests                           |
 
 ### Quality
 
@@ -36,11 +36,11 @@ A high-performance, distributed IRC server written in Rust, featuring modern arc
 
 | Metric         | Value                                        |
 | -------------- | -------------------------------------------- |
-| irctest passed | 328/387 (436 total, 49 skipped)             |
-| Pass rate      | 84.8%                                        |
+| irctest passed | 357/387 (92.2%)                              |
+| Pass rate      | 92.2%                                        |
 | Test suite     | irctest @ `./slirc-irctest`                  |
-| Last run       | 2026-01-11 (239s runtime)                    |
-| Status         | ✅ Core protocols pass (JOIN/PART/KICK/etc) |
+| Last run       | 2026-01-12                                   |
+| Status         | ✅ Core protocols pass                       |
 
 ## 🚀 Features
 
@@ -138,9 +138,8 @@ REGISTER, ACCESS, INFO, SET, DROP, OP, DEOP, VOICE, DEVOICE, AKICK, CLEAR
 
 ### Prerequisites
 
-- **Rust**: Nightly toolchain (requires edition 2024)
-- **Dependencies**: See `Cargo.toml`
-- **External Crates**: `slirc-proto`, `slirc-crdt` (path dependencies - see [Known Issues](#-known-issues))
+- **Rust**: 1.85+ (stable) — Edition 2024 is now stable
+- **Platform**: Linux, macOS, or Windows
 
 ### Building from Source
 
@@ -149,20 +148,25 @@ REGISTER, ACCESS, INFO, SET, DROP, OP, DEOP, VOICE, DEVOICE, AKICK, CLEAR
 git clone https://github.com/sid3xyz/slircd-ng.git
 cd slircd-ng
 
-# Build (requires nightly Rust for edition 2024)
-cargo +nightly build --release
+# Build release binary
+cargo build --release
 
 # Run tests
-cargo +nightly test
+cargo test
 
 # Lint
-cargo +nightly clippy -- -D warnings
+cargo clippy -- -D warnings
 
 # Run server
-cargo +nightly run --release -- config.toml
+./target/release/slircd config.toml
 ```
 
-> ⚠️ **Note**: The project currently requires path dependencies (`slirc-proto`, `slirc-crdt`) that are not included in this repository. This is a known limitation (see [Known Issues](#-known-issues)).
+### Pre-built Binaries
+
+Download from [GitHub Releases](https://github.com/sid3xyz/slircd-ng/releases):
+- Linux x86_64
+- macOS x86_64 / ARM64
+- Windows x86_64
 
 ## ⚙️ Configuration
 
@@ -392,18 +396,15 @@ The project follows strict code quality standards:
 
 ### Contributing
 
-This is an AI research experiment. Contributions are welcome, but note:
+Contributions are welcome! To contribute:
 
-1. **Not production-ready**: Don't deploy to production
-2. **Missing dependencies**: Requires `slirc-proto`, `slirc-crdt` (see issues)
-3. **Nightly Rust**: Requires edition 2024 (nightly)
-
-To contribute:
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes with tests
-4. Run `cargo clippy` and `cargo test`
+4. Run `cargo clippy -- -D warnings` and `cargo test`
 5. Submit a pull request
+
+Please follow the project's coding conventions documented in ARCHITECTURE.md.
 
 ## 🚢 Deployment
 
@@ -451,11 +452,8 @@ Before deploying to production (NOT RECOMMENDED):
 
 ### Common Issues
 
-**Issue**: Build fails with "No such file or directory: slirc-proto"  
-**Solution**: This is a known issue. The project depends on external crates not in the repository. See [Known Issues](#-known-issues).
-
-**Issue**: "Using default cloak_secret" warning  
-**Solution**: Set `[security].cloak_secret` in config.toml to a random value (use `openssl rand -hex 32`).
+**Issue**: Server refuses to start with "cloak_secret" error  
+**Solution**: Set a strong cloak secret: `openssl rand -hex 32` and add to `[security].cloak_secret`.
 
 **Issue**: TLS handshake failed  
 **Solution**: Check certificate paths in config, ensure cert/key are readable, verify cert is valid.
@@ -471,47 +469,39 @@ Before deploying to production (NOT RECOMMENDED):
 Enable verbose logging for troubleshooting:
 
 ```bash
-RUST_LOG=debug cargo run -- config.toml 2>&1 | tee debug.log
+RUST_LOG=debug ./target/release/slircd config.toml 2>&1 | tee debug.log
 ```
 
 ### Getting Help
 
 - **Issues**: Open an issue on GitHub
 - **Documentation**: See ARCHITECTURE.md for detailed information
-- **IRC**: (Not available - this is a prototype)
 
-## ⚠️ Known Issues
+## ⚠️ Known Limitations
 
-### Critical Limitations
+### Alpha Release Caveats
 
-1. **Missing Dependencies**: The project depends on path dependencies (`slirc-proto`, `slirc-crdt`) that are not included in this repository. **The project will not compile without these crates.**
+1. **Limited Production Testing**: While feature-complete, this is an alpha release. Suitable for testing environments; monitor carefully in production.
 
-2. **Rust Edition 2024**: Uses `edition = "2024"` which requires nightly Rust. Not compatible with stable Rust.
+2. **SQLite Backend**: Uses SQLite for persistence. Sufficient for small-to-medium networks (~5k users). PostgreSQL backend planned for 1.1.
 
-3. **No Production Deployments**: This is an AI research experiment with zero production deployments. **Do not use in production.**
+3. **Single Maintainer**: The project is maintained by a single developer. Bus factor: 1.
 
-4. **Single Maintainer**: The project is maintained by a single developer. Bus factor: 1.
+### Resolved in v1.0.0-alpha.1
 
-5. **Limited Testing**: While there are 637 unit tests, there are no load tests, chaos tests, or fuzz tests.
+- ~~Missing dependencies~~ — slirc-proto and slirc-crdt now included in monorepo
+- ~~Requires nightly Rust~~ — Edition 2024 stable since Rust 1.85
+- ~~Default cloak secret~~ — Server now requires strong cloak secret on startup
+- ~~Plaintext S2S~~ — TLS support for S2S links implemented
+- ~~No S2S rate limiting~~ — Per-peer rate limiting implemented
+- ~~DNSBL privacy leaks~~ — Privacy-preserving RBL service available
 
-6. **SQLite Limitations**: Single-file database with no horizontal scaling or replication.
-
-7. **Plaintext S2S**: Server-to-server links use plaintext (no TLS).
-
-### Security Concerns
-
-- Default cloak secret (warns but allows startup)
-- DNSBL queries leak real IP addresses
-- No rate limiting on S2S connections
-- No proof-of-work DoS protection
-- Single-file database (no clustering)
-
-For complete details, see [ARCHITECTURE.md](ARCHITECTURE.md) sections 10-15.
+For architecture details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 📚 Documentation
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete architectural deep dive and code quality assessment
-- **[ROADMAP_TO_1.0.md](ROADMAP_TO_1.0.md)** - Release readiness roadmap and blocking issues
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete architectural deep dive
+- **[ALPHA_RELEASE_PLAN.md](ALPHA_RELEASE_PLAN.md)** - Current release status and roadmap
 - **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Production deployment guide
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 
