@@ -35,6 +35,7 @@ use crate::state::{
     ChannelManager, LifecycleManager, MonitorManager, SecurityManager, SecurityManagerParams,
     ServiceManager, SyncManager, Uid, UserManager,
 };
+use crate::state::managers::client::ClientManager;
 use slirc_crdt::clock::ServerId;
 
 use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
@@ -54,6 +55,9 @@ pub struct Matrix {
 
     /// Channel management state.
     pub channel_manager: ChannelManager,
+
+    /// Client management state (bouncer/multiclient support).
+    pub client_manager: ClientManager,
 
     /// Security management state.
     pub security_manager: SecurityManager,
@@ -94,6 +98,8 @@ pub struct MatrixConfig {
     pub security: SecurityConfig,
     /// Account registration configuration.
     pub account_registration: crate::config::AccountRegistrationConfig,
+    /// Multiclient/bouncer configuration.
+    pub multiclient: crate::config::MulticlientConfig,
     /// Command output limits (WHO, LIST, NAMES).
     pub limits: crate::config::LimitsConfig,
     /// History configuration (Innovation 5: Event-Sourced History).
@@ -192,6 +198,7 @@ impl Matrix {
             Self {
                 user_manager,
                 channel_manager,
+                client_manager: ClientManager::new(),
                 security_manager: SecurityManager::new(SecurityManagerParams {
                     security_config: &config.security,
                     db: Some(db.clone()),
@@ -222,6 +229,7 @@ impl Matrix {
                     oper_blocks: config.oper.clone(),
                     security: config.security.clone(),
                     account_registration: config.account_registration.clone(),
+                    multiclient: config.multiclient.clone(),
                     limits: config.limits.clone(),
                     history: config.history.clone(),
                     links: config.links.clone(),
@@ -269,10 +277,11 @@ impl Matrix {
         target_uid: &Uid,
         quit_reason: &str,
     ) -> Vec<String> {
+        use crate::state::managers::client::DetachResult;
         use slirc_proto::{Command, Prefix};
 
         // Get user info before removal
-        let (nick, user, host, realname, user_channels) = {
+        let (nick, user, host, realname, user_channels, session_id, account) = {
             let user_arc = self
                 .user_manager
                 .users
@@ -286,11 +295,53 @@ impl Matrix {
                     user.host.clone(),
                     user.realname.clone(),
                     user.channels.iter().cloned().collect::<Vec<_>>(),
+                    user.session_id,
+                    user.account.clone(),
                 )
             } else {
                 return vec![];
             }
         };
+
+        // If user has an account and multiclient is enabled, detach the session
+        let detach_result = if self.config.multiclient.enabled {
+            if let Some(ref account_name) = account {
+                self.client_manager.detach_session(session_id).await
+            } else {
+                DetachResult::NotFound
+            }
+        } else {
+            DetachResult::NotFound
+        };
+
+        // Log the detachment result
+        match &detach_result {
+            DetachResult::Detached { remaining_sessions } => {
+                tracing::debug!(
+                    uid = %target_uid,
+                    account = ?account,
+                    remaining = %remaining_sessions,
+                    "Session detached, other sessions remain"
+                );
+            }
+            DetachResult::Persisting => {
+                tracing::info!(
+                    uid = %target_uid,
+                    account = ?account,
+                    "Session detached, client persisting (always-on)"
+                );
+            }
+            DetachResult::Destroyed => {
+                tracing::debug!(
+                    uid = %target_uid,
+                    account = ?account,
+                    "Session detached, client destroyed"
+                );
+            }
+            DetachResult::NotFound => {
+                // Expected for non-authenticated users
+            }
+        }
 
         // Record WHOWAS entry before user is removed
         self.user_manager

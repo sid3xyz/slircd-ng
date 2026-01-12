@@ -22,9 +22,11 @@
 //! ```
 
 use crate::handlers::{BatchState, SaslState};
+use crate::state::client::{DeviceId, SessionId};
 use slirc_crdt::clock::ServerId;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
+use uuid::Uuid;
 
 // ============================================================================
 // SaslAccess trait — SASL state access for universal AUTHENTICATE handler
@@ -70,6 +72,19 @@ pub trait SessionState: Send {
 
     /// Whether the connection is registered (type-level truth).
     fn is_registered(&self) -> bool;
+
+    /// Get the session ID for this connection.
+    ///
+    /// For registered connections, returns the unique session UUID.
+    /// For unregistered/server connections, returns a nil UUID.
+    fn session_id(&self) -> SessionId {
+        Uuid::nil()
+    }
+
+    /// Set the device ID for this session (for bouncer/multiclient).
+    ///
+    /// Default implementation does nothing (for unregistered/server connections).
+    fn set_device_id(&mut self, _device_id: Option<DeviceId>) {}
 
     /// Get enabled capabilities.
     fn capabilities(&self) -> &HashSet<String>;
@@ -424,6 +439,8 @@ impl UnregisteredState {
         match (&self.nick, &self.user) {
             (Some(nick), Some(user)) if !self.cap_negotiating => {
                 Ok(RegisteredState {
+                    session_id: Uuid::new_v4(),
+                    device_id: None, // Set by SASL handler after registration
                     nick: nick.clone(),
                     user: user.clone(),
                     realname: self.realname.unwrap_or_default(),
@@ -471,6 +488,10 @@ impl UnregisteredState {
 /// - The connection has completed the full registration handshake
 #[derive(Debug)]
 pub struct RegisteredState {
+    /// Unique identifier for this connection (for bouncer/multiclient).
+    pub session_id: SessionId,
+    /// Device identifier (extracted from SASL username or ident).
+    pub device_id: Option<DeviceId>,
     /// Nick — guaranteed present after registration.
     pub nick: String,
     /// Username — guaranteed present after registration.
@@ -537,6 +558,14 @@ impl SessionState for RegisteredState {
 
     fn is_server(&self) -> bool {
         false
+    }
+
+    fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
+    fn set_device_id(&mut self, device_id: Option<DeviceId>) {
+        self.device_id = device_id;
     }
 
     fn capabilities(&self) -> &HashSet<String> {
@@ -646,6 +675,8 @@ mod tests {
     #[test]
     fn test_registered_has_cap() {
         let state = RegisteredState {
+            session_id: Uuid::new_v4(),
+            device_id: None,
             nick: "test".to_string(),
             user: "testuser".to_string(),
             realname: String::new(),

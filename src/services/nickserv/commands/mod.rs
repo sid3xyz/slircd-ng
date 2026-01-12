@@ -7,6 +7,7 @@ pub mod group;
 pub mod identify;
 pub mod info;
 pub mod register;
+pub mod sessions;
 pub mod set;
 pub mod ungroup;
 
@@ -179,6 +180,27 @@ impl NickServ {
                 )
                 .await
             }
+            "SESSIONS" => {
+                // Look up user account and oper status from matrix
+                let (user_account, is_oper) = {
+                    if let Some(user_arc) = matrix.user_manager.users.get(uid).map(|u| u.value().clone()) {
+                        let user = user_arc.read().await;
+                        (user.account.clone(), user.modes.oper)
+                    } else {
+                        (None, false)
+                    }
+                };
+                sessions::handle_sessions(
+                    matrix,
+                    uid,
+                    user_account.as_deref(),
+                    is_oper,
+                    args,
+                    |u, t| self.reply_effect(u, t),
+                    |u, ts| self.reply_effects(u, ts),
+                )
+                .await
+            }
             "HELP" => self.help_reply(uid),
             _ => self.unknown_command(uid, &command),
         }
@@ -239,6 +261,10 @@ impl NickServ {
             self.reply_effect(
                 uid,
                 "  \x02CERT\x02 <ADD|DEL|LIST>         - Manage TLS certificate",
+            ),
+            self.reply_effect(
+                uid,
+                "  \x02SESSIONS\x02 [account]          - List active sessions",
             ),
             self.reply_effect(
                 uid,
