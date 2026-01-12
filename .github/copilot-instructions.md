@@ -69,7 +69,7 @@ Before writing code:
 
 2. **Check ARCHITECTURE.md**: Verify phase alignment and design principles.
 
-3. **Check ROADMAP_TO_1.0.md**: Review current release blockers.
+3. **Check ALPHA_RELEASE_PLAN.md**: Review current release status.
 
 ### Request Processing Template
 
@@ -285,12 +285,11 @@ ls -la *.md  # Should only be: README, ARCHITECTURE, CHANGELOG, ROADMAP, DEPLOYM
 
 ## Testing Requirements
 
-- **Unit tests**: 637+ tests, run with `cargo test`
+- **Unit tests**: 664+ tests, run with `cargo test`
 - **Integration tests**: `tests/` directory (ircv3_features, distributed_sync)
-- **irctest compliance**: 328/387 passing (84.8%) - see `slirc-irctest/IRCTEST_RESULTS.md`
+- **irctest compliance**: 357/387 passing (92.2%) - see `slirc-irctest/`
 - **irctest invocation**: `cd slirc-irctest && SLIRCD_BIN=../target/release/slircd pytest --controller=irctest.controllers.slircd irctest/server_tests/`
 - **Round-trip tests**: Parse → Handle → Serialize → Parse
-- **No load/fuzz tests yet**: See ROADMAP_TO_1.0.md
 
 ---
 
@@ -315,10 +314,10 @@ Before submitting:
 
 ## Documentation References
 
-- **ARCHITECTURE.md**: Complete architectural deep dive (37KB)
+- **ARCHITECTURE.md**: Complete architectural deep dive
 - **README.md**: Project overview, installation, configuration
-- **ROADMAP_TO_1.0.md**: Release readiness roadmap and blocking issues
+- **ALPHA_RELEASE_PLAN.md**: Current release status and roadmap
 - **DEPLOYMENT_CHECKLIST.md**: Production deployment checklist
 - **CHANGELOG.md**: Version history
-- **slirc-proto**: Command/Numeric enums, parsing utilities (external crate)
-- **slirc-crdt**: CRDT state synchronization (external crate)
+- **crates/slirc-proto**: Command/Numeric enums, parsing utilities
+- **crates/slirc-crdt**: CRDT state synchronization
