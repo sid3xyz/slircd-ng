@@ -142,7 +142,7 @@ fn default_max_sessions() -> usize {
 /// Parse a duration string like "30d", "7d", "24h", "0" into chrono::Duration.
 ///
 /// Returns None for "0" or invalid format.
-fn parse_duration_string(s: &str) -> Option<chrono::Duration> {
+pub fn parse_duration_string(s: &str) -> Option<chrono::Duration> {
     let s = s.trim();
     if s == "0" || s.is_empty() {
         return None;

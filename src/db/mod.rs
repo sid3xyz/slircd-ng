@@ -5,12 +5,17 @@
 //! - ChanServ channel registration and access lists
 //! - K-lines and D-lines persistence
 //! - Message history for CHATHISTORY
+//!
+//! Also provides Redb-backed persistence for:
+//! - Always-on client state (bouncer functionality)
 
 mod accounts;
+pub mod always_on;
 mod bans;
 mod channels;
 
 pub use accounts::AccountRepository;
+pub use always_on::{AlwaysOnError, AlwaysOnStore, StoredClient, StoredDeviceInfo};
 pub use bans::{BanRepository, Dline, Gline, Kline, Shun, Zline};
 pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
 
