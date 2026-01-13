@@ -4,18 +4,21 @@
 //! - Creating and tracking Client instances per account
 //! - Session attachment and detachment
 //! - Always-on client lifecycle management
+//! - Dirty-bit writeback to persistent storage
 //!
 //! # Thread Safety
 //!
 //! All operations are thread-safe via DashMap. The lock order follows
 //! Matrix conventions: DashMap shard lock → Client RwLock.
 
+use crate::db::always_on::AlwaysOnStore;
 use crate::state::client::{Client, DeviceId, SessionAttachment, SessionId};
 use chrono::{Duration, Utc};
 use dashmap::DashMap;
 use slirc_proto::irc_to_lower;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{debug, error, info, warn};
 
 /// Manages all Client instances for bouncer functionality.
 pub struct ClientManager {
@@ -30,6 +33,9 @@ pub struct ClientManager {
 
     /// Maximum sessions per account (DoS protection).
     max_sessions_per_account: usize,
+
+    /// Persistent storage for always-on clients (optional).
+    store: Option<Arc<AlwaysOnStore>>,
 }
 
 /// Result of attempting to attach a session.
@@ -71,6 +77,7 @@ impl ClientManager {
             session_to_client: DashMap::new(),
             session_info: DashMap::new(),
             max_sessions_per_account: 10,
+            store: None,
         }
     }
 
@@ -81,7 +88,24 @@ impl ClientManager {
             session_to_client: DashMap::new(),
             session_info: DashMap::new(),
             max_sessions_per_account: max_sessions,
+            store: None,
         }
+    }
+
+    /// Create a new ClientManager with persistence.
+    pub fn with_store(store: Arc<AlwaysOnStore>, max_sessions: usize) -> Self {
+        Self {
+            clients: DashMap::new(),
+            session_to_client: DashMap::new(),
+            session_info: DashMap::new(),
+            max_sessions_per_account: max_sessions,
+            store: Some(store),
+        }
+    }
+
+    /// Set the persistence store.
+    pub fn set_store(&mut self, store: Arc<AlwaysOnStore>) {
+        self.store = Some(store);
     }
 
     /// Get a client by account name.
@@ -369,6 +393,115 @@ impl ClientManager {
             always_on_clients,
             disconnected_always_on,
             total_sessions,
+        }
+    }
+
+    // =========================================================================
+    // Persistence Methods
+    // =========================================================================
+
+    /// Persist a client's state to storage (if store is configured).
+    pub async fn persist_client(&self, account: &str) {
+        if let Some(store) = &self.store {
+            let account_lower = irc_to_lower(account);
+            if let Some(client_arc) = self.clients.get(&account_lower) {
+                let client = client_arc.read().await;
+                if client.always_on {
+                    if let Err(e) = store.save_client(&client) {
+                        error!(account = %account, error = %e, "Failed to persist client");
+                    } else {
+                        debug!(account = %account, "Persisted client state");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Perform dirty-bit writeback for all clients.
+    ///
+    /// This should be called periodically (e.g., every 30 seconds).
+    pub async fn writeback_dirty(&self) -> usize {
+        let Some(store) = &self.store else {
+            return 0;
+        };
+
+        let mut written = 0;
+        let clients: Vec<(String, Arc<RwLock<Client>>)> = self
+            .clients
+            .iter()
+            .map(|c| (c.key().clone(), c.value().clone()))
+            .collect();
+
+        for (account, client_arc) in clients {
+            let (should_persist, dirty_bits) = {
+                let client = client_arc.read().await;
+                let dirty = client.take_dirty();
+                (client.always_on && dirty != 0, dirty)
+            };
+
+            if should_persist {
+                let client = client_arc.read().await;
+                if let Err(e) = store.save_client(&client) {
+                    error!(account = %account, error = %e, "Failed to writeback client");
+                } else {
+                    debug!(account = %account, dirty_bits = dirty_bits, "Writeback complete");
+                    written += 1;
+                }
+            }
+        }
+
+        if written > 0 {
+            info!(count = written, "Completed dirty-bit writeback");
+        }
+        written
+    }
+
+    /// Restore always-on clients from persistent storage.
+    ///
+    /// Returns the number of clients restored.
+    pub async fn restore_from_storage(&self) -> Result<usize, crate::db::AlwaysOnError> {
+        let Some(store) = &self.store else {
+            return Ok(0);
+        };
+
+        let stored_clients = store.load_all_clients()?;
+        let mut restored = 0;
+
+        for stored in stored_clients {
+            let client = stored.to_client();
+            let account_lower = irc_to_lower(&client.account);
+
+            // Only restore if not already loaded
+            if !self.clients.contains_key(&account_lower) {
+                self.clients
+                    .insert(account_lower.clone(), Arc::new(RwLock::new(client)));
+                restored += 1;
+                debug!(account = %stored.account, "Restored always-on client");
+            }
+        }
+
+        info!(count = restored, "Restored always-on clients from storage");
+        Ok(restored)
+    }
+
+    /// Delete a client from persistent storage.
+    pub fn delete_from_storage(&self, account: &str) -> Result<bool, crate::db::AlwaysOnError> {
+        if let Some(store) = &self.store {
+            store.delete_client(account)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Expire stale clients from persistent storage.
+    pub fn expire_from_storage(
+        &self,
+        cutoff: chrono::DateTime<Utc>,
+    ) -> Result<Vec<String>, crate::db::AlwaysOnError> {
+        if let Some(store) = &self.store {
+            store.expire_clients(cutoff)
+        } else {
+            Ok(Vec::new())
         }
     }
 }

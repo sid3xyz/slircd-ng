@@ -137,6 +137,8 @@ pub struct MatrixParams<'a> {
     pub glines: Vec<crate::db::Gline>,
     pub zlines: Vec<crate::db::Zline>,
     pub disconnect_tx: mpsc::Sender<(Uid, String)>,
+    /// Optional always-on store for bouncer persistence.
+    pub always_on_store: Option<std::sync::Arc<crate::db::AlwaysOnStore>>,
 }
 
 impl Matrix {
@@ -154,6 +156,7 @@ impl Matrix {
             glines,
             zlines,
             disconnect_tx,
+            always_on_store,
         } = params;
 
         use slirc_proto::irc_to_lower;
@@ -194,11 +197,19 @@ impl Matrix {
 
         let (router_tx, router_rx) = mpsc::channel(1000);
 
+        // Create ClientManager with optional always-on store
+        let client_manager = match always_on_store {
+            Some(store) => {
+                ClientManager::with_store(store, config.multiclient.max_sessions_per_account)
+            }
+            None => ClientManager::with_max_sessions(config.multiclient.max_sessions_per_account),
+        };
+
         (
             Self {
                 user_manager,
                 channel_manager,
-                client_manager: ClientManager::new(),
+                client_manager,
                 security_manager: SecurityManager::new(SecurityManagerParams {
                     security_config: &config.security,
                     db: Some(db.clone()),
@@ -330,6 +341,28 @@ impl Matrix {
                     account = ?account,
                     "Session detached, client persisting (always-on)"
                 );
+
+                // For always-on clients, set auto-away on the User instead of removing
+                if let Some(client) = self.client_manager.get_client(account.as_ref().unwrap()) {
+                    let client_guard = client.read().await;
+                    if let Some(away_msg) = &client_guard.away {
+                        // Set away status on the user
+                        if let Some(user_arc) = self.user_manager.users.get(target_uid) {
+                            let mut user = user_arc.write().await;
+                            user.away = Some(away_msg.clone());
+                            tracing::debug!(
+                                uid = %target_uid,
+                                away = %away_msg,
+                                "Set auto-away on always-on user"
+                            );
+                        }
+                    }
+                }
+
+                // For now, we still remove the user since virtual presence
+                // requires more infrastructure. This will be enhanced in future
+                // to keep the user present when always-on.
+                // TODO: Implement virtual user persistence for always-on
             }
             DetachResult::Destroyed => {
                 tracing::debug!(

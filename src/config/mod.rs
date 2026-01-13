@@ -24,7 +24,7 @@ pub use history::HistoryConfig;
 pub use limits::LimitsConfig;
 pub use links::LinkBlock;
 pub use listen::{ClientAuth, ListenConfig, S2STlsConfig, StsConfig, TlsConfig, WebSocketConfig};
-pub use multiclient::{AlwaysOnPolicy, AutoAwayPolicy, MulticlientConfig};
+pub use multiclient::{AlwaysOnPolicy, AutoAwayPolicy, MulticlientConfig, parse_duration_string};
 pub use oper::{OperBlock, WebircBlock};
 pub use security::{HeuristicsConfig, RateLimitConfig, RblConfig, SecurityConfig};
 pub use types::{AccountRegistrationConfig, Casemapping, Config, IdleTimeoutsConfig, ServerConfig};

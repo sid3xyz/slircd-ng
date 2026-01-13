@@ -2592,6 +2592,7 @@ dependencies = [
  "slirc-proto",
  "sqlx",
  "subtle",
+ "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tokio-rustls",

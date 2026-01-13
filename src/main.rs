@@ -138,23 +138,39 @@ async fn main() -> anyhow::Result<()> {
         "Loaded active bans into cache"
     );
 
-    // Initialize history provider
-    let history: Arc<dyn crate::history::HistoryProvider> = if config.history.enabled {
+    // Initialize history provider and always-on store
+    let (history, always_on_store): (
+        Arc<dyn crate::history::HistoryProvider>,
+        Option<Arc<crate::db::AlwaysOnStore>>,
+    ) = if config.history.enabled {
         match config.history.backend.as_str() {
             "redb" => {
                 info!(path = %config.history.path, "Initializing Redb history backend");
-                Arc::new(crate::history::redb::RedbProvider::new(
-                    &config.history.path,
-                )?)
+                let redb_provider = crate::history::redb::RedbProvider::new(&config.history.path)?;
+                let redb_db = redb_provider.database();
+
+                // Create AlwaysOnStore sharing the same Redb database
+                let store = match crate::db::AlwaysOnStore::new(redb_db) {
+                    Ok(store) => {
+                        info!("AlwaysOn store initialized (sharing Redb database)");
+                        Some(Arc::new(store))
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to initialize AlwaysOn store, continuing without persistence");
+                        None
+                    }
+                };
+
+                (Arc::new(redb_provider), store)
             }
             _ => {
                 info!("History backend 'none' or unknown. Using NoOp.");
-                Arc::new(crate::history::noop::NoOpProvider)
+                (Arc::new(crate::history::noop::NoOpProvider), None)
             }
         }
     } else {
         info!("History disabled. Using NoOp provider.");
-        Arc::new(crate::history::noop::NoOpProvider)
+        (Arc::new(crate::history::noop::NoOpProvider), None)
     };
 
     // Create the Matrix (shared state)
@@ -180,6 +196,7 @@ async fn main() -> anyhow::Result<()> {
         glines: active_glines,
         zlines: active_zlines,
         disconnect_tx,
+        always_on_store: always_on_store.clone(),
     });
     let matrix = Arc::new(matrix_struct);
 
@@ -262,6 +279,38 @@ async fn main() -> anyhow::Result<()> {
         info!(port = metrics_port, "Prometheus HTTP server started");
     }
 
+    // Restore always-on clients from persistent storage
+    {
+        let restored = matrix.client_manager.restore_from_storage().await;
+        match restored {
+            Ok(count) if count > 0 => {
+                info!(count = count, "Restored always-on clients from storage");
+            }
+            Ok(_) => {
+                info!("No always-on clients to restore");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to restore always-on clients");
+            }
+        }
+    }
+
+    // Start always-on writeback task (runs every 30 seconds)
+    {
+        let matrix = Arc::clone(&matrix);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                let written = matrix.client_manager.writeback_dirty().await;
+                if written > 0 {
+                    tracing::debug!(count = written, "Always-on writeback completed");
+                }
+            }
+        });
+    }
+    info!("Always-on writeback task started");
+
     // Start nick enforcement background task
     spawn_enforcement_task(Arc::clone(&matrix));
     info!("Nick enforcement task started");
@@ -301,6 +350,41 @@ async fn main() -> anyhow::Result<()> {
         });
     }
     info!("Shun expiry cleanup task started");
+
+    // Start always-on client expiration task (runs every hour)
+    {
+        let matrix = Arc::clone(&matrix);
+        let expiration_str = config.multiclient.always_on_expiration.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+
+                // Parse expiration duration from config
+                let expiration = crate::config::parse_duration_string(&expiration_str);
+                if let Some(expiration) = expiration {
+                    // Expire from memory
+                    let expired_memory = matrix.client_manager.expire_clients(expiration).await;
+                    if !expired_memory.is_empty() {
+                        info!(count = expired_memory.len(), "Expired stale always-on clients from memory");
+                    }
+
+                    // Expire from storage
+                    let cutoff = chrono::Utc::now() - expiration;
+                    match matrix.client_manager.expire_from_storage(cutoff) {
+                        Ok(expired_storage) if !expired_storage.is_empty() => {
+                            info!(count = expired_storage.len(), "Expired stale always-on clients from storage");
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Failed to expire clients from storage");
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+    }
+    info!("Always-on expiration task started");
 
     // Start ban cache and rate limiter pruning task (runs every 5 minutes)
     {

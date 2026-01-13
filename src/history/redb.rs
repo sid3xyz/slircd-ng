@@ -23,6 +23,11 @@ impl RedbProvider {
         Ok(Self { db: Arc::new(db) })
     }
 
+    /// Get a clone of the underlying database Arc for sharing with other components.
+    pub fn database(&self) -> Arc<Database> {
+        Arc::clone(&self.db)
+    }
+
     fn make_key(target: &str, timestamp: i64, msgid: &str) -> String {
         let target_lower = irc_to_lower(target);
         // Format timestamp as fixed-width string for lexicographical sorting
