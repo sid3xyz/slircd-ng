@@ -11,7 +11,8 @@ use crate::error::HandlerError;
 
 /// Classification of transport read errors for appropriate handling.
 pub(super) enum ReadErrorAction {
-    /// Recoverable line-too-long error - send ERR_INPUTTOOLONG (417) and continue
+    /// Message/tags too long - send ERR_INPUTTOOLONG (417) and disconnect.
+    /// Per Ergo spec (READQ), clients exceeding 16KB line limit should be disconnected.
     InputTooLong,
     /// Recoverable invalid UTF-8 error - send FAIL <command> INVALID_UTF8 and continue
     InvalidUtf8 {
@@ -30,8 +31,8 @@ pub(super) fn classify_read_error(e: &TransportReadError) -> ReadErrorAction {
     match e {
         TransportReadError::Protocol(proto_err) => {
             match proto_err {
-                // Recoverable: line or tags too long → ERR_INPUTTOOLONG (417)
-                // Per Ergo/modern IRC: send 417 and continue, don't disconnect
+                // Message/tags too long → ERR_INPUTTOOLONG (417) + disconnect
+                // Per Ergo/READQ spec: clients exceeding line limit are disconnected, not just warned
                 ProtocolError::MessageTooLong { .. } | ProtocolError::TagsTooLong { .. } => {
                     ReadErrorAction::InputTooLong
                 }

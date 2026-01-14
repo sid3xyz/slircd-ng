@@ -202,7 +202,7 @@ pub async fn run_handshake_loop(
             HandshakeSelectResult::ReadError(action) => {
                 match action {
                     ReadErrorAction::InputTooLong => {
-                        warn!("Input line too long during handshake");
+                        warn!("Input line too long during handshake - disconnecting");
                         let nick = unreg_state.nick.as_deref().unwrap_or("*");
                         let reply = Message {
                             tags: None,
@@ -213,7 +213,7 @@ pub async fn run_handshake_loop(
                             ),
                         };
                         let _ = transport.write_message(&reply).await;
-                        continue;
+                        return Err(HandshakeExit::Disconnected(unreg_state.nick.clone()));
                     }
                     ReadErrorAction::InvalidUtf8 {
                         command_hint,

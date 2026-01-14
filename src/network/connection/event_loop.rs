@@ -211,11 +211,11 @@ pub async fn run_event_loop(
                     Some(Err(e)) => {
                         match classify_read_error(&e) {
                             ReadErrorAction::InputTooLong => {
-                                warn!("Input line too long");
+                                warn!("Input line too long - disconnecting client");
                                 let server_name = &matrix.server_info.name;
                                 let nick = &reg_state.nick;
                                 let reply = input_too_long_response(server_name, nick);
-                                SelectResult::Continue { pending_writes: vec![reply] }
+                                SelectResult::Break { pending_writes: vec![reply] }
                             }
                             ReadErrorAction::InvalidUtf8 { command_hint, raw_line, details } => {
                                 warn!(command = ?command_hint, details = %details, "Invalid UTF-8 in message");
