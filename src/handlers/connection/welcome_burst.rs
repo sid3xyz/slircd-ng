@@ -250,6 +250,9 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         self.matrix.user_manager.add_local_user(user_obj).await;
 
+        // User is now registered - decrement unregistered connection count
+        self.matrix.user_manager.decrement_unregistered();
+
         crate::metrics::CONNECTED_USERS.inc();
 
         // Use real_user_count to exclude service pseudoclients from max tracking
