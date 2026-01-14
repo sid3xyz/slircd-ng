@@ -20,6 +20,17 @@ MEM_MAX=4G SWAP_MAX=0 KILL_SLIRCD=1 ./scripts/irctest_safe.sh irctest/server_tes
 
 ---
 
+## Git Remote Policy (MANDATORY)
+
+**During active development, treat this repository as the sole source of truth.**
+
+- Use `origin` only.
+- Do not add an `upstream` remote.
+- Do not fetch/pull/merge/rebase/cherry-pick from upstream (or any non-`origin` remote) unless the user explicitly instructs it in the current chat.
+- If upstream sync is requested implicitly (“sync upstream”, “update from upstream”, “bring in upstream changes”), stop and ask for explicit permission first.
+
+This rule stays in effect until the user explicitly says it’s time to integrate upstream.
+
 ## Project Constraints
 
 | Constraint | Requirement |
