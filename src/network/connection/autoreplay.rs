@@ -4,14 +4,13 @@
 //! reattaches to an existing session (always-on).
 
 use crate::error::HandlerResult;
-use crate::handlers::chathistory::batch::send_history_batch;
 use crate::handlers::server_reply;
 use crate::history::HistoryQuery;
 use crate::network::connection::context::ConnectionContext;
 use crate::state::actor::ChannelEvent;
 use crate::state::{ReattachInfo, RegisteredState};
 use chrono::{DateTime, Utc};
-use slirc_proto::{Command, Message, Prefix, Response, irc_to_lower};
+use slirc_proto::{Command, Message, Prefix, Response, Tag, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::{debug, warn};
 
@@ -112,38 +111,13 @@ pub async fn perform_autoreplay(
 
     // 2. Replay history
     for (channel_name, _membership) in &info.channels {
-        // Determine start bound per-target: prefer read marker, else device last_seen
-        let start_dt_opt = {
-            // Resolve per-target marker if account/device known
-            if let Some(device) = info.device_id.as_ref() {
-                let account = info.account.as_str();
-                if let Some(nano) =
-                    ctx.matrix
-                        .read_marker_manager
-                        .get(account, device, channel_name)
-                {
-                    // Convert nanotime to DateTime<Utc>
-                    let secs = nano / 1_000_000_000;
-                    let nanos = (nano % 1_000_000_000) as u32;
-                    DateTime::<Utc>::from_timestamp(secs, nanos)
-                } else {
-                    // Fallback to device last_seen (reattach info)
-                    info.replay_since
-                }
-            } else {
-                info.replay_since
-            }
-        };
+        // Determine start bound per-target: Use device last_seen from reattach info
+        // TODO: Integrate read_marker_manager when added to Matrix for per-target tracking
+        let start_dt_opt = info.replay_since;
 
-        if let Some(start_dt) = start_dt_opt
-            && let Some(last_nano) =
-                replay_channel_history(ctx, channel_name, start_dt, reg_state).await?
-            && let Some(device) = info.device_id.as_ref()
-        {
-            let account = info.account.as_str();
-            ctx.matrix
-                .read_marker_manager
-                .set(account, device, channel_name, last_nano);
+        if let Some(start_dt) = start_dt_opt {
+            let _ = replay_channel_history(ctx, channel_name, start_dt, reg_state).await?;
+            // TODO: Update read_marker_manager when integrated into Matrix
         }
     }
 
@@ -155,7 +129,7 @@ async fn replay_channel_history(
     target: &str,
     since: DateTime<Utc>,
     reg_state: &RegisteredState,
-) -> Result<Option<i64>, crate::error::HandlerError> {
+) -> Result<(), crate::error::HandlerError> {
     let start_ts = since
         .timestamp()
         .saturating_mul(1_000_000_000)
@@ -173,29 +147,130 @@ async fn replay_channel_history(
     // Correctly access history via service_manager
     match ctx.matrix.service_manager.history.query(query).await {
         Ok(messages) if !messages.is_empty() => {
-            // Compute last nanotime before moving messages
-            let last = messages.last().map(|m| m.nanotime);
-            // Use the generic send_history_batch with transport
-            send_history_batch(
-                target,
-                messages,
-                "chathistory",
-                &server_name,
-                &reg_state.capabilities,
-                ctx.transport,
-            )
-            .await?;
-            // Return last delivered nanotime to update read marker
-            return Ok(last);
+            // Send a simple CHATHISTORY batch for autoreplay
+            // We don't use the full send_history_batch because we don't have a complete Context
+            let batch_id = format!("chathistory-{}", uuid::Uuid::new_v4().simple());
+            let has_event_playback = reg_state.capabilities.contains("draft/event-playback");
+
+            // Start BATCH
+            let batch_start = Message {
+                tags: None,
+                prefix: Some(Prefix::ServerName(server_name.clone())),
+                command: Command::BATCH(
+                    format!("+{}", batch_id),
+                    Some(slirc_proto::BatchSubCommand::CUSTOM("chathistory".to_string())),
+                    Some(vec![target.to_string()]),
+                ),
+            };
+            let _ = ctx.transport.write_message(&batch_start).await;
+
+            // Send each message with batch tag
+            for msg in messages {
+                // Filter based on capabilities (same logic as send_history_batch)
+                let command_type = msg.envelope.command.as_str();
+                match command_type {
+                    "PRIVMSG" | "NOTICE" => {
+                        // Always include messages
+                    }
+                    "TOPIC" | "TAGMSG" => {
+                        if !has_event_playback {
+                            continue;
+                        }
+                    }
+                    _ => {
+                        if !has_event_playback {
+                            continue;
+                        }
+                    }
+                }
+
+                // Parse and reconstruct the message with batch tag
+                // Build a slirc_proto::Message from the envelope
+                let mut tags_vec = vec![Tag::new("batch", Some(batch_id.clone()))];
+                
+                // Add stored tags (server-time, msgid, etc.)
+                if let Some(envelope_tags) = &msg.envelope.tags {
+                    for tag in envelope_tags {
+                        tags_vec.push(Tag::new(&tag.key, tag.value.clone()));
+                    }
+                }
+
+                // Parse command from envelope
+                let command = match msg.envelope.command.as_str() {
+                    "PRIVMSG" => Command::PRIVMSG(
+                        msg.envelope.target.clone(),
+                        msg.envelope.text.clone(),
+                    ),
+                    "NOTICE" => Command::NOTICE(
+                        msg.envelope.target.clone(),
+                        msg.envelope.text.clone(),
+                    ),
+                    "TOPIC" => {
+                        // TOPIC command with channel and topic params
+                        Command::TOPIC(
+                            msg.envelope.target.clone(),
+                            Some(msg.envelope.text.clone()),
+                        )
+                    }
+                    "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
+                    _ => {
+                        // Fallback: unknown command type, skip it
+                        warn!("Unknown command type in history: {}", msg.envelope.command);
+                        continue;
+                    }
+                };
+
+                // Parse prefix
+                let prefix = if !msg.envelope.prefix.is_empty() {
+                    // Parse nick!user@host format
+                    if let Some(exclaim_pos) = msg.envelope.prefix.find('!') {
+                        let nick = msg.envelope.prefix[..exclaim_pos].to_string();
+                        if let Some(at_pos) = msg.envelope.prefix[exclaim_pos..].find('@') {
+                            let user = msg.envelope.prefix[exclaim_pos + 1..exclaim_pos + at_pos].to_string();
+                            let host = msg.envelope.prefix[exclaim_pos + at_pos + 1..].to_string();
+                            Some(Prefix::Nickname(nick, user, host))
+                        } else {
+                            Some(Prefix::Nickname(nick, String::new(), String::new()))
+                        }
+                    } else {
+                        Some(Prefix::ServerName(msg.envelope.prefix.clone()))
+                    }
+                } else {
+                    None
+                };
+
+                let history_msg = Message {
+                    tags: Some(tags_vec),
+                    prefix,
+                    command,
+                };
+
+                let _ = ctx.transport.write_message(&history_msg).await;
+            }
+
+            // End BATCH
+            let batch_end = Message {
+                tags: None,
+                prefix: Some(Prefix::ServerName(server_name)),
+                command: Command::BATCH(
+                    format!("-{}", batch_id),
+                    None,
+                    None,
+                ),
+            };
+            let _ = ctx.transport.write_message(&batch_end).await;
+
+            // TODO: Update read_marker_manager when integrated into Matrix
+            return Ok(());
         }
         Ok(_) => {
             // No messages delivered
-            return Ok(None);
+            return Ok(());
         }
         Err(e) => {
             warn!(target = %target, error = ?e, "Failed to query history for autoreplay");
         }
     }
 
-    Ok(None)
+    Ok(())
 }

@@ -5,7 +5,7 @@
 //! # Reference
 //! - IRCv3 chathistory: <https://ircv3.net/specs/extensions/chathistory>
 
-mod batch;
+pub mod batch;
 mod helpers;
 mod queries;
 
