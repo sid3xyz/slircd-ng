@@ -116,7 +116,7 @@ pub async fn perform_autoreplay(
         let start_dt_opt = info.replay_since;
 
         if let Some(start_dt) = start_dt_opt {
-            let _ = replay_channel_history(ctx, channel_name, start_dt, reg_state).await?;
+            replay_channel_history(ctx, channel_name, start_dt, reg_state).await?;
             // TODO: Update read_marker_manager when integrated into Matrix
         }
     }

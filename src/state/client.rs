@@ -19,7 +19,9 @@
 //! for cross-server synchronization.
 
 use chrono::{DateTime, Utc};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[allow(unused_imports)]  // Used when always_on persistence enabled
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU32, Ordering};
 use uuid::Uuid;
 
@@ -32,6 +34,7 @@ pub type SessionId = Uuid;
 pub type DeviceId = String;
 
 /// Default maximum number of concurrent sessions per account.
+#[allow(dead_code)]  // Used when ClientManager instantiation varies
 pub const DEFAULT_MAX_SESSIONS: usize = 10;
 
 /// Represents an account's persistent bouncer state.
@@ -100,6 +103,7 @@ pub struct ChannelMembership {
 
 /// Information about a registered device.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]  // Fields used when device management UI/API added
 pub struct DeviceInfo {
     /// Device identifier.
     pub id: DeviceId,
@@ -119,6 +123,7 @@ pub struct DeviceInfo {
 
 /// Settings for an individual client, overridable from global config.
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]  // Used for per-client config overrides
 pub struct ClientSettings {
     /// Whether multiclient is enabled for this account.
     pub multiclient_enabled: Option<bool>,

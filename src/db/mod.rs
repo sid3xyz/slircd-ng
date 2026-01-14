@@ -15,7 +15,7 @@ mod bans;
 mod channels;
 
 pub use accounts::AccountRepository;
-pub use always_on::{AlwaysOnError, AlwaysOnStore, StoredClient, StoredDeviceInfo};
+pub use always_on::{AlwaysOnError, AlwaysOnStore};
 pub use bans::{BanRepository, Dline, Gline, Kline, Shun, Zline};
 pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
 

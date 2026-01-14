@@ -18,7 +18,7 @@ use dashmap::DashMap;
 use slirc_proto::irc_to_lower;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Manages all Client instances for bouncer functionality.
 pub struct ClientManager {
