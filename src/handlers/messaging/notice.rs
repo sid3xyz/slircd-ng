@@ -157,6 +157,7 @@ impl PostRegHandler for NoticeHandler {
                     timestamp: Some(timestamp_iso.clone()),
                     msgid: Some(msgid.clone()),
                     override_nick: None,
+                    relaymsg_sender_nick: None,
                 },
                 &snapshot,
             )

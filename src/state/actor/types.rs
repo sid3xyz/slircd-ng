@@ -108,6 +108,9 @@ pub struct ChannelMessageParams {
     /// Override the nickname in the broadcast prefix (for NPC/RELAYMSG).
     /// If None, uses user_context.nickname. If Some, uses this value instead.
     pub override_nick: Option<String>,
+    /// For RELAYMSG: the nick of the user who issued the RELAYMSG command.
+    /// If Some, adds `draft/relaymsg=<nick>` tag for recipients with that cap.
+    pub relaymsg_sender_nick: Option<String>,
 }
 
 /// Events that can be sent to a Channel Actor.

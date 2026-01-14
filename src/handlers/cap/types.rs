@@ -54,6 +54,7 @@ pub const SUPPORTED_CAPS: &[Capability] = &[
     Capability::AccountRegistration,
     Capability::ChatHistory,
     Capability::EventPlayback,
+    Capability::DraftRelaymsg,
     Capability::Tls, // STARTTLS - only useful on plaintext connections
     Capability::Sts, // Strict Transport Security - advertised dynamically based on config
 ];

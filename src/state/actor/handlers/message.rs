@@ -90,6 +90,7 @@ impl ChannelActor {
             timestamp,
             msgid,
             override_nick,
+            relaymsg_sender_nick,
         } = params;
 
         let is_member = self.members.contains_key(&sender_uid);
@@ -360,6 +361,19 @@ impl ChannelActor {
                     .unwrap_or(false);
                 if has_account_tag {
                     recipient_tags.push(Tag(Cow::Borrowed("account"), Some(account.clone())));
+                }
+            }
+
+            // Add draft/relaymsg tag if this is a relayed message and recipient has the cap
+            if let Some(ref relay_nick) = relaymsg_sender_nick {
+                let has_relaymsg_cap = user_caps
+                    .map(|caps| caps.contains("draft/relaymsg"))
+                    .unwrap_or(false);
+                if has_relaymsg_cap {
+                    recipient_tags.push(Tag(
+                        Cow::Owned("draft/relaymsg".to_string()),
+                        Some(relay_nick.clone()),
+                    ));
                 }
             }
 
