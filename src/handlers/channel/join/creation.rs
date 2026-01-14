@@ -5,7 +5,7 @@
 //! manages the handshake: checking access, sending events, and handling responses.
 
 use super::super::super::{Context, HandlerError, HandlerResult, user_prefix};
-use super::enforcement::{check_akick, check_auto_modes};
+use super::enforcement::{check_akick, check_auto_modes, check_forward};
 use super::responses::{JoinSuccessContext, handle_join_success, send_join_error};
 use crate::error::ChannelError;
 use crate::security::UserContext;
@@ -269,6 +269,18 @@ pub(super) async fn join_channel(
                     continue;
                 }
 
+                // Check if we should forward to another channel
+                if let Some(forward_target) = check_forward(ctx, &channel_lower, &error).await {
+                    // Send ERR_LINKCHANNEL to client
+                    let link_reply = slirc_proto::Response::err_linkchannel(&nick, channel_name, &forward_target)
+                        .with_prefix(ctx.server_prefix());
+                    ctx.sender.send(link_reply).await?;
+                    
+                    // Recursively attempt to join the forward target
+                    // Use Box to allow async recursion
+                    return Box::pin(join_channel(ctx, &forward_target, None)).await;
+                }
+                
                 send_join_error(ctx, &nick, channel_name, error).await?;
                 break;
             }

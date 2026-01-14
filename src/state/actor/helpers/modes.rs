@@ -34,7 +34,7 @@ impl ChannelActor {
             ChannelMode::Permanent => Some('P'),
             ChannelMode::RegisteredOnly => Some('R'),
             ChannelMode::Roleplay => Some('E'),
-            ChannelMode::Key(_, _) | ChannelMode::Limit(_, _) => None, // Parametric modes use separate timestamp fields
+            ChannelMode::Key(_, _) | ChannelMode::Limit(_, _) | ChannelMode::Forward(_, _) => None, // Parametric modes use separate timestamp fields
         }
     }
 
@@ -173,6 +173,12 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
                 if !flags.contains('l') {
                     flags.push('l');
                     params.push(l.to_string());
+                }
+            }
+            ChannelMode::Forward(target, _) => {
+                if !flags.contains('f') {
+                    flags.push('f');
+                    params.push(target.clone());
                 }
             }
             _ => {}

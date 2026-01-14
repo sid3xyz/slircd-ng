@@ -56,6 +56,7 @@ impl Response {
             465 => Response::ERR_YOUREBANNEDCREEP,
             466 => Response::ERR_YOUWILLBEBANNED,
             467 => Response::ERR_KEYSET,
+            470 => Response::ERR_LINKCHANNEL,
             471 => Response::ERR_CHANNELISFULL,
             472 => Response::ERR_UNKNOWNMODE,
             473 => Response::ERR_INVITEONLYCHAN,

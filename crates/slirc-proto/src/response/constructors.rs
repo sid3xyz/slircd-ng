@@ -416,6 +416,20 @@ impl Response {
         err_keyset, ERR_KEYSET, channel, "Channel key already set"
     );
 
+    /// `470 ERR_LINKCHANNEL`
+    /// `<channel> <forward_channel> :You may not join this channel. Try this channel instead: <forward_channel>`
+    pub fn err_linkchannel(client: &str, channel: &str, forward_channel: &str) -> Message {
+        Self::error_msg(
+            Response::ERR_LINKCHANNEL,
+            vec![
+                client.to_string(),
+                channel.to_string(),
+                forward_channel.to_string(),
+                format!("You may not join this channel. Try this channel instead: {}", forward_channel),
+            ],
+        )
+    }
+
     /// `471 ERR_CHANNELISFULL`
     /// `<channel> :Cannot join channel (+l)`
     pub fn err_channelisfull(client: &str, channel: &str) -> Message {

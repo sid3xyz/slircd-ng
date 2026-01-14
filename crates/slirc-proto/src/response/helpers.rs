@@ -91,6 +91,7 @@ impl Response {
                 | Response::ERR_CANNOTSENDTOCHAN
                 | Response::ERR_TOOMANYCHANNELS
                 | Response::ERR_CHANNELISFULL
+                | Response::ERR_LINKCHANNEL
                 | Response::ERR_INVITEONLYCHAN
                 | Response::ERR_BANNEDFROMCHAN
                 | Response::ERR_BADCHANNELKEY

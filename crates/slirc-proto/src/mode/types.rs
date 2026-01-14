@@ -135,6 +135,8 @@ pub enum ChannelMode {
     Limit,
     /// 'k' - Channel key/password
     Key,
+    /// 'f' - Channel forwarding (redirects joins to another channel)
+    Forward,
 
     // === Modes without arguments ===
     /// 'i' - Invite only
@@ -206,6 +208,7 @@ impl ModeType for ChannelMode {
                 | Self::Quiet
                 | Self::Limit
                 | Self::Key
+                | Self::Forward
                 | Self::Founder
                 | Self::Admin
                 | Self::Oper
@@ -229,6 +232,7 @@ impl ModeType for ChannelMode {
             'I' => Self::InviteException,
             'l' => Self::Limit,
             'k' => Self::Key,
+            'f' => Self::Forward,
             'i' => Self::InviteOnly,
             'm' => Self::Moderated,
             'M' => Self::ModeratedUnreg,
@@ -269,6 +273,7 @@ impl fmt::Display for ChannelMode {
             Self::InviteException => 'I',
             Self::Limit => 'l',
             Self::Key => 'k',
+            Self::Forward => 'f',
             Self::InviteOnly => 'i',
             Self::Moderated => 'm',
             Self::NoExternalMessages => 'n',
