@@ -361,6 +361,8 @@ pub enum ChannelMode {
     Key(String, slirc_crdt::clock::HybridTimestamp),
     /// +l <limit>: User limit
     Limit(usize, slirc_crdt::clock::HybridTimestamp),
+    /// +f <channel>: Forward to channel on join error
+    Forward(String, slirc_crdt::clock::HybridTimestamp),
 }
 
 #[derive(Debug, Clone)]

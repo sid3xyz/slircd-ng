@@ -87,3 +87,40 @@ pub(super) async fn check_akick(
         .await
         .ok()?
 }
+/// Check if a channel should forward on the given error and return the forward target if so.
+/// Returns the forward target channel name if forwarding should occur.
+pub(super) async fn check_forward(
+    ctx: &Context<'_, RegisteredState>,
+    channel_lower: &str,
+    error: &crate::error::ChannelError,
+) -> Option<String> {
+    use crate::state::actor::ChannelMode;
+    use crate::error::ChannelError;
+    
+    // Forwarding only applies to invite-only and full channel errors
+    let should_forward = matches!(error, ChannelError::InviteOnlyChan | ChannelError::ChannelIsFull);
+    if !should_forward {
+        return None;
+    }
+    
+    // Get the channel and query its modes
+    if let Some(channel_sender) = ctx.matrix.channel_manager.channels.get(channel_lower) {
+        let (modes_tx, modes_rx) = tokio::sync::oneshot::channel();
+        let _ = channel_sender
+            .send(crate::state::actor::ChannelEvent::GetModes {
+                reply_tx: modes_tx,
+            })
+            .await;
+        
+        if let Ok(modes) = modes_rx.await {
+            // Look for Forward mode
+            for mode in modes {
+                if let ChannelMode::Forward(target, _) = mode {
+                    return Some(target);
+                }
+            }
+        }
+    }
+    
+    None
+}

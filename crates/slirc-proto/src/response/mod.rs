@@ -366,6 +366,8 @@ pub enum Response {
     ERR_YOUWILLBEBANNED = 466,
     /// 467 - Key already set
     ERR_KEYSET = 467,
+    /// 470 - Link to another channel (channel forwarding)
+    ERR_LINKCHANNEL = 470,
     /// 471 - Channel is full
     ERR_CHANNELISFULL = 471,
     /// 472 - Unknown mode
