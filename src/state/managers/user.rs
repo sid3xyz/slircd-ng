@@ -38,6 +38,8 @@ pub struct UserManager {
     pub max_local_users: AtomicUsize,
     /// Maximum global user count (historical peak).
     pub max_global_users: AtomicUsize,
+    /// Count of unregistered connections (NICK sent but not USER).
+    pub unregistered_connections: AtomicUsize,
     /// Observer for state changes (Innovation 2).
     pub observer: Option<Arc<dyn StateObserver>>,
 }
@@ -54,6 +56,7 @@ impl UserManager {
             server_name,
             max_local_users: AtomicUsize::new(0),
             max_global_users: AtomicUsize::new(0),
+            unregistered_connections: AtomicUsize::new(0),
             observer: None,
         }
     }
@@ -295,6 +298,22 @@ impl UserManager {
                 let _ = sender.send(notice_msg.clone()).await;
             }
         }
+    }
+
+    /// Increment the unregistered connections counter.
+    ///
+    /// Call this when a new connection is established (before registration).
+    pub fn increment_unregistered(&self) {
+        self.unregistered_connections
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Decrement the unregistered connections counter.
+    ///
+    /// Call this when a connection registers or disconnects before registration.
+    pub fn decrement_unregistered(&self) {
+        self.unregistered_connections
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Record a WHOWAS entry for a user who is disconnecting.

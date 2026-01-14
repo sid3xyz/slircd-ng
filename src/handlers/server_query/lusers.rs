@@ -126,14 +126,12 @@ impl PostRegHandler for LusersHandler {
         .await?;
 
         // RPL_LUSERUNKNOWN (253): <u> :unknown connection(s)
-        let service_nick_count = 2; // NickServ, ChanServ
-        let real_nicks = ctx
+        // Count unregistered connections (those that have connected but not completed USER)
+        let unregistered_count = ctx
             .matrix
             .user_manager
-            .nicks
-            .len()
-            .saturating_sub(service_nick_count);
-        let unregistered_count = real_nicks.saturating_sub(total_users);
+            .unregistered_connections
+            .load(std::sync::atomic::Ordering::Relaxed);
 
         if unregistered_count > 0 {
             ctx.send_reply(

@@ -178,6 +178,9 @@ impl Connection {
             unreg_state.is_tls = true;
         }
 
+        // Track unregistered connection count for LUSERS
+        self.matrix.user_manager.increment_unregistered();
+
         // Phase 1: Handshake
         let success = match run_handshake_loop(
             ConnectionContext {
@@ -200,6 +203,8 @@ impl Connection {
             Ok(s) => s,
             Err(exit) => {
                 exit.release_nick(&self.matrix);
+                // Decrement unregistered counter on handshake failure
+                self.matrix.user_manager.decrement_unregistered();
                 return Ok(());
             }
         };
@@ -208,6 +213,8 @@ impl Connection {
             HandshakeSuccess::User => {
                 // Transition: UnregisteredState -> RegisteredState
                 // At this point, the user is registered and exists in Matrix.
+                // (Note: unregistered counter is decremented in welcome_burst when user is added)
+
                 // Convert the state for Phase 2.
                 let mut reg_state = match unreg_state.try_register() {
                     Ok(state) => state,
@@ -258,6 +265,9 @@ impl Connection {
                 // Handshake loop already sent credentials in handle_inbound_step.
                 // We do NOT need to send them again.
                 let send_handshake = false;
+
+                // Decrement unregistered counter since this is a server link (not a user)
+                self.matrix.user_manager.decrement_unregistered();
 
                 let server_state = match unreg_state.try_register_server() {
                     Ok(state) => state,
