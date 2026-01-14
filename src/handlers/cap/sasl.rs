@@ -97,6 +97,44 @@ async fn attach_session_to_client<S: SessionState + SaslAccess>(
                 first_session = %first_session,
                 "Attached session to existing client"
             );
+
+            // If this is a reattach (not first session on this device), prepare autoreplay
+            if *reattach {
+                if let Some(client_arc) = ctx.matrix.client_manager.get_client(account) {
+                    let client = client_arc.read().await;
+                    
+                    // Extract channels with membership info
+                    let channels: Vec<(String, crate::state::ChannelMembership)> = client
+                        .channels
+                        .iter()
+                        .map(|(name, membership)| (name.clone(), membership.clone()))
+                        .collect();
+
+                    // Get last_seen timestamp for this device (if available)
+                    let replay_since = device_id
+                        .as_ref()
+                        .and_then(|dev| client.last_seen.get(dev).copied());
+
+                    // Build ReattachInfo
+                    let reattach_info = crate::state::ReattachInfo {
+                        account: account.to_string(),
+                        device_id: device_id.clone(),
+                        channels,
+                        replay_since,
+                    };
+
+                    // Store in session state (will be moved to RegisteredState on registration)
+                    ctx.state.set_reattach_info(Some(reattach_info));
+
+                    debug!(
+                        account = %account,
+                        device = ?device_id,
+                        channel_count = client.channels.len(),
+                        has_replay_timestamp = replay_since.is_some(),
+                        "Prepared autoreplay info for reattached session"
+                    );
+                }
+            }
         }
         crate::state::managers::client::AttachResult::MulticlientNotAllowed => {
             warn!(

@@ -23,6 +23,7 @@
 //!    └─────────────────────────────────────────────────────┘
 //! ```
 
+mod autoreplay;
 mod context;
 mod error_handling;
 mod event_loop;

@@ -86,6 +86,11 @@ pub trait SessionState: Send {
     /// Default implementation does nothing (for unregistered/server connections).
     fn set_device_id(&mut self, _device_id: Option<DeviceId>) {}
 
+    /// Set reattach info for bouncer session replay.
+    ///
+    /// Default implementation does nothing (for server connections).
+    fn set_reattach_info(&mut self, _reattach_info: Option<ReattachInfo>) {}
+
     /// Get enabled capabilities.
     fn capabilities(&self) -> &HashSet<String>;
 
@@ -375,6 +380,10 @@ impl SessionState for UnregisteredState {
 
     fn active_batch_ref(&self) -> Option<&str> {
         self.active_batch_ref.as_deref()
+    }
+
+    fn set_reattach_info(&mut self, reattach_info: Option<ReattachInfo>) {
+        self.reattach_info = reattach_info;
     }
 }
 

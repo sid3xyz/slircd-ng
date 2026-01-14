@@ -27,7 +27,7 @@ mod bans;
 pub mod batch;
 pub mod cap;
 mod channel;
-mod chathistory;
+pub mod chathistory;
 mod connection;
 mod core;
 mod helpers;

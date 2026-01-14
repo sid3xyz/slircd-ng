@@ -1,3 +1,4 @@
+use super::autoreplay::perform_autoreplay;
 use super::context::{ConnectionContext, LifecycleChannels};
 use super::error_handling::{
     ReadErrorAction, classify_read_error, extract_label_from_raw, handler_error_to_reply_owned,
@@ -93,6 +94,31 @@ pub async fn run_event_loop(
     let mut ping_check_timer = tokio::time::interval(Duration::from_secs(PING_CHECK_INTERVAL_SECS));
     // First tick fires immediately, we don't want that
     ping_check_timer.tick().await;
+
+    // Bouncer autoreplay: If this is a reattached session, replay JOINs and history
+    if let Some(reattach_info) = reg_state.reattach_info.take() {
+        debug!(
+            uid = %uid,
+            account = %reattach_info.account,
+            device = ?reattach_info.device_id,
+            channel_count = reattach_info.channels.len(),
+            "Performing bouncer autoreplay for reattached session"
+        );
+
+        let mut ctx = ConnectionContext {
+            uid,
+            transport,
+            matrix,
+            registry,
+            db,
+            addr,
+            starttls_acceptor: None,
+        };
+
+        if let Err(e) = perform_autoreplay(&mut ctx, reg_state, reattach_info).await {
+            warn!(uid = %uid, error = ?e, "Autoreplay failed, continuing anyway");
+        }
+    }
 
     info!("Entering unified event loop");
 
