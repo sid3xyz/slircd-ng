@@ -20,7 +20,6 @@
 
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-#[allow(unused_imports)]  // Used when always_on persistence enabled
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU32, Ordering};
 use uuid::Uuid;
@@ -32,10 +31,6 @@ pub type SessionId = Uuid;
 
 /// Unique identifier for a client device (extracted from SASL username or ident).
 pub type DeviceId = String;
-
-/// Default maximum number of concurrent sessions per account.
-#[allow(dead_code)]  // Used when ClientManager instantiation varies
-pub const DEFAULT_MAX_SESSIONS: usize = 10;
 
 /// Represents an account's persistent bouncer state.
 ///
@@ -84,7 +79,7 @@ pub struct Client {
 /// Dirty bits for selective persistence.
 pub mod dirty {
     pub const CHANNELS: u32 = 1 << 0;
-    pub const USER_MODES: u32 = 1 << 1;
+    pub const NICK: u32 = 1 << 1;
     pub const AWAY: u32 = 1 << 2;
     pub const LAST_SEEN: u32 = 1 << 3;
     pub const DEVICES: u32 = 1 << 4;
@@ -103,7 +98,6 @@ pub struct ChannelMembership {
 
 /// Information about a registered device.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]  // Fields used when device management UI/API added
 pub struct DeviceInfo {
     /// Device identifier.
     pub id: DeviceId,
@@ -119,20 +113,6 @@ pub struct DeviceInfo {
 
     /// When this device was last seen.
     pub last_seen: DateTime<Utc>,
-}
-
-/// Settings for an individual client, overridable from global config.
-#[derive(Debug, Clone, Default)]
-#[allow(dead_code)]  // Used for per-client config overrides
-pub struct ClientSettings {
-    /// Whether multiclient is enabled for this account.
-    pub multiclient_enabled: Option<bool>,
-
-    /// Whether always-on is enabled for this account.
-    pub always_on: Option<bool>,
-
-    /// Whether auto-away is enabled for this account.
-    pub auto_away: Option<bool>,
 }
 
 impl Client {
@@ -224,28 +204,19 @@ impl Client {
         }
     }
 
-    /// Update modes for a channel membership.
-    pub fn update_channel_modes(&mut self, channel: &str, new_modes: &str) {
-        let channel_lower = slirc_proto::irc_to_lower(channel);
-        if let Some(membership) = self.channels.get_mut(&channel_lower) {
-            membership.modes = new_modes.to_string();
-            self.mark_dirty(dirty::CHANNELS);
-        }
-    }
-
     /// Register a new device.
     pub fn register_device(&mut self, device_id: DeviceId, name: Option<String>) -> &DeviceInfo {
         let now = Utc::now();
         let is_new = !self.devices.contains_key(&device_id);
-        self.devices.entry(device_id.clone()).or_insert_with(|| {
-            DeviceInfo {
+        self.devices
+            .entry(device_id.clone())
+            .or_insert_with(|| DeviceInfo {
                 id: device_id.clone(),
                 name,
                 certfp: None,
                 created_at: now,
                 last_seen: now,
-            }
-        });
+            });
         if is_new {
             self.mark_dirty(dirty::DEVICES);
         }
@@ -281,19 +252,9 @@ impl Client {
         self.dirty_bits.fetch_or(bits, Ordering::Relaxed);
     }
 
-    /// Check if any dirty bits are set.
-    pub fn is_dirty(&self) -> bool {
-        self.dirty_bits.load(Ordering::Relaxed) != 0
-    }
-
     /// Read and clear dirty bits.
     pub fn take_dirty(&self) -> u32 {
         self.dirty_bits.swap(0, Ordering::Relaxed)
-    }
-
-    /// Check if this client should persist (for always-on maintenance).
-    pub fn should_persist(&self) -> bool {
-        self.always_on || self.is_connected()
     }
 }
 
@@ -398,10 +359,6 @@ mod tests {
         assert!(client.channels.contains_key("#test"));
         assert_eq!(client.channels.get("#test").unwrap().modes, "ov");
 
-        // Update modes
-        client.update_channel_modes("#TEST", "o");
-        assert_eq!(client.channels.get("#test").unwrap().modes, "o");
-
         // Part channel
         client.part_channel("#test");
         assert!(!client.channels.contains_key("#test"));
@@ -426,13 +383,13 @@ mod tests {
     #[test]
     fn dirty_bits() {
         let client = Client::new("alice".to_string(), "Alice".to_string());
-        assert!(!client.is_dirty());
+        assert_eq!(client.dirty_bits.load(Ordering::Relaxed), 0);
 
-        client.mark_dirty(dirty::CHANNELS | dirty::USER_MODES);
-        assert!(client.is_dirty());
+        client.mark_dirty(dirty::CHANNELS | dirty::AWAY);
+        assert_ne!(client.dirty_bits.load(Ordering::Relaxed), 0);
 
         let bits = client.take_dirty();
-        assert_eq!(bits, dirty::CHANNELS | dirty::USER_MODES);
-        assert!(!client.is_dirty());
+        assert_eq!(bits, dirty::CHANNELS | dirty::AWAY);
+        assert_eq!(client.dirty_bits.load(Ordering::Relaxed), 0);
     }
 }

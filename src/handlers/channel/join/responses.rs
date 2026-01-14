@@ -3,6 +3,7 @@
 use super::super::super::{Context, HandlerResult, server_reply, user_prefix, with_label};
 use crate::error::ChannelError;
 use crate::state::RegisteredState;
+use crate::state::actor::ChannelEvent;
 use slirc_proto::{Command, Message, Prefix, Response};
 
 /// Context for handling successful JOIN responses.
@@ -17,6 +18,7 @@ pub(super) struct JoinSuccessContext<'a> {
     pub away_message: &'a Option<String>,
     pub data: crate::state::actor::JoinSuccessData,
     pub session_id: uuid::Uuid,
+    pub account: Option<String>,
 }
 
 /// Handle successful JOIN - send topic, names, and update user state.
@@ -35,6 +37,7 @@ pub(super) async fn handle_join_success(
         away_message,
         data,
         session_id,
+        account,
     } = join_ctx;
 
     // Add channel to user's list with session validation
@@ -80,6 +83,24 @@ pub(super) async fn handle_join_success(
             );
         }
         return Ok(());
+    }
+
+    // Track channel membership for bouncer clients
+    if ctx.matrix.config.multiclient.enabled
+        && let Some(account) = account.as_ref()
+    {
+        let (modes_tx, modes_rx) = tokio::sync::oneshot::channel();
+        let _ = channel_sender
+            .send(ChannelEvent::GetMemberModes {
+                uid: ctx.uid.to_string(),
+                reply_tx: modes_tx,
+            })
+            .await;
+        let member_modes = modes_rx.await.ok().flatten();
+        ctx.matrix
+            .client_manager
+            .record_channel_join(account, channel_lower, member_modes.as_ref())
+            .await;
     }
 
     // Send JOIN message to user

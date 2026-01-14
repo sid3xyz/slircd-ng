@@ -22,8 +22,7 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 /// Redb table for always-on client state.
-const ALWAYS_ON_CLIENTS: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("always_on_clients");
+const ALWAYS_ON_CLIENTS: TableDefinition<&str, &[u8]> = TableDefinition::new("always_on_clients");
 
 /// Redb table for device state.
 const DEVICE_STATE: TableDefinition<&str, &[u8]> = TableDefinition::new("device_state");
@@ -139,8 +138,8 @@ impl AlwaysOnStore {
     pub fn save_client(&self, client: &Client) -> Result<(), AlwaysOnError> {
         let stored = StoredClient::from_client(client);
         let key = irc_to_lower(&client.account);
-        let value = serde_json::to_vec(&stored)
-            .map_err(|e| AlwaysOnError::Serialization(e.to_string()))?;
+        let value =
+            serde_json::to_vec(&stored).map_err(|e| AlwaysOnError::Serialization(e.to_string()))?;
 
         let write_txn = self.db.begin_write()?;
         {
@@ -149,24 +148,13 @@ impl AlwaysOnStore {
         }
         write_txn.commit()?;
 
+        // Persist per-device metadata separately so names/certfps survive restarts
+        for device in client.devices.values() {
+            self.save_device(&client.account, device)?;
+        }
+
         debug!(account = %client.account, "Saved always-on client state");
         Ok(())
-    }
-
-    /// Load a client from persistent storage.
-    pub fn load_client(&self, account: &str) -> Result<Option<StoredClient>, AlwaysOnError> {
-        let key = irc_to_lower(account);
-        let read_txn = self.db.begin_read()?;
-        let table = read_txn.open_table(ALWAYS_ON_CLIENTS)?;
-
-        match table.get(key.as_str())? {
-            Some(value) => {
-                let stored: StoredClient = serde_json::from_slice(value.value())
-                    .map_err(|e| AlwaysOnError::Serialization(e.to_string()))?;
-                Ok(Some(stored))
-            }
-            None => Ok(None),
-        }
     }
 
     /// Load all always-on clients from storage.
@@ -189,7 +177,10 @@ impl AlwaysOnStore {
             }
         }
 
-        info!(count = clients.len(), "Loaded always-on clients from storage");
+        info!(
+            count = clients.len(),
+            "Loaded always-on clients from storage"
+        );
         Ok(clients)
     }
 
@@ -204,21 +195,22 @@ impl AlwaysOnStore {
         write_txn.commit()?;
 
         if deleted {
+            // Remove any per-device metadata associated with this account
+            for device in self.load_devices(account)? {
+                let _ = self.delete_device(account, &device.id)?;
+            }
+
             debug!(account = %account, "Deleted always-on client from storage");
         }
         Ok(deleted)
     }
 
     /// Save device info for an account.
-    pub fn save_device(
-        &self,
-        account: &str,
-        device: &DeviceInfo,
-    ) -> Result<(), AlwaysOnError> {
+    pub fn save_device(&self, account: &str, device: &DeviceInfo) -> Result<(), AlwaysOnError> {
         let key = Self::device_key(account, &device.id);
         let stored = StoredDeviceInfo::from_device(device);
-        let value = serde_json::to_vec(&stored)
-            .map_err(|e| AlwaysOnError::Serialization(e.to_string()))?;
+        let value =
+            serde_json::to_vec(&stored).map_err(|e| AlwaysOnError::Serialization(e.to_string()))?;
 
         let write_txn = self.db.begin_write()?;
         {
@@ -343,8 +335,7 @@ impl StoredClient {
         client.always_on = self.always_on;
         client.auto_away = self.auto_away;
         client.away = self.away.clone();
-        client.created_at = DateTime::from_timestamp(self.created_at, 0)
-            .unwrap_or_else(Utc::now);
+        client.created_at = DateTime::from_timestamp(self.created_at, 0).unwrap_or_else(Utc::now);
 
         // Restore channel memberships
         for stored_mem in &self.channels {
@@ -366,7 +357,7 @@ impl StoredClient {
 
         // Parse and set user modes
         client.modes = UserModes::default();
-        // TODO: Parse modes string when UserModes has a from_string method
+        // NOTE: Mode parsing will be added when UserModes supports parsing from a string.
 
         client
     }
@@ -390,10 +381,8 @@ impl StoredDeviceInfo {
             id: self.id.clone(),
             name: self.name.clone(),
             certfp: self.certfp.clone(),
-            created_at: DateTime::from_timestamp(self.created_at, 0)
-                .unwrap_or_else(Utc::now),
-            last_seen: DateTime::from_timestamp(self.last_seen, 0)
-                .unwrap_or_else(Utc::now),
+            created_at: DateTime::from_timestamp(self.created_at, 0).unwrap_or_else(Utc::now),
+            last_seen: DateTime::from_timestamp(self.last_seen, 0).unwrap_or_else(Utc::now),
         }
     }
 }
@@ -423,7 +412,12 @@ mod tests {
 
         store.save_client(&client).unwrap();
 
-        let loaded = store.load_client("alice").unwrap().unwrap();
+        let loaded = store
+            .load_all_clients()
+            .unwrap()
+            .into_iter()
+            .find(|client| client.account == "alice")
+            .unwrap();
         assert_eq!(loaded.account, "alice");
         assert_eq!(loaded.nick, "Alice");
         assert!(loaded.always_on);
@@ -462,12 +456,14 @@ mod tests {
         client.set_always_on(true);
         store.save_client(&client).unwrap();
 
-        assert!(store.load_client("alice").unwrap().is_some());
+        let clients = store.load_all_clients().unwrap();
+        assert_eq!(clients.len(), 1);
+        assert_eq!(clients[0].account, "alice");
 
         let deleted = store.delete_client("alice").unwrap();
         assert!(deleted);
 
-        assert!(store.load_client("alice").unwrap().is_none());
+        assert!(store.load_all_clients().unwrap().is_empty());
     }
 
     #[test]
@@ -518,6 +514,6 @@ mod tests {
         assert_eq!(expired[0], "alice");
 
         // Client should be gone
-        assert!(store.load_client("alice").unwrap().is_none());
+        assert!(store.load_all_clients().unwrap().is_empty());
     }
 }

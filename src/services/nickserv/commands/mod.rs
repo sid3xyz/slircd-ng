@@ -183,7 +183,12 @@ impl NickServ {
             "SESSIONS" => {
                 // Look up user account and oper status from matrix
                 let (user_account, is_oper) = {
-                    if let Some(user_arc) = matrix.user_manager.users.get(uid).map(|u| u.value().clone()) {
+                    if let Some(user_arc) = matrix
+                        .user_manager
+                        .users
+                        .get(uid)
+                        .map(|u| u.value().clone())
+                    {
                         let user = user_arc.read().await;
                         (user.account.clone(), user.modes.oper)
                     } else {

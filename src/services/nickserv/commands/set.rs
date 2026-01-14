@@ -19,8 +19,14 @@ pub async fn handle_set(
         return vec![
             reply_effect(uid, "Syntax: SET <option> <value>"),
             reply_effect(uid, "Options:"),
-            reply_effect(uid, "  ALWAYS-ON ON|OFF - Keep presence when all sessions disconnect"),
-            reply_effect(uid, "  AUTO-AWAY ON|OFF - Set away when all sessions disconnect"),
+            reply_effect(
+                uid,
+                "  ALWAYS-ON ON|OFF - Keep presence when all sessions disconnect",
+            ),
+            reply_effect(
+                uid,
+                "  AUTO-AWAY ON|OFF - Set away when all sessions disconnect",
+            ),
             reply_effect(uid, "  EMAIL <address>  - Set email address"),
             reply_effect(
                 uid,
@@ -90,11 +96,11 @@ pub async fn handle_set(
                 let mut client_guard = client.write().await;
                 client_guard.set_always_on(enabled);
                 info!(account = %account_name, enabled = enabled, "ALWAYS-ON setting changed");
-                
+
                 // Trigger persistence
                 drop(client_guard);
                 matrix.client_manager.persist_client(&account_name).await;
-                
+
                 return reply_effects(
                     uid,
                     vec![&format!(
@@ -103,7 +109,10 @@ pub async fn handle_set(
                     )],
                 );
             } else {
-                return reply_effects(uid, vec!["No bouncer session found. Connect again after identifying."]);
+                return reply_effects(
+                    uid,
+                    vec!["No bouncer session found. Connect again after identifying."],
+                );
             }
         }
         "AUTO-AWAY" => {
@@ -120,11 +129,11 @@ pub async fn handle_set(
                 let mut client_guard = client.write().await;
                 client_guard.set_auto_away(enabled);
                 info!(account = %account_name, enabled = enabled, "AUTO-AWAY setting changed");
-                
+
                 // Trigger persistence
                 drop(client_guard);
                 matrix.client_manager.persist_client(&account_name).await;
-                
+
                 return reply_effects(
                     uid,
                     vec![&format!(
@@ -133,7 +142,10 @@ pub async fn handle_set(
                     )],
                 );
             } else {
-                return reply_effects(uid, vec!["No bouncer session found. Connect again after identifying."]);
+                return reply_effects(
+                    uid,
+                    vec!["No bouncer session found. Connect again after identifying."],
+                );
             }
         }
         _ => {
@@ -149,8 +161,7 @@ pub async fn handle_set(
                 uid,
                 vec![&format!(
                     "\x02{}\x02 has been set to \x02{}\x02.",
-                    option,
-                    value
+                    option, value
                 )],
             )
         }

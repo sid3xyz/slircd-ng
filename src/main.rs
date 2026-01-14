@@ -354,26 +354,30 @@ async fn main() -> anyhow::Result<()> {
     // Start always-on client expiration task (runs every hour)
     {
         let matrix = Arc::clone(&matrix);
-        let expiration_str = config.multiclient.always_on_expiration.clone();
+        let expiration = config.multiclient.parse_expiration();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
             loop {
                 interval.tick().await;
 
-                // Parse expiration duration from config
-                let expiration = crate::config::parse_duration_string(&expiration_str);
                 if let Some(expiration) = expiration {
                     // Expire from memory
                     let expired_memory = matrix.client_manager.expire_clients(expiration).await;
                     if !expired_memory.is_empty() {
-                        info!(count = expired_memory.len(), "Expired stale always-on clients from memory");
+                        info!(
+                            count = expired_memory.len(),
+                            "Expired stale always-on clients from memory"
+                        );
                     }
 
                     // Expire from storage
                     let cutoff = chrono::Utc::now() - expiration;
                     match matrix.client_manager.expire_from_storage(cutoff) {
                         Ok(expired_storage) if !expired_storage.is_empty() => {
-                            info!(count = expired_storage.len(), "Expired stale always-on clients from storage");
+                            info!(
+                                count = expired_storage.len(),
+                                "Expired stale always-on clients from storage"
+                            );
                         }
                         Err(e) => {
                             tracing::warn!(error = %e, "Failed to expire clients from storage");

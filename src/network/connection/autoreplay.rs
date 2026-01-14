@@ -112,12 +112,12 @@ pub async fn perform_autoreplay(
     // 2. Replay history
     for (channel_name, _membership) in &info.channels {
         // Determine start bound per-target: Use device last_seen from reattach info
-        // TODO: Integrate read_marker_manager when added to Matrix for per-target tracking
+        // NOTE: When a read-marker manager exists, use it for per-target replay bounds.
         let start_dt_opt = info.replay_since;
 
         if let Some(start_dt) = start_dt_opt {
             replay_channel_history(ctx, channel_name, start_dt, reg_state).await?;
-            // TODO: Update read_marker_manager when integrated into Matrix
+            // NOTE: When a read-marker manager exists, update it after replay.
         }
     }
 
@@ -158,7 +158,9 @@ async fn replay_channel_history(
                 prefix: Some(Prefix::ServerName(server_name.clone())),
                 command: Command::BATCH(
                     format!("+{}", batch_id),
-                    Some(slirc_proto::BatchSubCommand::CUSTOM("chathistory".to_string())),
+                    Some(slirc_proto::BatchSubCommand::CUSTOM(
+                        "chathistory".to_string(),
+                    )),
                     Some(vec![target.to_string()]),
                 ),
             };
@@ -187,7 +189,7 @@ async fn replay_channel_history(
                 // Parse and reconstruct the message with batch tag
                 // Build a slirc_proto::Message from the envelope
                 let mut tags_vec = vec![Tag::new("batch", Some(batch_id.clone()))];
-                
+
                 // Add stored tags (server-time, msgid, etc.)
                 if let Some(envelope_tags) = &msg.envelope.tags {
                     for tag in envelope_tags {
@@ -197,20 +199,15 @@ async fn replay_channel_history(
 
                 // Parse command from envelope
                 let command = match msg.envelope.command.as_str() {
-                    "PRIVMSG" => Command::PRIVMSG(
-                        msg.envelope.target.clone(),
-                        msg.envelope.text.clone(),
-                    ),
-                    "NOTICE" => Command::NOTICE(
-                        msg.envelope.target.clone(),
-                        msg.envelope.text.clone(),
-                    ),
+                    "PRIVMSG" => {
+                        Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone())
+                    }
+                    "NOTICE" => {
+                        Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone())
+                    }
                     "TOPIC" => {
                         // TOPIC command with channel and topic params
-                        Command::TOPIC(
-                            msg.envelope.target.clone(),
-                            Some(msg.envelope.text.clone()),
-                        )
+                        Command::TOPIC(msg.envelope.target.clone(), Some(msg.envelope.text.clone()))
                     }
                     "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
                     _ => {
@@ -226,7 +223,8 @@ async fn replay_channel_history(
                     if let Some(exclaim_pos) = msg.envelope.prefix.find('!') {
                         let nick = msg.envelope.prefix[..exclaim_pos].to_string();
                         if let Some(at_pos) = msg.envelope.prefix[exclaim_pos..].find('@') {
-                            let user = msg.envelope.prefix[exclaim_pos + 1..exclaim_pos + at_pos].to_string();
+                            let user = msg.envelope.prefix[exclaim_pos + 1..exclaim_pos + at_pos]
+                                .to_string();
                             let host = msg.envelope.prefix[exclaim_pos + at_pos + 1..].to_string();
                             Some(Prefix::Nickname(nick, user, host))
                         } else {
@@ -252,15 +250,11 @@ async fn replay_channel_history(
             let batch_end = Message {
                 tags: None,
                 prefix: Some(Prefix::ServerName(server_name)),
-                command: Command::BATCH(
-                    format!("-{}", batch_id),
-                    None,
-                    None,
-                ),
+                command: Command::BATCH(format!("-{}", batch_id), None, None),
             };
             let _ = ctx.transport.write_message(&batch_end).await;
 
-            // TODO: Update read_marker_manager when integrated into Matrix
+            // NOTE: When a read-marker manager exists, update it after replay.
             return Ok(());
         }
         Ok(_) => {

@@ -109,9 +109,22 @@ impl PostRegHandler for KickHandler {
                 Ok(Ok(())) => {
                     // Success.
                     // We also need to remove channel from target's user struct.
-                    if let Some(user_ref) = ctx.matrix.user_manager.users.get(&target_uid) {
-                        let mut user_data = user_ref.write().await;
-                        user_data.channels.remove(&channel_lower);
+                    let account =
+                        if let Some(user_ref) = ctx.matrix.user_manager.users.get(&target_uid) {
+                            let mut user_data = user_ref.write().await;
+                            user_data.channels.remove(&channel_lower);
+                            user_data.account.clone()
+                        } else {
+                            None
+                        };
+
+                    if ctx.matrix.config.multiclient.enabled
+                        && let Some(account) = account
+                    {
+                        ctx.matrix
+                            .client_manager
+                            .record_channel_part(&account, &channel_lower)
+                            .await;
                     }
 
                     info!(

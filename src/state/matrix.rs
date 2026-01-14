@@ -31,11 +31,11 @@
 //! - **Lock-copy-release**: Acquire lock, copy needed data, release before next operation
 
 use crate::db::Database;
+use crate::state::managers::client::ClientManager;
 use crate::state::{
     ChannelManager, LifecycleManager, MonitorManager, SecurityManager, SecurityManagerParams,
     ServiceManager, SyncManager, Uid, UserManager,
 };
-use crate::state::managers::client::ClientManager;
 use slirc_crdt::clock::ServerId;
 
 use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
@@ -316,7 +316,7 @@ impl Matrix {
 
         // If user has an account and multiclient is enabled, detach the session
         let detach_result = if self.config.multiclient.enabled {
-            if let Some(ref account_name) = account {
+            if account.is_some() {
                 self.client_manager.detach_session(session_id).await
             } else {
                 DetachResult::NotFound
@@ -362,7 +362,7 @@ impl Matrix {
                 // For now, we still remove the user since virtual presence
                 // requires more infrastructure. This will be enhanced in future
                 // to keep the user present when always-on.
-                // TODO: Implement virtual user persistence for always-on
+                // NOTE: Virtual user persistence for always-on is not implemented yet.
             }
             DetachResult::Destroyed => {
                 tracing::debug!(

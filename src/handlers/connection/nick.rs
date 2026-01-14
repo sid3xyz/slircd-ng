@@ -270,9 +270,18 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 .users
                 .get(ctx.uid)
                 .map(|u| u.value().clone());
-            if let Some(user_arc) = user_arc {
+            let account = if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.nick = nick.to_string();
+                user.account.clone()
+            } else {
+                None
+            };
+
+            if ctx.matrix.config.multiclient.enabled
+                && let Some(account) = account
+            {
+                ctx.matrix.client_manager.update_nick(&account, nick).await;
             }
 
             // Notify observer of user update (Innovation 2)
