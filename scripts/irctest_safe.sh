@@ -2,9 +2,16 @@
 set -euo pipefail
 
 # Memory-safe irctest runner.
-# - Runs a single test module (or a specific test node) at a time.
-# - Disables pytest output capture to avoid large in-memory buffers.
-# - Runs under a systemd user scope with a hard memory cap to prevent OOM reboots.
+# - Runs individual test files in isolated processes with guaranteed cleanup
+# - Disables pytest output capture to avoid large in-memory buffers
+# - Runs under a systemd user scope with hard memory cap to prevent OOM
+# - Handles process cleanup via controller __del__ and wrapper script
+#
+# Usage:
+#   ./scripts/irctest_safe.sh irctest/server_tests/utf8.py [pytest args]
+#
+# Or use the Python runner for multiple tests:
+#   ./scripts/run_irctest_safe.py [--discover] [--output report.txt] [TEST_FILES...]
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 IRCTEST_ROOT=${IRCTEST_ROOT:-"$REPO_ROOT/slirc-irctest"}
@@ -47,6 +54,7 @@ TEST_TARGET=${1:-irctest/server_tests/utf8.py}
 shift || true
 
 cd "$IRCTEST_ROOT"
+
 
 PYTEST_BASE_ARGS=(
   --controller=irctest.controllers.slircd
