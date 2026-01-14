@@ -248,6 +248,7 @@ pub(super) async fn join_channel(
                         away_message: &away_message,
                         data,
                         session_id,
+                        account: account.clone(),
                     },
                 )
                 .await?;

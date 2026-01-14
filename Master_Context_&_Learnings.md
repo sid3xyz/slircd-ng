@@ -1,7 +1,7 @@
 # Master Context & Learnings - slircd-ng
 
 > Comprehensive knowledge base for slircd-ng development.
-> Last Updated: 2026-01-12 (Session: release/1.0-alpha-prep)
+> Last Updated: 2026-01-14 (Session: bouncer-autoreplay-polish)
 
 ---
 
@@ -15,6 +15,7 @@
 
 | Date | Achievement |
 |------|-------------|
+| 2026-01-14 | Bouncer autoreplay polish: channel tracking, nick persistence, device last-seen updates |
 | 2026-01-12 | Phase 1 bouncer/multiclient foundation complete |
 | 2026-01-12 | v1.0.0-alpha.1 release preparation |
 | 2026-01-12 | PRECIS casemapping for UTF-8 nicknames |
@@ -534,6 +535,8 @@ Active sessions for alice (2 total):
 End of session list.
 ```
 
+Oper note: session entries append `id` and `ip` for operator invocations.
+
 ### Implementation Status
 
 | Feature | Status | Notes |
@@ -544,17 +547,17 @@ End of session list.
 | Disconnect integration | ✅ Complete | Session detachment, persist check |
 | NickServ SESSIONS | ✅ Complete | List active sessions |
 | MulticlientConfig | ✅ Complete | Policies, duration parsing |
-| Always-on persistence | ⚠️ Partial | Logic present, DB persistence pending |
-| Auto-away | 🔲 Pending | Skeleton only |
-| Channel playback | 🔲 Pending | Phase 2 feature |
+| Always-on persistence | ✅ Complete | Redb store, restore, and dirty writeback |
+| Auto-away | ✅ Basic | Away set/cleared on session detach/attach |
+| Channel playback | ✅ Autoreplay | JOIN replay + CHATHISTORY per reattach |
+| Channel tracking | ✅ Basic | Join/part/kick updates persisted for autoreplay |
+| Client nick sync | ✅ Basic | Nick changes persisted for always-on clients |
 
 ### Next Steps (Phase 2)
 
-1. **Always-on persistence**: Save/restore client state to database
-2. **Auto-away automation**: Mark user away when no sessions connected
-3. **Channel history playback**: Send missed messages on reconnect
-4. **Device management**: NickServ commands for device naming/removal
-5. **Per-account settings**: Allow per-account multiclient/always-on config
+1. **Read marker integration**: Track per-target read positions for precise playback
+2. **Device management**: NickServ commands for device naming/removal
+3. **Per-account settings**: Allow per-account multiclient/always-on config
 
 ---
 

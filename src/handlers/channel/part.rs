@@ -105,9 +105,21 @@ pub(super) async fn leave_channel_internal<S>(
                 .users
                 .get(ctx.uid)
                 .map(|u| u.value().clone());
-            if let Some(user_arc) = user_arc {
+            let account = if let Some(user_arc) = user_arc {
                 let mut user = user_arc.write().await;
                 user.channels.remove(channel_lower);
+                user.account.clone()
+            } else {
+                None
+            };
+
+            if ctx.matrix.config.multiclient.enabled
+                && let Some(account) = account
+            {
+                ctx.matrix
+                    .client_manager
+                    .record_channel_part(&account, channel_lower)
+                    .await;
             }
 
             if remaining_members == 0 {

@@ -32,29 +32,30 @@ pub async fn handle_sessions(
             }
         }
     } else {
-        // Argument provided - check if oper for other accounts
         let requested = args[0];
-        if let Some(own_account) = user_account {
-            if slirc_proto::irc_eq(own_account, requested) {
+        match (user_account, is_oper) {
+            (Some(own_account), _) if slirc_proto::irc_eq(own_account, requested) => {
                 requested.to_string()
-            } else if is_oper {
-                requested.to_string()
-            } else {
+            }
+            (_, true) => requested.to_string(),
+            (Some(_), false) => {
                 return reply_effects(
                     uid,
                     vec!["You can only view sessions for your own account."],
                 );
             }
-        } else if is_oper {
-            requested.to_string()
-        } else {
-            return reply_effects(uid, vec!["You are not logged in to an account."]);
+            (None, false) => {
+                return reply_effects(uid, vec!["You are not logged in to an account."]);
+            }
         }
     };
 
     // Check if multiclient is enabled
     if !matrix.config.multiclient.enabled {
-        return reply_effects(uid, vec!["Multiclient feature is not enabled on this server."]);
+        return reply_effects(
+            uid,
+            vec!["Multiclient feature is not enabled on this server."],
+        );
     }
 
     // Get sessions from client manager
@@ -93,15 +94,22 @@ pub async fn handle_sessions(
             .map(|d| format!(" (device: {})", d))
             .unwrap_or_default();
 
+        let oper_suffix = if is_oper {
+            format!(" [id: {}, ip: {}]", session.session_id, session.ip)
+        } else {
+            String::new()
+        };
+
         let attached_time = session.attached_at.format("%Y-%m-%d %H:%M:%S UTC");
 
         effects.push(reply_effect(
             uid,
             &format!(
-                "  {}. Connected since: {}{}",
+                "  {}. Connected since: {}{}{}",
                 idx + 1,
                 attached_time,
-                device_str
+                device_str,
+                oper_suffix
             ),
         ));
     }
@@ -128,7 +136,10 @@ mod tests {
     }
 
     fn mock_reply_effects(_uid: &str, texts: Vec<&str>) -> NickServResult {
-        texts.into_iter().map(|t| mock_reply_effect(_uid, t)).collect()
+        texts
+            .into_iter()
+            .map(|t| mock_reply_effect(_uid, t))
+            .collect()
     }
 
     #[test]

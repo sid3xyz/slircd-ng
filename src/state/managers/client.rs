@@ -12,6 +12,7 @@
 //! Matrix conventions: DashMap shard lock → Client RwLock.
 
 use crate::db::always_on::AlwaysOnStore;
+use crate::state::MemberModes;
 use crate::state::client::{Client, DeviceId, SessionAttachment, SessionId};
 use chrono::{Duration, Utc};
 use dashmap::DashMap;
@@ -54,6 +55,19 @@ pub enum AttachResult {
     MulticlientNotAllowed,
     /// Too many sessions on this account.
     TooManySessions,
+}
+
+/// Parameters for attaching a session to a client.
+#[derive(Debug)]
+pub struct AttachSessionRequest<'a> {
+    pub account: &'a str,
+    pub nick: &'a str,
+    pub session_id: SessionId,
+    pub device_id: Option<DeviceId>,
+    pub ip: String,
+    pub multiclient_allowed: bool,
+    pub always_on_enabled: bool,
+    pub auto_away_enabled: bool,
 }
 
 /// Result of detaching a session.
@@ -103,37 +117,16 @@ impl ClientManager {
         }
     }
 
-    /// Set the persistence store.
-    pub fn set_store(&mut self, store: Arc<AlwaysOnStore>) {
-        self.store = Some(store);
-    }
-
     /// Get a client by account name.
     pub fn get_client(&self, account: &str) -> Option<Arc<RwLock<Client>>> {
         let account_lower = irc_to_lower(account);
         self.clients.get(&account_lower).map(|c| c.value().clone())
     }
 
-    /// Get a client by session ID.
-    pub fn get_client_by_session(&self, session_id: &SessionId) -> Option<Arc<RwLock<Client>>> {
-        self.session_to_client
-            .get(session_id)
-            .map(|c| c.value().clone())
-    }
-
-    /// Get session attachment info.
-    pub fn get_session_info(&self, session_id: &SessionId) -> Option<SessionAttachment> {
-        self.session_info.get(session_id).map(|s| s.value().clone())
-    }
-
     /// Get or create a client for an account.
     ///
     /// If the client doesn't exist, creates a new one with the given nick.
-    pub async fn get_or_create_client(
-        &self,
-        account: &str,
-        nick: &str,
-    ) -> Arc<RwLock<Client>> {
+    pub async fn get_or_create_client(&self, account: &str, nick: &str) -> Arc<RwLock<Client>> {
         let account_lower = irc_to_lower(account);
 
         // Try to get existing client first
@@ -159,15 +152,18 @@ impl ClientManager {
     ///
     /// If `multiclient_allowed` is false and the client already has sessions,
     /// returns `MulticlientNotAllowed`.
-    pub async fn attach_session(
-        &self,
-        account: &str,
-        nick: &str,
-        session_id: SessionId,
-        device_id: Option<DeviceId>,
-        ip: String,
-        multiclient_allowed: bool,
-    ) -> AttachResult {
+    pub async fn attach_session(&self, request: AttachSessionRequest<'_>) -> AttachResult {
+        let AttachSessionRequest {
+            account,
+            nick,
+            session_id,
+            device_id,
+            ip,
+            multiclient_allowed,
+            always_on_enabled,
+            auto_away_enabled,
+        } = request;
+
         let account_lower = irc_to_lower(account);
 
         // Get or create client
@@ -195,14 +191,22 @@ impl ClientManager {
             was_new_client = client_guard.channels.is_empty() && was_first_session;
             client_guard.attach_session(session_id);
 
+            // Apply policy flags from configuration and account defaults
+            client_guard.set_always_on(always_on_enabled);
+            client_guard.set_auto_away(auto_away_enabled);
+
             // Update last-seen for device
             if let Some(ref device) = device_id {
                 client_guard.update_last_seen(device);
                 client_guard.register_device(device.clone(), None);
+                client_guard.touch_device(device);
             }
 
             // Update nick in case it changed
-            client_guard.nick = nick.to_string();
+            if client_guard.nick != nick {
+                client_guard.nick = nick.to_string();
+                client_guard.mark_dirty(crate::state::client::dirty::NICK);
+            }
         }
 
         // Record session mapping
@@ -235,13 +239,19 @@ impl ClientManager {
             Some((_, client)) => client,
             None => return DetachResult::NotFound,
         };
-        self.session_info.remove(&session_id);
+        let session_info = self.session_info.remove(&session_id).map(|(_, info)| info);
 
         // Detach from client
         let (remaining, always_on);
         {
             let mut client_guard = client.write().await;
             client_guard.detach_session(session_id);
+            if let Some(info) = &session_info
+                && let Some(device_id) = &info.device_id
+            {
+                client_guard.update_last_seen(device_id);
+                client_guard.touch_device(device_id);
+            }
             remaining = client_guard.session_count();
             always_on = client_guard.always_on;
         }
@@ -259,29 +269,12 @@ impl ClientManager {
                 client_guard.account.clone()
             };
             self.clients.remove(&account_lower);
+            if let Some(store) = &self.store
+                && let Err(e) = store.delete_client(&account_lower)
+            {
+                error!(account = %account_lower, error = %e, "Failed to delete stored client");
+            }
             DetachResult::Destroyed
-        }
-    }
-
-    /// Check if a client is connected (has any sessions).
-    pub async fn is_connected(&self, account: &str) -> bool {
-        let account_lower = irc_to_lower(account);
-        if let Some(client) = self.clients.get(&account_lower) {
-            let client_guard = client.read().await;
-            client_guard.is_connected()
-        } else {
-            false
-        }
-    }
-
-    /// Get the number of sessions for an account.
-    pub async fn session_count(&self, account: &str) -> usize {
-        let account_lower = irc_to_lower(account);
-        if let Some(client) = self.clients.get(&account_lower) {
-            let client_guard = client.read().await;
-            client_guard.session_count()
-        } else {
-            0
         }
     }
 
@@ -295,15 +288,37 @@ impl ClientManager {
             .collect()
     }
 
-    /// Get the current nick for an account (if client exists).
-    pub async fn get_nick(&self, account: &str) -> Option<String> {
-        let account_lower = irc_to_lower(account);
-        if let Some(client) = self.clients.get(&account_lower) {
-            let client_guard = client.read().await;
-            Some(client_guard.nick.clone())
-        } else {
-            None
+    /// Track a successful channel join for an account-backed client.
+    pub async fn record_channel_join(
+        &self,
+        account: &str,
+        channel: &str,
+        member_modes: Option<&MemberModes>,
+    ) {
+        let Some(client) = self.get_client(account) else {
+            return;
+        };
+
+        let mut client_guard = client.write().await;
+        let modes = member_modes.map(member_modes_to_string).unwrap_or_default();
+        client_guard.join_channel(channel, &modes);
+
+        if let Some(join_time) = member_modes.and_then(|m| m.join_time) {
+            let channel_lower = irc_to_lower(channel);
+            if let Some(membership) = client_guard.channels.get_mut(&channel_lower) {
+                membership.join_time = join_time;
+                client_guard.mark_dirty(crate::state::client::dirty::CHANNELS);
+            }
         }
+    }
+
+    /// Track a channel part (PART/KICK) for an account-backed client.
+    pub async fn record_channel_part(&self, account: &str, channel: &str) {
+        let Some(client) = self.get_client(account) else {
+            return;
+        };
+        let mut client_guard = client.write().await;
+        client_guard.part_channel(channel);
     }
 
     /// Update the nick for a client.
@@ -311,16 +326,11 @@ impl ClientManager {
         let account_lower = irc_to_lower(account);
         if let Some(client) = self.clients.get(&account_lower) {
             let mut client_guard = client.write().await;
-            client_guard.nick = new_nick.to_string();
+            if client_guard.nick != new_nick {
+                client_guard.nick = new_nick.to_string();
+                client_guard.mark_dirty(crate::state::client::dirty::NICK);
+            }
         }
-    }
-
-    /// List all always-on clients (for persistence/restoration).
-    pub fn always_on_clients(&self) -> Vec<Arc<RwLock<Client>>> {
-        self.clients
-            .iter()
-            .map(|c| c.value().clone())
-            .collect()
     }
 
     /// Expire disconnected always-on clients older than the given duration.
@@ -348,10 +358,7 @@ impl ClientManager {
                     client_guard.created_at < cutoff
                 } else {
                     // All devices must be stale
-                    client_guard
-                        .last_seen
-                        .values()
-                        .all(|&ts| ts < cutoff)
+                    client_guard.last_seen.values().all(|&ts| ts < cutoff)
                 }
             };
 
@@ -362,38 +369,6 @@ impl ClientManager {
         }
 
         expired
-    }
-
-    /// Get statistics about the client manager.
-    pub async fn stats(&self) -> ClientManagerStats {
-        let total_clients = self.clients.len();
-        let total_sessions = self.session_to_client.len();
-
-        let mut connected_clients = 0;
-        let mut always_on_clients = 0;
-        let mut disconnected_always_on = 0;
-
-        let clients: Vec<_> = self.clients.iter().map(|c| c.value().clone()).collect();
-        for client in clients {
-            let guard = client.read().await;
-            if guard.is_connected() {
-                connected_clients += 1;
-            }
-            if guard.always_on {
-                always_on_clients += 1;
-                if !guard.is_connected() {
-                    disconnected_always_on += 1;
-                }
-            }
-        }
-
-        ClientManagerStats {
-            total_clients,
-            connected_clients,
-            always_on_clients,
-            disconnected_always_on,
-            total_sessions,
-        }
     }
 
     // =========================================================================
@@ -468,7 +443,13 @@ impl ClientManager {
         let mut restored = 0;
 
         for stored in stored_clients {
-            let client = stored.to_client();
+            let mut client = stored.to_client();
+
+            // Restore device metadata
+            for device in store.load_devices(&stored.account)? {
+                client.devices.insert(device.id.clone(), device.to_device());
+            }
+
             let account_lower = irc_to_lower(&client.account);
 
             // Only restore if not already loaded
@@ -482,15 +463,6 @@ impl ClientManager {
 
         info!(count = restored, "Restored always-on clients from storage");
         Ok(restored)
-    }
-
-    /// Delete a client from persistent storage.
-    pub fn delete_from_storage(&self, account: &str) -> Result<bool, crate::db::AlwaysOnError> {
-        if let Some(store) = &self.store {
-            store.delete_client(account)
-        } else {
-            Ok(false)
-        }
     }
 
     /// Expire stale clients from persistent storage.
@@ -511,25 +483,76 @@ impl Default for ClientManager {
         Self::new()
     }
 }
-
-/// Statistics about the client manager.
-#[derive(Debug, Clone)]
-pub struct ClientManagerStats {
-    /// Total number of clients (accounts with bouncer state).
-    pub total_clients: usize,
-    /// Clients with at least one connected session.
-    pub connected_clients: usize,
-    /// Clients with always-on enabled.
-    pub always_on_clients: usize,
-    /// Always-on clients with no connected sessions.
-    pub disconnected_always_on: usize,
-    /// Total number of sessions across all clients.
-    pub total_sessions: usize,
+fn member_modes_to_string(modes: &MemberModes) -> String {
+    let mut out = String::new();
+    if modes.owner {
+        out.push('q');
+    }
+    if modes.admin {
+        out.push('a');
+    }
+    if modes.op {
+        out.push('o');
+    }
+    if modes.halfop {
+        out.push('h');
+    }
+    if modes.voice {
+        out.push('v');
+    }
+    out
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn attach_request<'a>(
+        account: &'a str,
+        nick: &'a str,
+        session_id: SessionId,
+        device_id: Option<DeviceId>,
+        ip: &str,
+        multiclient_allowed: bool,
+    ) -> AttachSessionRequest<'a> {
+        AttachSessionRequest {
+            account,
+            nick,
+            session_id,
+            device_id,
+            ip: ip.to_string(),
+            multiclient_allowed,
+            always_on_enabled: false,
+            auto_away_enabled: false,
+        }
+    }
+
+    async fn is_connected(manager: &ClientManager, account: &str) -> bool {
+        let account_lower = irc_to_lower(account);
+        let client = manager
+            .clients
+            .get(&account_lower)
+            .map(|c| c.value().clone());
+        if let Some(client) = client {
+            let guard = client.read().await;
+            guard.is_connected()
+        } else {
+            false
+        }
+    }
+
+    async fn session_count(manager: &ClientManager, account: &str) -> usize {
+        let account_lower = irc_to_lower(account);
+        let client = manager
+            .clients
+            .get(&account_lower)
+            .map(|c| c.value().clone());
+        if let Some(client) = client {
+            let guard = client.read().await;
+            guard.session_count()
+        } else {
+            0
+        }
+    }
 
     #[tokio::test]
     async fn create_and_attach() {
@@ -537,12 +560,19 @@ mod tests {
         let session = SessionId::new_v4();
 
         let result = manager
-            .attach_session("Alice", "Alice", session, None, "127.0.0.1".to_string(), true)
+            .attach_session(attach_request(
+                "Alice",
+                "Alice",
+                session,
+                None,
+                "127.0.0.1",
+                true,
+            ))
             .await;
 
         assert!(matches!(result, AttachResult::Created));
-        assert!(manager.is_connected("alice").await);
-        assert_eq!(manager.session_count("alice").await, 1);
+        assert!(is_connected(&manager, "alice").await);
+        assert_eq!(session_count(&manager, "alice").await, 1);
     }
 
     #[tokio::test]
@@ -553,13 +583,27 @@ mod tests {
 
         // First session creates client
         let r1 = manager
-            .attach_session("Alice", "Alice", session1, None, "127.0.0.1".to_string(), true)
+            .attach_session(attach_request(
+                "Alice",
+                "Alice",
+                session1,
+                None,
+                "127.0.0.1",
+                true,
+            ))
             .await;
         assert!(matches!(r1, AttachResult::Created));
 
         // Second session attaches to existing client
         let r2 = manager
-            .attach_session("Alice", "Alice", session2, None, "127.0.0.2".to_string(), true)
+            .attach_session(attach_request(
+                "Alice",
+                "Alice",
+                session2,
+                None,
+                "127.0.0.2",
+                true,
+            ))
             .await;
         assert!(matches!(
             r2,
@@ -568,7 +612,7 @@ mod tests {
                 first_session: false
             }
         ));
-        assert_eq!(manager.session_count("alice").await, 2);
+        assert_eq!(session_count(&manager, "alice").await, 2);
     }
 
     #[tokio::test]
@@ -579,22 +623,29 @@ mod tests {
 
         // First session creates client
         manager
-            .attach_session("Alice", "Alice", session1, None, "127.0.0.1".to_string(), true)
+            .attach_session(attach_request(
+                "Alice",
+                "Alice",
+                session1,
+                None,
+                "127.0.0.1",
+                true,
+            ))
             .await;
 
         // Second session denied when multiclient disabled
         let r2 = manager
-            .attach_session(
+            .attach_session(attach_request(
                 "Alice",
                 "Alice",
                 session2,
                 None,
-                "127.0.0.2".to_string(),
+                "127.0.0.2",
                 false,
-            )
+            ))
             .await;
         assert!(matches!(r2, AttachResult::MulticlientNotAllowed));
-        assert_eq!(manager.session_count("alice").await, 1);
+        assert_eq!(session_count(&manager, "alice").await, 1);
     }
 
     #[tokio::test]
@@ -603,12 +654,19 @@ mod tests {
         let session = SessionId::new_v4();
 
         manager
-            .attach_session("Alice", "Alice", session, None, "127.0.0.1".to_string(), true)
+            .attach_session(attach_request(
+                "Alice",
+                "Alice",
+                session,
+                None,
+                "127.0.0.1",
+                true,
+            ))
             .await;
 
         let result = manager.detach_session(session).await;
         assert!(matches!(result, DetachResult::Destroyed));
-        assert!(!manager.is_connected("alice").await);
+        assert!(!is_connected(&manager, "alice").await);
         assert!(manager.get_client("alice").is_none());
     }
 
@@ -619,7 +677,14 @@ mod tests {
 
         // Create client and enable always-on
         manager
-            .attach_session("Alice", "Alice", session, None, "127.0.0.1".to_string(), true)
+            .attach_session(attach_request(
+                "Alice",
+                "Alice",
+                session,
+                None,
+                "127.0.0.1",
+                true,
+            ))
             .await;
         {
             let client = manager.get_client("alice").unwrap();
@@ -629,7 +694,7 @@ mod tests {
         // Detach - should persist
         let result = manager.detach_session(session).await;
         assert!(matches!(result, DetachResult::Persisting));
-        assert!(!manager.is_connected("alice").await);
+        assert!(!is_connected(&manager, "alice").await);
         assert!(manager.get_client("alice").is_some());
     }
 
@@ -641,7 +706,14 @@ mod tests {
 
         // Create client with always-on
         manager
-            .attach_session("Alice", "Alice", session1, None, "127.0.0.1".to_string(), true)
+            .attach_session(attach_request(
+                "Alice",
+                "Alice",
+                session1,
+                None,
+                "127.0.0.1",
+                true,
+            ))
             .await;
         {
             let client = manager.get_client("alice").unwrap();
@@ -655,14 +727,14 @@ mod tests {
 
         // Reattach
         let result = manager
-            .attach_session(
+            .attach_session(attach_request(
                 "Alice",
                 "Alice",
                 session2,
                 None,
-                "127.0.0.2".to_string(),
+                "127.0.0.2",
                 true,
-            )
+            ))
             .await;
         assert!(matches!(
             result,
@@ -686,14 +758,14 @@ mod tests {
         let s3 = SessionId::new_v4();
 
         manager
-            .attach_session("Alice", "Alice", s1, None, "1".to_string(), true)
+            .attach_session(attach_request("Alice", "Alice", s1, None, "1", true))
             .await;
         manager
-            .attach_session("Alice", "Alice", s2, None, "2".to_string(), true)
+            .attach_session(attach_request("Alice", "Alice", s2, None, "2", true))
             .await;
 
         let result = manager
-            .attach_session("Alice", "Alice", s3, None, "3".to_string(), true)
+            .attach_session(attach_request("Alice", "Alice", s3, None, "3", true))
             .await;
         assert!(matches!(result, AttachResult::TooManySessions));
     }
@@ -704,14 +776,14 @@ mod tests {
         let session = SessionId::new_v4();
 
         manager
-            .attach_session(
+            .attach_session(attach_request(
                 "Alice",
                 "Alice",
                 session,
                 Some("phone".to_string()),
-                "127.0.0.1".to_string(),
+                "127.0.0.1",
                 true,
-            )
+            ))
             .await;
 
         let client = manager.get_client("alice").unwrap();
@@ -727,44 +799,47 @@ mod tests {
         let s2 = SessionId::new_v4();
 
         manager
-            .attach_session(
+            .attach_session(attach_request(
                 "Alice",
                 "Alice",
                 s1,
                 Some("phone".to_string()),
-                "1".to_string(),
+                "1",
                 true,
-            )
+            ))
             .await;
         manager
-            .attach_session(
+            .attach_session(attach_request(
                 "Alice",
                 "Alice",
                 s2,
                 Some("laptop".to_string()),
-                "2".to_string(),
+                "2",
                 true,
-            )
+            ))
             .await;
 
         let sessions = manager.get_sessions("alice");
         assert_eq!(sessions.len(), 2);
-        let device_ids: Vec<_> = sessions.iter().filter_map(|s| s.device_id.clone()).collect();
+        let device_ids: Vec<_> = sessions
+            .iter()
+            .filter_map(|s| s.device_id.clone())
+            .collect();
         assert!(device_ids.contains(&"phone".to_string()));
         assert!(device_ids.contains(&"laptop".to_string()));
     }
 
     #[tokio::test]
-    async fn stats() {
+    async fn counts_after_detach() {
         let manager = ClientManager::new();
         let s1 = SessionId::new_v4();
         let s2 = SessionId::new_v4();
 
         manager
-            .attach_session("Alice", "Alice", s1, None, "1".to_string(), true)
+            .attach_session(attach_request("Alice", "Alice", s1, None, "1", true))
             .await;
         manager
-            .attach_session("Bob", "Bob", s2, None, "2".to_string(), true)
+            .attach_session(attach_request("Bob", "Bob", s2, None, "2", true))
             .await;
 
         // Set Bob to always-on and disconnect
@@ -774,11 +849,7 @@ mod tests {
         }
         manager.detach_session(s2).await;
 
-        let stats = manager.stats().await;
-        assert_eq!(stats.total_clients, 2);
-        assert_eq!(stats.connected_clients, 1);
-        assert_eq!(stats.always_on_clients, 1);
-        assert_eq!(stats.disconnected_always_on, 1);
-        assert_eq!(stats.total_sessions, 1);
+        assert_eq!(session_count(&manager, "alice").await, 1);
+        assert_eq!(session_count(&manager, "bob").await, 0);
     }
 }
