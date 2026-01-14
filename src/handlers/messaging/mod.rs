@@ -160,6 +160,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                     timestamp: None,
                     msgid: Some(msgid.clone()),
                     override_nick: None,
+                    relaymsg_sender_nick: None,
                 },
                 &snapshot,
             )

@@ -139,6 +139,7 @@ impl PostRegHandler for NpcHandler {
                 timestamp: Some(timestamp_iso),
                 msgid: Some(msgid.clone()),
                 override_nick: Some(wrapped_npc_nick.clone()),
+                relaymsg_sender_nick: None,
             },
             &snapshot,
         )

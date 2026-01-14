@@ -294,6 +294,7 @@ async fn route_to_channel_target(
                 timestamp: Some(prepared.timestamp_iso.clone()),
                 msgid: Some(prepared.msgid.clone()),
                 override_nick: None,
+                relaymsg_sender_nick: None,
             },
             snapshot,
         )
@@ -534,6 +535,7 @@ pub(super) async fn route_statusmsg(
             timestamp,
             msgid,
             override_nick: None,
+            relaymsg_sender_nick: None,
         },
         snapshot,
     )

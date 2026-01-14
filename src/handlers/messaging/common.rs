@@ -156,6 +156,9 @@ pub struct RouteMeta {
     pub timestamp: Option<String>,
     pub msgid: Option<String>,
     pub override_nick: Option<String>,
+    /// For RELAYMSG: the nick of the user who issued the RELAYMSG command.
+    /// If Some, adds `draft/relaymsg=<nick>` tag for recipients with that cap.
+    pub relaymsg_sender_nick: Option<String>,
 }
 
 // ============================================================================
@@ -178,6 +181,7 @@ pub async fn route_to_channel_with_snapshot(
         timestamp,
         msgid,
         override_nick,
+        relaymsg_sender_nick,
     } = meta;
 
     let channel_tx = ctx
@@ -222,6 +226,7 @@ pub async fn route_to_channel_with_snapshot(
             timestamp,
             msgid,
             override_nick,
+            relaymsg_sender_nick,
         }),
         reply_tx,
     };
