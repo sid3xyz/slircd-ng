@@ -234,6 +234,27 @@ impl SaslAccess for ServerState {
 }
 
 // ============================================================================
+// ReattachInfo — Bouncer session reattachment data
+// ============================================================================
+
+/// Information for reattaching a bouncer session.
+///
+/// This is populated by the SASL handler when a client attaches to an
+/// existing always-on client session, and consumed by the autoreplay
+/// logic after registration completes.
+#[derive(Debug, Clone)]
+pub struct ReattachInfo {
+    /// Account name that was authenticated.
+    pub account: String,
+    /// Device ID from the SASL username (account@device).
+    pub device_id: Option<String>,
+    /// Channels the client was in (name -> membership info).
+    pub channels: Vec<(String, crate::state::ChannelMembership)>,
+    /// When to replay history from (typically client's last_seen).
+    pub replay_since: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+// ============================================================================
 // UnregisteredState — Pre-registration connection state
 // ============================================================================
 
@@ -294,6 +315,8 @@ pub struct UnregisteredState {
     pub server_svinfo: Option<(u32, u32, u32, u64)>,
     /// Data for initiating a server connection.
     pub initiator_data: Option<InitiatorData>,
+    /// Reattach info for bouncer session (set by SASL, carried to RegisteredState).
+    pub reattach_info: Option<ReattachInfo>,
 }
 
 /// Data for initiating a server connection.
@@ -464,6 +487,8 @@ impl UnregisteredState {
                     // SASL state preserved for post-registration re-authentication
                     sasl_state: self.sasl_state,
                     sasl_buffer: self.sasl_buffer,
+                    // Reattach info is carried forward from UnregisteredState
+                    reattach_info: self.reattach_info,
                 })
             }
             _ => Err(self),
@@ -532,6 +557,8 @@ pub struct RegisteredState {
     pub sasl_state: SaslState,
     /// Buffer for accumulating chunked SASL data.
     pub sasl_buffer: String,
+    /// Reattach info for bouncer session auto-replay (consumed after registration).
+    pub reattach_info: Option<ReattachInfo>,
 }
 
 impl RegisteredState {
@@ -696,6 +723,7 @@ mod tests {
             invite_timestamps: HashMap::new(),
             sasl_state: SaslState::default(),
             sasl_buffer: String::new(),
+            reattach_info: None,
         };
 
         assert!(state.has_cap("echo-message"));
