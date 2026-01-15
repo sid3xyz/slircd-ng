@@ -117,12 +117,12 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             for entry in ctx.matrix.user_manager.nicks.iter() {
                 let _registered_nick_lower = entry.key();
                 let registered_uid = entry.value();
-                
+
                 // Skip if same UID (allow case-only changes)
                 if registered_uid == ctx.uid {
                     continue;
                 }
-                
+
                 // Get the actual nick from the user manager
                 if let Some(user_arc) = ctx.matrix.user_manager.users.get(registered_uid) {
                     let user = user_arc.read().await;
@@ -132,7 +132,7 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                     }
                 }
             }
-            
+
             // Also check against all registered nicks in the database
             // But allow confusable nicks that the current user owns
             match ctx.db.accounts().get_all_registered_nicknames().await {
@@ -145,7 +145,9 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                                 continue;
                             }
                             // Allow if it's the same as the user's current nick (case-insensitive)
-                            if irc_to_lower(&registered_nick) == irc_to_lower(ctx.state.nick().unwrap_or("")) {
+                            if irc_to_lower(&registered_nick)
+                                == irc_to_lower(ctx.state.nick().unwrap_or(""))
+                            {
                                 continue;
                             }
                             // Otherwise reject as confusable

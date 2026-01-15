@@ -19,7 +19,24 @@ MEM_MAX=4G SWAP_MAX=0 KILL_SLIRCD=1 ./scripts/irctest_safe.sh irctest/server_tes
 ```
 
 ---
+## Project State Guidelines (MANDATORY)
 
+**DEVELOPMENT MODE ONLY** — This is an active development project, not a production system.
+
+- **NEVER** label code as "production ready" or "industry standard" without an explicit user prompt.
+- **AVOID** "faux production" patterns: Do not add unnecessary abstraction, complex error handling wrappers, or deployment configurations intended for a final release unless specifically requested.
+- **DEFAULT MODE**: Assume "Development/Prototype" mode. Prioritize working logic, speed of iteration, and simplicity over formal production rigidity.
+- Focus on: Fast iteration, correctness, feature completeness
+- Avoid: Over-engineering, premature optimization, gold-plating
+
+Examples of anti-patterns to avoid:
+- Don't wrap every error in elaborate custom error types unless needed
+- Don't create "enterprise-grade" configuration builders for simple things
+- Don't add logging/metrics/tracing infrastructure "just in case"
+- Don't over-abstract handler code with extra traits/generics
+- Keep things direct and functional first
+
+---
 ## Git Remote Policy (MANDATORY)
 
 **During active development, treat this repository as the sole source of truth.**

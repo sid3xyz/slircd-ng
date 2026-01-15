@@ -121,27 +121,6 @@ pub async fn handle_sessions(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::config::MulticlientConfig;
-
-    fn mock_reply_effect(_uid: &str, text: &str) -> ServiceEffect {
-        ServiceEffect::Reply {
-            target_uid: "test".to_string(),
-            msg: slirc_proto::Message {
-                tags: None,
-                prefix: None,
-                command: slirc_proto::Command::PRIVMSG("test".to_string(), text.to_string()),
-            },
-        }
-    }
-
-    fn mock_reply_effects(_uid: &str, texts: Vec<&str>) -> NickServResult {
-        texts
-            .into_iter()
-            .map(|t| mock_reply_effect(_uid, t))
-            .collect()
-    }
-
     #[test]
     fn test_sessions_requires_login() {
         // Can't easily test async without a runtime, but the logic is straightforward

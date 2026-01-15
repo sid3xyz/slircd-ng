@@ -425,7 +425,10 @@ impl Response {
                 client.to_string(),
                 channel.to_string(),
                 forward_channel.to_string(),
-                format!("You may not join this channel. Try this channel instead: {}", forward_channel),
+                format!(
+                    "You may not join this channel. Try this channel instead: {}",
+                    forward_channel
+                ),
             ],
         )
     }

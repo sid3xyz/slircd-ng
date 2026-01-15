@@ -94,24 +94,25 @@ pub(super) async fn check_forward(
     channel_lower: &str,
     error: &crate::error::ChannelError,
 ) -> Option<String> {
-    use crate::state::actor::ChannelMode;
     use crate::error::ChannelError;
-    
+    use crate::state::actor::ChannelMode;
+
     // Forwarding only applies to invite-only and full channel errors
-    let should_forward = matches!(error, ChannelError::InviteOnlyChan | ChannelError::ChannelIsFull);
+    let should_forward = matches!(
+        error,
+        ChannelError::InviteOnlyChan | ChannelError::ChannelIsFull
+    );
     if !should_forward {
         return None;
     }
-    
+
     // Get the channel and query its modes
     if let Some(channel_sender) = ctx.matrix.channel_manager.channels.get(channel_lower) {
         let (modes_tx, modes_rx) = tokio::sync::oneshot::channel();
         let _ = channel_sender
-            .send(crate::state::actor::ChannelEvent::GetModes {
-                reply_tx: modes_tx,
-            })
+            .send(crate::state::actor::ChannelEvent::GetModes { reply_tx: modes_tx })
             .await;
-        
+
         if let Ok(modes) = modes_rx.await {
             // Look for Forward mode
             for mode in modes {
@@ -121,6 +122,6 @@ pub(super) async fn check_forward(
             }
         }
     }
-    
+
     None
 }

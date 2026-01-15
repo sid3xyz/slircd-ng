@@ -144,7 +144,12 @@ async fn validate_forward_mode(
     let target_lower = irc_to_lower(target);
 
     // Check if target channel exists
-    if !ctx.matrix.channel_manager.channels.contains_key(&target_lower) {
+    if !ctx
+        .matrix
+        .channel_manager
+        .channels
+        .contains_key(&target_lower)
+    {
         let reply = server_reply(
             ctx.server_name(),
             Response::ERR_INVALIDMODEPARAM,
@@ -326,7 +331,9 @@ pub async fn handle_channel_mode(
                 // Channel key validation
                 ChannelMode::Key => validate_key_mode(ctx, mode, &nick, &canonical_name).await?,
                 // Channel forwarding validation
-                ChannelMode::Forward => validate_forward_mode(ctx, mode, &nick, &canonical_name).await?,
+                ChannelMode::Forward => {
+                    validate_forward_mode(ctx, mode, &nick, &canonical_name).await?
+                }
                 // All other modes pass through
                 _ => ModeValidation::Valid,
             };

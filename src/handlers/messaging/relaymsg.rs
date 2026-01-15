@@ -18,10 +18,10 @@ use super::common::{
     RouteMeta, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot,
     route_to_user_with_snapshot,
 };
+use crate::handlers::helpers::with_label;
 use crate::history::{MessageEnvelope, StoredMessage};
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
-use crate::handlers::helpers::with_label;
 use async_trait::async_trait;
 use slirc_proto::{ChannelExt, Command, Message, MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
@@ -75,23 +75,24 @@ impl PostRegHandler for RelayMsgHandler {
             let target_lower = irc_to_lower(target);
 
             // Query channel actor for member modes using oneshot channel pattern
-            let has_privs = if let Some(channel_tx) = ctx.matrix.channel_manager.channels.get(&target_lower) {
-                let (reply_tx, reply_rx) = oneshot::channel();
-                let event = ChannelEvent::GetMemberModes {
-                    uid: ctx.uid.to_string(),
-                    reply_tx,
-                };
-                if channel_tx.send(event).await.is_ok() {
-                    match reply_rx.await {
-                        Ok(Some(modes)) => modes.has_op_or_higher(),
-                        _ => false,
+            let has_privs =
+                if let Some(channel_tx) = ctx.matrix.channel_manager.channels.get(&target_lower) {
+                    let (reply_tx, reply_rx) = oneshot::channel();
+                    let event = ChannelEvent::GetMemberModes {
+                        uid: ctx.uid.to_string(),
+                        reply_tx,
+                    };
+                    if channel_tx.send(event).await.is_ok() {
+                        match reply_rx.await {
+                            Ok(Some(modes)) => modes.has_op_or_higher(),
+                            _ => false,
+                        }
+                    } else {
+                        false
                     }
                 } else {
                     false
-                }
-            } else {
-                false
-            };
+                };
 
             if !has_privs {
                 let reply = Message {
@@ -182,10 +183,7 @@ impl PostRegHandler for RelayMsgHandler {
             .await;
 
             // Store message in history for CHATHISTORY support
-            let prefix_str = format!(
-                "{}!{}@{}",
-                relay_from, snapshot.user, snapshot.ip
-            );
+            let prefix_str = format!("{}!{}@{}", relay_from, snapshot.user, snapshot.ip);
             let stored_msg = StoredMessage {
                 msgid,
                 target: target_lower.clone(),
