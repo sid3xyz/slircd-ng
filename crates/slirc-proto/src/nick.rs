@@ -128,7 +128,7 @@ mod tests {
         assert!(max_nick.as_str().is_valid_nick());
 
         // Custom length
-        assert!("abcdef".is_valid_nick_len(5) == false);
-        assert!("abcde".is_valid_nick_len(5) == true);
+        assert!(!"abcdef".is_valid_nick_len(5));
+        assert!("abcde".is_valid_nick_len(5));
     }
 }

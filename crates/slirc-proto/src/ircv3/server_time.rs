@@ -60,7 +60,7 @@ mod tests {
         let ts = "2023-01-01T12:00:00.000Z";
         let nanos = parse_server_time(ts);
         // 2023-01-01 12:00:00 UTC = 1672574400 seconds
-        assert_eq!(nanos, 1672574400_000_000_000);
+        assert_eq!(nanos, 1_672_574_400_000_000_000);
     }
 
     #[test]

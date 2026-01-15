@@ -54,4 +54,4 @@ jobs:
         with:
           cache-all-crates: true
       - name: Lint production code with -D warnings
-        run: cargo clippy --bin slircd -- -D warnings
+        run: cargo clippy --workspace --bins --lib -- -D warnings
