@@ -171,6 +171,26 @@ impl ChannelActor {
                         )
                     }
                 }
+                ProtoChannelMode::Forward => {
+                    if adding {
+                        if let Some(target) = arg {
+                            self.replace_param_mode(
+                                |mode| matches!(mode, ChannelMode::Forward(_, _)),
+                                Some(ChannelMode::Forward(
+                                    target.to_string(),
+                                    HybridTimestamp::now(&self.server_id),
+                                )),
+                            )
+                        } else {
+                            false
+                        }
+                    } else {
+                        self.replace_param_mode(
+                            |mode| matches!(mode, ChannelMode::Forward(_, _)),
+                            None,
+                        )
+                    }
+                }
                 ProtoChannelMode::Founder => {
                     if let Some(nick) = arg {
                         if let Some(target_uid) = target_uids.get(nick) {
