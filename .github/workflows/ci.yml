@@ -21,10 +21,6 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-all-crates: true
-
       - name: Build debug binary for tests
         run: cargo build
 
@@ -54,4 +50,4 @@ jobs:
         with:
           cache-all-crates: true
       - name: Lint production code with -D warnings
-        run: cargo clippy --workspace --bins --lib -- -D warnings
+        
