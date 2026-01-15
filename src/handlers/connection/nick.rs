@@ -111,8 +111,6 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             return Ok(());
         }
 
-        eprintln!("[NICK] Processing nick: {:?}, casemapping: {:?}", nick, ctx.matrix.config.server.casemapping);
-
         // Check for confusables under PRECIS casemapping
         if ctx.matrix.config.server.casemapping == crate::config::Casemapping::Precis {
             // Check against all registered nicks for confusables
@@ -136,12 +134,27 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             }
             
             // Also check against all registered nicks in the database
-            let registered_nicks = ctx.db.accounts().get_all_registered_nicknames().await
-                .unwrap_or_default();
-            for registered_nick in registered_nicks {
-                // If nicks are confusable, reject
-                if are_nicks_confusable(nick, &registered_nick) {
-                    return Err(HandlerError::NicknameInUse(nick.to_string()));
+            // But allow confusable nicks that the current user owns
+            match ctx.db.accounts().get_all_registered_nicknames().await {
+                Ok(registered_nicks) => {
+                    for registered_nick in registered_nicks {
+                        // If nicks are confusable, check if user owns it
+                        if are_nicks_confusable(nick, &registered_nick) {
+                            // Don't reject if it's an exact match (case-insensitive) - user might be resetting
+                            if irc_to_lower(nick) == irc_to_lower(&registered_nick) {
+                                continue;
+                            }
+                            // Allow if it's the same as the user's current nick (case-insensitive)
+                            if irc_to_lower(&registered_nick) == irc_to_lower(ctx.state.nick().unwrap_or("")) {
+                                continue;
+                            }
+                            // Otherwise reject as confusable
+                            return Err(HandlerError::NicknameInUse(nick.to_string()));
+                        }
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to check registered nicks for confusables: {}", e);
                 }
             }
         }
