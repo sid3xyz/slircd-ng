@@ -115,8 +115,6 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
 
         // Check for confusables under PRECIS casemapping
         if ctx.matrix.config.server.casemapping == crate::config::Casemapping::Precis {
-            eprintln!("[CONFUSABLES] Checking confusables for nick: {:?}", nick);
-            
             // Check against all registered nicks for confusables
             for entry in ctx.matrix.user_manager.nicks.iter() {
                 let _registered_nick_lower = entry.key();
@@ -130,30 +128,20 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                 // Get the actual nick from the user manager
                 if let Some(user_arc) = ctx.matrix.user_manager.users.get(registered_uid) {
                     let user = user_arc.read().await;
-                    eprintln!("[CONFUSABLES] Checking active nick: {:?} against {:?}", nick, user.nick);
                     // If nicks are confusable, reject
                     if are_nicks_confusable(nick, &user.nick) {
-                        eprintln!("[CONFUSABLES] Found confusable active nick!");
                         return Err(HandlerError::NicknameInUse(nick.to_string()));
                     }
                 }
             }
             
             // Also check against all registered nicks in the database
-            match ctx.db.accounts().get_all_registered_nicknames().await {
-                Ok(registered_nicks) => {
-                    eprintln!("[CONFUSABLES] Found {} registered nicks in database", registered_nicks.len());
-                    for registered_nick in registered_nicks {
-                        eprintln!("[CONFUSABLES] DB nick: {:?}, new nick: {:?}", registered_nick, nick);
-                        // If nicks are confusable, reject
-                        if are_nicks_confusable(nick, &registered_nick) {
-                            eprintln!("[CONFUSABLES] Found confusable database nick!");
-                            return Err(HandlerError::NicknameInUse(nick.to_string()));
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[CONFUSABLES] Error getting registered nicks: {:?}", e);
+            let registered_nicks = ctx.db.accounts().get_all_registered_nicknames().await
+                .unwrap_or_default();
+            for registered_nick in registered_nicks {
+                // If nicks are confusable, reject
+                if are_nicks_confusable(nick, &registered_nick) {
+                    return Err(HandlerError::NicknameInUse(nick.to_string()));
                 }
             }
         }
