@@ -25,6 +25,9 @@ jobs:
         with:
           cache-all-crates: true
 
+      - name: Build debug binary for tests
+        run: cargo build
+
       - name: Run integration tests
         run: cargo test --tests
 
