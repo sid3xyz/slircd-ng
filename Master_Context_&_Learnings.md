@@ -1,62 +1,33 @@
-# Master Context & Learnings
-
-## Latest Session (2026-01-14): Test Failures Investigation
-
-**Branch**: `fix/test-failures-investigation`  
-**Status**: ✅ COMPLETE  
-**Report**: See `TEST_FAILURES_SESSION_REPORT.md`
-
-### Key Achievements
-1. **Fixed LUSERS unregistered connection tracking** - Architectural improvement using `AtomicUsize` counter instead of fragile map-based calculation
-2. **Confirmed message_tags.py working** - All 2/2 tests passing (false alarm)
-3. **Confirmed messages.py working** - All 11/11 tests passing (false alarm)
-
-### Architectural Insights
-**Connection Lifecycle Tracking**: Added explicit state tracking pattern:
-```rust
-pub unregistered_connections: AtomicUsize  // in UserManager
-```
-- Increment on connection start
-- Decrement on registration OR early disconnect
-- Cleaner than deriving from map sizes
-
-**Test Infrastructure**: New infrastructure (commit e43f516) is stable and reliable. "Failures" were likely pre-redesign artifacts.
-
-### Test Status
-- lusers.py: 8/9 passing (1 environment issue, not logic)
-- message_tags.py: 2/2 passing
-- messages.py: 11/11 passing
-- **Total improvement**: +17 tests passing (4→21)
-
----
-
 # Master Context & Learnings - slircd-ng
 
 > Comprehensive knowledge base for slircd-ng development.
-> Last Updated: 2026-01-14 (Session: RELAYMSG labeled-response cleanup)
+> Last Updated: 2026-01-14
 
 ---
 
 ## PROJECT STATUS
 
 **Version**: 1.0.0-alpha.1  
-**irctest Compliance**: 92.2% (357/387)  
-**Unit Tests**: 642 passing  
+**irctest Compliance**: ~92% (357/387 estimated)  
+**Unit Tests**: 664+ passing  
+**Current Branch**: `fix/test-failures-investigation` (2 commits ahead of main)
 
-### Recent Milestones
+### Latest Work (2026-01-14)
+- **Fixed LUSERS unregistered connection tracking** - Replaced fragile map-based calc with `AtomicUsize` counter
+- **Verified message_tags and messages tests** - Both working (false alarms in batch run)
+- **Test improvement**: +4 LUSERS tests now passing (4→8/9)
+- **Architectural pattern established** - Explicit connection lifecycle tracking
 
-| Date | Achievement |
-|------|-------------|
-| 2026-01-14 | RELAYMSG labeled-response cleanup (labels on FAIL/ACK, no leak to recipients) |
-| 2026-01-14 | Bouncer autoreplay polish: channel tracking, nick persistence, device last-seen updates |
-| 2026-01-12 | Phase 1 bouncer/multiclient foundation complete |
-| 2026-01-12 | v1.0.0-alpha.1 release preparation |
-| 2026-01-12 | PRECIS casemapping for UTF-8 nicknames |
-| 2026-01-12 | Monorepo: absorbed slirc-proto and slirc-crdt |
-| 2026-01-12 | CI/CD pipeline with GitHub Actions |
-| 2026-01-11 | METADATA handler complete (9/9 tests passing) |
-| 2026-01-11 | NPC/ROLEPLAY handler complete |
-| 2026-01-11 | CHATHISTORY TARGETS fix |
+### Committed Features (on main/stable)
+
+| Feature | Status | Branch | Notes |
+|---------|--------|--------|-------|
+| RELAYMSG | ✅ | main | Full handler, labeled-response support |
+| READQ enforcement | ✅ | main | Disconnect on >16KB messages |
+| Channel +f infrastructure | ✅ | main | Mode parsing done, forwarding logic pending |
+| METADATA | ✅ | main | 9/9 tests passing |
+| PRECIS casemapping | ✅ | main | Config-driven, UTF-8 support |
+| Bouncer/multiclient | ✅ | main | Core wiring complete, polish pending |
 
 ---
 
@@ -85,89 +56,81 @@ pub unregistered_connections: AtomicUsize  // in UserManager
 
 ---
 
-## COMPLETED IMPLEMENTATIONS
+---
 
-### 1. METADATA Handler ✅
+## COMPLETED IMPLEMENTATIONS (STABLE - ON MAIN)
 
+### 1. RELAYMSG Handler ✅
+**File**: `src/handlers/messaging/relaymsg.rs`  
+**Status**: Functional on main  
+**Features**: Labeled-response support, FAIL replies on validation errors, nick override via SenderSnapshot  
+
+### 2. READQ Enforcement ✅
+**File**: `src/network/connection/mod.rs` (line ~150)  
+**Status**: Implemented on main (commit 667bc55)  
+**Feature**: Disconnect clients on messages >16KB per Ergo spec  
+
+### 3. Channel Forwarding Mode (+f) Infrastructure ✅
+**File**: `src/handlers/channel_mode.rs`  
+**Status**: Mode parsing complete, forwarding logic **PENDING**  
+**Commit**: 0212df2 added `ChannelMode::Forward` variant  
+
+### 4. METADATA Handler ✅
 **File**: `src/handlers/messaging/metadata.rs`  
-**Status**: Complete (9/9 irctest passing)
+**Status**: 9/9 irctest tests passing on main  
+**Features**: GET/SET/LIST for users/channels, binary data support, ISUPPORT advertising  
 
-**Implementation**:
-- GET/SET/LIST for user metadata
-- GET/SET/LIST for channel metadata  
-- Channel metadata stored in ChannelActor
-- User metadata stored in User.metadata HashMap
-- Binary data support (null bytes allowed)
-- ISUPPORT advertising
+### 5. PRECIS Casemapping ✅
+**Files**: `src/config/types.rs`, `src/handlers/connection/nick.rs`, `welcome_burst.rs`  
+**Status**: Implemented on main  
+**Features**: Config-driven (rfc1459 or precis), UTF-8 nick validation  
 
-### 2. NPC/ROLEPLAY Handler ✅
+### 6. Bouncer/Multiclient ✅
+**Files**: Multiple (see BOUNCER_DESIGN.md)  
+**Status**: Core wiring on main, polish **PENDING**  
+**Features**: Device tracking, channel persistence, nick resumption  
 
-**File**: `src/handlers/messaging/npc.rs`  
-**Status**: Complete
+### 7. LUSERS Unregistered Tracking ✅
+**File**: `src/state/managers/user.rs`, `src/handlers/server_query/lusers.rs`  
+**Status**: Just implemented (commits 7fd9f31, 739da79)  
+**Feature**: Explicit `AtomicUsize` counter instead of derived calculation
 
-**Implementation**:
-- Channel mode +E enforcement
-- ERR_CANNOTSENDRP (573) on missing +E
-- Message relayed with altered nick prefix
-- Proper capability advertisement
+---
 
-### 3. PRECIS Casemapping ✅
+## CRITICAL RULES
 
-**Files**: 
-- `src/config/types.rs` - Casemapping enum
-- `src/handlers/connection/nick.rs` - PRECIS validation
-- `src/handlers/connection/welcome_burst.rs` - ISUPPORT
+### PROTO-FIRST RULE (MANDATORY)
+**Never implement daemon workarounds for proto bugs. ALWAYS fix proto first.**
+- If a feature requires proto changes: Document blocker in PROTO_REQUIREMENTS.md and STOP
+- Never use `Command::Raw` as workaround for missing variants
+- Example: RELAYMSG parameter order fixed in proto before daemon handler updated
 
-**Implementation**:
-- Config-driven casemapping (rfc1459 or precis)
-- PRECIS-aware nick validation for Unicode
-- ISUPPORT CASEMAPPING token from config
-### Current irctest gaps (2026-01-14)
+### ARCHITECTURAL PURITY
+- Zero dead code (no comments, orphaned TODOs)
+- All TODOs must reference issue numbers
+- Handlers follow strict typestate patterns (PreRegHandler, PostRegHandler, UniversalHandler)
+- DashMap locks released before `.await` (deadlock prevention)
+- Never hold `MessageRef` across `.await` points - extract data first
 
-- RELAYMSG labeled-response: handler now labels FAIL replies and emits labeled ACK on success; need to confirm if irctest expects labeled echo instead. Labels are intentionally not forwarded to other recipients.
-- READQ enforcement: messages >16KB still return 417; spec/irctest expects disconnect.
-- Channel forwarding (+f): mode parsing exists, forwarding logic absent.
-- Confusables detection: nick validation lacks homoglyph protection.
-- Bouncer resumption: resume tokens/state sync not implemented (7 tests).
-- ZNC playback: extension unsupported (1 test).
+---
 
-### RELAYMSG status (daemon)
+## KNOWN WORKING PATTERNS
 
-- Labeled ACK on success plus labeled FAIL/ERR replies; relayed traffic is untagged to avoid leaking labels to other clients.
-- Prefix override via `RouteMeta.override_nick` preserved.
-- Next: verify irctest expectation; add per-sender labeled echo if ACK is insufficient.
-
-## PROTO DEPENDENCY ANALYSIS
-
-| Feature | Proto Gap | Impact |
-|---------|-----------|--------|
-| Bouncer resumption | Missing BOUNCER/RESUME-style commands | Blocks 7 irctest bouncer resumption tests |
-| ZNC playback | Extension undefined in proto | Blocks 1 ZNC playback test |
-| Confusables | None | Daemon-only validation work |
-| READQ | None | Daemon-only policy enforcement |
-| Channel +f forwarding | None | Daemon-only forwarding logic |
-
-## ARCHITECTURAL DECISIONS & PATTERNS
-
-### SenderSnapshot Pattern
+### 1. SenderSnapshot Pattern
 ```rust
 // Pre-fetch all sender data once at handler entry
 let snapshot = SenderSnapshot::build(ctx).await?;
-
-// Pass to routing functions
 route_to_channel_with_snapshot(ctx, &channel, msg, &opts, None, None, &snapshot).await
 ```
-**Why**: Eliminates redundant user lookups, improves performance, ensures consistency
 
-### Snapshot Nick Override (RELAYMSG Innovation)
+### 2. Snapshot Nick Override (RELAYMSG Pattern)
 ```rust
 let mut snapshot = SenderSnapshot::build(ctx).await?;
 snapshot.nick = relay_from.to_string();  // Override sender nick
 route_to_channel_with_snapshot(..., &snapshot)
 ```
-**Why**: The routing function uses snapshot to build UserContext, which controls the message prefix. Overriding snapshot.nick makes the routed message appear from relay_from while preserving other sender metadata.
 
-### Message Construction Pattern
+### 3. Message Construction
 ```rust
 let msg = Message {
     tags: None,
@@ -175,128 +138,80 @@ let msg = Message {
     command: Command::PRIVMSG(target, text),
 };
 ```
-**Why**: Type-safe message construction, prevents malformed IRC messages
 
-### Routing Return Type Pattern
+### 4. Routing Return Pattern
 ```rust
-// route_to_channel returns ChannelRouteResult, NOT HandlerResult
+// Routing is fire-and-forget (message already delivered)
 let _ = route_to_channel_with_snapshot(...).await;
-// Drop result with explicit `let _ = ...` pattern
 ```
-**Why**: Routing is fire-and-forget (message already delivered to channel members), handler completes successfully regardless
 
 ---
 
-## TEST INFRASTRUCTURE & IRCTEST FRAMEWORK
+## KNOWN IRCTEST GAPS (Still Failing)
 
-### Test Invocation
+| Feature | Tests | Status | Next Step |
+|---------|-------|--------|-----------|
+| Channel forwarding (+f) | 1 | Infrastructure ready, logic missing | Implement forwarding logic in MODE handler |
+| Confusables detection | 1 | Not started | Add homoglyph detection, config option |
+| Bouncer resumption | 7 | Core wiring done, polish pending | Resume token support, reconnection logic |
+| ZNC playback | 1 | Not in scope for 1.0 | Defer to 1.1 |
+| NPC/ROLEPLAY | 0 | ✅ Working (Ergo extension) | Complete |
+| METADATA | 0 | ✅ Working (9/9 passing) | Complete |
+
+### Verified Working (This Session)
+- lusers.py: 8/9 passing (1 environment issue)
+- message_tags.py: 2/2 passing
+- messages.py: 11/11 passing
+
+---
+
+## TEST INFRASTRUCTURE
+
+### Safe Test Runner (Commit e43f516)
+**Location**: `scripts/run_irctest_safe.py` and `scripts/irctest_safe.sh`  
+**Features**:
+- Memory limits (default 4GB, override with MEM_MAX)
+- Process isolation and guaranteed cleanup
+- Prevents RAM exhaustion on multi-test runs
+- Auto-kill mechanism for hung daemons
+
+### Test Execution
 ```bash
-cd /home/straylight/slircd-ng/slirc-irctest
-
 # Single test
-SLIRCD_BIN=/home/straylight/slircd-ng/target/release/slircd \
+cd slirc-irctest
+SLIRCD_BIN=../target/release/slircd \
   pytest --controller=irctest.controllers.slircd \
   irctest/server_tests/metadata.py::MetadataDeprecatedTestCase::testSetGetValid -v
 
-# Full test set
-pytest --controller=irctest.controllers.slircd irctest/server_tests/metadata.py -v
+# Full suite (use safe runner!)
+MEM_MAX=4G SWAP_MAX=0 KILL_SLIRCD=1 ./scripts/irctest_safe.sh
 ```
 
-### Test Framework Capabilities
-- **Capability Tracking**: Tests request specific capabilities (labeled-response, batch, etc.)
-- **Message Interception**: Each message to/from server is captured and can be asserted
-- **Server Config**: Test can specify config via `@staticmethod def config()`
-  - Example: `ergo_roleplay=True` enables roleplay mode testing
-  - Example: `ergo_metadata=True` enables metadata testing
-
-### Labeled-Response Capability Requirement
-- When client sends `@label=x COMMAND ...`, the **first response** must include the same `@label=x` tag
-- For commands that produce output, the echo should be the primary output
-- For RELAYMSG with echo-message capability, should echo the PRIVMSG back with the label
-- Current issue: Middleware sends generic ACK instead of routing the echo properly
+### Labeled-Response Capability
+- When client sends `@label=x COMMAND ...`, first response must echo same `@label=x` tag
+- Applies to RELAYMSG ACK/FAIL responses
+- Applied to batch processing
+- RELAYMSG specifically: Labels intentionally NOT forwarded to message recipients (privacy)
 
 ---
 
-## KNOWN WORKING PATTERNS
+## REFERENCE & KEY FILES
 
-### From Existing PRIVMSG Handler (Reference Implementation)
-**Location**: `src/handlers/messaging/privmsg.rs`
+**Project Rules**: `.github/copilot-instructions.md`  
+**Proto Blockers**: `PROTO_REQUIREMENTS.md`  
+**Architecture Deep Dive**: `ARCHITECTURE.md`  
+**Release Plan**: `ALPHA_RELEASE_PLAN.md`  
+**Deployment**: `DEPLOYMENT_CHECKLIST.md`  
+**Session Notes**: `TEST_FAILURES_SESSION_REPORT.md`
 
-Patterns to replicate:
-```rust
-// 1. Extract and validate arguments
-let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-let text = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
+**Protocol Libraries**:
+- `crates/slirc-proto/` - IRC message parsing, Command/Numeric types
+- `crates/slirc-crdt/` - Distributed state synchronization (LWW-CRDT)
 
-// 2. Snapshot for consistent user data
-let snapshot = SenderSnapshot::build(ctx).await?;
-
-// 3. Build message with proper prefix
-let message = Message {
-    tags: None,  // Tags handled separately by framework
-    prefix: Some(Prefix::Nickname(snapshot.nick.clone(), snapshot.user.clone(), snapshot.host.clone())),
-    command: Command::PRIVMSG(target.to_string(), text.to_string()),
-};
-
-// 4. Route with snapshot
-route_to_channel_with_snapshot(ctx, &target_lower, message, &opts, None, None, &snapshot).await
-```
-
-### Error Response Pattern
-```rust
-// For ERR_ responses, use server_reply helper
-let reply = server_reply(
-    &ctx.matrix.server_info.name,
-    Response::ERR_NOSUCHCHANNEL,
-    vec![ctx.state.nick.clone(), target.to_string(), "No such channel".to_string()],
-);
-ctx.sender.send(reply).await?;
-```
-
-### FAIL Response Pattern (for RELAYMSG)
-```rust
-// For FAIL responses (Ergo extension), construct manually
-let reply = Message {
-    tags: None,
-    prefix: Some(Prefix::ServerName(ctx.matrix.server_info.name.clone())),
-    command: Command::FAIL(
-        "RELAYMSG".to_string(),
-        "INVALID_NICK".to_string(),
-        vec![reason],
-    ),
-};
-ctx.sender.send(reply).await?;
-```
-
----
-
-## CURRENT BUILD & TEST STATUS
-
-- Build/tests: `cargo test -q` on `feat/relaymsg-label-ack` passed.
-- irctest: last known 357/387 (92.2%); remaining gaps match "Current irctest gaps" above.
-- RELAYMSG labeled-response change pending irctest verification.
-
----
-
-## CONTINUATION PLAN
-
-1. Verify RELAYMSG labeled-response behavior in irctest; add per-sender labeled echo if ACK-only is insufficient.
-2. Implement READQ enforcement: disconnect on >16KB messages (no 417-only behavior).
-3. Add channel forwarding (+f) logic and tests.
-4. Implement confusables/homoglyph nick detection (mode/config gated).
-5. Design/implement bouncer resumption protocol (proto + daemon); document blockers in PROTO_REQUIREMENTS.md.
-6. Re-run cargo test + targeted irctest suites; update IRCTEST_SESSION_REPORT.md.
-
----
-
-## REFERENCE MATERIALS
-
-**Key Files**:
-- `/home/straylight/slircd-ng/.github/copilot-instructions.md` - Project constraints & patterns
-- `/home/straylight/slircd-ng/PROTO_REQUIREMENTS.md` - Proto blockers & known issues
-- `/home/straylight/slircd-ng/ARCHITECTURE.md` - Full architectural deep dive
-- `slirc-proto` - Command/Numeric definitions, parsing logic
-- `src/handlers/messaging/privmsg.rs` - Reference handler implementation
+**Reference Handlers**:
+- `src/handlers/messaging/privmsg.rs` - Template pattern for routed messages
+- `src/handlers/messaging/relaymsg.rs` - Advanced pattern with nick override
+- `src/handlers/messaging/metadata.rs` - User/channel state storage
 
 **Irctest**:
 - `/home/straylight/slircd-ng/slirc-irctest/irctest/server_tests/metadata.py` - METADATA test cases
