@@ -26,7 +26,7 @@ jobs:
           cache-all-crates: true
 
       - name: Run integration tests
-        run: cargo test --tests --verbose
+        run: cargo test --tests
 
   fmt:
     name: Rustfmt
@@ -51,4 +51,4 @@ jobs:
         with:
           cache-all-crates: true
       - name: Lint production code with -D warnings
-        run: cargo clippy --bin slircd --release -- -D warnings
+        run: cargo clippy --bin slircd -- -D warnings
