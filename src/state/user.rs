@@ -1,8 +1,8 @@
 //! User-related types and state.
 
-use slirc_crdt::clock::HybridTimestamp;
-use slirc_crdt::traits::LwwRegister;
-use slirc_crdt::user::{UserCrdt, UserModesCrdt};
+use slirc_proto::sync::clock::HybridTimestamp;
+use slirc_proto::sync::traits::LwwRegister;
+use slirc_proto::sync::user::{UserCrdt, UserModesCrdt};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -269,7 +269,7 @@ impl User {
     }
 
     pub fn merge_crdt(&mut self, incoming: UserCrdt) {
-        use slirc_crdt::Crdt;
+        use slirc_proto::sync::Crdt;
 
         let mut merged = self.to_crdt();
         merged.merge(&incoming);

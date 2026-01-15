@@ -63,7 +63,6 @@ pub mod chan;
 pub mod colors;
 pub mod command;
 pub mod compliance;
-pub mod crdt;
 pub mod ctcp;
 pub mod encode;
 pub mod error;
@@ -71,6 +70,8 @@ pub mod format;
 #[cfg(feature = "tokio")]
 pub mod irc;
 pub mod isupport;
+#[cfg(feature = "sync")]
+pub mod sync;
 #[cfg(feature = "tokio")]
 pub mod line;
 pub mod message;

@@ -7,7 +7,7 @@
 
 use super::{ChannelActor, ChannelMode, Uid};
 use crate::state::{ListEntry, Topic};
-use slirc_crdt::clock::{HybridTimestamp, ServerId};
+use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
 use slirc_proto::mode::ModeType;
 use slirc_proto::{ChannelMode as ProtoChannelMode, Mode};
 

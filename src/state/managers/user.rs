@@ -6,7 +6,7 @@
 use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{Uid, UidGenerator, User, WhowasEntry, observer::StateObserver};
 use dashmap::DashMap;
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use slirc_proto::{Command, Message, Prefix};
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -126,7 +126,7 @@ impl UserManager {
     /// Merge a UserCrdt into the local state.
     pub async fn merge_user_crdt(
         &self,
-        crdt: slirc_crdt::user::UserCrdt,
+        crdt: slirc_proto::sync::user::UserCrdt,
         source: Option<ServerId>,
     ) {
         let uid = crdt.uid.clone();
@@ -200,7 +200,7 @@ impl UserManager {
     }
 
     /// Helper to perform the actual merge logic.
-    async fn perform_merge(&self, crdt: slirc_crdt::user::UserCrdt, source: Option<ServerId>) {
+    async fn perform_merge(&self, crdt: slirc_proto::sync::user::UserCrdt, source: Option<ServerId>) {
         let uid = crdt.uid.clone();
 
         // Clone Arc to release DashMap lock before awaiting
@@ -361,8 +361,8 @@ impl UserManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slirc_crdt::clock::HybridTimestamp;
-    use slirc_crdt::user::UserCrdt;
+    use slirc_proto::sync::clock::HybridTimestamp;
+    use slirc_proto::sync::user::UserCrdt;
 
     fn create_user(uid: &str, nick: &str, ts: HybridTimestamp) -> UserCrdt {
         let mut user = UserCrdt::new(

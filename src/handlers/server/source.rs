@@ -1,4 +1,4 @@
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use slirc_proto::MessageRef;
 
 /// Extract the source server SID from a server-to-server message prefix.

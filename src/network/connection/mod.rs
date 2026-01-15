@@ -39,7 +39,7 @@ use server_loop::run_server_loop;
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::state::{InitiatorData, Matrix, UnregisteredState};
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use slirc_proto::Message;
 use slirc_proto::transport::ZeroCopyTransportEnum;
 use std::net::SocketAddr;

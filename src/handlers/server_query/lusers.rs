@@ -90,7 +90,7 @@ impl PostRegHandler for LusersHandler {
         let total_servers = ctx.matrix.sync_manager.topology.servers.len() + 1;
 
         // Direct links: servers where via is None (and not us)
-        let local_sid = slirc_crdt::clock::ServerId::new(local_sid_str);
+        let local_sid = slirc_proto::sync::clock::ServerId::new(local_sid_str);
 
         let mut direct_links = 0;
         for s in ctx.matrix.sync_manager.topology.servers.iter() {

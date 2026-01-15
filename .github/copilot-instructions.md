@@ -67,7 +67,7 @@ This rule stays in effect until the user explicitly says it’s time to integrat
 | Component | Pattern |
 |-----------|---------|
 | Protocol | `slirc-proto` — zero-copy parsing with `MessageRef<'a>` |
-| State Sync | `slirc-crdt` — LWW-based distributed state |
+| State Sync | `slirc-proto::sync` — LWW-based distributed state (feature-gated) |
 | Transport | Tokio async: `TcpListener` + `rustls` for TLS |
 | Hot Loop | `tokio::select!` in `network/connection/` dispatching to handlers |
 | State | `Arc<Matrix>` with 7 domain managers |
@@ -97,7 +97,7 @@ Before writing code:
 
 2. **Check ARCHITECTURE.md**: Verify phase alignment and design principles.
 
-3. **Check ALPHA_RELEASE_PLAN.md**: Review current release status.
+3. **Check ROADMAP.md**: Review current release status and strategic direction.
 
 ### Request Processing Template
 
@@ -344,8 +344,8 @@ Before submitting:
 
 - **ARCHITECTURE.md**: Complete architectural deep dive
 - **README.md**: Project overview, installation, configuration
-- **ALPHA_RELEASE_PLAN.md**: Current release status and roadmap
+- **ROADMAP.md**: Release timeline and strategic direction
 - **DEPLOYMENT_CHECKLIST.md**: Production deployment checklist
 - **CHANGELOG.md**: Version history
-- **crates/slirc-proto**: Command/Numeric enums, parsing utilities
-- **crates/slirc-crdt**: CRDT state synchronization
+- **PROTO_REQUIREMENTS.md**: Proto enhancement tracking
+- **crates/slirc-proto**: Command/Numeric enums, parsing utilities, sync module (feature-gated)

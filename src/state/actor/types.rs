@@ -146,8 +146,8 @@ pub enum ChannelEvent {
     },
     /// Merge a CRDT representation into the channel (Innovation 2).
     MergeCrdt {
-        crdt: Box<slirc_crdt::channel::ChannelCrdt>,
-        source: Option<slirc_crdt::clock::ServerId>,
+        crdt: Box<slirc_proto::sync::channel::ChannelCrdt>,
+        source: Option<slirc_proto::sync::clock::ServerId>,
     },
     /// Request list (bans, excepts, etc).
     GetList {
@@ -358,11 +358,11 @@ pub enum ChannelMode {
     /// +E: Roleplay enabled (allows NPC command, Ergo extension)
     Roleplay,
     /// +k <key>: Channel key required to join
-    Key(String, slirc_crdt::clock::HybridTimestamp),
+    Key(String, slirc_proto::sync::clock::HybridTimestamp),
     /// +l <limit>: User limit
-    Limit(usize, slirc_crdt::clock::HybridTimestamp),
+    Limit(usize, slirc_proto::sync::clock::HybridTimestamp),
     /// +f <channel>: Forward to channel on join error
-    Forward(String, slirc_crdt::clock::HybridTimestamp),
+    Forward(String, slirc_proto::sync::clock::HybridTimestamp),
 }
 
 #[derive(Debug, Clone)]

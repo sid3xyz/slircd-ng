@@ -3,7 +3,7 @@
 //! These traits define the interface that all CRDT types must implement
 //! to participate in server-to-server state synchronization.
 
-use crate::clock::HybridTimestamp;
+use super::clock::HybridTimestamp;
 
 /// A Conflict-free Replicated Data Type.
 ///

@@ -4,7 +4,7 @@
 //! routing and netsplit detection.
 
 use dashmap::DashMap;
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use std::collections::HashSet;
 
 /// Information about a server in the network.

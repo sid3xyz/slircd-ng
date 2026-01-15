@@ -36,7 +36,7 @@ use crate::state::{
     ChannelManager, LifecycleManager, MonitorManager, SecurityManager, SecurityManagerParams,
     ServiceManager, SyncManager, Uid, UserManager,
 };
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 
 use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
 use crate::handlers::{cleanup_monitors, notify_monitors_offline};
@@ -258,8 +258,8 @@ impl Matrix {
     }
 
     /// Get the current hybrid timestamp for CRDT operations.
-    pub fn clock(&self) -> slirc_crdt::clock::HybridTimestamp {
-        slirc_crdt::clock::HybridTimestamp::now(&self.server_id)
+    pub fn clock(&self) -> slirc_proto::sync::clock::HybridTimestamp {
+        slirc_proto::sync::clock::HybridTimestamp::now(&self.server_id)
     }
 
     /// Request that a user be disconnected.

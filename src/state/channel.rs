@@ -16,7 +16,7 @@ pub struct Topic {
     pub set_at: i64,
 }
 
-use slirc_crdt::clock::HybridTimestamp;
+use slirc_proto::sync::clock::HybridTimestamp;
 
 /// Member modes (op, voice, etc.).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

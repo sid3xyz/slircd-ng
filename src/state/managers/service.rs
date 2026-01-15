@@ -7,7 +7,7 @@ use crate::db::Database;
 use crate::history::HistoryProvider;
 use crate::services::{Service, chanserv, nickserv};
 use crate::state::{User, UserModes};
-use slirc_crdt::clock::HybridTimestamp;
+use slirc_proto::sync::clock::HybridTimestamp;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -67,7 +67,7 @@ impl ServiceManager {
     pub fn create_service_users(
         &self,
         server_name: &str,
-        server_id: &slirc_crdt::clock::ServerId,
+        server_id: &slirc_proto::sync::clock::ServerId,
     ) -> Vec<User> {
         let now = HybridTimestamp::now(server_id);
 

@@ -12,7 +12,7 @@
 use crate::state::observer::StateObserver;
 use crate::state::{ListEntry, Matrix, MemberModes, Topic};
 use chrono::Utc;
-use slirc_crdt::clock::HybridTimestamp;
+use slirc_proto::sync::clock::HybridTimestamp;
 use slirc_proto::Message;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Weak};
@@ -50,7 +50,7 @@ pub struct ChannelActor {
     /// Timestamp for the topic.
     pub topic_timestamp: Option<HybridTimestamp>,
     /// Server ID for generating hybrid timestamps.
-    pub server_id: slirc_crdt::ServerId,
+    pub server_id: slirc_proto::sync::ServerId,
     /// Channel metadata (Ergo extension)
     pub metadata: HashMap<String, String>,
     pub topic: Option<Topic>,
@@ -101,7 +101,7 @@ impl ChannelActor {
         let server_id = matrix
             .upgrade()
             .map(|m| m.server_id.clone())
-            .unwrap_or_else(|| slirc_crdt::ServerId::new("000".to_string()));
+            .unwrap_or_else(|| slirc_proto::sync::ServerId::new("000".to_string()));
 
         let actor = Self {
             name,
@@ -344,7 +344,7 @@ mod tests {
             modes: HashSet::new(),
             mode_timestamps: HashMap::new(),
             topic_timestamp: None,
-            server_id: slirc_crdt::ServerId::new("000".to_string()),
+            server_id: slirc_proto::sync::ServerId::new("000".to_string()),
             topic: None,
             created: 0,
             bans: Vec::new(),

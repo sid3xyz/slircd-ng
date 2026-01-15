@@ -2,7 +2,7 @@ use super::context::ConnectionContext;
 use crate::handlers::batch::process_batch_message;
 use crate::handlers::{Context, ResponseMiddleware};
 use crate::state::ServerState;
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use slirc_proto::{Command, Message};
 use std::sync::Arc;
 use tokio::sync::mpsc;

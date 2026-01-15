@@ -58,7 +58,7 @@ impl ServerHandler for KillHandler {
         }
 
         // Propagate to other servers (split-horizon: exclude source)
-        let source_sid = slirc_crdt::clock::ServerId::new(ctx.state.sid.clone());
+        let source_sid = slirc_proto::sync::clock::ServerId::new(ctx.state.sid.clone());
         let kill_msg = Message {
             tags: None,
             prefix: Some(slirc_proto::Prefix::new_from_str(&source)),

@@ -3,9 +3,9 @@
 //! This module defines the `StateObserver` trait, which allows the `SyncManager`
 //! to hook into local state changes and broadcast them as `DELTA` updates.
 
-use slirc_crdt::channel::ChannelCrdt;
-use slirc_crdt::clock::ServerId;
-use slirc_crdt::user::UserCrdt;
+use slirc_proto::sync::channel::ChannelCrdt;
+use slirc_proto::sync::clock::ServerId;
+use slirc_proto::sync::user::UserCrdt;
 
 /// Type of global ban for S2S propagation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

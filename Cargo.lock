@@ -2564,18 +2564,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
-name = "slirc-crdt"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dashmap 6.1.0",
- "serde",
- "slirc-proto",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "slirc-proto"
 version = "1.3.0"
 dependencies = [
@@ -2643,7 +2631,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "slirc-crdt",
  "slirc-proto",
  "sqlx",
  "subtle",

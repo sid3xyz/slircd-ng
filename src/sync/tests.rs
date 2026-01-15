@@ -1,6 +1,6 @@
 use super::handshake::{HandshakeMachine, HandshakeState};
 use crate::config::LinkBlock;
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use slirc_proto::Command;
 
 fn create_link(name: &str, password: &str) -> LinkBlock {
@@ -131,9 +131,9 @@ async fn test_sync_manager_peer_registration() {
 async fn test_state_observer_split_horizon() {
     use super::SyncManager;
     use crate::state::observer::StateObserver;
-    use slirc_crdt::channel::{ChannelCrdt, ChannelModesCrdt, MembershipCrdt};
-    use slirc_crdt::clock::HybridTimestamp;
-    use slirc_crdt::traits::AwSet;
+    use slirc_proto::sync::channel::{ChannelCrdt, ChannelModesCrdt, MembershipCrdt};
+    use slirc_proto::sync::clock::HybridTimestamp;
+    use slirc_proto::sync::traits::AwSet;
 
     let sid = ServerId::new("001".to_string());
     let sync = SyncManager::new(
@@ -170,9 +170,9 @@ async fn test_state_observer_split_horizon() {
     let channel = ChannelCrdt {
         name: "#test".to_string(),
         modes: ChannelModesCrdt::new(ts),
-        topic: slirc_crdt::traits::LwwRegister::new(None, ts),
-        key: slirc_crdt::traits::LwwRegister::new(None, ts),
-        limit: slirc_crdt::traits::LwwRegister::new(None, ts),
+        topic: slirc_proto::sync::traits::LwwRegister::new(None, ts),
+        key: slirc_proto::sync::traits::LwwRegister::new(None, ts),
+        limit: slirc_proto::sync::traits::LwwRegister::new(None, ts),
         created_at: ts,
         members: MembershipCrdt::new(),
         bans: AwSet::new(),
@@ -204,9 +204,9 @@ async fn test_state_observer_split_horizon() {
 async fn test_state_observer_skip_source() {
     use super::SyncManager;
     use crate::state::observer::StateObserver;
-    use slirc_crdt::channel::{ChannelCrdt, ChannelModesCrdt, MembershipCrdt};
-    use slirc_crdt::clock::HybridTimestamp;
-    use slirc_crdt::traits::AwSet;
+    use slirc_proto::sync::channel::{ChannelCrdt, ChannelModesCrdt, MembershipCrdt};
+    use slirc_proto::sync::clock::HybridTimestamp;
+    use slirc_proto::sync::traits::AwSet;
 
     let sid = ServerId::new("001".to_string());
     let sync = SyncManager::new(
@@ -233,9 +233,9 @@ async fn test_state_observer_skip_source() {
     let channel = ChannelCrdt {
         name: "#test".to_string(),
         modes: ChannelModesCrdt::new(ts),
-        topic: slirc_crdt::traits::LwwRegister::new(None, ts),
-        key: slirc_crdt::traits::LwwRegister::new(None, ts),
-        limit: slirc_crdt::traits::LwwRegister::new(None, ts),
+        topic: slirc_proto::sync::traits::LwwRegister::new(None, ts),
+        key: slirc_proto::sync::traits::LwwRegister::new(None, ts),
+        limit: slirc_proto::sync::traits::LwwRegister::new(None, ts),
         created_at: ts,
         members: MembershipCrdt::new(),
         bans: AwSet::new(),

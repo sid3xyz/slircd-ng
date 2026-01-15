@@ -3,8 +3,8 @@
 //! This module provides `ChannelCrdt`, a CRDT-enabled wrapper around channel
 //! state that supports distributed synchronization across linked servers.
 
-use crate::clock::HybridTimestamp;
-use crate::traits::{AwSet, Crdt, LwwRegister};
+use super::clock::HybridTimestamp;
+use super::traits::{AwSet, Crdt, LwwRegister};
 use std::collections::HashMap;
 
 /// CRDT-enabled channel state for distributed synchronization.

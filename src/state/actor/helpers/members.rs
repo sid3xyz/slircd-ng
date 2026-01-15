@@ -4,7 +4,7 @@
 
 use super::super::{ChannelActor, Uid};
 use crate::state::MemberModes;
-use slirc_crdt::clock::{HybridTimestamp, ServerId};
+use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
 
 impl ChannelActor {
     pub(crate) fn update_member_mode<F>(&mut self, target_uid: &Uid, mut update: F) -> bool

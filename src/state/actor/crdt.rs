@@ -5,8 +5,8 @@
 
 use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{ListEntry, MemberModes, Topic};
-use slirc_crdt::channel::{ChannelCrdt, ListEntryCrdt, TopicCrdt};
-use slirc_crdt::clock::{HybridTimestamp, ServerId};
+use slirc_proto::sync::channel::{ChannelCrdt, ListEntryCrdt, TopicCrdt};
+use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
 use std::collections::HashSet;
 
 use super::{ChannelActor, ChannelMode};
@@ -14,7 +14,7 @@ use super::{ChannelActor, ChannelMode};
 impl ChannelActor {
     /// Merge a CRDT representation into the channel state.
     pub async fn handle_merge_crdt(&mut self, crdt: ChannelCrdt, source: Option<ServerId>) {
-        use slirc_crdt::traits::Crdt;
+        use slirc_proto::sync::traits::Crdt;
         let mut current_crdt = self.to_crdt();
         current_crdt.merge(&crdt);
 

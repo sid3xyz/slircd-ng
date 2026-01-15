@@ -7,7 +7,7 @@
 //! - Notifies local clients of the splits
 
 use crate::state::Matrix;
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use slirc_proto::{Command, Message, Prefix};
 use std::sync::Arc;
 use tracing::{debug, info};

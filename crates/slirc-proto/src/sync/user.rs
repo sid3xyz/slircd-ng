@@ -3,8 +3,8 @@
 //! This module provides `UserCrdt`, a CRDT-enabled wrapper around user state
 //! that supports distributed synchronization across linked servers.
 
-use crate::clock::HybridTimestamp;
-use crate::traits::{AwSet, Crdt, LwwRegister};
+use super::clock::HybridTimestamp;
+use super::traits::{AwSet, Crdt, LwwRegister};
 use std::collections::HashSet;
 
 /// CRDT-enabled user state for distributed synchronization.

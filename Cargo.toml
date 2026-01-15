@@ -10,7 +10,7 @@ keywords = ["irc", "ircd", "server", "async", "tokio"]
 categories = ["network-programming"]
 
 [workspace]
-members = [".", "crates/slirc-proto", "crates/slirc-crdt"]
+members = [".", "crates/slirc-proto"]
 resolver = "2"
 
 [workspace.lints.rust]
@@ -25,8 +25,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Protocol core (use workspace path)
-slirc-proto = { path = "crates/slirc-proto", features = ["tokio"] }
-slirc-crdt = { path = "crates/slirc-crdt" }
+slirc-proto = { path = "crates/slirc-proto", features = ["tokio", "sync"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

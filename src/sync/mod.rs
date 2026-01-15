@@ -19,7 +19,7 @@ use crate::sync::handshake::{HandshakeMachine, HandshakeState};
 use crate::sync::stream::S2SStream;
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use slirc_proto::{Command, Message};
 use std::sync::Arc;
 use tokio::net::TcpStream;

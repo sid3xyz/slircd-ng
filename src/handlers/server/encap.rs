@@ -3,7 +3,7 @@ use crate::handlers::helpers::collect_message_args;
 use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::ServerState;
 use async_trait::async_trait;
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use slirc_proto::{Command, Message, MessageRef};
 use std::sync::Arc;
 use tracing::{debug, warn};

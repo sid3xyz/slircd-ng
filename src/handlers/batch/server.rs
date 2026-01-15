@@ -6,7 +6,7 @@ use crate::handlers::{Context, HandlerResult};
 use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{BatchRouting, ServerState};
 use async_trait::async_trait;
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use slirc_proto::MessageRef;
 use std::sync::Arc;
 use tracing::debug;

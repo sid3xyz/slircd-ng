@@ -5,9 +5,9 @@
 
 use crate::state::observer::{GlobalBanType, StateObserver};
 use crate::sync::LinkState;
-use slirc_crdt::channel::ChannelCrdt;
-use slirc_crdt::clock::ServerId;
-use slirc_crdt::user::UserCrdt;
+use slirc_proto::sync::channel::ChannelCrdt;
+use slirc_proto::sync::clock::ServerId;
+use slirc_proto::sync::user::UserCrdt;
 use slirc_proto::{Command, Message};
 use std::sync::Arc;
 use tracing::{debug, info, warn};

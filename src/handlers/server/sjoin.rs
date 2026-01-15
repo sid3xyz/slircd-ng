@@ -3,8 +3,8 @@ use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::ServerState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
-use slirc_crdt::channel::{ChannelCrdt, MemberModesCrdt};
-use slirc_crdt::clock::{HybridTimestamp, ServerId};
+use slirc_proto::sync::channel::{ChannelCrdt, MemberModesCrdt};
+use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
 use slirc_proto::MessageRef;
 use tracing::warn;
 

@@ -1,6 +1,6 @@
-use slirc_crdt::channel::ChannelCrdt;
-use slirc_crdt::clock::{HybridTimestamp, ServerId};
-use slirc_crdt::traits::Crdt;
+use slirc_proto::sync::channel::ChannelCrdt;
+use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
+use slirc_proto::sync::traits::Crdt;
 
 #[test]
 fn test_crdt_channel_mode_convergence() {
@@ -50,7 +50,7 @@ fn test_crdt_channel_mode_convergence() {
 
 #[test]
 fn test_crdt_user_convergence_lww() {
-    use slirc_crdt::user::UserCrdt;
+    use slirc_proto::sync::user::UserCrdt;
 
     let sid_a = ServerId::new("00A");
     let sid_b = ServerId::new("00B");
@@ -94,7 +94,7 @@ fn test_crdt_user_convergence_lww() {
 
 #[test]
 fn test_crdt_topic_convergence_lww() {
-    use slirc_crdt::channel::{ChannelCrdt, TopicCrdt};
+    use slirc_proto::sync::channel::{ChannelCrdt, TopicCrdt};
 
     let sid_a = ServerId::new("00A");
     let sid_b = ServerId::new("00B");
@@ -136,7 +136,7 @@ fn test_crdt_topic_convergence_lww() {
 
 #[test]
 fn test_crdt_key_convergence_lww() {
-    use slirc_crdt::channel::ChannelCrdt;
+    use slirc_proto::sync::channel::ChannelCrdt;
 
     let sid_a = ServerId::new("00A");
     let sid_b = ServerId::new("00B");
@@ -164,7 +164,7 @@ fn test_crdt_key_convergence_lww() {
 
 #[test]
 fn test_crdt_boolean_mode_union() {
-    use slirc_crdt::channel::ChannelCrdt;
+    use slirc_proto::sync::channel::ChannelCrdt;
 
     let sid_a = ServerId::new("00A");
     let sid_b = ServerId::new("00B");

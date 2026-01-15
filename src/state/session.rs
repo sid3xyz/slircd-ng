@@ -23,7 +23,7 @@
 
 use crate::handlers::{BatchState, SaslState};
 use crate::state::client::{DeviceId, SessionId};
-use slirc_crdt::clock::ServerId;
+use slirc_proto::sync::clock::ServerId;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use uuid::Uuid;

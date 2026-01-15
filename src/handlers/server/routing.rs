@@ -186,7 +186,7 @@ impl ServerHandler for RoutedMessageHandler {
             // Get target server ID from UID
             if target_uid.len() >= 3 {
                 let sid_prefix = &target_uid[0..3];
-                let target_sid = slirc_crdt::clock::ServerId::new(sid_prefix.to_string());
+                let target_sid = slirc_proto::sync::clock::ServerId::new(sid_prefix.to_string());
 
                 if target_sid == ctx.matrix.server_id {
                     // It was meant for us, but user not found?

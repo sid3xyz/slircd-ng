@@ -3,7 +3,7 @@
 //! Applies mode changes with privilege validation and broadcasts results.
 
 use super::{ChannelActor, ChannelError, ChannelMode, ClearTarget, ModeParams, Uid};
-use slirc_crdt::clock::HybridTimestamp;
+use slirc_proto::sync::clock::HybridTimestamp;
 use slirc_proto::mode::{ChannelMode as ProtoChannelMode, Mode};
 use slirc_proto::{Command, Message, Prefix};
 use std::sync::Arc;

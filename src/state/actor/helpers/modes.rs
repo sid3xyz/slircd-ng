@@ -3,7 +3,7 @@
 //! Helpers for setting/clearing channel modes and converting to strings.
 
 use super::super::{ChannelActor, ChannelMode};
-use slirc_crdt::clock::HybridTimestamp;
+use slirc_proto::sync::clock::HybridTimestamp;
 use std::collections::HashSet;
 
 impl ChannelActor {
@@ -195,7 +195,7 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slirc_crdt::clock::{HybridTimestamp, ServerId};
+    use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
 
     /// Helper to create a test timestamp
     fn test_ts() -> HybridTimestamp {
