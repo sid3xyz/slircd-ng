@@ -102,6 +102,106 @@ async fn validate_key_mode(
     Ok(ModeValidation::Valid)
 }
 
+/// Validate a channel forward mode.
+///
+/// Checks that:
+/// - The target channel name is valid (starts with channel prefix)
+/// - The target channel exists
+/// - The user has channel ops in the target channel (if +f being set)
+async fn validate_forward_mode(
+    ctx: &mut Context<'_, RegisteredState>,
+    mode: &Mode<ChannelMode>,
+    nick: &str,
+    canonical_name: &str,
+) -> Result<ModeValidation, HandlerError> {
+    if !mode.is_plus() {
+        // Removing forward is always valid
+        return Ok(ModeValidation::Valid);
+    }
+
+    let Some(target) = mode.arg() else {
+        return Ok(ModeValidation::NoArg);
+    };
+
+    // Validate: target must be a valid channel name (starts with # or &)
+    let first_char = target.chars().next();
+    if !matches!(first_char, Some('#') | Some('&')) || target.is_empty() || target.len() > 50 {
+        let reply = server_reply(
+            ctx.server_name(),
+            Response::ERR_INVALIDMODEPARAM,
+            vec![
+                nick.to_string(),
+                canonical_name.to_string(),
+                "f".to_string(),
+                target.to_string(),
+                "Invalid target channel".to_string(),
+            ],
+        );
+        ctx.sender.send(reply).await?;
+        return Ok(ModeValidation::Invalid);
+    }
+
+    let target_lower = irc_to_lower(target);
+
+    // Check if target channel exists
+    if !ctx.matrix.channel_manager.channels.contains_key(&target_lower) {
+        let reply = server_reply(
+            ctx.server_name(),
+            Response::ERR_INVALIDMODEPARAM,
+            vec![
+                nick.to_string(),
+                canonical_name.to_string(),
+                "f".to_string(),
+                target.to_string(),
+                "Target channel does not exist".to_string(),
+            ],
+        );
+        ctx.sender.send(reply).await?;
+        return Ok(ModeValidation::Invalid);
+    }
+
+    // Check if user has channel ops in the target channel
+    if let Some(channel_sender) = ctx.matrix.channel_manager.channels.get(&target_lower) {
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        if (channel_sender
+            .send(crate::state::actor::ChannelEvent::GetMemberModes {
+                uid: ctx.uid.to_string(),
+                reply_tx,
+            })
+            .await)
+            .is_err()
+        {
+            return Err(HandlerError::Internal("Channel actor died".to_string()));
+        }
+
+        let member_modes = match reply_rx.await {
+            Ok(m) => m,
+            Err(_) => return Err(HandlerError::Internal("Channel actor died".to_string())),
+        };
+
+        let is_op = member_modes
+            .as_ref()
+            .map(|m| m.op || m.admin || m.owner)
+            .unwrap_or(false);
+
+        if !is_op {
+            let reply = server_reply(
+                ctx.server_name(),
+                Response::ERR_CHANOPRIVSNEEDED,
+                vec![
+                    nick.to_string(),
+                    target.to_string(),
+                    "You must have channel operator privileges in the target channel".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(ModeValidation::Invalid);
+        }
+    }
+
+    Ok(ModeValidation::Valid)
+}
+
 /// Handle channel mode query/change.
 pub async fn handle_channel_mode(
     ctx: &mut Context<'_, RegisteredState>,
@@ -225,6 +325,8 @@ pub async fn handle_channel_mode(
                 }
                 // Channel key validation
                 ChannelMode::Key => validate_key_mode(ctx, mode, &nick, &canonical_name).await?,
+                // Channel forwarding validation
+                ChannelMode::Forward => validate_forward_mode(ctx, mode, &nick, &canonical_name).await?,
                 // All other modes pass through
                 _ => ModeValidation::Valid,
             };
