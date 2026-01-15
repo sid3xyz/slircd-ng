@@ -80,6 +80,13 @@ fn is_valid_nick_precis(nick: &str) -> bool {
     chars.all(|c| c.is_alphanumeric() || is_special(c) || c == '-')
 }
 
+/// Check if two nicks are confusable (one simplifies to the other via Unicode confusables).
+fn are_nicks_confusable(nick1: &str, nick2: &str) -> bool {
+    use confusables::Confusable;
+    // Check if nick1 simplifies to nick2 OR nick2 simplifies to nick1
+    nick1.is_confusable_with(nick2) || nick2.is_confusable_with(nick1)
+}
+
 pub struct NickHandler;
 
 #[async_trait]
@@ -102,6 +109,53 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         // Check if nick is exactly the same (no-op) - return silently
         if ctx.state.nick().is_some_and(|old| old == nick) {
             return Ok(());
+        }
+
+        eprintln!("[NICK] Processing nick: {:?}, casemapping: {:?}", nick, ctx.matrix.config.server.casemapping);
+
+        // Check for confusables under PRECIS casemapping
+        if ctx.matrix.config.server.casemapping == crate::config::Casemapping::Precis {
+            eprintln!("[CONFUSABLES] Checking confusables for nick: {:?}", nick);
+            
+            // Check against all registered nicks for confusables
+            for entry in ctx.matrix.user_manager.nicks.iter() {
+                let _registered_nick_lower = entry.key();
+                let registered_uid = entry.value();
+                
+                // Skip if same UID (allow case-only changes)
+                if registered_uid == ctx.uid {
+                    continue;
+                }
+                
+                // Get the actual nick from the user manager
+                if let Some(user_arc) = ctx.matrix.user_manager.users.get(registered_uid) {
+                    let user = user_arc.read().await;
+                    eprintln!("[CONFUSABLES] Checking active nick: {:?} against {:?}", nick, user.nick);
+                    // If nicks are confusable, reject
+                    if are_nicks_confusable(nick, &user.nick) {
+                        eprintln!("[CONFUSABLES] Found confusable active nick!");
+                        return Err(HandlerError::NicknameInUse(nick.to_string()));
+                    }
+                }
+            }
+            
+            // Also check against all registered nicks in the database
+            match ctx.db.accounts().get_all_registered_nicknames().await {
+                Ok(registered_nicks) => {
+                    eprintln!("[CONFUSABLES] Found {} registered nicks in database", registered_nicks.len());
+                    for registered_nick in registered_nicks {
+                        eprintln!("[CONFUSABLES] DB nick: {:?}, new nick: {:?}", registered_nick, nick);
+                        // If nicks are confusable, reject
+                        if are_nicks_confusable(nick, &registered_nick) {
+                            eprintln!("[CONFUSABLES] Found confusable database nick!");
+                            return Err(HandlerError::NicknameInUse(nick.to_string()));
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[CONFUSABLES] Error getting registered nicks: {:?}", e);
+                }
+            }
         }
 
         // Atomically claim nickname (prevents TOCTOU where two clients race between check/insert)

@@ -298,6 +298,19 @@ impl<'a> AccountRepository<'a> {
         Ok(rows)
     }
 
+    /// Get all registered nicknames across all accounts.
+    pub async fn get_all_registered_nicknames(&self) -> Result<Vec<String>, DbError> {
+        let rows = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT name FROM nicknames
+            "#,
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     /// Update account settings.
     pub async fn set_option(
         &self,
