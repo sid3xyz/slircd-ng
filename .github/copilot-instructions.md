@@ -1,76 +1,132 @@
 # Copilot Instructions for slircd-ng
 
-High-performance IRC daemon with zero-copy parsing. Public domain (Unlicense).
+High-performance IRC daemon with zero-copy parsing. Rust 2024 edition. Public domain (Unlicense).
 
 ## Quick Reference
 
 ```bash
-cargo build --release           # Build
-cargo test                      # Tests (664+)
-cargo clippy -- -D warnings     # Lint (must pass)
+cargo build --release           # Build (use for integration tests)
+cargo test                      # Unit + integration tests (664+)
+cargo clippy -- -D warnings     # Lint (must pass, zero warnings)
 cargo fmt -- --check            # Format check
+./scripts/irctest_safe.sh       # Run irctest suite (357/387 passing)
 ```
 
-## Constraints
+## Architecture
 
-| Rule | Requirement |
-|------|-------------|
-| Edition | Rust 2024 (stable 1.85+) |
-| Errors | Use `?` propagation, no `unwrap()` in handlers |
-| Parsing | Zero-copy via `MessageRef<'a>` from slirc-proto |
-| RFC | Strict RFC 1459, 2812, IRCv3 compliance |
-| Proto-First | Fix slirc-proto first, never workaround proto bugs |
+### The Matrix (`src/state/matrix.rs`)
+Central dependency injection container. All state access flows through `Arc<Matrix>`:
+- `user_manager`: Users, nicknames, WHOWAS history, UID generation
+- `channel_manager`: Channel actors, message broadcasting
+- `client_manager`: Bouncer/multiclient session tracking
+- `security_manager`: Bans (KLINE/DLINE/GLINE), rate limiting
+- `service_manager`: NickServ, ChanServ, history storage
+- `monitor_manager`: IRCv3 MONITOR lists
+- `lifecycle_manager`: Shutdown coordination
+- `sync_manager`: CRDT-based server linking
 
-## Architecture (Brief)
-
-- **Handlers**: Typestate pattern (PreRegHandler, PostRegHandler, UniversalHandler)
-- **State**: `Arc<Matrix>` with 7 domain managers, DashMap for concurrent access
-- **Channels**: Actor model with bounded mailboxes
-- **Services**: Pure effect functions returning `ServiceEffect` vectors
-
-## Critical Patterns
+### Handler Typestate System (`src/handlers/core/traits.rs`)
+Compile-time protocol state enforcement—no runtime registration checks:
+- `PreRegHandler` → Commands before registration (NICK, USER, CAP, PASS)
+- `PostRegHandler` → Registered-only commands (PRIVMSG, JOIN, MODE)
+- `UniversalHandler<S>` → Any state (QUIT, PING, PONG)
 
 ```rust
-// Zero-copy: extract data before .await
+// Context<S> type param determines available state fields
+async fn handle(&self, ctx: &mut Context<'_, RegisteredState>, msg: &MessageRef<'_>) -> HandlerResult {
+    // ctx.state.nick is String (guaranteed), not Option<String>
+}
+```
+
+### Channel Actors (`src/state/actor/`)
+Each channel runs as isolated Tokio task with bounded mailbox:
+- State: members, modes, topic, bans owned by actor
+- Communication via `ChannelEvent` enum sent to `mpsc::Sender`
+- No RwLock contention on message routing hot path
+
+### Service Effects Pattern (`src/services/mod.rs`)
+Services return pure effects, handlers apply them to state:
+```rust
+pub enum ServiceEffect {
+    Reply { target_uid: String, msg: Message },
+    AccountIdentify { target_uid: String, account: String },
+    Kill { target_uid: String, killer: String, reason: String },
+    // ...
+}
+```
+
+## Critical Code Patterns
+
+```rust
+// Zero-copy parsing: extract from MessageRef BEFORE any .await
 async fn handle(&self, ctx: &mut Context<'_, S>, msg: &MessageRef<'_>) -> HandlerResult {
-    let nick = msg.arg(0).map(|s| s.to_string()); // Extract first
+    let nick = msg.arg(0).map(|s| s.to_string()); // Clone to owned FIRST
+    some_async_operation().await; // Safe now
     Ok(())
 }
 
-// IRC case: use proto utilities
+// IRC case-insensitivity: use slirc-proto utilities, NOT std
 use slirc_proto::{irc_to_lower, irc_eq};
-let nick_lower = irc_to_lower(&nick); // NOT nick.to_lowercase()
+let nick_lower = irc_to_lower(&nick);     // ✓ Correct
+// nick.to_lowercase()                    // ✗ Wrong (ASCII-only)
 
-// DashMap: short locks, clone before await
-if let Some(user) = matrix.user_manager.get_user(&uid) {
+// DashMap discipline: short locks, clone before await
+if let Some(user_arc) = matrix.user_manager.users.get(&uid) {
+    let user = user_arc.read().await;
     let nick = user.nick.clone();
-} // Lock released before async work
+}   // Lock released before any async work
 ```
 
-## Anti-Patterns
+## Lock Ordering (Deadlock Prevention)
+When acquiring multiple locks, always follow this order:
+1. DashMap shard lock (during `.get()` / `.iter()`)
+2. Channel `RwLock` (read or write)  
+3. User `RwLock` (read or write)
 
-- `Command::Raw` for known commands → Add variant to proto
-- `.unwrap()` in handlers → Use `?`
+Safe patterns: read-only iteration, collect-then-mutate, lock-copy-release.
+
+## Anti-Patterns (DO NOT)
+- `Command::Raw` for known commands → Add variant to `slirc-proto`
+- `.unwrap()` in handlers → Use `?` propagation
 - `std::to_lowercase()` on IRC strings → Use `irc_to_lower()`
 - Holding DashMap locks across `.await` → Clone data first
 - Empty `Ok(())` stubs → Use `todo!()` to panic if hit
-- Traits with one impl → Delete the trait, use struct directly
-- `Arc<RwLock<...>>` without need → Add when compiler demands
+- Traits with one impl → Use struct directly
 - New crates for std-solvable problems → Use std first
 
-## Development Mode
+## Testing
 
-This is active development. Prioritize:
+### Integration Tests (`tests/`)
+Spawn actual server, connect clients, verify IRC flows:
+```rust
+let server = TestServer::spawn(19999).await?;
+let mut client = TestClient::connect(&server.address(), "nick").await?;
+client.register().await?;
+```
+
+### irctest (`slirc-irctest/`)
+External IRC compliance suite. Run safely with memory limits:
+```bash
+./scripts/irctest_safe.sh irctest/server_tests/utf8.py
+./scripts/run_irctest_safe.py --discover  # All tests
+```
+
+## Protocol Proto-First Rule
+If `slirc-proto` is missing a command, enum variant, or has a parsing bug:
+1. Fix it in `crates/slirc-proto/` first
+2. Never work around proto bugs in the daemon
+3. Re-export from proto, don't duplicate types
+
+## Development Mode (Active)
 - Working logic over abstraction
 - Fast iteration over hardening
-- Simplicity over enterprise patterns
 - `todo!()` panics over silent failures
+- Simplicity over enterprise patterns
 
-## Git Policy
-
-- Use `origin` only (no upstream remote)
-- Do not sync from upstream without explicit permission
-
-## Docs Reference
-
-- `ROADMAP.md`: Release timeline
+## Key Files
+- `src/state/matrix.rs`: Central state container
+- `src/handlers/core/traits.rs`: Handler trait definitions
+- `src/state/actor/mod.rs`: Channel actor model
+- `src/services/mod.rs`: ServiceEffect enum and dispatch
+- `src/state/session.rs`: Typestate session definitions
+- `ROADMAP.md`: Release timeline and known gaps
