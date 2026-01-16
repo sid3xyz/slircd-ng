@@ -8,7 +8,7 @@ use crate::state::{MemberModes, RegisteredState};
 /// Returns Some(MemberModes) if the user has access, None otherwise.
 /// Takes pre-fetched account info to avoid redundant user lookup.
 pub(super) async fn check_auto_modes(
-    ctx: &Context<'_, RegisteredState>,
+    db: &crate::db::Database,
     channel_lower: &str,
     is_registered: bool,
     account: &Option<String>,
@@ -20,8 +20,8 @@ pub(super) async fn check_auto_modes(
 
     let account_name = account.as_ref()?;
 
-    let account_record = ctx.db.accounts().find_by_name(account_name).await.ok()??;
-    let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
+    let account_record = db.accounts().find_by_name(account_name).await.ok()??;
+    let channel_record = db.channels().find_by_name(channel_lower).await.ok()??;
 
     // Check if user is founder
     if account_record.id == channel_record.founder_account_id {
@@ -40,8 +40,7 @@ pub(super) async fn check_auto_modes(
         });
     }
 
-    let access = ctx
-        .db
+    let access = db
         .channels()
         .get_access(channel_record.id, account_record.id)
         .await
@@ -73,15 +72,15 @@ pub(super) async fn check_auto_modes(
 /// Returns the matching AKICK entry if found.
 /// Takes pre-fetched host to avoid redundant user lookup.
 pub(super) async fn check_akick(
-    ctx: &Context<'_, RegisteredState>,
+    db: &crate::db::Database,
     channel_lower: &str,
     nick: &str,
     user: &str,
     host: &str,
 ) -> Option<crate::db::ChannelAkick> {
-    let channel_record = ctx.db.channels().find_by_name(channel_lower).await.ok()??;
+    let channel_record = db.channels().find_by_name(channel_lower).await.ok()??;
 
-    ctx.db
+    db
         .channels()
         .check_akick(channel_record.id, nick, user, host)
         .await

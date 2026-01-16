@@ -166,3 +166,78 @@ async fn test_channel_self_echo_sync() {
         panic!("Message has no prefix");
     }
 }
+
+#[tokio::test]
+async fn test_state_synchronization() {
+    let server = TestServer::spawn(20000).await.expect("Failed to spawn server");
+    let address = server.address();
+
+    let account = "syncuser";
+    let password = "syncpass123";
+
+    // Setup Account
+    {
+        let mut setup = TestClient::connect(&address, account).await.unwrap();
+        setup.register().await.unwrap();
+        setup.send_raw(&format!("REGISTER {} email@test.com {}", account, password)).await.unwrap();
+        sleep(Duration::from_millis(500)).await;
+    }
+
+    // Connect Session A
+    let mut client_a = TestClient::connect(&address, "SessionA").await.unwrap();
+    perform_sasl_auth(&mut client_a, account, password).await.unwrap();
+    client_a.register().await.unwrap();
+
+    // Connect Session B
+    let mut client_b = TestClient::connect(&address, "SessionB").await.unwrap();
+    perform_sasl_auth(&mut client_b, account, password).await.unwrap();
+    client_b.register().await.unwrap();
+
+    sleep(Duration::from_millis(200)).await;
+
+    // 1. Test JOIN Sync
+    let channel = "#slircd-dev";
+    client_a.send_raw(&format!("JOIN {}", channel)).await.unwrap();
+
+    // Session B should receive a JOIN message for SessionA (or "SessionB" if virtual?)
+    // In slircd-ng, B receives the JOIN for A because A joined.
+    // BUT, B should *ALSO* receive a JOIN for B!
+    // Because B is now joined.
+    // Wait, if B is virtually joined, B sees itself join.
+    // The test asserts "Session B receives a JOIN event for #slircd-dev".
+    
+    // We expect B to see ITSELF join (Prefix: SessionB).
+    let join_msg = client_b.recv_until(|msg| {
+         if let Command::JOIN(chan, _, _) = &msg.command {
+             chan == channel && msg.prefix.as_ref().unwrap().to_string().starts_with("SessionB")
+         } else {
+             false
+         }
+    }).await.expect("Session B did not see itself join via sync");
+
+    // 2. Test NICK Sync
+    // A changes nick to "Sid_Away"
+    // B should see its own nick change to "Sid_Away"
+    let new_nick = "Sid_Away";
+    client_a.send_raw(&format!("NICK {}", new_nick)).await.unwrap();
+
+    let nick_msg = client_b.recv_until(|msg| {
+         if let Command::NICK(nick) = &msg.command {
+             nick == new_nick
+         } else {
+             false
+         }
+    }).await.expect("Session B did not see its nick change");
+
+    // 3. Test PART Sync
+    client_a.send_raw(&format!("PART {}", channel)).await.unwrap();
+
+    // Session B should see itself PART
+    client_b.recv_until(|msg| {
+         if let Command::PART(chan, _) = &msg.command {
+             chan == channel && msg.prefix.as_ref().unwrap().to_string().starts_with("SessionB")
+         } else {
+             false
+         }
+    }).await.expect("Session B did not see itself PART via sync");
+}

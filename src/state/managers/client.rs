@@ -62,6 +62,7 @@ pub enum AttachResult {
 pub struct AttachSessionRequest<'a> {
     pub account: &'a str,
     pub nick: &'a str,
+    pub uid: &'a str,
     pub session_id: SessionId,
     pub device_id: Option<DeviceId>,
     pub ip: String,
@@ -156,6 +157,7 @@ impl ClientManager {
         let AttachSessionRequest {
             account,
             nick,
+            uid,
             session_id,
             device_id,
             ip,
@@ -217,6 +219,7 @@ impl ClientManager {
                 session_id,
                 device_id,
                 account: account_lower,
+                uid: uid.to_string(),
                 ip,
                 attached_at: Utc::now(),
             },

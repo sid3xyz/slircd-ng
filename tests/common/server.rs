@@ -54,6 +54,9 @@ join_burst_per_client = 1000
 [motd]
 lines = ["Test Server"]
 
+[multiclient]
+enabled = true
+
 [[oper]]
 name = "testop"
 password = "testpass"
@@ -68,8 +71,6 @@ host = "*@*"
         // Build path to slircd binary (in workspace target dir)
         let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
         let binary_path = PathBuf::from(cargo_manifest_dir)
-            .parent()
-            .expect("No parent directory")
             .join("target/debug/slircd");
 
         // Spawn the server process

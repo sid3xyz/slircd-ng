@@ -75,6 +75,7 @@ async fn attach_session_to_client<S: SessionState + SaslAccess>(
     let request = crate::state::managers::client::AttachSessionRequest {
         account,
         nick,
+        uid: ctx.uid,
         session_id,
         device_id: device_id.clone(),
         ip,

@@ -270,6 +270,9 @@ pub struct SessionAttachment {
     /// Account this session is attached to.
     pub account: String,
 
+    /// UID of the connection (session).
+    pub uid: String,
+
     /// IP address of the session.
     pub ip: String,
 

@@ -5,8 +5,9 @@
 //! manages the handshake: checking access, sending events, and handling responses.
 
 use super::super::super::{Context, HandlerError, HandlerResult, user_prefix};
-use super::enforcement::{check_akick, check_auto_modes, check_forward};
+use super::enforcement::{check_akick, check_auto_modes};
 use super::responses::{JoinSuccessContext, handle_join_success, send_join_error};
+use crate::handlers::helpers::fanout::broadcast_to_account;
 use crate::error::ChannelError;
 use crate::security::UserContext;
 use crate::state::{RegisteredState, Topic};
@@ -23,6 +24,56 @@ pub(super) async fn join_channel(
     channel_name: &str,
     provided_key: Option<&str>,
 ) -> HandlerResult {
+    // Lookup RAW sender (Arc<Message>)
+    let sender = ctx
+        .matrix
+        .user_manager
+        .senders
+        .get(ctx.uid)
+        .map(|s| s.value().clone())
+        .ok_or(HandlerError::Internal("No sender found".into()))?;
+
+    // Attempt to clone matrix as Arc - assuming ctx.matrix creates an Arc reference
+    let matrix_arc: Arc<crate::state::Matrix> = ctx.matrix.clone();
+
+    let join_msg = join_channel_internal(
+        matrix_arc.clone(),
+        ctx.uid,
+        &sender,
+        ctx.server_name(),
+        ctx.state.is_tls,
+        channel_name,
+        provided_key,
+        ctx.active_batch_id.as_deref(),
+        ctx.label.as_deref(),
+        Some(ctx.db),
+    )
+    .await?;
+
+    // Synchronization for sibling sessions (Multiclient)
+    if ctx.matrix.config.multiclient.enabled {
+        if let Some(join_msg) = join_msg {
+            broadcast_to_account(ctx, join_msg, true).await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Internal join logic decoupled from Context to support sibling joins.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn join_channel_internal(
+    matrix: Arc<crate::state::Matrix>,
+    uid: &str,
+    sender: &tokio::sync::mpsc::Sender<Arc<Message>>,
+    server_name: &str,
+    is_tls: bool,
+    channel_name: &str,
+    provided_key: Option<&str>,
+    batch_id: Option<&str>,
+    label: Option<&str>,
+    db: Option<&crate::db::Database>,
+) -> Result<Option<Message>, HandlerError> {
     let channel_lower = irc_to_lower(channel_name);
 
     // Single user read to capture all needed fields (eliminates redundant lookup)
@@ -40,11 +91,10 @@ pub(super) async fn join_channel(
         is_oper,
         oper_type,
     ) = {
-        let user_ref = ctx
-            .matrix
+        let user_ref = matrix
             .user_manager
             .users
-            .get(ctx.uid)
+            .get(uid)
             .ok_or(HandlerError::NickOrUserMissing)?;
         let user = user_ref.read().await;
         (
@@ -68,60 +118,58 @@ pub(super) async fn join_channel(
         nickname: nick.clone(),
         username: user_name.clone(),
         realname: realname.clone(),
-        server: ctx.server_name().to_string(),
+        server: server_name.to_string(),
         account: account.clone(),
-        is_tls: ctx.state.is_tls,
+        is_tls,
         is_oper,
         oper_type,
     });
 
     // Check AKICK before joining (pass pre-fetched host)
-    if ctx
-        .matrix
-        .channel_manager
-        .registered_channels
-        .contains(&channel_lower)
-        && let Some(akick) = check_akick(ctx, &channel_lower, &nick, &user_name, &real_host).await
-    {
-        let reason = akick
-            .reason
-            .as_deref()
-            .unwrap_or("You are banned from this channel");
-        let notice = Message {
-            tags: None,
-            prefix: Some(Prefix::new(
-                "ChanServ".to_string(),
-                "ChanServ".to_string(),
-                "services.".to_string(),
-            )),
-            command: Command::NOTICE(
-                nick.clone(),
-                format!(
-                    "You are not permitted to be on \x02{}\x02: {}",
-                    channel_name, reason
+    if let Some(db) = db {
+        if matrix
+            .channel_manager
+            .registered_channels
+            .contains(&channel_lower)
+            && let Some(akick) = check_akick(db, &channel_lower, &nick, &user_name, &real_host).await
+        {
+            let reason = akick
+                .reason
+                .as_deref()
+                .unwrap_or("You are banned from this channel");
+            let notice = Message {
+                tags: None,
+                prefix: Some(Prefix::new(
+                    "ChanServ".to_string(),
+                    "ChanServ".to_string(),
+                    "services.".to_string(),
+                )),
+                command: Command::NOTICE(
+                    nick.clone(),
+                    format!(
+                        "You are not permitted to be on \x02{}\x02: {}",
+                        channel_name, reason
+                    ),
                 ),
-            ),
-        };
-        ctx.sender.send(notice).await?;
-        info!(
-            nick = %nick,
-            channel = %channel_name,
-            mask = %akick.mask,
-            akick_id = akick.id,
-            akick_channel_id = akick.channel_id,
-            "AKICK triggered"
-        );
-        return Ok(());
+            };
+            sender.send(Arc::new(notice)).await?;
+            info!(
+                nick = %nick,
+                channel = %channel_name,
+                "AKICK triggered"
+            );
+            return Ok(None);
+        }
     }
 
-    // Check auto modes if registered (pass pre-fetched user data)
-    let initial_modes = if ctx
-        .matrix
+    // Check auto modes if registered
+    let initial_modes = if let Some(db) = db
+        && matrix
         .channel_manager
         .registered_channels
         .contains(&channel_lower)
     {
-        check_auto_modes(ctx, &channel_lower, is_registered, &account).await
+        check_auto_modes(db, &channel_lower, is_registered, &account).await
     } else {
         None
     };
@@ -152,41 +200,41 @@ pub(super) async fn join_channel(
         .with_tag("time", Some(format_server_time()))
     };
 
-    let matrix = ctx.matrix.clone();
     let mut attempt = 0;
-    let is_registered_channel = ctx
-        .matrix
+    let is_registered_channel = matrix
         .channel_manager
         .registered_channels
         .contains(&channel_lower);
 
     // Pre-load saved topic for registered channels (passed to actor at spawn)
     let initial_topic = if is_registered_channel {
-        ctx.db
-            .channels()
-            .find_by_name(&channel_lower)
-            .await
-            .ok()
-            .flatten()
-            .filter(|r| r.keeptopic)
-            .and_then(|r| match (r.topic_text, r.topic_set_by, r.topic_set_at) {
-                (Some(text), Some(set_by), Some(set_at)) => Some(Topic {
-                    text,
-                    set_by,
-                    set_at,
-                }),
-                _ => None,
-            })
+        if let Some(db) = db {
+            db.channels()
+                .find_by_name(&channel_lower)
+                .await
+                .ok()
+                .flatten()
+                .filter(|r| r.keeptopic)
+                .and_then(|r| match (r.topic_text, r.topic_set_by, r.topic_set_at) {
+                    (Some(text), Some(set_by), Some(set_at)) => Some(Topic {
+                        text,
+                        set_by,
+                        set_at,
+                    }),
+                    _ => None,
+                })
+        } else {
+            None
+        }
     } else {
         None
     };
 
-    let mailbox_capacity = ctx.matrix.config.limits.channel_mailbox_capacity;
+    let mailbox_capacity = matrix.config.limits.channel_mailbox_capacity;
 
     loop {
-        let observer = ctx.matrix.channel_manager.observer.clone();
-        let channel_sender = ctx
-            .matrix
+        let observer = matrix.channel_manager.observer.clone();
+        let channel_sender = matrix
             .channel_manager
             .channels
             .entry(channel_lower.clone())
@@ -207,20 +255,13 @@ pub(super) async fn join_channel(
         let standard_join_msg = make_standard_join_msg();
 
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        let sender = ctx
-            .matrix
-            .user_manager
-            .senders
-            .get(ctx.uid)
-            .map(|s| s.value().clone())
-            .ok_or(HandlerError::NickOrUserMissing)?;
-
+        
         let _ = channel_sender
             .send(crate::state::actor::ChannelEvent::Join {
                 params: Box::new(crate::state::actor::JoinParams {
-                    uid: ctx.uid.to_string(),
+                    uid: uid.to_string(),
                     nick: nick.clone(),
-                    sender,
+                    sender: sender.clone(),
                     caps: caps.clone(),
                     user_context: user_context.clone(),
                     key: provided_key.map(|s| s.to_string()),
@@ -235,9 +276,19 @@ pub(super) async fn join_channel(
 
         match reply_rx.await {
             Ok(Ok(data)) => {
-                handle_join_success(
-                    ctx,
+                let self_join_msg = handle_join_success(
                     JoinSuccessContext {
+                        sender: sender.clone(),
+                        server_name: server_name.to_string(),
+                        active_batch_id: batch_id.map(String::from),
+                        label: label.map(String::from),
+                        user_manager: &matrix.user_manager,
+                        channel_manager: &matrix.channel_manager,
+                        client_manager: &matrix.client_manager,
+                        config_multiclient: matrix.config.multiclient.enabled,
+                        uid_str: uid.to_string(),
+                        caps: caps.clone(),
+
                         channel_sender: &channel_sender,
                         channel_lower: &channel_lower,
                         nick: &nick,
@@ -252,12 +303,11 @@ pub(super) async fn join_channel(
                     },
                 )
                 .await?;
-                break;
+                return Ok(self_join_msg);
             }
             Ok(Err(error)) => {
                 if matches!(error, ChannelError::ChannelTombstone) && attempt == 0 {
-                    if ctx
-                        .matrix
+                    if matrix
                         .channel_manager
                         .channels
                         .remove(&channel_lower)
@@ -269,31 +319,12 @@ pub(super) async fn join_channel(
                     continue;
                 }
 
-                // Check if we should forward to another channel
-                if let Some(forward_target) = check_forward(ctx, &channel_lower, &error).await {
-                    // Send ERR_LINKCHANNEL to client
-                    let link_reply = slirc_proto::Response::err_linkchannel(
-                        &nick,
-                        channel_name,
-                        &forward_target,
-                    )
-                    .with_prefix(ctx.server_prefix());
-                    ctx.sender.send(link_reply).await?;
-
-                    // Recursively attempt to join the forward target
-                    // Use Box to allow async recursion
-                    return Box::pin(join_channel(ctx, &forward_target, None)).await;
-                }
-
-                send_join_error(ctx, &nick, channel_name, error).await?;
-                break;
+                send_join_error(sender, server_name, &nick, channel_name, error).await?;
+                return Ok(None);
             }
             Err(_) => {
-                // Channel actor died between entry() and send() - race with cleanup.
-                // Retry once to create a fresh actor.
                 if attempt == 0 {
-                    if ctx
-                        .matrix
+                    if matrix
                         .channel_manager
                         .channels
                         .remove(&channel_lower)
@@ -304,10 +335,16 @@ pub(super) async fn join_channel(
                     attempt += 1;
                     continue;
                 }
-                return Err(HandlerError::Internal("Channel actor died".to_string()));
+                send_join_error(
+                    sender,
+                    server_name,
+                    &nick,
+                    channel_name,
+                    ChannelError::ChannelTombstone,
+                )
+                .await?;
+                return Ok(None);
             }
         }
     }
-
-    Ok(())
 }

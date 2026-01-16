@@ -6,6 +6,8 @@
 //! remain in `mod.rs` because they depend on `Context` which is defined there.
 
 use super::{Context, HandlerResult};
+
+pub mod fanout;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response, Tag};
 
 // Re-export hostmask matching from proto for use by handlers

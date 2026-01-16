@@ -24,6 +24,7 @@ use super::super::{
     Context, HandlerError, HandlerResult, UniversalHandler, notify_monitors_offline,
     notify_monitors_online,
 };
+use crate::handlers::helpers::fanout::broadcast_to_account;
 use crate::state::{SessionState, session::SaslAccess};
 use async_trait::async_trait;
 use dashmap::mapref::entry::Entry;
@@ -365,6 +366,10 @@ impl<S: SessionState + SaslAccess> UniversalHandler<S> for NickHandler {
                         })
                         .await;
                 }
+            }
+
+            if ctx.matrix.config.multiclient.enabled {
+                broadcast_to_account(ctx, nick_msg.clone(), true).await?;
             }
 
             // Also update the User state with the new nick

@@ -24,10 +24,11 @@ use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
 };
 use super::common::{parse_channel_list, parse_reason};
+use crate::handlers::helpers::fanout::broadcast_to_account;
 use crate::state::RegisteredState;
 use crate::state::actor::{ChannelError, ChannelEvent};
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Prefix, Response, irc_to_lower};
+use slirc_proto::{Command, Message, MessageRef, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::info;
 
@@ -53,6 +54,22 @@ impl PostRegHandler for PartHandler {
         for channel_name in parse_channel_list(channels_str) {
             let channel_lower = irc_to_lower(channel_name);
             leave_channel_internal(ctx, &channel_lower, &nick, &user_name, &host, reason).await?;
+
+            if ctx.matrix.config.multiclient.enabled {
+                let part_msg = Message {
+                    tags: None,
+                    prefix: Some(Prefix::new(
+                        nick.to_string(),
+                        user_name.to_string(),
+                        host.to_string(),
+                    )),
+                    command: Command::PART(
+                        channel_name.to_string(),
+                        reason.map(|s| s.to_string()),
+                    ),
+                };
+                broadcast_to_account(ctx, part_msg, true).await?;
+            }
         }
 
         Ok(())
