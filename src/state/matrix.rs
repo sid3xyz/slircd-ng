@@ -464,7 +464,13 @@ impl Matrix {
 
         // Remove from nick mapping
         let nick_lower = slirc_proto::irc_to_lower(&nick);
-        self.user_manager.nicks.remove(&nick_lower);
+        if let Some(mut vec) = self.user_manager.nicks.get_mut(&nick_lower) {
+            vec.retain(|u| u != target_uid);
+            if vec.is_empty() {
+                drop(vec);
+                self.user_manager.nicks.remove(&nick_lower);
+            }
+        }
 
         // Remove user from matrix
         self.user_manager.users.remove(target_uid);

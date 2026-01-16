@@ -24,7 +24,7 @@ use super::super::{
     Context, HandlerError, HandlerResult, UniversalHandler, notify_monitors_offline,
     notify_monitors_online,
 };
-use crate::state::SessionState;
+use crate::state::{SessionState, session::SaslAccess};
 use async_trait::async_trait;
 use dashmap::mapref::entry::Entry;
 use slirc_proto::{Command, Message, MessageRef, NickExt, Prefix, Response, irc_to_lower};
@@ -90,7 +90,7 @@ fn are_nicks_confusable(nick1: &str, nick2: &str) -> bool {
 pub struct NickHandler;
 
 #[async_trait]
-impl<S: SessionState> UniversalHandler<S> for NickHandler {
+impl<S: SessionState + SaslAccess> UniversalHandler<S> for NickHandler {
     async fn handle(&self, ctx: &mut Context<'_, S>, msg: &MessageRef<'_>) -> HandlerResult {
         // NICK <nickname>
         let nick = parse_nick_params(msg)?;
@@ -174,12 +174,15 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
                     // Same UID, allow case-change or reconnect continuation
                 } else {
                     // Different UID - check if accounts match
+                    // For pre-registration (before User object exists), check session account
+                    // For post-registration, check User object account
                     let current_account =
                         if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid) {
                             let user = user_arc.read().await;
                             user.account.clone()
                         } else {
-                            None
+                            // Pre-registration: use session account (set by SASL)
+                            ctx.state.account().map(String::from)
                         };
 
                     // Check account of first existing UID (all should have same account)

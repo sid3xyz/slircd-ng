@@ -5,8 +5,10 @@
 
 use super::super::{Context, HandlerResult, server_reply};
 use crate::security::UserContext;
+use crate::state::User;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use slirc_proto::{Command, Message, Prefix, Response};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::debug;
 
@@ -242,6 +244,67 @@ pub async fn route_to_channel_with_snapshot(
     }
 }
 
+/// Build a recipient-specific message for a local user, applying capability-aware tag filtering.
+fn build_local_recipient_message(
+    base: &Message,
+    recipient: &User,
+    snapshot: &SenderSnapshot,
+    msgid_str: &str,
+    timestamp_str: &str,
+    sender_label: Option<&String>,
+) -> Message {
+    let has_message_tags = recipient.caps.contains("message-tags");
+    let has_server_time = recipient.caps.contains("server-time");
+
+    let mut result = base.clone();
+
+    // Strip label tag from recipient copies (label is sender-only)
+    if sender_label.is_some() {
+        result.tags = result
+            .tags
+            .map(|tags| {
+                tags.into_iter()
+                    .filter(|tag| tag.0.as_ref() != "label")
+                    .collect::<Vec<_>>()
+            })
+            .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+    }
+
+    // If recipient doesn't have message-tags, strip client-only tags
+    if !has_message_tags {
+        result.tags = result
+            .tags
+            .map(|tags| {
+                tags.into_iter()
+                    .filter(|tag| !tag.0.starts_with('+'))
+                    .collect::<Vec<_>>()
+            })
+            .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+    } else {
+        // Add msgid for users with message-tags
+        result = result.with_tag("msgid", Some(msgid_str.to_string()));
+    }
+
+    // Add server-time if capability is enabled
+    if has_server_time {
+        result = result.with_tag("time", Some(timestamp_str.to_string()));
+    }
+
+    // Add account-tag if sender is logged in and recipient has capability
+    if let Some(account) = snapshot.account.as_ref()
+        && recipient.caps.contains("account-tag")
+    {
+        result = result.with_tag("account", Some(account.clone()));
+    }
+
+    // Add bot tag if sender is a bot and recipient has message-tags
+    if snapshot.is_bot && has_message_tags {
+        result = result.with_tag("bot", None::<String>);
+    }
+
+    result
+}
+
 /// Route a message to a user target using pre-fetched snapshot, optionally sending RPL_AWAY.
 ///
 /// This is the optimized version that eliminates redundant sender lookups.
@@ -271,6 +334,18 @@ pub async fn route_to_user_with_snapshot(
 
     // For bouncer support: send to ALL UIDs with this nick
     let mut sent_count = 0;
+    let mut delivered_local: HashSet<String> = HashSet::new();
+
+    // Precompute msgid/time once for this fan-out
+    let timestamp_str = timestamp.clone().unwrap_or_else(|| {
+        chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string()
+    });
+    let msgid_str = msgid
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
     for target_uid in &target_uids {
         // Check away status and notify sender if requested (only once, not per UID)
         if opts.send_away_reply && sent_count == 0 {
@@ -371,16 +446,6 @@ pub async fn route_to_user_with_snapshot(
             }
         }
 
-        // Send to target user with appropriate tags based on their capabilities
-        let timestamp_str = timestamp.clone().unwrap_or_else(|| {
-            chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string()
-        });
-        let msgid_str = msgid
-            .clone()
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
         // Use sender's account from snapshot
         let sender_account = snapshot.account.as_ref();
 
@@ -432,62 +497,21 @@ pub async fn route_to_user_with_snapshot(
                 .map(|u| u.value().clone())
             {
                 let user = user_arc.read().await;
-                let has_message_tags = user.caps.contains("message-tags");
-                let has_server_time = user.caps.contains("server-time");
-
-                let mut result = msg.clone();
-
-                // Strip label tag from recipient copies (label is sender-only)
-                if ctx.label.is_some() {
-                    result.tags = result
-                        .tags
-                        .map(|tags| {
-                            tags.into_iter()
-                                .filter(|tag| tag.0.as_ref() != "label")
-                                .collect::<Vec<_>>()
-                        })
-                        .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-                }
-
-                // If recipient doesn't have message-tags, strip client-only tags
-                if !has_message_tags {
-                    result.tags = result
-                        .tags
-                        .map(|tags| {
-                            tags.into_iter()
-                                .filter(|tag| !tag.0.starts_with('+'))
-                                .collect::<Vec<_>>()
-                        })
-                        .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-                } else {
-                    // Add msgid for users with message-tags
-                    result = result.with_tag("msgid", Some(msgid_str.clone()));
-                }
-
-                // Add server-time if capability is enabled
-                if has_server_time {
-                    result = result.with_tag("time", Some(timestamp_str.clone()));
-                }
-
-                // Add account-tag if sender is logged in and recipient has capability
-                if let Some(account) = sender_account
-                    && user.caps.contains("account-tag")
-                {
-                    result = result.with_tag("account", Some(account.clone()));
-                }
-
-                // Add bot tag if sender is a bot and recipient has message-tags
-                if snapshot.is_bot && has_message_tags {
-                    result = result.with_tag("bot", None::<String>);
-                }
-
-                result
+                build_local_recipient_message(
+                    &msg,
+                    &user,
+                    snapshot,
+                    &msgid_str,
+                    &timestamp_str,
+                    ctx.label.as_ref(),
+                )
             } else {
                 msg.clone()
             };
             let _ = target_sender.send(Arc::new(msg_for_target)).await;
             crate::metrics::MESSAGES_SENT.inc();
             sent_count += 1;
+            delivered_local.insert(target_uid.clone());
         } else {
             // REMOTE USER: Route via SyncManager
             // Construct S2S message: :SourceUID PRIVMSG TargetUID :text
@@ -527,31 +551,76 @@ pub async fn route_to_user_with_snapshot(
         }
     }
 
+    // Account cluster self-echo: forward the sent message to other local sessions on the same account
+    if sent_count > 0
+        && ctx.matrix.config.multiclient.enabled
+        && let Some(account) = &snapshot.account
+    {
+        let account_lower = slirc_proto::irc_to_lower(account);
+
+        // Collect candidate local users to avoid holding locks while awaiting
+        let sibling_candidates: Vec<_> = ctx
+            .matrix
+            .user_manager
+            .users
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect();
+
+        for (sibling_uid, sibling_arc) in sibling_candidates {
+            if sibling_uid == ctx.uid {
+                continue;
+            }
+            if delivered_local.contains(&sibling_uid) {
+                continue;
+            }
+
+            let sibling = sibling_arc.read().await;
+            if sibling
+                .account
+                .as_ref()
+                .map(|a| slirc_proto::irc_to_lower(a))
+                != Some(account_lower.clone())
+            {
+                continue;
+            }
+
+            if let Some(sender) = ctx
+                .matrix
+                .user_manager
+                .senders
+                .get(&sibling_uid)
+                .map(|s| s.value().clone())
+            {
+                let msg_for_sibling = build_local_recipient_message(
+                    &msg,
+                    &sibling,
+                    snapshot,
+                    &msgid_str,
+                    &timestamp_str,
+                    None, // self-echo copies never carry labels
+                );
+                let _ = sender.send(Arc::new(msg_for_sibling)).await;
+                delivered_local.insert(sibling_uid.clone());
+            }
+        }
+    }
+
     // After loop: Send echo message ONCE if sender has echo-message capability and we sent to at least one UID
     if sent_count > 0 && ctx.state.capabilities.contains("echo-message") {
         let has_message_tags = ctx.state.capabilities.contains("message-tags");
         let has_server_time = ctx.state.capabilities.contains("server-time");
 
-        // Regenerate msgid/timestamp for echo
-        let echo_timestamp = timestamp.clone().unwrap_or_else(|| {
-            chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string()
-        });
-        let echo_msgid = msgid
-            .clone()
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
         let mut echo_msg = msg.clone();
 
         // Add msgid if sender has message-tags
         if has_message_tags {
-            echo_msg = echo_msg.with_tag("msgid", Some(echo_msgid));
+            echo_msg = echo_msg.with_tag("msgid", Some(msgid_str.clone()));
         }
 
         // Add server-time if capability is enabled
         if has_server_time {
-            echo_msg = echo_msg.with_tag("time", Some(echo_timestamp));
+            echo_msg = echo_msg.with_tag("time", Some(timestamp_str.clone()));
         }
 
         // Preserve label if present

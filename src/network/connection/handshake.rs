@@ -36,12 +36,21 @@ impl HandshakeExit {
         }
     }
 
-    pub fn release_nick(&self, matrix: &Matrix) {
+    pub fn release_nick(&self, matrix: &Matrix, uid: &str) {
         if let Some(nick) = self.nick() {
             let nick_lower = irc_to_lower(nick);
-            // For bouncer support: remove all entries (should only be one during pre-reg)
-            matrix.user_manager.nicks.remove(&nick_lower);
-            info!(nick = %nick, "Pre-registration nick released");
+
+            if let Some(mut vec) = matrix.user_manager.nicks.get_mut(&nick_lower) {
+                vec.retain(|u| u != uid);
+
+                let removed_entry = vec.is_empty();
+                if removed_entry {
+                    drop(vec);
+                    matrix.user_manager.nicks.remove(&nick_lower);
+                }
+
+                info!(nick = %nick, uid = %uid, removed_entry, "Pre-registration nick released");
+            }
         }
     }
 }

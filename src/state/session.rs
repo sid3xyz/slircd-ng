@@ -45,6 +45,8 @@ pub trait SaslAccess {
     fn sasl_buffer(&self) -> &str;
     /// Get mutable access to the SASL buffer.
     fn sasl_buffer_mut(&mut self) -> &mut String;
+    /// Get the account name if authenticated.
+    fn account(&self) -> Option<&str>;
     /// Set the account name.
     fn set_account(&mut self, account: Option<String>);
 }
@@ -233,6 +235,10 @@ impl SaslAccess for ServerState {
         panic!("ServerState does not support SASL buffer access")
     }
 
+    fn account(&self) -> Option<&str> {
+        None
+    }
+
     fn set_account(&mut self, _account: Option<String>) {
         // No-op for servers
     }
@@ -402,6 +408,10 @@ impl SaslAccess for UnregisteredState {
 
     fn sasl_buffer_mut(&mut self) -> &mut String {
         &mut self.sasl_buffer
+    }
+
+    fn account(&self) -> Option<&str> {
+        self.account.as_deref()
     }
 
     fn set_account(&mut self, account: Option<String>) {
@@ -652,6 +662,10 @@ impl SaslAccess for RegisteredState {
 
     fn sasl_buffer_mut(&mut self) -> &mut String {
         &mut self.sasl_buffer
+    }
+
+    fn account(&self) -> Option<&str> {
+        self.account.as_deref()
     }
 
     fn set_account(&mut self, account: Option<String>) {

@@ -263,12 +263,21 @@ impl PostRegHandler for SanickHandler {
             command: Command::NICK(new_nick.to_string()),
         };
 
-        // Update nick mapping
-        ctx.matrix.user_manager.nicks.remove(&old_lower);
+        // Update nick mapping without disrupting other sessions using the old nick
+        if let Some(mut vec) = ctx.matrix.user_manager.nicks.get_mut(&old_lower) {
+            vec.retain(|u| u != &target_uid);
+            if vec.is_empty() {
+                drop(vec);
+                ctx.matrix.user_manager.nicks.remove(&old_lower);
+            }
+        }
+
         ctx.matrix
             .user_manager
             .nicks
-            .insert(new_lower, vec![target_uid.clone()]);
+            .entry(new_lower)
+            .or_insert_with(Vec::new)
+            .push(target_uid.clone());
 
         // Update user's nick
         let user_arc = ctx

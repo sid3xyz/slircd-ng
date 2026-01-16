@@ -202,7 +202,7 @@ impl Connection {
         {
             Ok(s) => s,
             Err(exit) => {
-                exit.release_nick(&self.matrix);
+                exit.release_nick(&self.matrix, &self.uid);
                 // Decrement unregistered counter on handshake failure
                 self.matrix.user_manager.decrement_unregistered();
                 return Ok(());

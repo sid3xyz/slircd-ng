@@ -86,19 +86,15 @@ impl PostRegHandler for RehashHandler {
             }
         };
 
+        // Get the config path stored in Matrix (set at startup from command line arg)
+        let config_path = ctx.matrix.config_path.clone();
+
         let reply = server_reply(
             server_name,
             Response::RPL_REHASHING,
-            vec![
-                nick.clone(),
-                "config.toml".to_string(),
-                "Rehashing".to_string(),
-            ],
+            vec![nick.clone(), config_path.clone(), "Rehashing".to_string()],
         );
         ctx.sender.send(reply).await?;
-
-        // Get the config path stored in Matrix (set at startup from command line arg)
-        let config_path = ctx.matrix.config_path.clone();
 
         let reload_result = async {
             // Phase 1: Load and validate new configuration from disk

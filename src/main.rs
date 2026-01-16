@@ -23,9 +23,32 @@ use crate::handlers::Registry;
 use crate::network::Gateway;
 use crate::services::enforce::spawn_enforcement_task;
 use crate::state::Matrix;
+use std::path::Path;
 use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+
+/// Resolve the configuration path from CLI arguments.
+/// Supports `-c <path>`, `--config <path>`, or a bare path.
+/// Falls back to `config.toml` when no argument is provided.
+fn resolve_config_path() -> String {
+    let mut args = std::env::args().skip(1);
+
+    let raw_path = match args.next() {
+        Some(flag) if flag == "-c" || flag == "--config" => args.next().unwrap_or_else(|| {
+            eprintln!("Missing path after {}", flag);
+            std::process::exit(1);
+        }),
+        Some(path) => path,
+        None => "config.toml".to_string(),
+    };
+
+    // Canonicalize to avoid relying on the current working directory during REHASH.
+    match std::fs::canonicalize(Path::new(&raw_path)) {
+        Ok(p) => p.to_string_lossy().into_owned(),
+        Err(_) => raw_path,
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -38,9 +61,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Load configuration
-    let config_path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "config.toml".to_string());
+    let config_path = resolve_config_path();
 
     let config = Config::load(&config_path).map_err(|e| {
         error!(path = %config_path, error = %e, "Failed to load config");

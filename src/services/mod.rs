@@ -573,11 +573,21 @@ pub async fn apply_effect(
             let old_nick_lower = irc_to_lower(&old_nick);
             let new_nick_lower = irc_to_lower(&new_nick);
 
-            matrix.user_manager.nicks.remove(&old_nick_lower);
+            // Remove only this UID from the old nick vector; keep others if present
+            if let Some(mut vec) = matrix.user_manager.nicks.get_mut(&old_nick_lower) {
+                vec.retain(|u| u != &target_uid);
+                if vec.is_empty() {
+                    drop(vec);
+                    matrix.user_manager.nicks.remove(&old_nick_lower);
+                }
+            }
+
             matrix
                 .user_manager
                 .nicks
-                .insert(new_nick_lower, vec![target_uid.clone()]);
+                .entry(new_nick_lower)
+                .or_insert_with(Vec::new)
+                .push(target_uid.clone());
 
             let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
             if let Some(user_arc) = user_arc {
