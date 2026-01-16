@@ -196,8 +196,9 @@ impl PostRegHandler for MetadataHandler {
         } else {
             // User Metadata
             // 1. Resolve target nick to UID
-            let target_uid = if let Some(uid) = ctx.matrix.user_manager.nicks.get(&target_lower) {
-                uid.value().clone()
+            let target_uid = if let Some(uid) = ctx.matrix.user_manager.get_first_uid(&target_lower)
+            {
+                uid
             } else {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,

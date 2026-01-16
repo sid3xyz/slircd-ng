@@ -243,7 +243,7 @@ impl Gateway {
         info!(address = %listen_config.address, "Plaintext listener bound");
 
         let tls_listener = if let Some(tls_cfg) = tls_config {
-            let tls_acceptor = Self::load_tls(&tls_cfg)?;
+            let tls_acceptor = Self::load_tls(&tls_cfg).await?;
             let listener = TcpListener::bind(tls_cfg.address).await?;
             info!(address = %tls_cfg.address, "TLS listener bound");
             Some((listener, tls_acceptor, tls_cfg.proxy_protocol))
@@ -271,9 +271,9 @@ impl Gateway {
     }
 
     /// Load TLS certificates and create TlsAcceptor.
-    fn load_tls(config: &TlsConfig) -> anyhow::Result<TlsAcceptor> {
-        // Load certificates
-        let cert_file = std::fs::read(&config.cert_path)?;
+    async fn load_tls(config: &TlsConfig) -> anyhow::Result<TlsAcceptor> {
+        // Load certificates asynchronously (prevents executor stalls on slow storage)
+        let cert_file = tokio::fs::read(&config.cert_path).await?;
         let cert_reader = &mut BufReader::new(Cursor::new(cert_file));
         let certs: Vec<CertificateDer> = certs(cert_reader).collect::<Result<Vec<_>, _>>()?;
 
@@ -282,7 +282,7 @@ impl Gateway {
         }
 
         // Load private key
-        let key_file = std::fs::read(&config.key_path)?;
+        let key_file = tokio::fs::read(&config.key_path).await?;
         let key_reader = &mut BufReader::new(Cursor::new(key_file));
         let mut keys: Vec<PrivateKeyDer> = pkcs8_private_keys(key_reader)
             .collect::<Result<Vec<_>, _>>()?
@@ -333,7 +333,7 @@ impl Gateway {
                 })?;
 
                 // Load CA certificates for client verification
-                let ca_file = std::fs::read(ca_path)?;
+                let ca_file = tokio::fs::read(ca_path).await?;
                 let ca_reader = &mut BufReader::new(Cursor::new(ca_file));
                 let ca_certs: Vec<CertificateDer> =
                     rustls_pemfile::certs(ca_reader).collect::<Result<Vec<_>, _>>()?;

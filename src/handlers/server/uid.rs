@@ -3,9 +3,9 @@ use crate::handlers::core::traits::ServerHandler;
 use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::ServerState;
 use async_trait::async_trait;
+use slirc_proto::MessageRef;
 use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
 use slirc_proto::sync::user::UserCrdt;
-use slirc_proto::MessageRef;
 use tracing::info;
 
 use crate::handlers::server::source::extract_source_sid;

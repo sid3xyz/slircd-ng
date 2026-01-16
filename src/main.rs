@@ -186,6 +186,7 @@ async fn main() -> anyhow::Result<()> {
         tokio::sync::mpsc::channel::<(String, String)>(DISCONNECT_CHANNEL_SIZE);
     let (matrix_struct, mut router_rx) = Matrix::new(crate::state::MatrixParams {
         config: &config,
+        config_path: config_path.clone(),
         data_dir,
         db: db.clone(),
         history,
@@ -241,7 +242,8 @@ async fn main() -> anyhow::Result<()> {
                 // Assuming UID prefix is SID (3 chars)
                 if target_uid.len() >= 3 {
                     let sid_prefix = &target_uid[0..3];
-                    let target_sid = slirc_proto::sync::clock::ServerId::new(sid_prefix.to_string());
+                    let target_sid =
+                        slirc_proto::sync::clock::ServerId::new(sid_prefix.to_string());
 
                     if let Some(peer) = matrix.sync_manager.get_peer_for_server(&target_sid) {
                         info!(target_sid = %target_sid.as_str(), "Routing message to peer");

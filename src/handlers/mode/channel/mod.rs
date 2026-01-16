@@ -369,15 +369,14 @@ pub async fn handle_channel_mode(
                     ChannelMode::Oper | ChannelMode::Voice => {
                         if let Some(nick) = mode.arg() {
                             let nick_lower = irc_to_lower(nick);
-                            if let Some(uid) = ctx.matrix.user_manager.nicks.get(&nick_lower) {
-                                target_uids.insert(nick.to_string(), uid.value().clone());
+                            if let Some(uid) = ctx.matrix.user_manager.get_first_uid(&nick_lower) {
+                                target_uids.insert(nick.to_string(), uid);
                             }
                         }
                     }
                     _ => {}
                 }
             }
-
             let user_arc = ctx
                 .matrix
                 .user_manager

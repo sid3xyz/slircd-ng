@@ -4,8 +4,8 @@
 //! Implements the TS6-like handshake protocol defined in `docs/S2S_PROTOCOL.md`.
 
 use crate::config::LinkBlock;
-use slirc_proto::sync::clock::ServerId;
 use slirc_proto::Command;
+use slirc_proto::sync::clock::ServerId;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]

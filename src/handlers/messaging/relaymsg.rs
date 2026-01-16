@@ -218,7 +218,12 @@ impl PostRegHandler for RelayMsgHandler {
             let target_lower = irc_to_lower(target);
 
             // Check if user exists
-            if ctx.matrix.user_manager.nicks.get(&target_lower).is_none() {
+            if ctx
+                .matrix
+                .user_manager
+                .get_first_uid(&target_lower)
+                .is_none()
+            {
                 let reply = server_reply(
                     &ctx.matrix.server_info.name,
                     Response::ERR_NOSUCHNICK,

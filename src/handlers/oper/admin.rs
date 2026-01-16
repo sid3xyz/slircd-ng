@@ -97,19 +97,50 @@ impl PostRegHandler for RehashHandler {
         );
         ctx.sender.send(reply).await?;
 
+        // Get the config path stored in Matrix (set at startup from command line arg)
+        let config_path = ctx.matrix.config_path.clone();
+
         let reload_result = async {
+            // Phase 1: Load and validate new configuration from disk
+            let new_config = crate::config::Config::load(&config_path)
+                .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+
+            tracing::debug!("New config loaded and validated");
+
+            // Phase 2: Reload ban lists from database (always safe)
             let dlines = ctx.db.bans().get_active_dlines().await?;
             let zlines = ctx.db.bans().get_active_zlines().await?;
 
+            // Phase 3: Update IP deny list with fresh bans
             match ctx.matrix.security_manager.ip_deny_list.write() {
                 Ok(mut deny_list) => {
                     deny_list.reload_from_database(&dlines, &zlines);
-                    Ok::<_, anyhow::Error>(())
+                    tracing::debug!("IP deny list reloaded from database");
                 }
                 Err(e) => {
                     anyhow::bail!("Failed to acquire write lock on IP deny list: {}", e)
                 }
             }
+
+            // Phase 4: Atomically swap hot-reloadable configuration
+            // This is the key innovation: using parking_lot::RwLock for atomic swaps
+            {
+                let new_hot_config = crate::state::HotConfig::from_config(&new_config);
+                let mut hot_config = ctx.matrix.hot_config.write();
+                *hot_config = new_hot_config;
+                tracing::debug!(
+                    "Hot config atomically swapped: description='{}', opers={}",
+                    hot_config.description,
+                    hot_config.oper_blocks.len()
+                );
+            }
+
+            tracing::info!(
+                oper_count = %new_config.oper.len(),
+                "Configuration reloaded successfully"
+            );
+
+            Ok::<_, anyhow::Error>(())
         }
         .await;
 
@@ -119,7 +150,7 @@ impl PostRegHandler for RehashHandler {
                     .send(server_notice(
                         server_name,
                         &nick,
-                        "REHASH complete: IP deny list reloaded from database",
+                        "REHASH complete: Configuration reloaded (IP bans, server info, operators)",
                     ))
                     .await?;
                 tracing::info!(oper = %nick, "REHASH completed successfully");
@@ -129,10 +160,10 @@ impl PostRegHandler for RehashHandler {
                     .send(server_notice(
                         server_name,
                         &nick,
-                        format!("REHASH warning: {}", e),
+                        format!("REHASH failed (config not updated): {}", e),
                     ))
                     .await?;
-                tracing::warn!(oper = %nick, error = %e, "REHASH completed with errors");
+                tracing::warn!(oper = %nick, error = %e, "REHASH failed - original config preserved");
             }
         }
 

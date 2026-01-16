@@ -426,7 +426,7 @@ async fn compute_dm_key(
         format!("u:{}", irc_to_lower(&snapshot.nick))
     };
 
-    let target_account = if let Some(uid) = ctx.matrix.user_manager.nicks.get_cloned(target_lower) {
+    let target_account = if let Some(uid) = ctx.matrix.user_manager.get_first_uid(target_lower) {
         if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(&uid) {
             let u = user_arc.read().await;
             u.account.clone()

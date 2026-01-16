@@ -150,7 +150,7 @@ where
     pub fn add(&mut self, element: T, timestamp: HybridTimestamp) {
         // Add wins: if add timestamp >= tombstone timestamp, element is present
         let tombstone_ts = self.tombstones.get(&element).copied();
-        if tombstone_ts.is_none_or(|ts| timestamp >= ts) {
+        if tombstone_ts.map_or(true, |ts| timestamp >= ts) {
             self.elements.insert(element, timestamp);
         }
     }
@@ -201,7 +201,7 @@ where
                 _ => {
                     // Check against our tombstones
                     let our_tomb = self.tombstones.get(elem).copied();
-                    if our_tomb.is_none_or(|ts| other_ts >= ts) {
+                    if our_tomb.map_or(true, |ts| other_ts >= ts) {
                         self.elements.insert(elem.clone(), other_ts);
                     }
                 }

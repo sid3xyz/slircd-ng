@@ -159,7 +159,7 @@ impl PostRegHandler for UseripHandler {
 
             // Look up the user by nick
             let lower_nick = slirc_proto::irc_to_lower(target_nick);
-            if let Some(uid) = ctx.matrix.user_manager.nicks.get_cloned(&lower_nick) {
+            if let Some(uid) = ctx.matrix.user_manager.get_first_uid(&lower_nick) {
                 let user_arc = ctx.matrix.user_manager.users.get_cloned(&uid);
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;
@@ -228,7 +228,8 @@ impl PostRegHandler for LinksHandler {
         // Sort by name for consistent output
         servers.sort_by(|a, b| a.name.cmp(&b.name));
 
-        let local_sid = slirc_proto::sync::clock::ServerId::new(ctx.matrix.server_info.sid.as_str());
+        let local_sid =
+            slirc_proto::sync::clock::ServerId::new(ctx.matrix.server_info.sid.as_str());
 
         for server in servers {
             // Skip if it's us

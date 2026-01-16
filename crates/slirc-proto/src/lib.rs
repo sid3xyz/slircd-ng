@@ -70,8 +70,6 @@ pub mod format;
 #[cfg(feature = "tokio")]
 pub mod irc;
 pub mod isupport;
-#[cfg(feature = "sync")]
-pub mod sync;
 #[cfg(feature = "tokio")]
 pub mod line;
 pub mod message;
@@ -81,6 +79,8 @@ pub mod prefix;
 pub mod response;
 pub mod sasl;
 pub mod state;
+#[cfg(feature = "sync")]
+pub mod sync;
 pub mod util;
 
 pub use self::caps::{Capability, NegotiationVersion};

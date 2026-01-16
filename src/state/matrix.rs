@@ -36,6 +36,7 @@ use crate::state::{
     ChannelManager, LifecycleManager, MonitorManager, SecurityManager, SecurityManagerParams,
     ServiceManager, SyncManager, Uid, UserManager,
 };
+use parking_lot::RwLock;
 use slirc_proto::sync::clock::ServerId;
 
 use crate::config::{Config, OperBlock, SecurityConfig, ServerConfig};
@@ -83,6 +84,13 @@ pub struct Matrix {
     /// Server configuration (for handlers to access).
     pub config: MatrixConfig,
 
+    /// Path to the configuration file (for REHASH to reload from).
+    pub config_path: String,
+
+    /// Hot-reloadable configuration (REHASH safe).
+    /// Use `hot_config.read()` to access, `hot_config.write()` to update atomically.
+    pub hot_config: RwLock<HotConfig>,
+
     /// Router channel for remote messages.
     pub router_tx: mpsc::Sender<Arc<Message>>,
 }
@@ -110,6 +118,36 @@ pub struct MatrixConfig {
     pub tls: Option<crate::config::TlsConfig>,
 }
 
+/// Hot-reloadable configuration fields that can be atomically swapped via REHASH.
+/// Access via `Matrix::hot_config.read()` or `Matrix::hot_config.write()`.
+#[derive(Debug, Clone)]
+pub struct HotConfig {
+    /// Server description (shown in RPL_INFO, LUSERS).
+    pub description: String,
+    /// MOTD lines (shown in RPL_MOTD).
+    pub motd_lines: Vec<String>,
+    /// Operator blocks (for oper authentication).
+    pub oper_blocks: Vec<OperBlock>,
+    /// Admin info lines (RPL_ADMINLOC1, RPL_ADMINLOC2, RPL_ADMINEMAIL).
+    pub admin_info: (Option<String>, Option<String>, Option<String>),
+}
+
+impl HotConfig {
+    /// Create a new HotConfig from a Config reference.
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            description: config.server.description.clone(),
+            motd_lines: config.motd.load_lines(),
+            oper_blocks: config.oper.clone(),
+            admin_info: (
+                config.server.admin_info1.clone(),
+                config.server.admin_info2.clone(),
+                config.server.admin_email.clone(),
+            ),
+        }
+    }
+}
+
 /// This server's identity information.
 #[derive(Debug, Clone)]
 pub struct ServerInfo {
@@ -127,6 +165,8 @@ pub struct ServerInfo {
 /// Parameters for creating a new Matrix.
 pub struct MatrixParams<'a> {
     pub config: &'a Config,
+    /// Path to the configuration file (for REHASH).
+    pub config_path: String,
     pub data_dir: Option<&'a std::path::Path>,
     pub db: Database,
     pub history: std::sync::Arc<dyn crate::history::HistoryProvider>,
@@ -146,6 +186,7 @@ impl Matrix {
     pub fn new(params: MatrixParams<'_>) -> (Self, mpsc::Receiver<Arc<Message>>) {
         let MatrixParams {
             config,
+            config_path,
             data_dir,
             db,
             history,
@@ -246,6 +287,8 @@ impl Matrix {
                     links: config.links.clone(),
                     tls: config.tls.clone(),
                 },
+                config_path,
+                hot_config: RwLock::new(HotConfig::from_config(config)),
                 router_tx,
             },
             router_rx,

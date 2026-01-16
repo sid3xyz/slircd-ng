@@ -465,11 +465,9 @@ async fn broadcast_account_change<S: SessionState + SaslAccess>(
     // Look up user UID and info
     let nick_lower = slirc_proto::irc_to_lower(nick);
     let (uid, user_info, visible_host, channels) = {
-        let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(&nick_lower) else {
+        let Some(uid) = ctx.matrix.user_manager.get_first_uid(&nick_lower) else {
             return;
         };
-        let uid = uid_ref.clone();
-        drop(uid_ref);
 
         let Some(user_arc_ref) = ctx.matrix.user_manager.users.get(&uid) else {
             return;
@@ -555,9 +553,7 @@ async fn send_sasl_success<S: SessionState + SaslAccess>(
     let mask = if ctx.state.is_registered() {
         // Look up actual user info from matrix
         let nick_lower = slirc_proto::irc_to_lower(nick);
-        if let Some(uid_ref) = ctx.matrix.user_manager.nicks.get(&nick_lower) {
-            let uid = uid_ref.clone();
-            drop(uid_ref);
+        if let Some(uid) = ctx.matrix.user_manager.get_first_uid(&nick_lower) {
             if let Some(user_arc_ref) = ctx.matrix.user_manager.users.get(&uid) {
                 let user_arc = user_arc_ref.clone();
                 drop(user_arc_ref);

@@ -4,8 +4,8 @@
 
 use super::{ChannelActor, ChannelError, ChannelMode, TopicParams};
 use crate::state::Topic;
-use slirc_proto::sync::clock::HybridTimestamp;
 use slirc_proto::message::Tag;
+use slirc_proto::sync::clock::HybridTimestamp;
 use slirc_proto::{Command, Message};
 use std::borrow::Cow;
 use std::sync::Arc;

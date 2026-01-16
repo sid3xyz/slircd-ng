@@ -251,6 +251,14 @@ pub enum ChannelEvent {
         command: MetadataCommand,
         reply_tx: oneshot::Sender<MetadataResult>,
     },
+    /// Attach a new session's sender to an existing member (multiclient/bouncer).
+    ///
+    /// Used when a second session authenticates to the same account that already
+    /// has channel memberships. The new session needs to receive channel broadcasts.
+    AttachSender {
+        uid: Uid,
+        sender: tokio::sync::mpsc::Sender<std::sync::Arc<slirc_proto::Message>>,
+    },
 }
 
 #[derive(Debug)]

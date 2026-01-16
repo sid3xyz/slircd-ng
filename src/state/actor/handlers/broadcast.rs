@@ -53,12 +53,10 @@ impl ChannelActor {
                     .as_ref()
                     .map(|p| match p {
                         Prefix::Nickname(nick, _, _) => {
-                            // Try to resolve nick to UID
+                            // Try to resolve nick to UID (take first UID for multiclient)
                             matrix
                                 .user_manager
-                                .nicks
-                                .get(nick)
-                                .map(|uid| uid.clone())
+                                .get_first_uid(nick)
                                 .unwrap_or_else(|| nick.clone())
                         }
                         Prefix::ServerName(name) => name.clone(),
@@ -80,9 +78,7 @@ impl ChannelActor {
                     .map(|p| match p {
                         Prefix::Nickname(nick, _, _) => matrix
                             .user_manager
-                            .nicks
-                            .get(nick)
-                            .map(|uid| uid.clone())
+                            .get_first_uid(nick)
                             .unwrap_or_else(|| nick.clone()),
                         Prefix::ServerName(name) => name.clone(),
                     })

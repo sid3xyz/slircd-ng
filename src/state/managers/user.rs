@@ -27,7 +27,7 @@ const MAX_WHOWAS_PER_NICK: usize = 10;
 /// - Handling server-wide notices (snomasks).
 pub struct UserManager {
     pub users: DashMap<Uid, Arc<RwLock<User>>>,
-    pub nicks: DashMap<String, Uid>,
+    pub nicks: DashMap<String, Vec<Uid>>,
     pub senders: DashMap<Uid, mpsc::Sender<Arc<Message>>>,
     pub whowas: DashMap<String, VecDeque<WhowasEntry>>,
     pub uid_gen: UidGenerator,
@@ -59,6 +59,14 @@ impl UserManager {
             unregistered_connections: AtomicUsize::new(0),
             observer: None,
         }
+    }
+
+    /// Get the first UID for a given nickname (for legacy single-connection lookups).
+    ///
+    /// For bouncer support, this returns the first UID in the list.
+    /// Most code should migrate to handling multiple UIDs per nick.
+    pub fn get_first_uid(&self, nick_lower: &str) -> Option<String> {
+        self.nicks.get(nick_lower).and_then(|v| v.first().cloned())
     }
 
     /// Set the state observer.
@@ -103,7 +111,10 @@ impl UserManager {
         let uid = user.uid.clone();
         let nick_lower = slirc_proto::irc_to_lower(&user.nick);
 
-        self.nicks.insert(nick_lower, uid.clone());
+        self.nicks
+            .entry(nick_lower)
+            .or_insert_with(Vec::new)
+            .push(uid.clone());
         self.users.insert(uid.clone(), Arc::new(RwLock::new(user)));
 
         // Notify observer (local change)
@@ -119,7 +130,10 @@ impl UserManager {
         let uid = user.uid.clone();
         let nick_lower = slirc_proto::irc_to_lower(&user.nick);
 
-        self.nicks.insert(nick_lower, uid.clone());
+        self.nicks
+            .entry(nick_lower)
+            .or_insert_with(Vec::new)
+            .push(uid.clone());
         self.users.insert(uid.clone(), Arc::new(RwLock::new(user)));
     }
 
@@ -136,15 +150,20 @@ impl UserManager {
 
         // Check for Nick Collision
         // Clone Arc and UID to release DashMap lock before awaiting
-        let collision_info = if let Some(existing_uid) = self.nicks.get(&incoming_nick_lower) {
-            if *existing_uid != uid {
-                // Collision found. Get TS.
-                let existing_uid_cloned = existing_uid.clone();
-                let user_arc = self.users.get(&*existing_uid).map(|r| r.value().clone());
-                drop(existing_uid); // Release nicks lock
-                if let Some(user_arc) = user_arc {
-                    let user = user_arc.read().await;
-                    Some((existing_uid_cloned, user.last_modified))
+        let collision_info = if let Some(existing_uids) = self.nicks.get(&incoming_nick_lower) {
+            // For now, take the first UID (will need account-based logic later)
+            if let Some(first_uid) = existing_uids.first() {
+                if first_uid != &uid {
+                    // Collision found. Get TS.
+                    let existing_uid_cloned = first_uid.clone();
+                    let user_arc = self.users.get(first_uid).map(|r| r.value().clone());
+                    drop(existing_uids); // Release nicks lock
+                    if let Some(user_arc) = user_arc {
+                        let user = user_arc.read().await;
+                        Some((existing_uid_cloned, user.last_modified))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -174,14 +193,20 @@ impl UserManager {
                     .with_label_values(&["nick", "kill_incoming"])
                     .inc();
 
-                // Restore the existing user's nick index, because perform_merge overwrote it
-                // and kill_user removed it.
-                // Clone Arc to release DashMap lock before awaiting
+                // Restore the existing user's nick index, because perform_merge may have modified it
+                // and kill_user removed the new UID. Ensure existing UID is still present.
                 let existing_user_arc = self.users.get(&existing_uid).map(|r| r.value().clone());
                 if let Some(existing_user_arc) = existing_user_arc {
                     let existing_user = existing_user_arc.read().await;
                     let nick_lower = slirc_proto::irc_to_lower(&existing_user.nick);
-                    self.nicks.insert(nick_lower, existing_uid.clone());
+                    // Only add if not already present (defensive)
+                    if let Some(mut vec) = self.nicks.get_mut(&nick_lower) {
+                        if !vec.contains(&existing_uid) {
+                            vec.push(existing_uid.clone());
+                        }
+                    } else {
+                        self.nicks.insert(nick_lower, vec![existing_uid.clone()]);
+                    }
                 }
                 return;
             } else {
@@ -200,7 +225,11 @@ impl UserManager {
     }
 
     /// Helper to perform the actual merge logic.
-    async fn perform_merge(&self, crdt: slirc_proto::sync::user::UserCrdt, source: Option<ServerId>) {
+    async fn perform_merge(
+        &self,
+        crdt: slirc_proto::sync::user::UserCrdt,
+        source: Option<ServerId>,
+    ) {
         let uid = crdt.uid.clone();
 
         // Clone Arc to release DashMap lock before awaiting
@@ -212,13 +241,27 @@ impl UserManager {
             let new_nick_lower = slirc_proto::irc_to_lower(&user.nick);
 
             if old_nick_lower != new_nick_lower {
-                self.nicks.remove(&old_nick_lower);
-                self.nicks.insert(new_nick_lower, uid.clone());
+                // Remove this UID from the old nick's vector
+                if let Some(mut old_vec) = self.nicks.get_mut(&old_nick_lower) {
+                    old_vec.retain(|u| u != &uid);
+                    if old_vec.is_empty() {
+                        drop(old_vec);
+                        self.nicks.remove(&old_nick_lower);
+                    }
+                }
+                // Add to new nick's vector
+                self.nicks
+                    .entry(new_nick_lower)
+                    .or_insert_with(Vec::new)
+                    .push(uid.clone());
             }
         } else {
             let user = User::from_crdt(crdt);
             let nick_lower = slirc_proto::irc_to_lower(&user.nick);
-            self.nicks.insert(nick_lower, uid.clone());
+            self.nicks
+                .entry(nick_lower)
+                .or_insert_with(Vec::new)
+                .push(uid.clone());
             self.users.insert(uid.clone(), Arc::new(RwLock::new(user)));
         }
 
@@ -231,7 +274,16 @@ impl UserManager {
         if let Some((_, user_arc)) = self.users.remove(uid) {
             let user = user_arc.read().await;
             let nick_lower = slirc_proto::irc_to_lower(&user.nick);
-            self.nicks.remove(&nick_lower);
+
+            // Remove this UID from the nick vector
+            if let Some(mut nick_vec) = self.nicks.get_mut(&nick_lower) {
+                nick_vec.retain(|u| u != uid);
+                if nick_vec.is_empty() {
+                    drop(nick_vec);
+                    self.nicks.remove(&nick_lower);
+                }
+            }
+
             self.senders.remove(uid);
 
             // Record WHOWAS
@@ -405,7 +457,9 @@ mod tests {
             !manager.users.contains_key("00B000001"),
             "User B should be killed"
         );
-        assert_eq!(*manager.nicks.get("alice").unwrap(), "00A000001");
+        let alice_vec = manager.nicks.get("alice").unwrap();
+        assert_eq!(alice_vec.len(), 1);
+        assert_eq!(alice_vec[0], "00A000001");
     }
 
     #[tokio::test]
@@ -434,7 +488,9 @@ mod tests {
             manager.users.contains_key("00B000001"),
             "User B should remain"
         );
-        assert_eq!(*manager.nicks.get("alice").unwrap(), "00B000001");
+        let alice_vec = manager.nicks.get("alice").unwrap();
+        assert_eq!(alice_vec.len(), 1);
+        assert_eq!(alice_vec[0], "00B000001");
     }
 
     #[tokio::test]

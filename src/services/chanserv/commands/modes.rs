@@ -88,8 +88,8 @@ impl ChanServ {
 
         // Verify target is in the channel
         let target_nick_lower = irc_to_lower(target_nick);
-        let target_uid = match matrix.user_manager.nicks.get(&target_nick_lower) {
-            Some(uid_ref) => uid_ref.value().clone(),
+        let target_uid = match matrix.user_manager.get_first_uid(&target_nick_lower) {
+            Some(uid) => uid,
             None => {
                 return self.error_reply(uid, &format!("\x02{}\x02 is not online.", target_nick));
             }

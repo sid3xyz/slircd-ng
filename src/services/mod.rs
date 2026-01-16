@@ -577,7 +577,7 @@ pub async fn apply_effect(
             matrix
                 .user_manager
                 .nicks
-                .insert(new_nick_lower, target_uid.clone());
+                .insert(new_nick_lower, vec![target_uid.clone()]);
 
             let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
             if let Some(user_arc) = user_arc {

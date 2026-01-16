@@ -396,8 +396,8 @@ impl SyncManager {
 
         info!(address = %config.address, "Starting S2S TLS listener");
 
-        // Load certificate
-        let cert_data = std::fs::read(&config.cert_path)?;
+        // Load certificate asynchronously (prevents executor stalls on slow storage)
+        let cert_data = tokio::fs::read(&config.cert_path).await?;
         let cert_chain: Vec<CertificateDer<'static>> = certs(&mut Cursor::new(&cert_data))
             .filter_map(|r| r.ok())
             .collect();
@@ -405,8 +405,8 @@ impl SyncManager {
             return Err("No certificates found in cert file".into());
         }
 
-        // Load private key
-        let key_data = std::fs::read(&config.key_path)?;
+        // Load private key asynchronously
+        let key_data = tokio::fs::read(&config.key_path).await?;
         let keys: Vec<PrivateKeyDer<'static>> = pkcs8_private_keys(&mut Cursor::new(&key_data))
             .filter_map(|r| r.ok())
             .map(PrivateKeyDer::Pkcs8)
@@ -436,7 +436,7 @@ impl SyncManager {
                 .ca_path
                 .as_ref()
                 .ok_or("ca_path required for client_auth")?;
-            let ca_data = std::fs::read(ca_path)?;
+            let ca_data = tokio::fs::read(ca_path).await?;
             let ca_certs: Vec<CertificateDer<'static>> = certs(&mut Cursor::new(&ca_data))
                 .filter_map(|r| r.ok())
                 .collect();

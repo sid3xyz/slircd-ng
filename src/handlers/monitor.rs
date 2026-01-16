@@ -118,7 +118,7 @@ async fn handle_add(
             .insert(ctx.uid.to_string());
 
         // Check if target is online
-        if let Some(target_uid) = ctx.matrix.user_manager.nicks.get_cloned(&target_lower) {
+        if let Some(target_uid) = ctx.matrix.user_manager.get_first_uid(&target_lower) {
             let user_arc = ctx.matrix.user_manager.users.get_cloned(&target_uid);
             if let Some(user_arc) = user_arc {
                 let user = user_arc.read().await;
@@ -254,12 +254,7 @@ async fn handle_status(
 
     if let Some(user_monitors) = ctx.matrix.monitor_manager.monitors.get(ctx.uid) {
         for target_lower in user_monitors.iter() {
-            if let Some(target_uid) = ctx
-                .matrix
-                .user_manager
-                .nicks
-                .get_cloned(target_lower.as_str())
-            {
+            if let Some(target_uid) = ctx.matrix.user_manager.get_first_uid(target_lower.as_str()) {
                 let user_arc = ctx.matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
                     let user = user_arc.read().await;

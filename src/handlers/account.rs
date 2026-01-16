@@ -2,7 +2,6 @@
 
 use super::{Context, HandlerResult, UniversalHandler};
 use crate::state::SessionState;
-use crate::state::dashmap_ext::DashMapExt;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};
 
@@ -120,7 +119,7 @@ impl<S: SessionState> UniversalHandler<S> for RegisterHandler {
         if account == "*" {
             // Check if someone else is using this nick
             let nick_lower = slirc_proto::irc_to_lower(&target_account);
-            if let Some(existing_uid) = ctx.matrix.user_manager.nicks.get_cloned(&nick_lower) {
+            if let Some(existing_uid) = ctx.matrix.user_manager.get_first_uid(&nick_lower) {
                 // If the existing user isn't us, fail with ACCOUNT_EXISTS
                 // (they effectively have a claim on this nick)
                 if existing_uid != ctx.uid {

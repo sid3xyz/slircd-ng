@@ -39,7 +39,9 @@ impl PostRegHandler for MotdHandler {
         .await?;
 
         // RPL_MOTD (372): :- <text> - send each line from configured MOTD
-        for line in &ctx.matrix.server_info.motd_lines {
+        // Read from hot_config for hot-reload support, clone before await
+        let motd_lines = ctx.matrix.hot_config.read().motd_lines.clone();
+        for line in &motd_lines {
             ctx.send_reply(
                 Response::RPL_MOTD,
                 vec![nick.to_string(), format!("- {}", line)],
@@ -160,35 +162,23 @@ impl PostRegHandler for AdminHandler {
         .await?;
 
         // RPL_ADMINLOC1 (257): :<admin info> - organization/server description
-        let admin_info1 = ctx
-            .matrix
-            .config
-            .server
-            .admin_info1
-            .clone()
-            .unwrap_or_else(|| ctx.matrix.server_info.description.clone());
+        // Read from hot_config for hot-reload support
+        let (admin_info1_opt, admin_info2_opt, admin_email_opt) = {
+            let hot = ctx.matrix.hot_config.read();
+            hot.admin_info.clone()
+        };
+        let admin_info1 =
+            admin_info1_opt.unwrap_or_else(|| ctx.matrix.server_info.description.clone());
         ctx.send_reply(Response::RPL_ADMINLOC1, vec![nick.to_string(), admin_info1])
             .await?;
 
         // RPL_ADMINLOC2 (258): :<admin info> - location/network
-        let admin_info2 = ctx
-            .matrix
-            .config
-            .server
-            .admin_info2
-            .clone()
-            .unwrap_or_else(|| ctx.matrix.server_info.network.clone());
+        let admin_info2 = admin_info2_opt.unwrap_or_else(|| ctx.matrix.server_info.network.clone());
         ctx.send_reply(Response::RPL_ADMINLOC2, vec![nick.to_string(), admin_info2])
             .await?;
 
         // RPL_ADMINEMAIL (259): :<admin email>
-        let admin_email = ctx
-            .matrix
-            .config
-            .server
-            .admin_email
-            .clone()
-            .unwrap_or_else(|| format!("admin@{}", server_name));
+        let admin_email = admin_email_opt.unwrap_or_else(|| format!("admin@{}", server_name));
         ctx.send_reply(
             Response::RPL_ADMINEMAIL,
             vec![nick.to_string(), admin_email],

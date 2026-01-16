@@ -128,6 +128,7 @@ pub use crate::state::actor::ChannelRouteResult;
 
 /// Result of attempting to route a message to a user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // Some variants used for internal flow control
 pub enum UserRouteResult {
     /// Message was successfully sent (or queued).
     Sent,
@@ -254,8 +255,8 @@ pub async fn route_to_user_with_snapshot(
     msgid: Option<String>,
     snapshot: &SenderSnapshot,
 ) -> UserRouteResult {
-    let target_uid = if let Some(uid) = ctx.matrix.user_manager.nicks.get(target_lower) {
-        uid.clone()
+    let target_uids = if let Some(uids) = ctx.matrix.user_manager.nicks.get(target_lower) {
+        uids.clone()
     } else {
         debug!(
             "Target nick '{}' not found in nicks map. Map size: {}",
@@ -268,278 +269,303 @@ pub async fn route_to_user_with_snapshot(
     // NOTE: Spam detection is handled by validate_message_send() in validation.rs
     // before routing. No duplicate check needed here.
 
-    // Check away status and notify sender if requested
-    if opts.send_away_reply {
+    // For bouncer support: send to ALL UIDs with this nick
+    let mut sent_count = 0;
+    for target_uid in &target_uids {
+        // Check away status and notify sender if requested (only once, not per UID)
+        if opts.send_away_reply && sent_count == 0 {
+            let target_user_arc = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(target_uid)
+                .map(|u| u.value().clone());
+            if let Some(target_user_arc) = target_user_arc {
+                let (target_nick, away_msg) = {
+                    let target_user = target_user_arc.read().await;
+                    (target_user.nick.clone(), target_user.away.clone())
+                };
+
+                if let Some(away_msg) = away_msg {
+                    let reply = server_reply(
+                        ctx.server_name(),
+                        Response::RPL_AWAY,
+                        vec![snapshot.nick.clone(), target_nick, away_msg],
+                    );
+                    let _ = ctx.sender.send(reply).await;
+                }
+            }
+        }
+
+        // Check +R (registered-only PMs) - target only accepts PMs from identified users
         let target_user_arc = ctx
             .matrix
             .user_manager
             .users
-            .get(&target_uid)
+            .get(target_uid)
             .map(|u| u.value().clone());
         if let Some(target_user_arc) = target_user_arc {
-            let (target_nick, away_msg) = {
-                let target_user = target_user_arc.read().await;
-                (target_user.nick.clone(), target_user.away.clone())
-            };
-
-            if let Some(away_msg) = away_msg {
-                let reply = server_reply(
-                    ctx.server_name(),
-                    Response::RPL_AWAY,
-                    vec![snapshot.nick.clone(), target_nick, away_msg],
-                );
-                let _ = ctx.sender.send(reply).await;
-            }
-        }
-    }
-
-    // Check +R (registered-only PMs) - target only accepts PMs from identified users
-    let target_user_arc = ctx
-        .matrix
-        .user_manager
-        .users
-        .get(&target_uid)
-        .map(|u| u.value().clone());
-    if let Some(target_user_arc) = target_user_arc {
-        let target_user = target_user_arc.read().await;
-        debug!(
-            "Checking +R for target {}: registered_only={}, sender_registered={}",
-            target_user.nick, target_user.modes.registered_only, snapshot.is_registered
-        );
-        if target_user.modes.registered_only {
-            // Use pre-fetched registered status from snapshot
-            if !snapshot.is_registered {
-                // Check ACCEPT list (Caller ID) override
-                // If sender is in accept list, allow the message even if not registered
-                let sender_nick_lower = slirc_proto::irc_to_lower(&snapshot.nick);
-                if !target_user.accept_list.contains(&sender_nick_lower) {
-                    debug!("Blocked by +R");
-                    return UserRouteResult::BlockedRegisteredOnly;
+            let target_user = target_user_arc.read().await;
+            debug!(
+                "Checking +R for target {}: registered_only={}, sender_registered={}",
+                target_user.nick, target_user.modes.registered_only, snapshot.is_registered
+            );
+            if target_user.modes.registered_only {
+                // Use pre-fetched registered status from snapshot
+                if !snapshot.is_registered {
+                    // Check ACCEPT list (Caller ID) override
+                    // If sender is in accept list, allow the message even if not registered
+                    let sender_nick_lower = slirc_proto::irc_to_lower(&snapshot.nick);
+                    if !target_user.accept_list.contains(&sender_nick_lower) {
+                        debug!("Blocked by +R for UID {}", target_uid);
+                        continue; // Skip this UID
+                    }
                 }
             }
-        }
 
-        // Check SILENCE list using pre-fetched sender mask from snapshot
-        if !target_user.silence_list.is_empty() {
-            let sender_mask = snapshot.full_mask();
+            // Check SILENCE list using pre-fetched sender mask from snapshot
+            if !target_user.silence_list.is_empty() {
+                let sender_mask = snapshot.full_mask();
 
-            for silence_mask in &target_user.silence_list {
-                if super::super::matches_hostmask(silence_mask, &sender_mask) {
-                    // Silently drop the message
-                    debug!(
-                        target = %target_user.nick,
-                        sender = %sender_mask,
-                        mask = %silence_mask,
-                        "Message blocked by SILENCE"
-                    );
-                    return UserRouteResult::BlockedSilence;
+                let mut blocked_by_silence = false;
+                for silence_mask in &target_user.silence_list {
+                    if super::super::matches_hostmask(silence_mask, &sender_mask) {
+                        // Silently drop the message
+                        debug!(
+                            target = %target_user.nick,
+                            sender = %sender_mask,
+                            mask = %silence_mask,
+                            "Message blocked by SILENCE"
+                        );
+                        blocked_by_silence = true;
+                        break;
+                    }
+                }
+                if blocked_by_silence {
+                    continue; // Skip this UID
                 }
             }
-        }
 
-        // Check +T (no CTCP) - block CTCP messages except ACTION
-        if target_user.modes.no_ctcp {
-            // Extract text from command to check for CTCP
-            let text = match &msg.command {
-                Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
-                _ => None,
-            };
-            if let Some(text) = text
-                && Ctcp::is_ctcp(text)
-            {
-                // Check if it's an ACTION (allowed even with +T)
-                if let Some(ctcp) = Ctcp::parse(text)
-                    && !matches!(ctcp.kind, CtcpKind::Action)
+            // Check +T (no CTCP) - block CTCP messages except ACTION
+            if target_user.modes.no_ctcp {
+                // Extract text from command to check for CTCP
+                let text = match &msg.command {
+                    Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => Some(text.as_str()),
+                    _ => None,
+                };
+                if let Some(text) = text
+                    && Ctcp::is_ctcp(text)
                 {
-                    debug!(
-                        target = %target_user.nick,
-                        ctcp_type = ?ctcp.kind,
-                        "CTCP blocked by +T mode"
-                    );
-                    return UserRouteResult::BlockedCtcp;
+                    // Check if it's an ACTION (allowed even with +T)
+                    if let Some(ctcp) = Ctcp::parse(text)
+                        && !matches!(ctcp.kind, CtcpKind::Action)
+                    {
+                        debug!(
+                            target = %target_user.nick,
+                            ctcp_type = ?ctcp.kind,
+                            "CTCP blocked by +T mode"
+                        );
+                        continue; // Skip this UID
+                    }
                 }
             }
         }
-    }
 
-    // Send to target user with appropriate tags based on their capabilities
-    let timestamp = timestamp.unwrap_or_else(|| {
-        chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string()
-    });
-    let msgid = msgid.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        // Send to target user with appropriate tags based on their capabilities
+        let timestamp_str = timestamp.clone().unwrap_or_else(|| {
+            chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string()
+        });
+        let msgid_str = msgid
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    // Use sender's account from snapshot
-    let sender_account = snapshot.account.as_ref();
+        // Use sender's account from snapshot
+        let sender_account = snapshot.account.as_ref();
 
-    // Check if target is a service user
-    let is_service = if let Some(user_arc) = ctx.matrix.user_manager.users.get(&target_uid) {
-        user_arc.read().await.modes.service
-    } else {
-        false
-    };
-
-    if is_service {
-        // Route to service manager
-        let text = match &msg.command {
-            Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => text.as_str(),
-            _ => return UserRouteResult::Sent, // Ignore other commands for services
+        // Check if target is a service user
+        let is_service = if let Some(user_arc) = ctx.matrix.user_manager.users.get(target_uid) {
+            user_arc.read().await.modes.service
+        } else {
+            false
         };
 
-        let handled = crate::services::route_service_message(
-            ctx.matrix,
-            ctx.uid,
-            &snapshot.nick,
-            target_lower,
-            text,
-            &ctx.sender,
-        )
-        .await;
+        if is_service {
+            // Route to service manager
+            let text = match &msg.command {
+                Command::PRIVMSG(_, text) | Command::NOTICE(_, text) => text.as_str(),
+                _ => continue, // Ignore other commands for services
+            };
 
-        if handled {
-            return UserRouteResult::Sent;
+            let handled = crate::services::route_service_message(
+                ctx.matrix,
+                ctx.uid,
+                &snapshot.nick,
+                target_lower,
+                text,
+                &ctx.sender,
+            )
+            .await;
+
+            if handled {
+                sent_count += 1;
+                continue;
+            }
         }
-    }
 
-    // Check if target is local or remote
-    let target_sender = ctx
-        .matrix
-        .user_manager
-        .senders
-        .get(&target_uid)
-        .map(|s| s.value().clone());
-
-    if let Some(target_sender) = target_sender {
-        // LOCAL USER: Check target's capabilities and build appropriate message
-        let msg_for_target = if let Some(user_arc) = ctx
+        // Check if target is local or remote
+        let target_sender = ctx
             .matrix
             .user_manager
-            .users
-            .get(&target_uid)
-            .map(|u| u.value().clone())
-        {
-            let user = user_arc.read().await;
-            let has_message_tags = user.caps.contains("message-tags");
-            let has_server_time = user.caps.contains("server-time");
+            .senders
+            .get(target_uid)
+            .map(|s| s.value().clone());
 
-            let mut result = msg.clone();
-
-            // Strip label tag from recipient copies (label is sender-only)
-            if ctx.label.is_some() {
-                result.tags = result
-                    .tags
-                    .map(|tags| {
-                        tags.into_iter()
-                            .filter(|tag| tag.0.as_ref() != "label")
-                            .collect::<Vec<_>>()
-                    })
-                    .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-            }
-
-            // If recipient doesn't have message-tags, strip client-only tags
-            if !has_message_tags {
-                result.tags = result
-                    .tags
-                    .map(|tags| {
-                        tags.into_iter()
-                            .filter(|tag| !tag.0.starts_with('+'))
-                            .collect::<Vec<_>>()
-                    })
-                    .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-            } else {
-                // Add msgid for users with message-tags
-                result = result.with_tag("msgid", Some(msgid.clone()));
-            }
-
-            // Add server-time if capability is enabled
-            if has_server_time {
-                result = result.with_tag("time", Some(timestamp.clone()));
-            }
-
-            // Add account-tag if sender is logged in and recipient has capability
-            if let Some(account) = sender_account
-                && user.caps.contains("account-tag")
+        if let Some(target_sender) = target_sender {
+            // LOCAL USER: Check target's capabilities and build appropriate message
+            let msg_for_target = if let Some(user_arc) = ctx
+                .matrix
+                .user_manager
+                .users
+                .get(target_uid)
+                .map(|u| u.value().clone())
             {
-                result = result.with_tag("account", Some(account.clone()));
-            }
+                let user = user_arc.read().await;
+                let has_message_tags = user.caps.contains("message-tags");
+                let has_server_time = user.caps.contains("server-time");
 
-            // Add bot tag if sender is a bot and recipient has message-tags
-            if snapshot.is_bot && has_message_tags {
-                result = result.with_tag("bot", None::<String>);
-            }
+                let mut result = msg.clone();
 
-            result
+                // Strip label tag from recipient copies (label is sender-only)
+                if ctx.label.is_some() {
+                    result.tags = result
+                        .tags
+                        .map(|tags| {
+                            tags.into_iter()
+                                .filter(|tag| tag.0.as_ref() != "label")
+                                .collect::<Vec<_>>()
+                        })
+                        .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+                }
+
+                // If recipient doesn't have message-tags, strip client-only tags
+                if !has_message_tags {
+                    result.tags = result
+                        .tags
+                        .map(|tags| {
+                            tags.into_iter()
+                                .filter(|tag| !tag.0.starts_with('+'))
+                                .collect::<Vec<_>>()
+                        })
+                        .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+                } else {
+                    // Add msgid for users with message-tags
+                    result = result.with_tag("msgid", Some(msgid_str.clone()));
+                }
+
+                // Add server-time if capability is enabled
+                if has_server_time {
+                    result = result.with_tag("time", Some(timestamp_str.clone()));
+                }
+
+                // Add account-tag if sender is logged in and recipient has capability
+                if let Some(account) = sender_account
+                    && user.caps.contains("account-tag")
+                {
+                    result = result.with_tag("account", Some(account.clone()));
+                }
+
+                // Add bot tag if sender is a bot and recipient has message-tags
+                if snapshot.is_bot && has_message_tags {
+                    result = result.with_tag("bot", None::<String>);
+                }
+
+                result
+            } else {
+                msg.clone()
+            };
+            let _ = target_sender.send(Arc::new(msg_for_target)).await;
+            crate::metrics::MESSAGES_SENT.inc();
+            sent_count += 1;
         } else {
-            msg.clone()
-        };
-        let _ = target_sender.send(Arc::new(msg_for_target)).await;
-        crate::metrics::MESSAGES_SENT.inc();
+            // REMOTE USER: Route via SyncManager
+            // Construct S2S message: :SourceUID PRIVMSG TargetUID :text
+            let text = match &msg.command {
+                Command::PRIVMSG(_, text) => text,
+                Command::NOTICE(_, text) => text,
+                _ => continue,
+            };
 
-        // Echo message back to sender if they have echo-message capability
-        if ctx.state.capabilities.contains("echo-message") {
-            let has_message_tags = ctx.state.capabilities.contains("message-tags");
-            let has_server_time = ctx.state.capabilities.contains("server-time");
+            let cmd = match &msg.command {
+                Command::PRIVMSG(_, _) => Command::PRIVMSG(target_uid.clone(), text.clone()),
+                Command::NOTICE(_, _) => Command::NOTICE(target_uid.clone(), text.clone()),
+                _ => continue,
+            };
 
-            let mut echo_msg = msg.clone();
+            let mut routed_msg = Message {
+                tags: msg.tags.clone(),                      // Preserve tags
+                prefix: Some(Prefix::new_from_str(ctx.uid)), // Use UID as source
+                command: cmd,
+            };
 
-            // Add msgid if sender has message-tags
-            if has_message_tags {
-                echo_msg = echo_msg.with_tag("msgid", Some(msgid));
+            // Add metadata tags
+            routed_msg = routed_msg.with_tag("msgid", Some(msgid_str.clone()));
+            routed_msg = routed_msg.with_tag("time", Some(timestamp_str.clone()));
+            if let Some(account) = sender_account {
+                routed_msg = routed_msg.with_tag("account", Some(account.clone()));
             }
 
-            // Add server-time if capability is enabled
-            if has_server_time {
-                echo_msg = echo_msg.with_tag("time", Some(timestamp));
+            if ctx
+                .matrix
+                .sync_manager
+                .route_to_remote_user(target_uid, Arc::new(routed_msg))
+                .await
+            {
+                sent_count += 1;
             }
+        }
+    }
 
-            // Preserve label if present
-            if let Some(ref label) = ctx.label {
-                echo_msg = echo_msg.with_tag("label", Some(label.clone()));
-            }
+    // After loop: Send echo message ONCE if sender has echo-message capability and we sent to at least one UID
+    if sent_count > 0 && ctx.state.capabilities.contains("echo-message") {
+        let has_message_tags = ctx.state.capabilities.contains("message-tags");
+        let has_server_time = ctx.state.capabilities.contains("server-time");
 
-            let _ = ctx.sender.send(echo_msg).await;
+        // Regenerate msgid/timestamp for echo
+        let echo_timestamp = timestamp.clone().unwrap_or_else(|| {
+            chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string()
+        });
+        let echo_msgid = msgid
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+        let mut echo_msg = msg.clone();
+
+        // Add msgid if sender has message-tags
+        if has_message_tags {
+            echo_msg = echo_msg.with_tag("msgid", Some(echo_msgid));
         }
 
+        // Add server-time if capability is enabled
+        if has_server_time {
+            echo_msg = echo_msg.with_tag("time", Some(echo_timestamp));
+        }
+
+        // Preserve label if present
+        if let Some(ref label) = ctx.label {
+            echo_msg = echo_msg.with_tag("label", Some(label.clone()));
+        }
+
+        let _ = ctx.sender.send(echo_msg).await;
+    }
+
+    if sent_count > 0 {
         UserRouteResult::Sent
     } else {
-        // REMOTE USER: Route via SyncManager
-        // Construct S2S message: :SourceUID PRIVMSG TargetUID :text
-        let text = match &msg.command {
-            Command::PRIVMSG(_, text) => text,
-            Command::NOTICE(_, text) => text,
-            _ => return UserRouteResult::NoSuchNick,
-        };
-
-        let cmd = match &msg.command {
-            Command::PRIVMSG(_, _) => Command::PRIVMSG(target_uid.clone(), text.clone()),
-            Command::NOTICE(_, _) => Command::NOTICE(target_uid.clone(), text.clone()),
-            _ => return UserRouteResult::NoSuchNick,
-        };
-
-        let mut routed_msg = Message {
-            tags: msg.tags.clone(),                      // Preserve tags
-            prefix: Some(Prefix::new_from_str(ctx.uid)), // Use UID as source
-            command: cmd,
-        };
-
-        // Add metadata tags
-        routed_msg = routed_msg.with_tag("msgid", Some(msgid));
-        routed_msg = routed_msg.with_tag("time", Some(timestamp));
-        if let Some(account) = sender_account {
-            routed_msg = routed_msg.with_tag("account", Some(account.clone()));
-        }
-
-        if ctx
-            .matrix
-            .sync_manager
-            .route_to_remote_user(&target_uid, Arc::new(routed_msg))
-            .await
-        {
-            UserRouteResult::Sent
-        } else {
-            UserRouteResult::NoSuchNick
-        }
+        UserRouteResult::NoSuchNick
     }
 }
 

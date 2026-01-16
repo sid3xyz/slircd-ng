@@ -53,14 +53,18 @@ if let Some(user) = matrix.user_manager.get_user(&uid) {
 - `.unwrap()` in handlers → Use `?`
 - `std::to_lowercase()` on IRC strings → Use `irc_to_lower()`
 - Holding DashMap locks across `.await` → Clone data first
-- TODO/FIXME without issue number → Fix now or create issue
+- Empty `Ok(())` stubs → Use `todo!()` to panic if hit
+- Traits with one impl → Delete the trait, use struct directly
+- `Arc<RwLock<...>>` without need → Add when compiler demands
+- New crates for std-solvable problems → Use std first
 
 ## Development Mode
 
 This is active development. Prioritize:
 - Working logic over abstraction
-- Fast iteration over production hardening
+- Fast iteration over hardening
 - Simplicity over enterprise patterns
+- `todo!()` panics over silent failures
 
 ## Git Policy
 
@@ -69,6 +73,4 @@ This is active development. Prioritize:
 
 ## Docs Reference
 
-- `ARCHITECTURE.md`: Full design details
 - `ROADMAP.md`: Release timeline
-- `PROTO_REQUIREMENTS.md`: Proto enhancement tracking (read when needed)

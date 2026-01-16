@@ -179,14 +179,10 @@ impl<'a> Context<'a, RegisteredState> {
 
 /// Resolve a nickname to UID. Returns None if not found.
 ///
-/// Uses IRC case-folding for comparison.
+/// Uses IRC case-folding for comparison. For bouncer multiclient, returns first UID.
 pub fn resolve_nick_to_uid<S>(ctx: &Context<'_, S>, nick: &str) -> Option<String> {
     let lower = slirc_proto::irc_to_lower(nick);
-    ctx.matrix
-        .user_manager
-        .nicks
-        .get(&lower)
-        .map(|r| r.value().clone())
+    ctx.matrix.user_manager.get_first_uid(&lower)
 }
 
 /// Resolve a nickname or send ERR_NOSUCHNICK.

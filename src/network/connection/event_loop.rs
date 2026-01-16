@@ -115,7 +115,9 @@ pub async fn run_event_loop(
             starttls_acceptor: None,
         };
 
-        if let Err(e) = perform_autoreplay(&mut ctx, reg_state, reattach_info).await {
+        if let Err(e) =
+            perform_autoreplay(&mut ctx, reg_state, reattach_info, outgoing_tx.clone()).await
+        {
             warn!(uid = %uid, error = ?e, "Autoreplay failed, continuing anyway");
         }
     }

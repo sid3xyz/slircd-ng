@@ -1,7 +1,7 @@
 use super::handshake::{HandshakeMachine, HandshakeState};
 use crate::config::LinkBlock;
-use slirc_proto::sync::clock::ServerId;
 use slirc_proto::Command;
+use slirc_proto::sync::clock::ServerId;
 
 fn create_link(name: &str, password: &str) -> LinkBlock {
     LinkBlock {

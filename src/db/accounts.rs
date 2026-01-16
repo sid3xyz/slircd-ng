@@ -56,10 +56,10 @@ impl<'a> AccountRepository<'a> {
         email: Option<&str>,
     ) -> Result<Account, DbError> {
         // Hash the password using Argon2 (for PLAIN auth fallback)
-        let password_hash = hash_password(password)?;
+        let password_hash = hash_password(password).await?;
 
         // Compute SCRAM-SHA-256 verifiers
-        let scram_verifiers = compute_scram_verifiers(password);
+        let scram_verifiers = compute_scram_verifiers(password).await;
 
         let now = chrono::Utc::now().timestamp();
 
@@ -181,7 +181,7 @@ impl<'a> AccountRepository<'a> {
                         // Account not found - perform dummy hash verification
                         // to prevent timing oracle attacks that reveal account existence.
                         // This ensures the response time is similar to a wrong password attempt.
-                        dummy_password_verify(password);
+                        dummy_password_verify(password).await;
                         return Err(DbError::AccountNotFound(name.to_string()));
                     }
                 }
@@ -191,8 +191,8 @@ impl<'a> AccountRepository<'a> {
         let (id, name, password_hash, email, registered_at, _last_seen_at, enforce, hide_email) =
             row;
 
-        // Verify password
-        verify_password(password, &password_hash)?;
+        // Verify password (runs in blocking task to avoid executor stalls)
+        verify_password(password, &password_hash).await?;
 
         // Update last seen
         let now = chrono::Utc::now().timestamp();
@@ -343,8 +343,8 @@ impl<'a> AccountRepository<'a> {
                     .await?;
             }
             "password" => {
-                let password_hash = hash_password(value)?;
-                let scram_verifiers = compute_scram_verifiers(value);
+                let password_hash = hash_password(value).await?;
+                let scram_verifiers = compute_scram_verifiers(value).await;
                 sqlx::query(
                     r#"UPDATE accounts SET
                        password_hash = ?,
@@ -589,45 +589,69 @@ impl<'a> AccountRepository<'a> {
     }
 }
 
-/// Hash a password using Argon2.
-fn hash_password(password: &str) -> Result<String, DbError> {
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(|_| DbError::InvalidPassword)?;
-    Ok(hash.to_string())
+/// Hash a password using Argon2 in a blocking task.
+///
+/// Argon2 password hashing is CPU-intensive (100-500ms by design) and runs
+/// synchronously. This function offloads the work to a blocking threadpool
+/// to prevent blocking the async executor during concurrent SASL authentications.
+async fn hash_password(password: &str) -> Result<String, DbError> {
+    let password = password.to_string();
+    tokio::task::spawn_blocking(move || {
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::default();
+        let hash = argon2
+            .hash_password(password.as_bytes(), &salt)
+            .map_err(|_| DbError::InvalidPassword)?;
+        Ok(hash.to_string())
+    })
+    .await
+    .map_err(|e| DbError::Sqlx(sqlx::Error::Io(std::io::Error::other(e.to_string()))))?
 }
 
-/// Compute SCRAM-SHA-256 verifiers for a password.
+/// Compute SCRAM-SHA-256 verifiers for a password in a blocking task.
 ///
 /// This generates a random salt and uses PBKDF2-SHA-256 to derive the
 /// hashed password. The result can be stored and used for SASL SCRAM auth.
-fn compute_scram_verifiers(password: &str) -> ScramVerifiers {
-    // Generate 16 bytes of random salt (as recommended by RFC 5802)
-    let mut salt = vec![0u8; 16];
-    OsRng.fill_bytes(&mut salt);
+/// Runs in a blocking task to prevent executor stalls from CPU-intensive work.
+async fn compute_scram_verifiers(password: &str) -> ScramVerifiers {
+    let password = password.to_string();
+    tokio::task::spawn_blocking(move || {
+        // Generate 16 bytes of random salt (as recommended by RFC 5802)
+        let mut salt = vec![0u8; 16];
+        OsRng.fill_bytes(&mut salt);
 
-    // SAFETY: SCRAM_ITERATIONS is const 4096, always > 0
-    let iterations = NonZeroU32::new(SCRAM_ITERATIONS).unwrap();
-    let hashed_password = scram::hash_password(password, iterations, &salt).to_vec();
+        // SAFETY: SCRAM_ITERATIONS is const 4096, always > 0
+        let iterations = NonZeroU32::new(SCRAM_ITERATIONS).unwrap();
+        let hashed_password = scram::hash_password(&password, iterations, &salt).to_vec();
 
-    ScramVerifiers {
-        salt,
-        iterations: SCRAM_ITERATIONS,
-        hashed_password,
-    }
+        ScramVerifiers {
+            salt,
+            iterations: SCRAM_ITERATIONS,
+            hashed_password,
+        }
+    })
+    .await
+    .expect("spawn_blocking should not be cancelled")
 }
 
-/// Verify a password against a stored hash.
-fn verify_password(password: &str, hash: &str) -> Result<(), DbError> {
-    let parsed_hash = PasswordHash::new(hash).map_err(|_| DbError::InvalidPassword)?;
-    Argon2::default()
-        .verify_password(password.as_bytes(), &parsed_hash)
-        .map_err(|_| DbError::InvalidPassword)
+/// Verify a password against a stored hash in a blocking task.
+///
+/// Argon2 verification is CPU-intensive and runs synchronously. This function
+/// offloads the work to a blocking threadpool to prevent blocking the async executor.
+async fn verify_password(password: &str, hash: &str) -> Result<(), DbError> {
+    let password = password.to_string();
+    let hash = hash.to_string();
+    tokio::task::spawn_blocking(move || {
+        let parsed_hash = PasswordHash::new(&hash).map_err(|_| DbError::InvalidPassword)?;
+        Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .map_err(|_| DbError::InvalidPassword)
+    })
+    .await
+    .map_err(|e| DbError::Sqlx(sqlx::Error::Io(std::io::Error::other(e.to_string()))))?
 }
 
-/// Dummy password verification for constant-time account lookup.
+/// Dummy password verification for constant-time account lookup in a blocking task.
 ///
 /// When an account doesn't exist, we still need to spend approximately
 /// the same amount of time as a real password verification to prevent
@@ -635,26 +659,34 @@ fn verify_password(password: &str, hash: &str) -> Result<(), DbError> {
 ///
 /// This uses a pre-computed Argon2 hash that will always fail verification,
 /// but consumes similar CPU time to a real verification attempt.
-fn dummy_password_verify(password: &str) {
-    // Pre-computed Argon2id hash of "dummy" - this will never match any real password
-    // but forces the CPU to do real Argon2 work.
-    const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$dGltaW5nLW9yYWNsZS1kdW1teQ$K4VZh8k8YL3E8H7E8H7E8H7E8H7E8H7E8H7E8H7E8Hs";
+/// Runs in a blocking task to prevent executor stalls.
+async fn dummy_password_verify(password: &str) {
+    let password = password.to_string();
+    tokio::task::spawn_blocking(move || {
+        // Pre-computed Argon2id hash of "dummy" - this will never match any real password
+        // but forces the CPU to do real Argon2 work.
+        const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$dGltaW5nLW9yYWNsZS1kdW1teQ$K4VZh8k8YL3E8H7E8H7E8H7E8H7E8H7E8H7E8H7E8Hs";
 
-    // We intentionally ignore the result - we just want to burn CPU time
-    // equivalent to a real password check.
-    if let Ok(parsed) = PasswordHash::new(DUMMY_HASH) {
-        let _ = Argon2::default().verify_password(password.as_bytes(), &parsed);
-    }
+        // We intentionally ignore the result - we just want to burn CPU time
+        // equivalent to a real password check.
+        if let Ok(parsed) = PasswordHash::new(DUMMY_HASH) {
+            let _ = Argon2::default().verify_password(password.as_bytes(), &parsed);
+        }
+    })
+    .await
+    .ok();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_hash_password_produces_valid_argon2_hash() {
+    #[tokio::test]
+    async fn test_hash_password_produces_valid_argon2_hash() {
         let password = "test_password_123";
-        let hash = hash_password(password).expect("hashing should succeed");
+        let hash = hash_password(password)
+            .await
+            .expect("hashing should succeed");
 
         // Verify hash starts with Argon2id prefix
         assert!(
@@ -671,88 +703,92 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_hash_password_produces_unique_hashes() {
+    #[tokio::test]
+    async fn test_hash_password_produces_unique_hashes() {
         let password = "same_password";
-        let hash1 = hash_password(password).expect("first hash");
-        let hash2 = hash_password(password).expect("second hash");
+        let hash1 = hash_password(password).await.expect("first hash");
+        let hash2 = hash_password(password).await.expect("second hash");
 
         // Different salts should produce different hashes
         assert_ne!(hash1, hash2, "hashes should differ due to random salt");
     }
 
-    #[test]
-    fn test_verify_password_correct() {
+    #[tokio::test]
+    async fn test_verify_password_correct() {
         let password = "my_secure_password";
-        let hash = hash_password(password).expect("hashing");
+        let hash = hash_password(password).await.expect("hashing");
 
         assert!(
-            verify_password(password, &hash).is_ok(),
+            verify_password(password, &hash).await.is_ok(),
             "correct password should verify"
         );
     }
 
-    #[test]
-    fn test_verify_password_incorrect() {
+    #[tokio::test]
+    async fn test_verify_password_incorrect() {
         let password = "correct_password";
         let wrong_password = "wrong_password";
-        let hash = hash_password(password).expect("hashing");
+        let hash = hash_password(password).await.expect("hashing");
 
         assert!(
-            verify_password(wrong_password, &hash).is_err(),
+            verify_password(wrong_password, &hash).await.is_err(),
             "wrong password should fail verification"
         );
     }
 
-    #[test]
-    fn test_verify_password_empty_password() {
+    #[tokio::test]
+    async fn test_verify_password_empty_password() {
         let password = "";
-        let hash = hash_password(password).expect("empty password should hash");
+        let hash = hash_password(password)
+            .await
+            .expect("empty password should hash");
 
         assert!(
-            verify_password(password, &hash).is_ok(),
+            verify_password(password, &hash).await.is_ok(),
             "empty password should verify against its own hash"
         );
         assert!(
-            verify_password("nonempty", &hash).is_err(),
+            verify_password("nonempty", &hash).await.is_err(),
             "nonempty should fail against empty hash"
         );
     }
 
-    #[test]
-    fn test_verify_password_invalid_hash_format() {
-        let result = verify_password("password", "not_a_valid_hash");
+    #[tokio::test]
+    async fn test_verify_password_invalid_hash_format() {
+        let result = verify_password("password", "not_a_valid_hash").await;
 
         assert!(result.is_err(), "invalid hash format should return error");
     }
 
-    #[test]
-    fn test_hash_password_unicode() {
+    #[tokio::test]
+    async fn test_hash_password_unicode() {
         let password = "пароль密码🔐";
-        let hash = hash_password(password).expect("unicode should hash");
+        let hash = hash_password(password).await.expect("unicode should hash");
 
         assert!(
-            verify_password(password, &hash).is_ok(),
+            verify_password(password, &hash).await.is_ok(),
             "unicode password should verify"
         );
     }
 
-    #[test]
-    fn test_hash_password_very_long() {
+    #[tokio::test]
+    async fn test_hash_password_very_long() {
         let password = "a".repeat(1000);
-        let hash = hash_password(&password).expect("long password should hash");
+        let hash = hash_password(&password)
+            .await
+            .expect("long password should hash");
 
         assert!(
-            verify_password(&password, &hash).is_ok(),
+            verify_password(&password, &hash).await.is_ok(),
             "long password should verify"
         );
     }
 
-    #[test]
-    fn test_dummy_password_verify_does_not_panic() {
+    #[tokio::test]
+    async fn test_dummy_password_verify_does_not_panic() {
         // Just verify it doesn't panic with various inputs
-        dummy_password_verify("test");
-        dummy_password_verify("");
-        dummy_password_verify(&"x".repeat(100));
+        dummy_password_verify("test").await;
+        dummy_password_verify("").await;
+        dummy_password_verify(&"x".repeat(100)).await;
     }
 }

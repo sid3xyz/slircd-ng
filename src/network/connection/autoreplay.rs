@@ -17,11 +17,13 @@ use tracing::{debug, warn};
 /// Perform autoreplay for a reattached session.
 ///
 /// 1. Sends JOIN messages for all active channels.
-/// 2. Replays missed history for each channel since `last_seen`.
+/// 2. Registers this session's sender with each channel actor (multiclient).
+/// 3. Replays missed history for each channel since `last_seen`.
 pub async fn perform_autoreplay(
     ctx: &mut ConnectionContext<'_>,
     reg_state: &RegisteredState,
     info: ReattachInfo,
+    sender: tokio::sync::mpsc::Sender<std::sync::Arc<slirc_proto::Message>>,
 ) -> HandlerResult {
     let nick = &reg_state.nick;
     let server_name = ctx.matrix.server_info.name.clone();
@@ -84,6 +86,16 @@ pub async fn perform_autoreplay(
             warn!(uid = %ctx.uid, error = ?e, "Failed to send autoreplay JOIN");
             // If we can't write, connection is likely dead, stop replay
             return Ok(());
+        }
+
+        // Attach this session's sender to the channel actor (multiclient)
+        if let Some(actor_entry) = ctx.matrix.channel_manager.channels.get(&channel_key) {
+            let actor_tx = actor_entry.value().clone();
+            let event = ChannelEvent::AttachSender {
+                uid: ctx.uid.to_string(),
+                sender: sender.clone(),
+            };
+            let _ = actor_tx.send(event).await;
         }
 
         // Send channel topic if we captured it

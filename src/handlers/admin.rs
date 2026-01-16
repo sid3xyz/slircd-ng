@@ -268,7 +268,7 @@ impl PostRegHandler for SanickHandler {
         ctx.matrix
             .user_manager
             .nicks
-            .insert(new_lower, target_uid.clone());
+            .insert(new_lower, vec![target_uid.clone()]);
 
         // Update user's nick
         let user_arc = ctx
@@ -401,8 +401,8 @@ impl PostRegHandler for SamodeHandler {
                 slirc_proto::mode::ChannelMode::Oper | slirc_proto::mode::ChannelMode::Voice => {
                     if let Some(nick) = mode.arg() {
                         let nick_lower = irc_to_lower(nick);
-                        if let Some(uid) = ctx.matrix.user_manager.nicks.get(&nick_lower) {
-                            target_uids.insert(nick.to_string(), uid.value().clone());
+                        if let Some(uid) = ctx.matrix.user_manager.get_first_uid(&nick_lower) {
+                            target_uids.insert(nick.to_string(), uid);
                         }
                     }
                 }

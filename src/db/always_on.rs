@@ -19,7 +19,7 @@ use slirc_proto::irc_to_lower;
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Redb table for always-on client state.
 const ALWAYS_ON_CLIENTS: TableDefinition<&str, &[u8]> = TableDefinition::new("always_on_clients");

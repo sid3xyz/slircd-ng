@@ -6,8 +6,8 @@ use crate::handlers::{Context, HandlerResult};
 use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{BatchRouting, ServerState};
 use async_trait::async_trait;
-use slirc_proto::sync::clock::ServerId;
 use slirc_proto::MessageRef;
+use slirc_proto::sync::clock::ServerId;
 use std::sync::Arc;
 use tracing::debug;
 
@@ -88,8 +88,9 @@ impl ServerHandler for ServerBatchHandler {
                         } else {
                             // User target
                             // Try to resolve nick to UID
-                            let uid = if let Some(u) = ctx.matrix.user_manager.nicks.get(target) {
-                                Some(u.value().clone())
+                            let uid = if let Some(u) = ctx.matrix.user_manager.get_first_uid(target)
+                            {
+                                Some(u)
                             } else if ctx.matrix.user_manager.users.contains_key(target) {
                                 Some(target.to_string())
                             } else {

@@ -96,12 +96,7 @@ impl PostRegHandler for WhoisHandler {
         let target_lower = irc_to_lower(target);
 
         // Look up target user
-        let target_uid = ctx
-            .matrix
-            .user_manager
-            .nicks
-            .get(&target_lower)
-            .map(|r| r.value().clone());
+        let target_uid = ctx.matrix.user_manager.get_first_uid(&target_lower);
         if let Some(target_uid) = target_uid {
             let target_user_arc = ctx
                 .matrix

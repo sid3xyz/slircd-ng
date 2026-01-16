@@ -34,10 +34,10 @@ impl PostRegHandler for UserhostHandler {
         let mut replies = Vec::with_capacity(5);
         for target_nick in nicks.iter().take(5) {
             let target_lower = irc_to_lower(target_nick);
-            let uid = ctx.matrix.user_manager.nicks.get(&target_lower);
+            let uid = ctx.matrix.user_manager.get_first_uid(&target_lower);
             let user_ref = uid
                 .as_ref()
-                .and_then(|u| ctx.matrix.user_manager.users.get(u.value()));
+                .and_then(|u| ctx.matrix.user_manager.users.get(u));
             if let Some(user_ref) = user_ref {
                 let user = user_ref.read().await;
                 // Format: nick[*]=+/-hostname

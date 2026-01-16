@@ -39,6 +39,7 @@ impl HandshakeExit {
     pub fn release_nick(&self, matrix: &Matrix) {
         if let Some(nick) = self.nick() {
             let nick_lower = irc_to_lower(nick);
+            // For bouncer support: remove all entries (should only be one during pre-reg)
             matrix.user_manager.nicks.remove(&nick_lower);
             info!(nick = %nick, "Pre-registration nick released");
         }

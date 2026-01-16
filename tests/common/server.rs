@@ -107,6 +107,44 @@ host = "*@*"
     pub fn address(&self) -> String {
         format!("127.0.0.1:{}", self.port)
     }
+
+    /// Create a new test client connected to this server.
+    pub async fn connect(&self, nick: &str) -> anyhow::Result<super::client::TestClient> {
+        super::client::TestClient::connect(&self.address(), nick).await
+    }
+
+    /// Spawn a test server with custom config path.
+    /// Used for REHASH testing where we modify the config file on disk.
+    pub async fn spawn_with_config(port: u16, config_path: PathBuf) -> anyhow::Result<Self> {
+        // Verify config file exists
+        if !config_path.exists() {
+            anyhow::bail!("Config file not found: {:?}", config_path);
+        }
+
+        // Build path to slircd binary
+        let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let binary_path = PathBuf::from(cargo_manifest_dir).join("target/debug/slircd");
+
+        // Spawn the server process with insecure cloak bypass for testing
+        let child = Command::new(&binary_path)
+            .arg(config_path.to_str().unwrap())
+            .env("SLIRCD_ALLOW_INSECURE_CLOAK", "1")
+            .spawn()?;
+
+        let server = Self {
+            child,
+            port,
+            data_dir: config_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .to_path_buf(),
+        };
+
+        // Wait for server to start listening
+        server.wait_until_ready().await?;
+
+        Ok(server)
+    }
 }
 
 impl Drop for TestServer {

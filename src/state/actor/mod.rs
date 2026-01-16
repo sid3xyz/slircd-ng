@@ -12,8 +12,8 @@
 use crate::state::observer::StateObserver;
 use crate::state::{ListEntry, Matrix, MemberModes, Topic};
 use chrono::Utc;
-use slirc_proto::sync::clock::HybridTimestamp;
 use slirc_proto::Message;
+use slirc_proto::sync::clock::HybridTimestamp;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -287,6 +287,12 @@ impl ChannelActor {
             }
             ChannelEvent::Metadata { command, reply_tx } => {
                 let _ = reply_tx.send(self.handle_metadata(command));
+            }
+            ChannelEvent::AttachSender { uid, sender } => {
+                // Multiclient: attach a new session's sender to existing member
+                if self.members.contains_key(&uid) {
+                    self.senders.insert(uid, sender);
+                }
             }
         }
     }

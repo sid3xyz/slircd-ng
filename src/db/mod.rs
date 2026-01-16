@@ -109,6 +109,37 @@ impl Database {
         // Run embedded migrations
         Self::run_migrations(&pool).await?;
 
+        // Enable WAL mode for better concurrency (reduces lock contention)
+        // WAL mode allows reads to happen while writes are in progress
+        sqlx::query("PRAGMA journal_mode=WAL")
+            .execute(&pool)
+            .await?;
+
+        // Use NORMAL synchronous mode instead of FULL for better performance
+        // NORMAL provides good durability while being faster than FULL
+        // (trades immediate disk fsync for transaction durability)
+        sqlx::query("PRAGMA synchronous=NORMAL")
+            .execute(&pool)
+            .await?;
+
+        // Check database integrity on startup (prevents silent corruption from crashes)
+        let integrity_result: String = sqlx::query_scalar("PRAGMA integrity_check")
+            .fetch_one(&pool)
+            .await?;
+
+        if integrity_result != "ok" {
+            tracing::error!(
+                integrity_check = %integrity_result,
+                "Database integrity check FAILED - corruption detected!"
+            );
+            return Err(DbError::Sqlx(sqlx::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Database integrity check failed: {}", integrity_result),
+            ))));
+        }
+
+        info!("Database integrity check passed");
+
         Ok(Self { pool })
     }
 

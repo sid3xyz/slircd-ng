@@ -116,11 +116,18 @@ pub async fn handle_netsplit(
                 .user_manager
                 .nicks
                 .iter()
-                .find(|e| e.value() == uid)
+                .find(|e| e.value().contains(uid))
                 .map(|e| e.key().clone());
 
             if let Some(nick) = nick_to_remove {
-                matrix.user_manager.nicks.remove(&nick);
+                // Remove this UID from the vector
+                if let Some(mut vec) = matrix.user_manager.nicks.get_mut(&nick) {
+                    vec.retain(|u| u != uid);
+                    if vec.is_empty() {
+                        drop(vec);
+                        matrix.user_manager.nicks.remove(&nick);
+                    }
+                }
             }
 
             // Remove sender if present

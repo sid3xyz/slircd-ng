@@ -27,7 +27,7 @@ pub use managers::monitor::MonitorManager;
 pub use managers::security::{SecurityManager, SecurityManagerParams};
 pub use managers::service::ServiceManager;
 pub use managers::user::UserManager;
-pub use matrix::{Matrix, MatrixParams};
+pub use matrix::{HotConfig, Matrix, MatrixParams};
 pub use user::WhowasEntry;
 pub mod actor;
 pub use user::{User, UserModes, UserParams};

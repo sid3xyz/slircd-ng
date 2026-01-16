@@ -116,15 +116,17 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             // Check against all registered nicks for confusables
             for entry in ctx.matrix.user_manager.nicks.iter() {
                 let _registered_nick_lower = entry.key();
-                let registered_uid = entry.value();
+                let registered_uids = entry.value();
 
                 // Skip if same UID (allow case-only changes)
-                if registered_uid == ctx.uid {
+                if registered_uids.contains(&ctx.uid.to_string()) {
                     continue;
                 }
 
-                // Get the actual nick from the user manager
-                if let Some(user_arc) = ctx.matrix.user_manager.users.get(registered_uid) {
+                // Get the actual nick from the first UID
+                if let Some(first_uid) = registered_uids.first()
+                    && let Some(user_arc) = ctx.matrix.user_manager.users.get(first_uid)
+                {
                     let user = user_arc.read().await;
                     // If nicks are confusable, reject
                     if are_nicks_confusable(nick, &user.nick) {
@@ -162,16 +164,53 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
         }
 
         // Atomically claim nickname (prevents TOCTOU where two clients race between check/insert)
+        // For bouncer support: Allow multiple UIDs with same nick if they share the same account
         match ctx.matrix.user_manager.nicks.entry(nick_lower.clone()) {
-            Entry::Occupied(entry) => {
-                let owner_uid = entry.get();
-                if owner_uid != ctx.uid {
-                    return Err(HandlerError::NicknameInUse(nick.to_string()));
+            Entry::Occupied(mut entry) => {
+                let existing_uids = entry.get_mut();
+
+                // Check if this UID is already in the list
+                if existing_uids.contains(&ctx.uid.to_string()) {
+                    // Same UID, allow case-change or reconnect continuation
+                } else {
+                    // Different UID - check if accounts match
+                    let current_account =
+                        if let Some(user_arc) = ctx.matrix.user_manager.users.get(ctx.uid) {
+                            let user = user_arc.read().await;
+                            user.account.clone()
+                        } else {
+                            None
+                        };
+
+                    // Check account of first existing UID (all should have same account)
+                    let existing_account = if let Some(first_uid) = existing_uids.first() {
+                        if let Some(user_arc) =
+                            ctx.matrix.user_manager.users.get(first_uid.as_str())
+                        {
+                            let user = user_arc.read().await;
+                            user.account.clone()
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    // Allow if both have accounts and they match
+                    match (current_account, existing_account) {
+                        (Some(ref cur_acc), Some(ref exist_acc)) if cur_acc == exist_acc => {
+                            // Same account - append this UID to the vector
+                            existing_uids.push(ctx.uid.to_string());
+                        }
+                        _ => {
+                            // Either no accounts or accounts don't match - reject
+                            return Err(HandlerError::NicknameInUse(nick.to_string()));
+                        }
+                    }
                 }
-                // Owner is the same UID; allow case-change or reconnect continuation.
             }
             Entry::Vacant(entry) => {
-                entry.insert(ctx.uid.to_string());
+                entry.insert(vec![ctx.uid.to_string()]);
             }
         }
 
@@ -242,18 +281,23 @@ impl<S: SessionState> UniversalHandler<S> for NickHandler {
             }
 
             // If the lowercase nick is changing, remove the old mapping (case-only changes keep mapping)
-            if old_nick_lower != nick_lower {
-                ctx.matrix.user_manager.nicks.remove(&old_nick_lower);
+            if old_nick_lower != nick_lower
+                && let Some(mut old_vec) = ctx.matrix.user_manager.nicks.get_mut(&old_nick_lower)
+            {
+                old_vec.retain(|u| u != ctx.uid);
+                if old_vec.is_empty() {
+                    drop(old_vec);
+                    ctx.matrix.user_manager.nicks.remove(&old_nick_lower);
+                }
             }
             // Clear any enforcement timer for old nick
             ctx.matrix.user_manager.enforce_timers.remove(ctx.uid);
         }
 
-        // Register new nick
-        ctx.matrix
-            .user_manager
-            .nicks
-            .insert(nick_lower.clone(), ctx.uid.to_string());
+        // Register new nick (only if not already present from the entry() logic above)
+        // Note: entry() above handles insertion, so we only need to handle case where
+        // we're doing a case-only change or the nick wasn't in the map yet
+        // Actually, entry() already handled it, so we just update the session state
         ctx.state.set_nick(nick.to_string());
 
         // Send NICK change message for registered users

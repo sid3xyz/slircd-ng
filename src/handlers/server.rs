@@ -2,8 +2,8 @@ use crate::handlers::core::traits::{PreRegHandler, ServerHandler};
 use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::{ServerState, UnregisteredState};
 use async_trait::async_trait;
-use slirc_proto::sync::clock::ServerId;
 use slirc_proto::MessageRef;
+use slirc_proto::sync::clock::ServerId;
 use std::sync::Arc;
 use tracing::{info, warn};
 
