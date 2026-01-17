@@ -447,42 +447,68 @@ impl<'a> ChannelRepository<'a> {
     /// Check if a mask pattern matches a full hostmask.
     /// Supports wildcards: * (matches any sequence) and ? (matches single char).
     fn mask_matches(pattern: &str, hostmask: &str) -> bool {
-        let pattern = pattern.to_lowercase();
-        let hostmask = hostmask.to_lowercase();
+        let mut p_iter = pattern.chars();
+        let mut h_iter = hostmask.chars();
 
-        // Convert IRC wildcard pattern to regex-like matching
-        let mut pattern_idx = 0;
-        let mut hostmask_idx = 0;
-        let pattern_chars: Vec<char> = pattern.chars().collect();
-        let hostmask_chars: Vec<char> = hostmask.chars().collect();
+        let mut p_star: Option<std::str::Chars> = None;
+        // h_star_iter is the point in hostmask to backtrack to.
+        // It's initialized to an empty iterator and updated when a star is found.
+        let mut h_star_iter: std::str::Chars = "".chars();
+        let mut h_star_was_set = false;
 
-        let mut star_idx: Option<usize> = None;
-        let mut match_idx = 0;
+        loop {
+            let p_char_opt = p_iter.clone().next();
+            let h_char_opt = h_iter.clone().next();
 
-        while hostmask_idx < hostmask_chars.len() {
-            if pattern_idx < pattern_chars.len()
-                && (pattern_chars[pattern_idx] == '?'
-                    || pattern_chars[pattern_idx] == hostmask_chars[hostmask_idx])
-            {
-                pattern_idx += 1;
-                hostmask_idx += 1;
-            } else if pattern_idx < pattern_chars.len() && pattern_chars[pattern_idx] == '*' {
-                star_idx = Some(pattern_idx);
-                match_idx = hostmask_idx;
-                pattern_idx += 1;
-            } else if let Some(idx) = star_idx {
-                pattern_idx = idx + 1;
-                match_idx += 1;
-                hostmask_idx = match_idx;
+            if h_char_opt.is_none() {
+                // End of hostmask.
+                break;
+            }
+
+            if let Some(p_char) = p_char_opt {
+                if p_char == '?'
+                    || (p_char != '*'
+                        && p_char.to_ascii_lowercase()
+                            == h_char_opt.unwrap().to_ascii_lowercase())
+                {
+                    // Match or '?'.
+                    p_iter.next();
+                    h_iter.next();
+                } else if p_char == '*' {
+                    // Star.
+                    p_iter.next(); // consume '*'
+                    p_star = Some(p_iter.clone());
+                    h_star_iter = h_iter.clone();
+                    h_star_was_set = true;
+                } else {
+                    // Mismatch.
+                    if h_star_was_set {
+                        h_star_iter.next();
+                        // Safe to unwrap: p_star is Some if h_star_was_set is true
+                        p_iter = p_star.clone().unwrap();
+                        h_iter = h_star_iter.clone();
+                    } else {
+                        return false;
+                    }
+                }
             } else {
-                return false;
+                // End of pattern, but not hostmask. Backtrack.
+                if h_star_was_set {
+                    h_star_iter.next();
+                    p_iter = p_star.clone().unwrap(); // Should be safe
+                    h_iter = h_star_iter.clone();
+                } else {
+                    return false;
+                }
             }
         }
 
-        while pattern_idx < pattern_chars.len() && pattern_chars[pattern_idx] == '*' {
-            pattern_idx += 1;
+        // Consume trailing stars from pattern.
+        while p_iter.clone().next() == Some('*') {
+            p_iter.next();
         }
 
-        pattern_idx == pattern_chars.len()
+        // If pattern is also exhausted, we have a match.
+        p_iter.next().is_none()
     }
 }
