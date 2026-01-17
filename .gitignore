@@ -68,3 +68,4 @@ tls/
 # Service files with paths
 *.service
 !*.service.example
+test_confusables_main
