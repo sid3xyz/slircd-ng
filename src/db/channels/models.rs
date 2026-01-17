@@ -31,7 +31,9 @@ pub struct ChannelAccess {
 /// A channel AKICK entry.
 #[derive(Debug, Clone)]
 pub struct ChannelAkick {
+    #[allow(dead_code)]
     pub id: i64,
+    #[allow(dead_code)]
     pub channel_id: i64,
     pub mask: String,
     pub reason: Option<String>,

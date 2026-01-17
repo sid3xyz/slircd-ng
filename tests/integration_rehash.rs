@@ -11,12 +11,6 @@ use tokio::time::{Duration, sleep};
 mod common;
 use common::TestClient;
 
-/// Helper to register and login a user.
-async fn login_user(client: &mut TestClient, nick: &str) -> Result<()> {
-    client.register().await?;
-    Ok(())
-}
-
 /// Test that REHASH reloads configuration without disconnecting users.
 ///
 /// This is the critical test for "no-restart deployments" - users must not

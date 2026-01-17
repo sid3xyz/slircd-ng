@@ -276,6 +276,8 @@ pub struct ReattachInfo {
 /// been provided yet.
 #[derive(Debug, Default)]
 pub struct UnregisteredState {
+    /// Unique Session ID (generated on connection).
+    pub session_id: SessionId,
     /// Nick provided by NICK command.
     pub nick: Option<String>,
     /// Username provided by USER command.
@@ -350,6 +352,10 @@ impl SessionState for UnregisteredState {
 
     fn is_registered(&self) -> bool {
         false
+    }
+
+    fn session_id(&self) -> SessionId {
+        self.session_id
     }
 
     fn is_server(&self) -> bool {
@@ -481,7 +487,7 @@ impl UnregisteredState {
         match (&self.nick, &self.user) {
             (Some(nick), Some(user)) if !self.cap_negotiating => {
                 Ok(RegisteredState {
-                    session_id: Uuid::new_v4(),
+                    session_id: self.session_id,
                     device_id: None, // Set by SASL handler after registration
                     nick: nick.clone(),
                     user: user.clone(),

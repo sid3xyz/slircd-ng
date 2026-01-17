@@ -7,8 +7,8 @@
 use super::super::super::{Context, HandlerError, HandlerResult, user_prefix};
 use super::enforcement::{check_akick, check_auto_modes};
 use super::responses::{JoinSuccessContext, handle_join_success, send_join_error};
-use crate::handlers::helpers::fanout::broadcast_to_account;
 use crate::error::ChannelError;
+use crate::handlers::helpers::fanout::broadcast_to_account;
 use crate::security::UserContext;
 use crate::state::{RegisteredState, Topic};
 use slirc_proto::ircv3::msgid::generate_msgid;
@@ -131,7 +131,8 @@ pub(crate) async fn join_channel_internal(
             .channel_manager
             .registered_channels
             .contains(&channel_lower)
-            && let Some(akick) = check_akick(db, &channel_lower, &nick, &user_name, &real_host).await
+            && let Some(akick) =
+                check_akick(db, &channel_lower, &nick, &user_name, &real_host).await
         {
             let reason = akick
                 .reason
@@ -165,9 +166,9 @@ pub(crate) async fn join_channel_internal(
     // Check auto modes if registered
     let initial_modes = if let Some(db) = db
         && matrix
-        .channel_manager
-        .registered_channels
-        .contains(&channel_lower)
+            .channel_manager
+            .registered_channels
+            .contains(&channel_lower)
     {
         check_auto_modes(db, &channel_lower, is_registered, &account).await
     } else {
@@ -255,7 +256,7 @@ pub(crate) async fn join_channel_internal(
         let standard_join_msg = make_standard_join_msg();
 
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        
+
         let _ = channel_sender
             .send(crate::state::actor::ChannelEvent::Join {
                 params: Box::new(crate::state::actor::JoinParams {
@@ -276,32 +277,30 @@ pub(crate) async fn join_channel_internal(
 
         match reply_rx.await {
             Ok(Ok(data)) => {
-                let self_join_msg = handle_join_success(
-                    JoinSuccessContext {
-                        sender: sender.clone(),
-                        server_name: server_name.to_string(),
-                        active_batch_id: batch_id.map(String::from),
-                        label: label.map(String::from),
-                        user_manager: &matrix.user_manager,
-                        channel_manager: &matrix.channel_manager,
-                        client_manager: &matrix.client_manager,
-                        config_multiclient: matrix.config.multiclient.enabled,
-                        uid_str: uid.to_string(),
-                        caps: caps.clone(),
+                let self_join_msg = handle_join_success(JoinSuccessContext {
+                    sender: sender.clone(),
+                    server_name: server_name.to_string(),
+                    active_batch_id: batch_id.map(String::from),
+                    label: label.map(String::from),
+                    user_manager: &matrix.user_manager,
+                    channel_manager: &matrix.channel_manager,
+                    client_manager: &matrix.client_manager,
+                    config_multiclient: matrix.config.multiclient.enabled,
+                    uid_str: uid.to_string(),
+                    caps: caps.clone(),
 
-                        channel_sender: &channel_sender,
-                        channel_lower: &channel_lower,
-                        nick: &nick,
-                        user_name: &user_name,
-                        visible_host: &visible_host,
-                        extended_join_msg: &extended_join_msg,
-                        standard_join_msg: &standard_join_msg,
-                        away_message: &away_message,
-                        data,
-                        session_id,
-                        account: account.clone(),
-                    },
-                )
+                    channel_sender: &channel_sender,
+                    channel_lower: &channel_lower,
+                    nick: &nick,
+                    user_name: &user_name,
+                    visible_host: &visible_host,
+                    extended_join_msg: &extended_join_msg,
+                    standard_join_msg: &standard_join_msg,
+                    away_message: &away_message,
+                    data,
+                    session_id,
+                    account: account.clone(),
+                })
                 .await?;
                 return Ok(self_join_msg);
             }

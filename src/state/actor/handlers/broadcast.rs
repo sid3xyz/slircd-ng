@@ -5,9 +5,10 @@
 
 use super::{ChannelActor, Uid};
 use slirc_proto::{Command, Message, Prefix};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::mpsc::error::TrySendError;
-use tracing::{debug, warn};
+use tracing::{trace, warn};
 
 impl ChannelActor {
     pub(crate) async fn handle_broadcast(&mut self, message: Message, exclude: Option<Uid>) {
@@ -108,7 +109,7 @@ impl ChannelActor {
             if let Some(src_sid) = source_sid
                 && peer_sid.as_str() == src_sid
             {
-                debug!(peer = %peer_sid.as_str(), "Skipping source peer for channel message");
+                trace!(peer = %peer_sid.as_str(), "Skipping source peer for channel message");
                 continue;
             }
 
@@ -116,7 +117,7 @@ impl ChannelActor {
             if let Err(e) = link.tx.send(Arc::new(s2s_msg.clone())).await {
                 warn!(peer = %peer_sid.as_str(), error = %e, "Failed to forward channel message");
             } else {
-                debug!(
+                trace!(
                     peer = %peer_sid.as_str(),
                     channel = %self.name,
                     "Forwarded channel message to peer"
@@ -133,9 +134,13 @@ impl ChannelActor {
         fallback_msg: Option<Message>,
     ) {
         let msg = Arc::new(message);
-        debug!(tags = ?msg.tags, "Broadcasting message with cap");
+        trace!(tags = ?msg.tags, "Broadcasting message with cap");
         let fallback = fallback_msg.map(Arc::new);
 
+        // Track delivered UIDs to prevent duplicates across members and fan-out
+        let mut delivered_uids: HashSet<Uid> = HashSet::new();
+
+        // 1. Send to existing members
         for (uid, sender) in &self.senders {
             if exclude.contains(uid) {
                 continue;
@@ -151,19 +156,78 @@ impl ChannelActor {
                 true
             };
 
-            if should_send_main {
-                if let Err(err) = sender.try_send(msg.clone()) {
-                    match err {
-                        TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
-                        TrySendError::Closed(_) => {}
-                    }
-                }
-            } else if let Some(fb) = &fallback
-                && let Err(err) = sender.try_send(fb.clone())
-            {
+            let msg_to_send = if should_send_main {
+                msg.clone()
+            } else if let Some(fb) = &fallback {
+                fb.clone()
+            } else {
+                continue;
+            };
+
+            if let Err(err) = sender.try_send(msg_to_send) {
                 match err {
                     TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
                     TrySendError::Closed(_) => {}
+                }
+            }
+            delivered_uids.insert(uid.clone());
+        }
+
+        // 2. Multiclient Fan-out
+        // Find other sessions of members that are not in the channel and send to them.
+        if let Some(matrix) = self.matrix.upgrade() {
+            let mut extra_targets: Vec<Uid> = Vec::new();
+
+            // Identify potential targets
+            for member_uid in self.members.keys() {
+                if let Some(user_arc) = matrix.user_manager.users.get(member_uid) {
+                    let account_opt = user_arc.read().await.account.clone();
+                    if let Some(account) = account_opt {
+                        // Inefficient: iterating all sessions. Ideally use get_client() -> sessions.
+                        // But get_sessions is available public API.
+                        let sessions = matrix.client_manager.get_sessions(&account);
+                        for session in sessions {
+                            if !delivered_uids.contains(&session.uid)
+                                && !exclude.contains(&session.uid)
+                                && !extra_targets.contains(&session.uid)
+                            {
+                                extra_targets.push(session.uid);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Send to extra targets
+            for uid in extra_targets {
+                if let Some(sender) = matrix.user_manager.senders.get(&uid) {
+                    // Fetch caps for this user
+                    let caps_opt = if let Some(u) = matrix.user_manager.users.get(&uid) {
+                        Some(u.read().await.caps.clone())
+                    } else {
+                        None
+                    };
+
+                    let should_send_main = if let Some(cap) = &required_cap {
+                        if let Some(caps) = &caps_opt {
+                            caps.contains(cap)
+                        } else {
+                            false
+                        }
+                    } else {
+                        true
+                    };
+
+                    let msg_to_send = if should_send_main {
+                        msg.clone()
+                    } else if let Some(fb) = &fallback {
+                        fb.clone()
+                    } else {
+                        continue;
+                    };
+
+                    let _ = sender.try_send(msg_to_send);
+                    delivered_uids.insert(uid);
                 }
             }
         }

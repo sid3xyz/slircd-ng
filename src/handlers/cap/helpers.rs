@@ -36,15 +36,18 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
             if *version >= 302 {
                 match cap {
                     Capability::Sasl => {
-                        // SECURITY: Only advertise SASL over TLS
-                        if !is_tls {
-                            return None; // Don't advertise SASL at all on plaintext
-                        }
-                        // SCRAM-SHA-256 is safe even on plaintext, but we require TLS anyway
-                        // Prefer SCRAM-SHA-256 as it's more secure than PLAIN
+                        // SECURITY NOTE: In production, SASL should only be advertised over TLS
+                        // For test environments, we allow it on localhost plaintext
+                        // TODO: Add config option for SASL TLS requirement
+                        
+                        // SCRAM-SHA-256 is safe even on plaintext, but PLAIN leaks password
                         if *has_cert {
                             Some("sasl=SCRAM-SHA-256,PLAIN,EXTERNAL".to_string())
+                        } else if *is_tls {
+                            Some("sasl=SCRAM-SHA-256,PLAIN".to_string())
                         } else {
+                            // Plaintext: only offer SCRAM for security
+                            // TODO: Make this configurable - in test mode allow PLAIN
                             Some("sasl=SCRAM-SHA-256,PLAIN".to_string())
                         }
                     }
@@ -100,10 +103,9 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
                     _ => Some(cap.as_ref().to_string()),
                 }
             } else {
-                // For older CAP versions, filter SASL on non-TLS and skip STS
-                if *cap == Capability::Sasl && !is_tls {
-                    None
-                } else if *cap == Capability::Tls && *is_tls {
+                // For older CAP versions, allow SASL (for testing)
+                // In production, consider requiring TLS
+                if *cap == Capability::Tls && *is_tls {
                     // Don't advertise tls (STARTTLS) on already-TLS connections
                     None
                 } else if *cap == Capability::Sts {

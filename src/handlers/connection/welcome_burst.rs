@@ -210,6 +210,105 @@ impl<'a> WelcomeBurstWriter<'a> {
             return Err(HandlerError::AccessDenied);
         }
 
+        // Validate nick collision for multiclient/bouncer mode
+        // If multiple UIDs share the same nick, they must all have the same account
+        if self.matrix.config.multiclient.enabled {
+            let nick_lower = slirc_proto::irc_to_lower(nick);
+            if let Some(existing_uids) = self.matrix.user_manager.nicks.get(&nick_lower) {
+                let existing_uids_vec = existing_uids.value().clone();
+                // If more than one UID, validate they all share the same account
+                if existing_uids_vec.len() > 1 {
+                    let current_account = self.state.account.clone();
+
+                    tracing::debug!(
+                        nick = %nick,
+                        uid = %self.uid,
+                        current_account = ?current_account,
+                        existing_uids = ?existing_uids_vec,
+                        "Validating nick collision for multiclient"
+                    );
+
+                    // Get account of first existing UID (should be registered by now)
+                    let existing_account = if let Some(first_uid) = existing_uids_vec.first() {
+                        if first_uid != self.uid {
+                            if let Some(user_arc) =
+                                self.matrix.user_manager.users.get(first_uid.as_str())
+                            {
+                                let user = user_arc.read().await;
+                                user.account.clone()
+                            } else {
+                                None
+                            }
+                        } else {
+                            // If first UID is self, check second UID
+                            if let Some(second_uid) = existing_uids_vec.get(1) {
+                                if let Some(user_arc) =
+                                    self.matrix.user_manager.users.get(second_uid.as_str())
+                                {
+                                    let user = user_arc.read().await;
+                                    user.account.clone()
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
+                    tracing::debug!(
+                        nick = %nick,
+                        uid = %self.uid,
+                        existing_account = ?existing_account,
+                        "Compared accounts for validation"
+                    );
+
+                    // Reject if accounts don't match
+                    match (current_account, existing_account) {
+                        (Some(ref cur_acc), Some(ref exist_acc)) if cur_acc == exist_acc => {
+                            // Valid multiclient - accounts match
+                            tracing::info!(
+                                nick = %nick,
+                                uid = %self.uid,
+                                account = %cur_acc,
+                                "Valid multiclient connection - accounts match"
+                            );
+                        }
+                        _ => {
+                            // Accounts don't match - remove this UID from the nick list and reject
+                            tracing::warn!(
+                                nick = %nick,
+                                uid = %self.uid,
+                                "Nick collision - accounts don't match, rejecting connection"
+                            );
+
+                            if let Some(mut entry) =
+                                self.matrix.user_manager.nicks.get_mut(&nick_lower)
+                            {
+                                entry.value_mut().retain(|uid| uid != self.uid);
+                                if entry.value().is_empty() {
+                                    drop(entry);
+                                    self.matrix.user_manager.nicks.remove(&nick_lower);
+                                }
+                            }
+
+                            let reply = Response::err_nicknameinuse(nick, nick)
+                                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                            self.write(reply).await?;
+                            let error = Message::from(Command::ERROR(
+                                "Closing Link: Nickname collision (accounts don't match)"
+                                    .to_string(),
+                            ));
+                            self.write(error).await?;
+                            return Err(HandlerError::NicknameInUse(nick.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
         // Create user in Matrix
         let security_config = &self.matrix.config.security;
         let ip = webirc_ip.clone().unwrap_or_else(|| remote_ip.clone());

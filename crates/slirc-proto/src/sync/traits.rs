@@ -247,7 +247,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clock::ServerId;
+    use crate::sync::clock::ServerId;
 
     #[test]
     fn test_lww_register_new() {

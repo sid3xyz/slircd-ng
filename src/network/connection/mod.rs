@@ -50,6 +50,7 @@ use tokio_rustls::TlsAcceptor;
 use tokio_rustls::server::TlsStream;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 
 /// A client connection handler.
 pub struct Connection {
@@ -170,6 +171,7 @@ impl Connection {
         // Unregistered state for this connection
         let mut unreg_state = UnregisteredState {
             initiator_data: self.initiator_data,
+            session_id: Uuid::new_v4(),
             ..Default::default()
         };
 

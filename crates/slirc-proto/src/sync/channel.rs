@@ -412,7 +412,7 @@ impl Crdt for ChannelCrdt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clock::ServerId;
+    use crate::sync::clock::ServerId;
 
     fn make_channel(name: &str, server: &ServerId, millis: i64) -> ChannelCrdt {
         let ts = HybridTimestamp::new(millis, 0, server);

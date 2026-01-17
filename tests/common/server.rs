@@ -50,6 +50,7 @@ spam_detection_enabled = false
 message_rate_per_second = 1000
 connection_burst_per_ip = 1000
 join_burst_per_client = 1000
+max_connections_per_ip = 200
 
 [motd]
 lines = ["Test Server"]
@@ -70,8 +71,7 @@ host = "*@*"
 
         // Build path to slircd binary (in workspace target dir)
         let cargo_manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let binary_path = PathBuf::from(cargo_manifest_dir)
-            .join("target/debug/slircd");
+        let binary_path = PathBuf::from(cargo_manifest_dir).join("target/debug/slircd");
 
         // Spawn the server process
         let child = Command::new(&binary_path)

@@ -134,6 +134,12 @@ pub enum ChannelEvent {
         quit_msg: Message,
         reply_tx: Option<oneshot::Sender<usize>>,
     },
+    /// User detached (multiclient session end).
+    /// Removes the user from the channel without broadcasting a message.
+    Detach {
+        uid: Uid,
+        reply_tx: oneshot::Sender<usize>,
+    },
     /// User sending a message (PRIVMSG, NOTICE, or TAGMSG) to the channel.
     Message {
         params: Box<ChannelMessageParams>,

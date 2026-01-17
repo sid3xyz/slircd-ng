@@ -71,6 +71,17 @@ before_connect = false     # Test that server correctly enforces this restrictio
 email_required = false
 custom_account_name = true
 
+[sasl]
+enabled = true
+mechanisms = ["PLAIN", "SCRAM-SHA-256"]
+
+[multiclient]
+enabled = true
+max_sessions_per_account = 100
+always_on = "opt-in"
+always_on_expiration = "30d"
+auto_away = "opt-in"
+
 [history]
 enabled = true
 backend = "redb"

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+**Bouncer/Multiclient Support (IRCv3)**
+- Full account-based message fan-out to all connected sessions
+- State synchronization across clients (JOIN/PART/NICK/MODE propagation)
+- Self-echo support for multi-device consistency
+- Client session tracking via `ClientManager`
+- Device tagging for session identification
+
 ## [1.0.0-alpha.1] - 2026-01-12
 
 First alpha release. Production-ready for testing environments.

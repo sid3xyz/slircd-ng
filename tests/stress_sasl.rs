@@ -33,6 +33,8 @@ async fn test_100_concurrent_sasl_plain_logins() {
             .await
             .expect("Failed to connect for registration");
 
+        client.register().await.expect("Failed to register session");
+
         // Register account with password
         let register_cmd = format!(
             "PRIVMSG NickServ :REGISTER testpass{} user{}@example.com\r\n",

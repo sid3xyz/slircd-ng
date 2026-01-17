@@ -207,8 +207,21 @@ impl<S: SessionState + SaslAccess> UniversalHandler<S> for NickHandler {
                             existing_uids.push(ctx.uid.to_string());
                         }
                         _ => {
-                            // Either no accounts or accounts don't match - reject
-                            return Err(HandlerError::NicknameInUse(nick.to_string()));
+                            // During pre-registration with multiclient enabled, defer validation
+                            // The account might not be set yet (SASL may still be in progress)
+                            if !ctx.state.is_registered() && ctx.matrix.config.multiclient.enabled {
+                                // Allow the nick collision temporarily
+                                // Final validation happens at registration completion
+                                debug!(
+                                    nick = %nick,
+                                    uid = %ctx.uid,
+                                    "Allowing pre-registration nick collision for multiclient (will validate at registration)"
+                                );
+                                existing_uids.push(ctx.uid.to_string());
+                            } else {
+                                // Either no accounts or accounts don't match - reject
+                                return Err(HandlerError::NicknameInUse(nick.to_string()));
+                            }
                         }
                     }
                 }

@@ -333,6 +333,7 @@ impl Matrix {
     ) -> Vec<String> {
         use crate::state::managers::client::DetachResult;
         use slirc_proto::{Command, Prefix};
+        println!("DEBUG: disconnect_user called for UID={}", target_uid);
 
         // Get user info before removal
         let (nick, user, host, realname, user_channels, session_id, account) = {
@@ -360,13 +361,22 @@ impl Matrix {
         // If user has an account and multiclient is enabled, detach the session
         let detach_result = if self.config.multiclient.enabled {
             if account.is_some() {
-                self.client_manager.detach_session(session_id).await
+                let res = self.client_manager.detach_session(session_id).await;
+                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/slircd_debug.log") {
+                    let _ = writeln!(file, "disconnect_user: uid={} session_id={}", target_uid, session_id);
+                    let _ = writeln!(file, "detach_session result: {:?}", res);
+                }
+                res
             } else {
                 DetachResult::NotFound
             }
         } else {
             DetachResult::NotFound
         };
+
+        // Determine if we should broadcast QUIT (only if not detached session of multiclient)
+        let shout = !matches!(detach_result, DetachResult::Detached { .. });
+        println!("DEBUG: shout decision: {}", shout);
 
         // Log the detachment result
         match &detach_result {
@@ -419,45 +429,72 @@ impl Matrix {
             }
         }
 
-        // Record WHOWAS entry before user is removed
-        self.user_manager
-            .record_whowas(&nick, &user, &host, &realname);
-
-        // Notify MONITOR watchers that this nick is going offline
-        notify_monitors_offline(self, &nick).await;
-
-        // Clean up this user's MONITOR entries
+        // Clean up this user's MONITOR entries (session-specific state)
         cleanup_monitors(self, target_uid.as_str());
 
-        // Build QUIT message
-        let quit_msg = Message {
-            tags: None,
-            prefix: Some(Prefix::new(nick.clone(), user, host)),
-            command: Command::QUIT(Some(quit_reason.to_string())),
-        };
+        if shout {
+            // Record WHOWAS entry before user is removed
+            self.user_manager
+                .record_whowas(&nick, &user, &host, &realname);
 
-        // Remove from channels and broadcast QUIT
-        for channel_name in &user_channels {
-            let channel_tx = self
-                .channel_manager
-                .channels
-                .get(channel_name)
-                .map(|s| s.value().clone());
-            if let Some(channel_tx) = channel_tx {
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = channel_tx
-                    .send(ChannelEvent::Quit {
-                        uid: target_uid.clone(),
-                        quit_msg: quit_msg.clone(),
-                        reply_tx: Some(tx),
-                    })
-                    .await;
+            // Notify MONITOR watchers that this nick is going offline
+            notify_monitors_offline(self, &nick).await;
 
-                if let Ok(remaining) = rx.await
-                    && remaining == 0
-                    && self.channel_manager.channels.remove(channel_name).is_some()
-                {
-                    crate::metrics::ACTIVE_CHANNELS.dec();
+            // Build QUIT message
+            let quit_msg = Message {
+                tags: None,
+                prefix: Some(Prefix::new(nick.clone(), user, host)),
+                command: Command::QUIT(Some(quit_reason.to_string())),
+            };
+
+            // Remove from channels and broadcast QUIT
+            for channel_name in &user_channels {
+                let channel_tx = self
+                    .channel_manager
+                    .channels
+                    .get(channel_name)
+                    .map(|s| s.value().clone());
+                if let Some(channel_tx) = channel_tx {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let _ = channel_tx
+                        .send(ChannelEvent::Quit {
+                            uid: target_uid.clone(),
+                            quit_msg: quit_msg.clone(),
+                            reply_tx: Some(tx),
+                        })
+                        .await;
+
+                    if let Ok(remaining) = rx.await
+                        && remaining == 0
+                        && self.channel_manager.channels.remove(channel_name).is_some()
+                    {
+                        crate::metrics::ACTIVE_CHANNELS.dec();
+                    }
+                }
+            }
+        } else {
+            // Silent removal from channels (Multiclient Detach)
+            for channel_name in &user_channels {
+                let channel_tx = self
+                    .channel_manager
+                    .channels
+                    .get(channel_name)
+                    .map(|s| s.value().clone());
+                if let Some(channel_tx) = channel_tx {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let _ = channel_tx
+                        .send(ChannelEvent::Detach {
+                            uid: target_uid.clone(),
+                            reply_tx: tx,
+                        })
+                        .await;
+
+                    if let Ok(remaining) = rx.await
+                        && remaining == 0
+                        && self.channel_manager.channels.remove(channel_name).is_some()
+                    {
+                        crate::metrics::ACTIVE_CHANNELS.dec();
+                    }
                 }
             }
         }

@@ -59,6 +59,10 @@ async fn attach_session_to_client<S: SessionState + SaslAccess>(
 
     // Get session_id from the session state
     let session_id = ctx.state.session_id();
+    
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/slircd_debug.log") {
+        let _ = writeln!(file, "SASL attach_session: account={} session_id={}", account, session_id);
+    }
 
     // Get nick for client tracking
     let nick = ctx.state.nick_or_star();
@@ -107,38 +111,43 @@ async fn attach_session_to_client<S: SessionState + SaslAccess>(
                 "Attached session to existing client"
             );
 
-            // If this is a reattach (not first session on this device), prepare autoreplay
-            if *reattach && let Some(client_arc) = ctx.matrix.client_manager.get_client(account) {
+            // If multiclient is enabled, prepare autoreplay for any session joining an existing client
+            // This includes both true reattachment (after disconnect) and simultaneous multiclient
+            if let Some(client_arc) = ctx.matrix.client_manager.get_client(account) {
                 let client = client_arc.read().await;
 
-                // Extract channels with membership info
-                let channels: Vec<(String, crate::state::ChannelMembership)> = client
-                    .channels
-                    .iter()
-                    .map(|(name, membership)| (name.clone(), membership.clone()))
-                    .collect();
+                // Only set up autoreplay if the client has channels
+                if !client.channels.is_empty() {
+                    // Extract channels with membership info
+                    let channels: Vec<(String, crate::state::ChannelMembership)> = client
+                        .channels
+                        .iter()
+                        .map(|(name, membership)| (name.clone(), membership.clone()))
+                        .collect();
 
-                // Get last_seen timestamp for this device (if available)
-                let replay_since = device_id.as_ref().and_then(|dev| client.get_last_seen(dev));
+                    // Get last_seen timestamp for this device (if available)
+                    let replay_since = device_id.as_ref().and_then(|dev| client.get_last_seen(dev));
 
-                // Build ReattachInfo
-                let reattach_info = crate::state::ReattachInfo {
-                    account: account.to_string(),
-                    device_id: device_id.clone(),
-                    channels,
-                    replay_since,
-                };
+                    // Build ReattachInfo
+                    let reattach_info = crate::state::ReattachInfo {
+                        account: account.to_string(),
+                        device_id: device_id.clone(),
+                        channels,
+                        replay_since,
+                    };
 
-                // Store in session state (will be moved to RegisteredState on registration)
-                ctx.state.set_reattach_info(Some(reattach_info));
+                    // Store in session state (will be moved to RegisteredState on registration)
+                    ctx.state.set_reattach_info(Some(reattach_info));
 
-                debug!(
-                    account = %account,
-                    device = ?device_id,
-                    channel_count = client.channels.len(),
-                    has_replay_timestamp = replay_since.is_some(),
-                    "Prepared autoreplay info for reattached session"
-                );
+                    debug!(
+                        account = %account,
+                        device = ?device_id,
+                        channel_count = client.channels.len(),
+                        has_replay_timestamp = replay_since.is_some(),
+                        reattach = %reattach,
+                        "Prepared autoreplay info for multiclient session"
+                    );
+                }
             }
         }
         crate::state::managers::client::AttachResult::MulticlientNotAllowed => {
@@ -182,12 +191,8 @@ impl<S: SessionState + SaslAccess> UniversalHandler<S> for AuthenticateHandler {
         // Get nick using SessionState trait
         let nick = ctx.state.nick_or_star().to_string();
 
-        // Check if SASL is enabled
-        if !ctx.state.capabilities().contains("sasl") {
-            // SASL not enabled, ignore
-            debug!(nick = %nick, "AUTHENTICATE received but SASL not enabled");
-            return Ok(());
-        }
+        // SASL is available if advertised in CAP LS, doesn't need explicit CAP REQ
+        // Client just needs to do CAP LS to see sasl capability, then can AUTHENTICATE
 
         // Handle SASL flow - dispatch to state-specific handlers
         match ctx.state.sasl_state().clone() {

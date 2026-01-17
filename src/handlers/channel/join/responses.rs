@@ -18,7 +18,7 @@ pub(super) struct JoinSuccessContext<'a> {
     pub config_multiclient: bool,
     pub uid_str: String,
     pub caps: std::collections::HashSet<String>,
-    
+
     pub channel_sender: &'a tokio::sync::mpsc::Sender<crate::state::actor::ChannelEvent>,
     pub channel_lower: &'a str,
     pub nick: &'a str,
@@ -61,8 +61,7 @@ pub(super) async fn handle_join_success(
     } = join_ctx;
 
     // Add channel to user's list with session validation
-    let session_valid = if let Some(user) = user_manager.users.get(&uid_str)
-    {
+    let session_valid = if let Some(user) = user_manager.users.get(&uid_str) {
         let mut user = user.write().await;
         if user.session_id == session_id {
             user.channels.insert(channel_lower.to_string());
@@ -104,9 +103,7 @@ pub(super) async fn handle_join_success(
     }
 
     // Track channel membership for bouncer clients
-    if config_multiclient
-        && let Some(account) = account.as_ref()
-    {
+    if config_multiclient && let Some(account) = account.as_ref() {
         let (modes_tx, modes_rx) = tokio::sync::oneshot::channel();
         let _ = channel_sender
             .send(ChannelEvent::GetMemberModes {
@@ -155,10 +152,27 @@ pub(super) async fn handle_join_success(
     }
 
     // Send topic if exists
-    send_channel_topic(sender.clone(), &server_name, active_batch_id.as_deref(), nick, &data).await?;
+    send_channel_topic(
+        sender.clone(),
+        &server_name,
+        active_batch_id.as_deref(),
+        nick,
+        &data,
+    )
+    .await?;
 
     // Send names list
-    send_names_list(sender.clone(), &server_name, active_batch_id.as_deref(), label.as_deref(), user_manager, channel_sender, nick, &data).await?;
+    send_names_list(
+        sender.clone(),
+        &server_name,
+        active_batch_id.as_deref(),
+        label.as_deref(),
+        user_manager,
+        channel_sender,
+        nick,
+        &data,
+    )
+    .await?;
 
     Ok(Some(self_join_msg))
 }

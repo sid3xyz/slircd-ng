@@ -520,6 +520,7 @@ mod tests {
         AttachSessionRequest {
             account,
             nick,
+            uid: "AAAAAA",
             session_id,
             device_id,
             ip: ip.to_string(),

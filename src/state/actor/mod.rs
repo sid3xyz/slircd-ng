@@ -160,6 +160,17 @@ impl ChannelActor {
             } => {
                 self.handle_quit(uid, quit_msg, reply_tx).await;
             }
+            ChannelEvent::Detach { uid, reply_tx } => {
+                if self.members.contains_key(&uid) {
+                    self.members.remove(&uid);
+                    self.senders.remove(&uid);
+                    self.user_nicks.remove(&uid);
+                    self.user_caps.remove(&uid);
+                    crate::metrics::set_channel_members(&self.name, self.members.len() as i64);
+                    self.cleanup_if_empty();
+                }
+                let _ = reply_tx.send(self.members.len());
+            }
             ChannelEvent::Message { params, reply_tx } => {
                 self.handle_message(*params, reply_tx).await;
             }

@@ -255,7 +255,7 @@ pub struct UserDelta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clock::ServerId;
+    use crate::sync::clock::ServerId;
 
     fn make_user(uid: &str, nick: &str, server: &ServerId, millis: i64) -> UserCrdt {
         let ts = HybridTimestamp::new(millis, 0, server);

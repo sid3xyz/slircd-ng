@@ -63,10 +63,7 @@ impl PostRegHandler for PartHandler {
                         user_name.to_string(),
                         host.to_string(),
                     )),
-                    command: Command::PART(
-                        channel_name.to_string(),
-                        reason.map(|s| s.to_string()),
-                    ),
+                    command: Command::PART(channel_name.to_string(), reason.map(|s| s.to_string())),
                 };
                 broadcast_to_account(ctx, part_msg, true).await?;
             }
