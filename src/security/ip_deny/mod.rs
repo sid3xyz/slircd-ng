@@ -53,7 +53,28 @@ pub struct IpDenyList {
     persist_path: PathBuf,
 }
 
+/// Snapshot of the deny list state for async persistence.
+#[derive(Debug, Clone)]
+pub struct IpDenyListSnapshot {
+    pub ipv4_bitmap: RoaringBitmap,
+    pub ipv4_cidrs: Vec<Ipv4Net>,
+    pub ipv6_cidrs: Vec<Ipv6Net>,
+    pub metadata: HashMap<String, BanMetadata>,
+    pub persist_path: PathBuf,
+}
+
 impl IpDenyList {
+    /// Create a snapshot of the current state for persistence.
+    pub fn snapshot(&self) -> IpDenyListSnapshot {
+        IpDenyListSnapshot {
+            ipv4_bitmap: self.ipv4_bitmap.clone(),
+            ipv4_cidrs: self.ipv4_cidrs.clone(),
+            ipv6_cidrs: self.ipv6_cidrs.clone(),
+            metadata: self.metadata.clone(),
+            persist_path: self.persist_path.clone(),
+        }
+    }
+
     /// Create an empty deny list with default persistence path.
     pub fn new() -> Self {
         Self::with_path(DEFAULT_PERSIST_PATH)
@@ -183,6 +204,29 @@ impl IpDenyList {
         duration: Option<Duration>,
         added_by: String,
     ) -> Result<(), std::io::Error> {
+        self.add_ban_memory(net, reason, duration, added_by);
+
+        let snapshot = self.snapshot();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn_blocking(move || {
+                if let Err(e) = persistence::save_snapshot(&snapshot) {
+                    error!(error = %e, "Failed to persist IP deny list in background");
+                }
+            });
+            Ok(())
+        } else {
+            persistence::save_snapshot(&snapshot)
+        }
+    }
+
+    /// Internal method to add ban to memory only (no persistence).
+    pub fn add_ban_memory(
+        &mut self,
+        net: IpNet,
+        reason: String,
+        duration: Option<Duration>,
+        added_by: String,
+    ) {
         let key = net.to_string();
         let meta = BanMetadata::new(reason.clone(), duration, added_by.clone());
 
@@ -224,14 +268,30 @@ impl IpDenyList {
             duration = ?duration,
             "Added IP ban"
         );
-
-        self.save()
     }
 
     /// Remove a ban for an IP or CIDR range.
     ///
     /// Automatically triggers persistence to disk.
     pub fn remove_ban(&mut self, net: IpNet) -> Result<bool, std::io::Error> {
+        let removed = self.remove_ban_memory(net);
+        if removed {
+            let snapshot = self.snapshot();
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                handle.spawn_blocking(move || {
+                    if let Err(e) = persistence::save_snapshot(&snapshot) {
+                        error!(error = %e, "Failed to persist IP deny list in background");
+                    }
+                });
+            } else {
+                persistence::save_snapshot(&snapshot)?;
+            }
+        }
+        Ok(removed)
+    }
+
+    /// Internal method to remove ban from memory only (no persistence).
+    pub fn remove_ban_memory(&mut self, net: IpNet) -> bool {
         let removed = match net {
             IpNet::V4(v4net) => {
                 if v4net.prefix_len() == 32 {
@@ -284,10 +344,8 @@ impl IpDenyList {
 
         if removed {
             debug!(ban = %net, "Removed IP ban");
-            self.save()?;
         }
-
-        Ok(removed)
+        removed
     }
 
     /// Prune expired bans from the list.
@@ -445,12 +503,8 @@ impl IpDenyList {
                     .clone()
                     .unwrap_or_else(|| "D-lined".to_string());
                 let duration = duration_from_expires(dline.expires_at);
-                if self
-                    .add_ban(net, reason, duration, dline.set_by.clone())
-                    .is_ok()
-                {
-                    added += 1;
-                }
+                self.add_ban_memory(net, reason, duration, dline.set_by.clone());
+                added += 1;
             } else if let Ok(ip) = dline.mask.parse::<IpAddr>() {
                 // Single IP without /prefix
                 // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are always valid - hardcoded constants
@@ -465,12 +519,8 @@ impl IpDenyList {
                     .clone()
                     .unwrap_or_else(|| "D-lined".to_string());
                 let duration = duration_from_expires(dline.expires_at);
-                if self
-                    .add_ban(net, reason, duration, dline.set_by.clone())
-                    .is_ok()
-                {
-                    added += 1;
-                }
+                self.add_ban_memory(net, reason, duration, dline.set_by.clone());
+                added += 1;
             }
         }
 
@@ -499,12 +549,8 @@ impl IpDenyList {
                     .clone()
                     .unwrap_or_else(|| "Z-lined".to_string());
                 let duration = duration_from_expires(zline.expires_at);
-                if self
-                    .add_ban(net, reason, duration, zline.set_by.clone())
-                    .is_ok()
-                {
-                    added += 1;
-                }
+                self.add_ban_memory(net, reason, duration, zline.set_by.clone());
+                added += 1;
             } else if let Ok(ip) = zline.mask.parse::<IpAddr>() {
                 // Single IP without /prefix
                 // SAFETY: Prefix 32 (IPv4) and 128 (IPv6) are always valid - hardcoded constants
@@ -519,12 +565,8 @@ impl IpDenyList {
                     .clone()
                     .unwrap_or_else(|| "Z-lined".to_string());
                 let duration = duration_from_expires(zline.expires_at);
-                if self
-                    .add_ban(net, reason, duration, zline.set_by.clone())
-                    .is_ok()
-                {
-                    added += 1;
-                }
+                self.add_ban_memory(net, reason, duration, zline.set_by.clone());
+                added += 1;
             }
         }
 
@@ -700,5 +742,29 @@ mod tests {
 
         // Cleanup
         let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn test_benchmark_add_ban() {
+        use std::time::Instant;
+        let path = "/tmp/test_deny_bench.msgpack";
+        let mut list = IpDenyList::with_path(path);
+
+        // Warmup
+        let _ = std::fs::remove_file(path);
+
+        let start = Instant::now();
+        let iterations = 100;
+
+        for i in 0..iterations {
+            let ip = IpAddr::V4(Ipv4Addr::new(10, 0, (i / 256) as u8, (i % 256) as u8));
+            list.add_ban_ip(ip, "Benchmark".to_string(), None, "bench".to_string()).unwrap();
+        }
+
+        let duration = start.elapsed();
+        println!("Add ban benchmark: {:?} for {} iterations ({:?} per op)", duration, iterations, duration / iterations);
+
+        // Cleanup
+        let _ = std::fs::remove_file(path);
     }
 }
