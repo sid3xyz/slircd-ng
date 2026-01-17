@@ -1,5 +1,5 @@
 use super::types::{MULTILINE_MAX_BYTES, MULTILINE_MAX_LINES, SUPPORTED_CAPS};
-use crate::config::{AccountRegistrationConfig, StsConfig};
+use crate::config::{AccountRegistrationConfig, SecurityConfig, StsConfig};
 use slirc_proto::{CapSubCommand, Capability, Command, Message, Prefix};
 
 /// Parameters for building the CAP list.
@@ -14,6 +14,8 @@ pub struct CapListParams<'a> {
     pub acct_cfg: &'a AccountRegistrationConfig,
     /// STS (Strict Transport Security) config, if enabled
     pub sts_cfg: Option<&'a StsConfig>,
+    /// Security configuration
+    pub sec_cfg: &'a SecurityConfig,
 }
 
 /// Build capability list string for CAP LS response.
@@ -27,6 +29,7 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
         has_cert,
         acct_cfg,
         sts_cfg,
+        sec_cfg,
     } = params;
 
     SUPPORTED_CAPS
@@ -37,8 +40,9 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
                 match cap {
                     Capability::Sasl => {
                         // Advertise SASL only on TLS connections; include EXTERNAL when a client certificate is present.
-                        if *is_tls {
-                            if *has_cert {
+                        // Or if specifically allowed via config (e.g. for testing).
+                        if *is_tls || sec_cfg.allow_plaintext_sasl {
+                            if *is_tls && *has_cert {
                                 Some("sasl=SCRAM-SHA-256,PLAIN,EXTERNAL".to_string())
                             } else {
                                 Some("sasl=SCRAM-SHA-256,PLAIN".to_string())
@@ -106,7 +110,7 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
                 } else if *cap == Capability::Sts {
                     // STS requires CAP 302+ for values
                     None
-                } else if *cap == Capability::Sasl && !*is_tls {
+                } else if *cap == Capability::Sasl && !*is_tls && !sec_cfg.allow_plaintext_sasl {
                     None
                 } else {
                     Some(cap.as_ref().to_string())
@@ -185,12 +189,14 @@ mod tests {
         // Use a leaked box to get 'static lifetime for tests
         let acct_cfg: &'static AccountRegistrationConfig =
             Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(SecurityConfig::default()));
         CapListParams {
             version,
             is_tls,
             has_cert,
             acct_cfg,
             sts_cfg: None,
+            sec_cfg,
         }
     }
 
@@ -353,12 +359,14 @@ mod tests {
             duration: 2592000,
             preload: false,
         }));
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(SecurityConfig::default()));
         let caps = build_cap_list_tokens(&CapListParams {
             version: 302,
             is_tls: true,
             has_cert: false,
             acct_cfg,
             sts_cfg: Some(sts_cfg),
+            sec_cfg,
         });
 
         let sts = caps
@@ -387,12 +395,14 @@ mod tests {
             duration: 2592000,
             preload: false,
         }));
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(SecurityConfig::default()));
         let caps = build_cap_list_tokens(&CapListParams {
             version: 302,
             is_tls: false,
             has_cert: false,
             acct_cfg,
             sts_cfg: Some(sts_cfg),
+            sec_cfg,
         });
 
         let sts = caps
@@ -421,12 +431,14 @@ mod tests {
             duration: 31536000,
             preload: true,
         }));
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(SecurityConfig::default()));
         let caps = build_cap_list_tokens(&CapListParams {
             version: 302,
             is_tls: true,
             has_cert: false,
             acct_cfg,
             sts_cfg: Some(sts_cfg),
+            sec_cfg,
         });
 
         let sts = caps
@@ -505,6 +517,55 @@ mod tests {
         assert!(
             combined.contains(&long_cap),
             "Very long cap should be included"
+        );
+    }
+
+    #[test]
+    fn test_cap_list_sasl_plaintext_config() {
+        // Verify that setting allow_plaintext_sasl=true enables SASL on plaintext
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let mut sec_config = SecurityConfig::default();
+        sec_config.allow_plaintext_sasl = true;
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_config));
+
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 302,
+            is_tls: false,
+            has_cert: false,
+            acct_cfg,
+            sts_cfg: None,
+            sec_cfg,
+        });
+
+        assert!(
+            caps.iter().any(|c| c.contains("sasl=SCRAM-SHA-256,PLAIN")),
+            "Should advertise SASL on plaintext when config allows it: {:?}",
+            caps
+        );
+    }
+
+    #[test]
+    fn test_cap_list_sasl_plaintext_disabled() {
+        // Verify that default config (allow_plaintext_sasl=false) does NOT enable SASL on plaintext
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let sec_config = SecurityConfig::default(); // allow_plaintext_sasl = false by default
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_config));
+
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 302,
+            is_tls: false,
+            has_cert: false,
+            acct_cfg,
+            sts_cfg: None,
+            sec_cfg,
+        });
+
+        assert!(
+            !caps.iter().any(|c| c.starts_with("sasl")),
+            "Should NOT advertise SASL on plaintext by default: {:?}",
+            caps
         );
     }
 }

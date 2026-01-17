@@ -30,6 +30,11 @@ pub struct SecurityConfig {
     /// after registration with ERR_SASLFAIL message.
     #[serde(default)]
     pub require_sasl: bool,
+    /// Allow SASL authentication over plaintext connections (default: false).
+    /// SECURITY: This is insecure as PLAIN mechanism leaks passwords.
+    /// Only enable for testing or if TLS is terminated upstream.
+    #[serde(default)]
+    pub allow_plaintext_sasl: bool,
 }
 
 impl Default for SecurityConfig {
@@ -41,6 +46,7 @@ impl Default for SecurityConfig {
             spam: SpamConfig::default(),
             rate_limits: RateLimitConfig::default(),
             require_sasl: false,
+            allow_plaintext_sasl: false,
         }
     }
 }
