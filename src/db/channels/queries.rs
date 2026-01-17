@@ -475,4 +475,73 @@ impl<'a> ChannelRepository<'a> {
             },
         ))
     }
+
+    /// Check if a mask pattern matches a full hostmask.
+    /// Supports wildcards: * (matches any sequence) and ? (matches single char).
+    #[allow(dead_code)]
+    fn mask_matches(pattern: &str, hostmask: &str) -> bool {
+        let mut p_iter = pattern.chars();
+        let mut h_iter = hostmask.chars();
+
+        let mut p_star: Option<std::str::Chars> = None;
+        // h_star_iter is the point in hostmask to backtrack to.
+        // It's initialized to an empty iterator and updated when a star is found.
+        let mut h_star_iter: std::str::Chars = "".chars();
+        let mut h_star_was_set = false;
+
+        loop {
+            let p_char_opt = p_iter.clone().next();
+            let h_char_opt = h_iter.clone().next();
+
+            if h_char_opt.is_none() {
+                // End of hostmask.
+                break;
+            }
+
+            if let Some(p_char) = p_char_opt {
+                if p_char == '?'
+                    || (p_char != '*'
+                        && p_char.to_ascii_lowercase()
+                            == h_char_opt.unwrap().to_ascii_lowercase())
+                {
+                    // Match or '?'.
+                    p_iter.next();
+                    h_iter.next();
+                } else if p_char == '*' {
+                    // Star.
+                    p_iter.next(); // consume '*'
+                    p_star = Some(p_iter.clone());
+                    h_star_iter = h_iter.clone();
+                    h_star_was_set = true;
+                } else {
+                    // Mismatch.
+                    if h_star_was_set {
+                        h_star_iter.next();
+                        // Safe to unwrap: p_star is Some if h_star_was_set is true
+                        p_iter = p_star.clone().unwrap();
+                        h_iter = h_star_iter.clone();
+                    } else {
+                        return false;
+                    }
+                }
+            } else {
+                // End of pattern, but not hostmask. Backtrack.
+                if h_star_was_set {
+                    h_star_iter.next();
+                    p_iter = p_star.clone().unwrap(); // Should be safe
+                    h_iter = h_star_iter.clone();
+                } else {
+                    return false;
+                }
+            }
+        }
+
+        // Consume trailing stars from pattern.
+        while p_iter.clone().next() == Some('*') {
+            p_iter.next();
+        }
+
+        // If pattern is also exhausted, we have a match.
+        p_iter.next().is_none()
+    }
 }
