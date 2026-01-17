@@ -212,10 +212,13 @@ impl Connection {
         };
 
         match success {
-            HandshakeSuccess::User => {
+            HandshakeSuccess::User { effective_uid } => {
                 // Transition: UnregisteredState -> RegisteredState
                 // At this point, the user is registered and exists in Matrix.
                 // (Note: unregistered counter is decremented in welcome_burst when user is added)
+
+                // If this is a bouncer reattachment, use the effective_uid for routing
+                let routing_uid = effective_uid.as_ref().unwrap_or(&self.uid);
 
                 // Convert the state for Phase 2.
                 let mut reg_state = match unreg_state.try_register() {
@@ -234,11 +237,17 @@ impl Connection {
 
                 // Phase 2: Unified Event Loop
                 let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<Arc<Message>>(32);
-                self.matrix.register_sender(&self.uid, outgoing_tx.clone());
+                // Register session-aware sender with capabilities for per-session fanout
+                self.matrix.register_session_sender(
+                    routing_uid,
+                    reg_state.session_id,
+                    outgoing_tx.clone(),
+                    reg_state.capabilities.clone(),
+                );
 
                 let quit_message = run_event_loop(
                     ConnectionContext {
-                        uid: &self.uid,
+                        uid: routing_uid,
                         transport: &mut self.transport,
                         matrix: &self.matrix,
                         registry: &self.registry,
@@ -258,7 +267,14 @@ impl Connection {
                 // If the user was already removed from the Matrix (KILL/enforcement/slow-consumer),
                 // this will no-op.
                 let quit_text = quit_message.unwrap_or_else(|| "Client Quit".to_string());
-                let _ = self.matrix.disconnect_user(&self.uid, &quit_text).await;
+
+                // Get session_id from the registered state for proper bouncer session tracking
+                let connection_session_id = reg_state.session_id;
+
+                let _ = self
+                    .matrix
+                    .disconnect_user_session(routing_uid, &quit_text, Some(connection_session_id))
+                    .await;
 
                 info!("Client disconnected");
             }

@@ -200,14 +200,15 @@ async fn remove_user_from_channels(matrix: &Matrix, uid: &str) {
 /// Broadcast a message to all local users.
 async fn broadcast_to_local_users(matrix: &Matrix, msg: Message) {
     let msg_arc = Arc::new(msg);
-    let senders: Vec<_> = matrix
+    // Collect all UIDs first
+    let uids: Vec<_> = matrix
         .user_manager
         .senders
         .iter()
-        .map(|e| e.value().clone())
+        .map(|e| e.key().clone())
         .collect();
-    for sender in senders {
-        let _ = sender.send(msg_arc.clone()).await;
+    for uid in uids {
+        matrix.user_manager.send_to_uid(&uid, msg_arc.clone()).await;
     }
 }
 

@@ -61,7 +61,7 @@ impl ServerHandler for RoutedMessageHandler {
         debug!(from = %source_uid, to = %target_uid, "Routing message");
 
         // 1. Is the target local?
-        if let Some(sender) = ctx.matrix.user_manager.senders.get_cloned(target_uid) {
+        if let Some(sender) = ctx.matrix.user_manager.get_first_sender(target_uid) {
             // Local delivery!
             crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
                 .with_label_values(&[source_sid, target_sid, "success"])

@@ -83,11 +83,18 @@ impl ChannelActor {
             return;
         }
 
-        // 3. Limit (+l)
+        // 3. Limit (+l) and Redirect (+L)
         for mode in &self.modes {
             if let ChannelMode::Limit(limit, _) = mode
                 && self.members.len() >= *limit
             {
+                // Check for redirect (+L)
+                for l_mode in &self.modes {
+                    if let ChannelMode::Redirect(target, _) = l_mode {
+                        let _ = reply_tx.send(Err(ChannelError::Redirect(target.clone())));
+                        return;
+                    }
+                }
                 let _ = reply_tx.send(Err(ChannelError::ChannelIsFull));
                 return;
             }
@@ -99,6 +106,26 @@ impl ChannelActor {
                 && key_arg.as_deref() != Some(key)
             {
                 let _ = reply_tx.send(Err(ChannelError::BadChannelKey));
+                return;
+            }
+        }
+
+        // 4b. Join Flood (+f)
+        if let Some((limit, seconds)) = self.flood_config {
+            use governor::{Quota, RateLimiter as GovRateLimiter};
+            use std::num::NonZeroU32;
+            use std::time::Duration;
+
+            let limiter = self.flood_join_limiters.entry(uid.clone()).or_insert_with(|| {
+                GovRateLimiter::direct(
+                    Quota::with_period(Duration::from_secs(seconds as u64))
+                        .unwrap()
+                        .allow_burst(NonZeroU32::new(limit).unwrap()),
+                )
+            });
+
+            if limiter.check().is_err() {
+                let _ = reply_tx.send(Err(ChannelError::ChannelIsFull)); // Or a better error if we add one
                 return;
             }
         }
@@ -200,13 +227,21 @@ impl ChannelActor {
             );
         }
 
-        self.handle_broadcast_with_cap(
-            join_msg_extended,
-            exclude,
-            Some("extended-join".to_string()),
-            Some(join_msg_standard),
-        )
-        .await;
+        // 9. Delayed Join (+D) - don't broadcast join message
+        let is_delayed = self.modes.contains(&ChannelMode::DelayedJoin);
+
+        if !is_delayed {
+            self.handle_broadcast_with_cap(
+                join_msg_extended.clone(),
+                exclude,
+                Some("extended-join".to_string()),
+                Some(join_msg_standard.clone()),
+            )
+            .await;
+        } else {
+            // Joiner is silent until they speak
+            self.silent_members.insert(uid.clone());
+        }
 
         let is_secret = self.modes.contains(&ChannelMode::Secret);
 

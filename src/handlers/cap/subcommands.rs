@@ -203,6 +203,12 @@ pub async fn handle_req<S: SessionState>(
                 }
 
                 debug!(uid = %ctx.uid, caps = ?new_caps, "Synced caps to Matrix user");
+
+                // Update per-session capabilities for mid-session CAP changes
+                // so per-session fanout uses the latest negotiated caps.
+                ctx.matrix
+                    .user_manager
+                    .update_session_caps(ctx.state.session_id(), new_caps.clone());
             }
         }
     }

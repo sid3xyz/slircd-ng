@@ -41,10 +41,9 @@ async fn broadcast_to_account_inner(
             continue;
         }
 
-        let Some(sender_ref) = matrix.user_manager.senders.get(&session.uid) else {
-            continue;
-        };
-        let Some(user_ref) = matrix.user_manager.users.get(&session.uid) else {
+        let sibling_uid = &session.uid;
+
+        let Some(user_ref) = matrix.user_manager.users.get(sibling_uid) else {
             continue;
         };
 
@@ -71,7 +70,10 @@ async fn broadcast_to_account_inner(
             command,
         };
 
-        sender_ref.value().send(Arc::new(msg)).await?;
+        matrix
+            .user_manager
+            .send_to_uid(sibling_uid, Arc::new(msg))
+            .await;
     }
 
     Ok(())

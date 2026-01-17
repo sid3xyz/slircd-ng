@@ -75,9 +75,11 @@ impl<'a> WelcomeBurstWriter<'a> {
 
     /// Send the complete welcome burst.
     ///
-    /// Returns `Ok(())` on success, or an error if the client should be disconnected
-    /// (e.g., banned, wrong password).
-    pub async fn send(mut self) -> HandlerResult {
+    /// Returns `Ok(true)` if this was a bouncer reattachment (shared existing User),
+    /// `Ok(false)` if this was a normal registration (new User created).
+    /// Returns an error if the client should be disconnected (e.g., banned, wrong password).
+    #[allow(clippy::collapsible_if)]
+    pub async fn send(mut self) -> Result<bool, HandlerError> {
         let nick = self
             .state
             .nick
@@ -211,8 +213,54 @@ impl<'a> WelcomeBurstWriter<'a> {
         }
 
         // Validate nick collision for multiclient/bouncer mode
-        // If multiple UIDs share the same nick, they must all have the same account
+        // If multiple UIDs share the same nick, they must all have the same account, and respect per-account overrides
         if self.matrix.config.multiclient.enabled {
+            // Per-account override: if multiclient is disabled for this account, reject additional sessions
+            if let Some(ref account_name) = self.state.account {
+                let override_opt = self
+                    .matrix
+                    .client_manager
+                    .get_multiclient_override(account_name);
+                if !self
+                    .matrix
+                    .config
+                    .multiclient
+                    .is_multiclient_enabled(override_opt)
+                {
+                    let nick_lower = slirc_proto::irc_to_lower(nick);
+                    if let Some(existing) = self.matrix.user_manager.nicks.get(&nick_lower) {
+                        let has_other = existing.value().iter().any(|uid| uid != self.uid);
+                        if has_other {
+                            // Nick is already in use by an existing session; reject this connection
+                            let reply = Response::err_nicknameinuse(nick, nick)
+                                .with_prefix(Prefix::ServerName(server_name.to_string()));
+                            self.write(reply).await?;
+                            let error = Message::from(Command::ERROR(
+                                "Closing Link: Nickname in use (multiclient disabled)".to_string(),
+                            ));
+                            self.write(error).await?;
+                            return Err(HandlerError::NicknameInUse(nick.clone()));
+                        }
+                    }
+                }
+            }
+            // Reject duplicate nick when no account is present (no bouncer)
+            if self.state.account.is_none() {
+                let nick_lower = slirc_proto::irc_to_lower(nick);
+                if let Some(existing) = self.matrix.user_manager.nicks.get(&nick_lower) {
+                    let has_other = existing.value().iter().any(|uid| uid != self.uid);
+                    if has_other {
+                        let reply = Response::err_nicknameinuse(nick, nick)
+                            .with_prefix(Prefix::ServerName(server_name.to_string()));
+                        self.write(reply).await?;
+                        let error = Message::from(Command::ERROR(
+                            "Closing Link: Nickname in use".to_string(),
+                        ));
+                        self.write(error).await?;
+                        return Err(HandlerError::NicknameInUse(nick.clone()));
+                    }
+                }
+            }
             let nick_lower = slirc_proto::irc_to_lower(nick);
             if let Some(existing_uids) = self.matrix.user_manager.nicks.get(&nick_lower) {
                 let existing_uids_vec = existing_uids.value().clone();
@@ -309,6 +357,204 @@ impl<'a> WelcomeBurstWriter<'a> {
             }
         }
 
+        // Check if this is a bouncer reattachment (existing UID to share)
+        // If so, we DON'T create a new User - we reuse the existing one
+        if let Some(ref reattach_info) = self.state.reattach_info
+            && let Some(ref existing_uid) = reattach_info.existing_uid
+            && let Some(user_arc) = self.matrix.user_manager.users.get(existing_uid)
+        {
+            // Bouncer reattachment: this connection shares an existing User
+            // Look up the existing user to get their info for the welcome burst
+            let existing_user = user_arc.read().await;
+            let cloaked_host = existing_user.visible_host.clone();
+            let existing_nick = existing_user.nick.clone();
+            let existing_user_name = existing_user.user.clone();
+
+            tracing::info!(
+                new_session_id = %self.state.session_id,
+                existing_uid = %existing_uid,
+                nick = %existing_nick,
+                account = %reattach_info.account,
+                "Bouncer reattachment: sharing existing User"
+            );
+
+            // Decrement unregistered counter (connection is now "registered" by sharing)
+            self.matrix.user_manager.decrement_unregistered();
+
+            // Send welcome burst using existing user info
+            // 001 RPL_WELCOME
+            let welcome = server_reply(
+                server_name,
+                Response::RPL_WELCOME,
+                vec![
+                    existing_nick.clone(),
+                    format!(
+                        "Welcome to the {} IRC Network {}!{}@{}",
+                        network, existing_nick, existing_user_name, cloaked_host
+                    ),
+                ],
+            );
+            self.write(welcome).await?;
+
+            // 002 RPL_YOURHOST
+            let yourhost = server_reply(
+                server_name,
+                Response::RPL_YOURHOST,
+                vec![
+                    existing_nick.clone(),
+                    format!(
+                        "Your host is {}, running version slircd-ng-0.1.0",
+                        server_name
+                    ),
+                ],
+            );
+            self.write(yourhost).await?;
+
+            // 003 RPL_CREATED
+            let created = server_reply(
+                server_name,
+                Response::RPL_CREATED,
+                vec![
+                    existing_nick.clone(),
+                    "This server was created at startup".to_string(),
+                ],
+            );
+            self.write(created).await?;
+
+            // 004 RPL_MYINFO
+            let myinfo = server_reply(
+                server_name,
+                Response::RPL_MYINFO,
+                vec![
+                    existing_nick.clone(),
+                    server_name.to_string(),
+                    "slircd-ng-0.1.0".to_string(),
+                    "iowrZ".to_string(),
+                    "beIiklmnopqrstv".to_string(),
+                ],
+            );
+            self.write(myinfo).await?;
+
+            // 005 RPL_ISUPPORT - use the same builder as normal registration
+            let chanmodes = ChanModesBuilder::new()
+                .list_modes("beIq")
+                .param_always("k")
+                .param_set("l")
+                .no_param("imnrstMU");
+
+            let targmax = TargMaxBuilder::new()
+                .add("JOIN", 10)
+                .add("PART", 10)
+                .add("KICK", 4)
+                .add("PRIVMSG", 4)
+                .add("NOTICE", 4)
+                .add("NAMES", 10)
+                .add("WHOIS", 1)
+                .add("WHOWAS", 10);
+
+            let builder = IsupportBuilder::new()
+                .network(network)
+                .custom("METADATA", None)
+                .casemapping(self.matrix.config.server.casemapping.as_isupport_value())
+                .chantypes("#&+!")
+                .prefix("~&@%+", "qaohv")
+                .chanmodes_typed(chanmodes)
+                .max_nick_length(30)
+                .custom("CHANNELLEN", Some("50"))
+                .max_topic_length(390)
+                .custom("KICKLEN", Some("390"))
+                .custom("AWAYLEN", Some("200"))
+                .modes_count(6)
+                .custom("MAXTARGETS", Some("4"))
+                .targmax(targmax)
+                .custom("MONITOR", Some("100"))
+                .excepts(Some('e'))
+                .invex(Some('I'))
+                .custom("EXTBAN", Some(",m"))
+                .custom("ELIST", Some("MNU"))
+                .status_msg("~&@%+")
+                .custom("BOT", Some("B"))
+                .custom("WHOX", None)
+                .custom("UTF8ONLY", None);
+
+            for line in builder.build_lines(13) {
+                let reply = server_reply(
+                    server_name,
+                    Response::RPL_ISUPPORT,
+                    vec![
+                        existing_nick.clone(),
+                        line,
+                        "are supported by this server".to_string(),
+                    ],
+                );
+                self.write(reply).await?;
+            }
+
+            // 396 RPL_HOSTHIDDEN
+            let hostmask = server_reply(
+                server_name,
+                Response::RPL_HOSTHIDDEN,
+                vec![
+                    existing_nick.clone(),
+                    cloaked_host.clone(),
+                    "is now your displayed host".to_string(),
+                ],
+            );
+            self.write(hostmask).await?;
+
+            // 375 RPL_MOTDSTART
+            let motdstart = server_reply(
+                server_name,
+                Response::RPL_MOTDSTART,
+                vec![
+                    existing_nick.clone(),
+                    format!("- {} Message of the Day -", server_name),
+                ],
+            );
+            self.write(motdstart).await?;
+
+            // 372 RPL_MOTD
+            for line in &self.matrix.server_info.motd_lines {
+                let motd = server_reply(
+                    server_name,
+                    Response::RPL_MOTD,
+                    vec![existing_nick.clone(), format!("- {}", line)],
+                );
+                self.write(motd).await?;
+            }
+
+            // 376 RPL_ENDOFMOTD
+            let endmotd = server_reply(
+                server_name,
+                Response::RPL_ENDOFMOTD,
+                vec![existing_nick.clone(), "End of /MOTD command.".to_string()],
+            );
+            self.write(endmotd).await?;
+
+            // Auto-join existing channels (replay channel state)
+            for (channel_name, membership) in &reattach_info.channels {
+                // Send synthetic JOIN to the client
+                let join_msg = Message {
+                    tags: None,
+                    prefix: Some(Prefix::new(
+                        existing_nick.clone(),
+                        existing_user_name.clone(),
+                        cloaked_host.clone(),
+                    )),
+                    command: Command::JOIN(channel_name.clone(), None, None),
+                };
+                self.write(join_msg).await?;
+
+                tracing::debug!(
+                    channel = %channel_name,
+                    modes = %membership.modes,
+                    "Replaying channel join for reattached session"
+                );
+            }
+
+            return Ok(true); // Reattachment successful
+        }
+
         // Create user in Matrix
         let security_config = &self.matrix.config.security;
         let ip = webirc_ip.clone().unwrap_or_else(|| remote_ip.clone());
@@ -324,6 +570,7 @@ impl<'a> WelcomeBurstWriter<'a> {
             caps: self.state.capabilities.clone(),
             certfp: self.state.certfp.clone(),
             last_modified: self.matrix.clock(),
+            session_id: self.state.session_id,
         });
 
         // Set account and +r if authenticated via SASL
@@ -529,7 +776,7 @@ impl<'a> WelcomeBurstWriter<'a> {
             )
             .await;
 
-        Ok(())
+        Ok(false) // Normal registration (new User created)
     }
 }
 

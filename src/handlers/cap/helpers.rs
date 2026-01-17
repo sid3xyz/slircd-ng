@@ -36,19 +36,15 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
             if *version >= 302 {
                 match cap {
                     Capability::Sasl => {
-                        // SECURITY NOTE: In production, SASL should only be advertised over TLS
-                        // For test environments, we allow it on localhost plaintext
-                        // TODO: Add config option for SASL TLS requirement
-                        
-                        // SCRAM-SHA-256 is safe even on plaintext, but PLAIN leaks password
-                        if *has_cert {
-                            Some("sasl=SCRAM-SHA-256,PLAIN,EXTERNAL".to_string())
-                        } else if *is_tls {
-                            Some("sasl=SCRAM-SHA-256,PLAIN".to_string())
+                        // Advertise SASL only on TLS connections; include EXTERNAL when a client certificate is present.
+                        if *is_tls {
+                            if *has_cert {
+                                Some("sasl=SCRAM-SHA-256,PLAIN,EXTERNAL".to_string())
+                            } else {
+                                Some("sasl=SCRAM-SHA-256,PLAIN".to_string())
+                            }
                         } else {
-                            // Plaintext: only offer SCRAM for security
-                            // TODO: Make this configurable - in test mode allow PLAIN
-                            Some("sasl=SCRAM-SHA-256,PLAIN".to_string())
+                            None
                         }
                     }
                     Capability::Multiline => Some(format!(
@@ -103,13 +99,14 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
                     _ => Some(cap.as_ref().to_string()),
                 }
             } else {
-                // For older CAP versions, allow SASL (for testing)
-                // In production, consider requiring TLS
+                // For older CAP versions, do not advertise SASL on plaintext
                 if *cap == Capability::Tls && *is_tls {
                     // Don't advertise tls (STARTTLS) on already-TLS connections
                     None
                 } else if *cap == Capability::Sts {
                     // STS requires CAP 302+ for values
+                    None
+                } else if *cap == Capability::Sasl && !*is_tls {
                     None
                 } else {
                     Some(cap.as_ref().to_string())

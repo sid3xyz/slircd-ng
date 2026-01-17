@@ -62,6 +62,14 @@ pub enum UserMode {
     ServerNotices,
     /// 'x' - User's hostname is masked/cloaked
     MaskedHost,
+    /// 'p' - Hide channels in WHOIS
+    HideChannels,
+    /// 'd' - User is deaf (doesn't receive channel messages)
+    Deaf,
+    /// 'g' - CallerID (whitelist-only private messaging)
+    CallerId,
+    /// 'N' - Network Administrator
+    NetAdmin,
     /// Unknown mode character
     Unknown(char),
 }
@@ -88,6 +96,10 @@ impl ModeType for UserMode {
             'O' => Self::LocalOper,
             's' => Self::ServerNotices,
             'x' => Self::MaskedHost,
+            'p' => Self::HideChannels,
+            'd' => Self::Deaf,
+            'g' => Self::CallerId,
+            'N' => Self::NetAdmin,
             _ => Self::Unknown(c),
         }
     }
@@ -107,6 +119,10 @@ impl fmt::Display for UserMode {
             Self::LocalOper => 'O',
             Self::ServerNotices => 's',
             Self::MaskedHost => 'x',
+            Self::HideChannels => 'p',
+            Self::Deaf => 'd',
+            Self::CallerId => 'g',
+            Self::NetAdmin => 'N',
             Self::Unknown(c) => *c,
         };
         write!(f, "{}", c)
@@ -133,10 +149,12 @@ pub enum ChannelMode {
     // === Modes that take argument when set ===
     /// 'l' - User limit (takes number when set)
     Limit,
-    /// 'k' - Channel key/password
+    /// 'f' - Advanced flood protection
+    Flood,
+    /// 'F' - Channel forwarding (redirects joins to another channel)
+    JoinForward,
+    /// 'k' - Channel key
     Key,
-    /// 'f' - Channel forwarding (redirects joins to another channel)
-    Forward,
 
     // === Modes without arguments ===
     /// 'i' - Invite only
@@ -181,6 +199,16 @@ pub enum ChannelMode {
     TlsOnly,
     /// 'E' - Roleplay enabled (Ergo extension)
     Roleplay,
+    /// 'D' - Delayed join
+    DelayedJoin,
+    /// 'S' - Strip color codes
+    StripColors,
+    /// 'B' - Anti-caps (block messages with too many caps)
+    AntiCaps,
+    /// 'L' - Redirect to another channel when limit (+l) exceeded
+    Redirect,
+    /// 'G' - Channel message filter/censor
+    Censor,
 
     // === Prefix modes (grant channel privileges) ===
     /// 'q' - Channel founder (~) - note: conflicts with Quiet on some servers
@@ -208,12 +236,14 @@ impl ModeType for ChannelMode {
                 | Self::Quiet
                 | Self::Limit
                 | Self::Key
-                | Self::Forward
+                | Self::Flood
+                | Self::JoinForward
                 | Self::Founder
                 | Self::Admin
                 | Self::Oper
                 | Self::Halfop
                 | Self::Voice
+                | Self::Redirect
         )
     }
 
@@ -232,7 +262,8 @@ impl ModeType for ChannelMode {
             'I' => Self::InviteException,
             'l' => Self::Limit,
             'k' => Self::Key,
-            'f' => Self::Forward,
+            'f' => Self::Flood,
+            'F' => Self::JoinForward,
             'i' => Self::InviteOnly,
             'm' => Self::Moderated,
             'M' => Self::ModeratedUnreg,
@@ -254,6 +285,11 @@ impl ModeType for ChannelMode {
             'g' => Self::FreeInvite,
             'z' => Self::TlsOnly,
             'E' => Self::Roleplay,
+            'D' => Self::DelayedJoin,
+            'S' => Self::StripColors,
+            'B' => Self::AntiCaps,
+            'L' => Self::Redirect,
+            'G' => Self::Censor,
             'q' => Self::Quiet,
             // 'Q' => Self::Founder,
             'a' => Self::Admin,
@@ -273,7 +309,8 @@ impl fmt::Display for ChannelMode {
             Self::InviteException => 'I',
             Self::Limit => 'l',
             Self::Key => 'k',
-            Self::Forward => 'f',
+            Self::Flood => 'f',
+            Self::JoinForward => 'F',
             Self::InviteOnly => 'i',
             Self::Moderated => 'm',
             Self::NoExternalMessages => 'n',
@@ -292,6 +329,11 @@ impl fmt::Display for ChannelMode {
             Self::FreeInvite => 'g',
             Self::TlsOnly => 'z',
             Self::Roleplay => 'E',
+            Self::DelayedJoin => 'D',
+            Self::StripColors => 'S',
+            Self::AntiCaps => 'B',
+            Self::Redirect => 'L',
+            Self::Censor => 'G',
             Self::Quiet => 'q',
             Self::Founder => 'q',
             Self::Admin => 'a',

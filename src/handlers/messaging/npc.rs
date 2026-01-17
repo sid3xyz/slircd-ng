@@ -12,7 +12,8 @@ use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, channel_has_mode, is_user_in_channel,
     server_reply,
 };
-use super::common::{RouteMeta, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot};
+use super::routing::route_to_channel_with_snapshot;
+use super::types::{RouteMeta, RouteOptions, SenderSnapshot};
 use crate::handlers::helpers::join_message_args;
 use crate::history::{MessageEnvelope, StoredMessage};
 use crate::state::RegisteredState;

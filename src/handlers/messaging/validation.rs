@@ -9,7 +9,7 @@
 //! NOT here. This prevents double-checking which would consume tokens twice
 //! and create bypass opportunities.
 
-use super::common::SenderSnapshot;
+use super::types::SenderSnapshot;
 use crate::handlers::{Context, HandlerError, server_reply};
 use crate::state::RegisteredState;
 use slirc_proto::Response;
@@ -51,7 +51,7 @@ pub async fn validate_message_send(
     snapshot: &SenderSnapshot,
 ) -> Result<ValidationResult, HandlerError> {
     // Check shun first - always silent
-    if super::common::is_shunned_with_snapshot(ctx, snapshot).await {
+    if super::types::is_shunned_with_snapshot(ctx, snapshot).await {
         return Ok(ValidationResult::Blocked);
     }
 

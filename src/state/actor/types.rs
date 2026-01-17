@@ -136,6 +136,7 @@ pub enum ChannelEvent {
     },
     /// User detached (multiclient session end).
     /// Removes the user from the channel without broadcasting a message.
+    #[allow(dead_code)]
     Detach {
         uid: Uid,
         reply_tx: oneshot::Sender<usize>,
@@ -318,6 +319,10 @@ pub enum ChannelRouteResult {
     BlockedNotice,
     /// Blocked by +b (banned).
     BlockedBanned,
+    /// Blocked by +B (anti-caps).
+    BlockedAntiCaps,
+    /// Blocked by +G (censored).
+    BlockedCensored,
 }
 
 /// Channel modes (Ported from legacy code).
@@ -371,12 +376,24 @@ pub enum ChannelMode {
     RegisteredOnly,
     /// +E: Roleplay enabled (allows NPC command, Ergo extension)
     Roleplay,
+    /// +D: Delayed Join (users don't show as joined until they speak)
+    DelayedJoin,
+    /// +S: Strip Colors (strip color codes from messages)
+    StripColors,
+    /// +B: Anti-Caps (block messages with too many caps)
+    AntiCaps,
+    /// +G: Censor (filter messages for banned words)
+    Censor,
     /// +k <key>: Channel key required to join
     Key(String, slirc_proto::sync::clock::HybridTimestamp),
     /// +l <limit>: User limit
     Limit(usize, slirc_proto::sync::clock::HybridTimestamp),
-    /// +f <channel>: Forward to channel on join error
-    Forward(String, slirc_proto::sync::clock::HybridTimestamp),
+    /// +F <channel>: Forward to channel on join error
+    JoinForward(String, slirc_proto::sync::clock::HybridTimestamp),
+    /// +f <lines:seconds>: Advanced flood protection
+    Flood(String, slirc_proto::sync::clock::HybridTimestamp),
+    /// +L <channel>: Redirect to channel when limit (+l) reached
+    Redirect(String, slirc_proto::sync::clock::HybridTimestamp),
 }
 
 #[derive(Debug, Clone)]

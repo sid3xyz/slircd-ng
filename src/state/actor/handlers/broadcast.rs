@@ -7,23 +7,20 @@ use super::{ChannelActor, Uid};
 use slirc_proto::{Command, Message, Prefix};
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::sync::mpsc::error::TrySendError;
+
 use tracing::{trace, warn};
 
 impl ChannelActor {
     pub(crate) async fn handle_broadcast(&mut self, message: Message, exclude: Option<Uid>) {
         let msg = Arc::new(message);
 
-        // Broadcast to local users
-        for (uid, sender) in &self.senders {
-            if exclude.as_ref() == Some(uid) {
-                continue;
-            }
-            if let Err(err) = sender.try_send(msg.clone()) {
-                match err {
-                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
-                    TrySendError::Closed(_) => {}
+        // Broadcast to local users using UserManager's multi-sender infrastructure
+        if let Some(matrix) = self.matrix.upgrade() {
+            for uid in self.members.keys() {
+                if exclude.as_ref() == Some(uid) {
+                    continue;
                 }
+                matrix.user_manager.try_send_to_uid(uid, msg.clone());
             }
         }
 
@@ -141,36 +138,35 @@ impl ChannelActor {
         let mut delivered_uids: HashSet<Uid> = HashSet::new();
 
         // 1. Send to existing members
-        for (uid, sender) in &self.senders {
-            if exclude.contains(uid) {
-                continue;
-            }
+        // Use UserManager's multi-sender infrastructure for bouncer mode support
+        if let Some(matrix) = self.matrix.upgrade() {
+            for uid in self.members.keys() {
+                if exclude.contains(uid) {
+                    continue;
+                }
 
-            let should_send_main = if let Some(cap) = &required_cap {
-                if let Some(caps) = self.user_caps.get(uid) {
-                    caps.contains(cap)
+                let should_send_main = if let Some(cap) = &required_cap {
+                    if let Some(caps) = self.user_caps.get(uid) {
+                        caps.contains(cap)
+                    } else {
+                        false
+                    }
                 } else {
-                    false
-                }
-            } else {
-                true
-            };
+                    true
+                };
 
-            let msg_to_send = if should_send_main {
-                msg.clone()
-            } else if let Some(fb) = &fallback {
-                fb.clone()
-            } else {
-                continue;
-            };
+                let msg_to_send = if should_send_main {
+                    msg.clone()
+                } else if let Some(fb) = &fallback {
+                    fb.clone()
+                } else {
+                    continue;
+                };
 
-            if let Err(err) = sender.try_send(msg_to_send) {
-                match err {
-                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
-                    TrySendError::Closed(_) => {}
-                }
+                // Use try_send_to_uid which broadcasts to all sessions sharing this UID
+                matrix.user_manager.try_send_to_uid(uid, msg_to_send);
+                delivered_uids.insert(uid.clone());
             }
-            delivered_uids.insert(uid.clone());
         }
 
         // 2. Multiclient Fan-out
@@ -200,35 +196,37 @@ impl ChannelActor {
 
             // Send to extra targets
             for uid in extra_targets {
-                if let Some(sender) = matrix.user_manager.senders.get(&uid) {
-                    // Fetch caps for this user
-                    let caps_opt = if let Some(u) = matrix.user_manager.users.get(&uid) {
-                        Some(u.read().await.caps.clone())
-                    } else {
-                        None
-                    };
-
-                    let should_send_main = if let Some(cap) = &required_cap {
-                        if let Some(caps) = &caps_opt {
-                            caps.contains(cap)
-                        } else {
-                            false
-                        }
-                    } else {
-                        true
-                    };
-
-                    let msg_to_send = if should_send_main {
-                        msg.clone()
-                    } else if let Some(fb) = &fallback {
-                        fb.clone()
-                    } else {
-                        continue;
-                    };
-
-                    let _ = sender.try_send(msg_to_send);
-                    delivered_uids.insert(uid);
+                if delivered_uids.contains(&uid) {
+                    continue;
                 }
+
+                // Fetch caps for this user
+                let caps_opt = if let Some(u) = matrix.user_manager.users.get(&uid) {
+                    Some(u.read().await.caps.clone())
+                } else {
+                    None
+                };
+
+                let should_send_main = if let Some(cap) = &required_cap {
+                    if let Some(caps) = &caps_opt {
+                        caps.contains(cap)
+                    } else {
+                        false
+                    }
+                } else {
+                    true
+                };
+
+                let msg_to_send = if should_send_main {
+                    msg.clone()
+                } else if let Some(fb) = &fallback {
+                    fb.clone()
+                } else {
+                    continue;
+                };
+
+                matrix.user_manager.try_send_to_uid(&uid, msg_to_send);
+                delivered_uids.insert(uid);
             }
         }
     }

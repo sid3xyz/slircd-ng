@@ -2,16 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.0.0-rc.1] - 2026-01-17
+
+First Release Candidate. Feature-complete and verified.
 
 ### Added
 
 **Bouncer/Multiclient Support (IRCv3)**
 - Full account-based message fan-out to all connected sessions
 - State synchronization across clients (JOIN/PART/NICK/MODE propagation)
-- Self-echo support for multi-device consistency
+- **Self-echo support**: Messages sent from one device are now correctly echoed to all other devices.
 - Client session tracking via `ClientManager`
 - Device tagging for session identification
+
+**S2S Implementation**
+- `CONNECT` command fully implemented (outbound connections via SyncManager)
+- `SQUIT` command fully implemented (graceful disconnect with error propagation)
+
+### Fixed
+- Fixed bouncer self-echo where messages were not routing to other sessions of the same user.
+- Refactored `src/handlers/messaging` for better modularity.
+- Resolved unused imports in messaging handlers.
 
 ## [1.0.0-alpha.1] - 2026-01-12
 

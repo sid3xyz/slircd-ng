@@ -195,11 +195,20 @@ impl PostRegHandler for ListHandler {
                 continue;
             }
 
-            let topic_text = channel
-                .topic
-                .as_ref()
-                .map(|t| t.text.clone())
-                .unwrap_or_default();
+            let is_private = channel
+                .modes
+                .contains(&crate::state::actor::ChannelMode::Private);
+            let show_topic = !is_private || channel.is_member;
+
+            let topic_text = if show_topic {
+                channel
+                    .topic
+                    .as_ref()
+                    .map(|t| t.text.clone())
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
 
             // RPL_LIST (322): <channel> <# visible> :<topic>
             let reply = server_reply(

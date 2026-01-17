@@ -61,10 +61,18 @@ pub struct ChannelActor {
     pub excepts: Vec<ListEntry>,
     pub invex: Vec<ListEntry>,
     pub quiets: Vec<ListEntry>,
+    /// Users who joined via +D (Delayed Join) and haven't spoken yet.
+    pub silent_members: HashSet<Uid>,
 
     // State
     pub invites: VecDeque<InviteEntry>,
     pub kicked_users: HashMap<Uid, Instant>,
+    /// Flood protection config (lines, seconds)
+    pub flood_config: Option<(u32, u32)>,
+    /// Per-user message flood limiters for this channel
+    pub flood_message_limiters: HashMap<Uid, governor::DefaultDirectRateLimiter>,
+    /// Per-user join flood limiters for this channel (if applicable)
+    pub flood_join_limiters: HashMap<Uid, governor::DefaultDirectRateLimiter>,
     matrix: Weak<Matrix>,
     state: ActorState,
     observer: Option<Arc<dyn StateObserver>>,
@@ -121,7 +129,11 @@ impl ChannelActor {
             invex: Vec::new(),
             quiets: Vec::new(),
             invites: VecDeque::new(),
+            silent_members: HashSet::new(),
             kicked_users: HashMap::new(),
+            flood_config: None,
+            flood_message_limiters: HashMap::new(),
+            flood_join_limiters: HashMap::new(),
             matrix,
             state: ActorState::Active,
             observer,
@@ -369,7 +381,11 @@ mod tests {
             invex: Vec::new(),
             quiets: Vec::new(),
             invites: VecDeque::new(),
+            silent_members: HashSet::new(),
             kicked_users: HashMap::new(),
+            flood_config: None,
+            flood_message_limiters: HashMap::new(),
+            flood_join_limiters: HashMap::new(),
             matrix: Weak::new(),
             state: ActorState::Active,
             observer: None,

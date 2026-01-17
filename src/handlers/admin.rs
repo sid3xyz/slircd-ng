@@ -72,12 +72,7 @@ impl PostRegHandler for SajoinHandler {
         };
 
         // Get sender for the target user to send topic/names
-        let target_sender = ctx
-            .matrix
-            .user_manager
-            .senders
-            .get(&target_uid)
-            .map(|r| r.clone());
+        let target_sender = ctx.matrix.user_manager.get_first_sender(&target_uid);
 
         // Use shared force_join_channel helper
         let target = TargetUser {
@@ -314,13 +309,7 @@ impl PostRegHandler for SanickHandler {
         }
 
         // Also send to the target user
-        let sender = ctx
-            .matrix
-            .user_manager
-            .senders
-            .get(&target_uid)
-            .map(|s| s.value().clone());
-        if let Some(sender) = sender {
+        if let Some(sender) = ctx.matrix.user_manager.get_first_sender(&target_uid) {
             let _ = sender.send(Arc::new(nick_msg)).await;
         }
 

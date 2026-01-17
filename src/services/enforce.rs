@@ -70,7 +70,7 @@ async fn check_expired_timers(matrix: &Arc<Matrix>) {
         );
 
         // Get sender for the user
-        let sender = if let Some(s) = matrix.user_manager.senders.get_cloned(&uid) {
+        let sender = if let Some(s) = matrix.user_manager.get_first_sender(&uid) {
             s
         } else {
             debug!(uid = %uid, "No sender found for user, cannot send enforcement messages");

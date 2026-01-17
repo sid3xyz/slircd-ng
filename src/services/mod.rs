@@ -185,7 +185,7 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
             let target_nick = user_arc.read().await.nick.clone();
 
             // Try local sender first (for local users)
-            if let Some(target_tx) = matrix.user_manager.senders.get_cloned(&target_uid) {
+            if let Some(target_tx) = matrix.user_manager.get_first_sender(&target_uid) {
                 if let Command::NOTICE(_, text) = msg.command {
                     msg.command = Command::NOTICE(target_nick, text);
                 }
@@ -239,10 +239,11 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
 
             for (uid, user_arc) in user_data {
                 let user = user_arc.read().await;
-                if user.caps.contains("account-notify")
-                    && let Some(tx) = matrix.user_manager.senders.get_cloned(&uid)
-                {
-                    let _ = tx.send(Arc::new(mode_msg.clone())).await;
+                if user.caps.contains("account-notify") {
+                    matrix
+                        .user_manager
+                        .send_to_uid(&uid, Arc::new(mode_msg.clone()))
+                        .await;
                 }
             }
         }
@@ -300,7 +301,7 @@ pub async fn apply_effect(
             let target_nick = user_arc.read().await.nick.clone();
 
             // 2. Route the message to the target's sender channel
-            if let Some(target_tx) = matrix.user_manager.senders.get_cloned(&target_uid) {
+            if let Some(target_tx) = matrix.user_manager.get_first_sender(&target_uid) {
                 // Update the NOTICE command with the correct target nick
                 // Move text out of old command to avoid clone
                 if let Command::NOTICE(_, text) = msg.command {
@@ -365,10 +366,10 @@ pub async fn apply_effect(
                 ),
             };
 
-            let sender = matrix.user_manager.senders.get_cloned(&target_uid);
-            if let Some(sender) = sender {
-                let _ = sender.send(Arc::new(mode_msg)).await;
-            }
+            matrix
+                .user_manager
+                .send_to_uid(&target_uid, Arc::new(mode_msg))
+                .await;
         }
 
         ServiceEffect::AccountClear { target_uid } => {
@@ -409,10 +410,10 @@ pub async fn apply_effect(
                 ),
             };
 
-            let sender = matrix.user_manager.senders.get_cloned(&target_uid);
-            if let Some(sender) = sender {
-                let _ = sender.send(Arc::new(mode_msg)).await;
-            }
+            matrix
+                .user_manager
+                .send_to_uid(&target_uid, Arc::new(mode_msg))
+                .await;
 
             info!(uid = %target_uid, "User account cleared");
         }
@@ -611,10 +612,10 @@ pub async fn apply_effect(
             }
 
             // Also send to the user themselves
-            let sender = matrix.user_manager.senders.get_cloned(&target_uid);
-            if let Some(sender) = sender {
-                let _ = sender.send(Arc::new(nick_msg)).await;
-            }
+            matrix
+                .user_manager
+                .send_to_uid(&target_uid, Arc::new(nick_msg))
+                .await;
 
             info!(uid = %target_uid, old = %old_nick, new = %new_nick, "Forced nick change");
         }
@@ -661,10 +662,10 @@ pub async fn apply_effect(
             }
 
             // Also send to the user themselves
-            let sender = matrix.user_manager.senders.get_cloned(&target_uid);
-            if let Some(sender) = sender {
-                let _ = sender.send(Arc::new(account_msg.clone())).await;
-            }
+            matrix
+                .user_manager
+                .send_to_uid(&target_uid, Arc::new(account_msg.clone()))
+                .await;
 
             // Extended MONITOR: Notify watchers with extended-monitor + account-notify
             notify_extended_monitor_watchers(matrix, &nick, account_msg, "account-notify").await;

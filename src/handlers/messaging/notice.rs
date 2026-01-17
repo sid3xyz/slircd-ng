@@ -3,9 +3,10 @@
 //! Per RFC 2812, NOTICE errors are silently ignored (no error replies).
 
 use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_prefix};
-use super::common::{
+// Removed: use super::delivery::{send_cannot_send, send_no_such_channel};
+use super::routing::{route_to_channel_with_snapshot, route_to_user_with_snapshot};
+use super::types::{
     ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult,
-    route_to_channel_with_snapshot, route_to_user_with_snapshot,
 };
 use super::validation::{ErrorStrategy, validate_message_send};
 use crate::history::types::MessageTag as HistoryTag;

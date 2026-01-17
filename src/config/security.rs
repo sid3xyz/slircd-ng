@@ -101,6 +101,9 @@ pub struct SpamConfig {
     /// RBL (Realtime Blocklist) configuration.
     #[serde(default)]
     pub rbl: RblConfig,
+    /// List of censored words for channel mode +G.
+    #[serde(default)]
+    pub censored_words: Vec<String>,
 }
 
 impl Default for SpamConfig {
@@ -110,6 +113,7 @@ impl Default for SpamConfig {
             reputation_enabled: true,
             heuristics: HeuristicsConfig::default(),
             rbl: RblConfig::default(),
+            censored_words: Vec::new(),
         }
     }
 }

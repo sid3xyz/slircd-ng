@@ -327,10 +327,10 @@ pub async fn notify_monitors_online(matrix: &Arc<Matrix>, nick: &str, user: &str
     );
 
     for watcher_uid in watcher_uids {
-        let sender = matrix.user_manager.senders.get_cloned(&watcher_uid);
-        if let Some(sender) = sender {
-            let _ = sender.send(Arc::new(reply.clone())).await;
-        }
+        matrix
+            .user_manager
+            .send_to_uid(&watcher_uid, Arc::new(reply.clone()))
+            .await;
     }
 }
 
@@ -360,10 +360,10 @@ pub async fn notify_monitors_offline(matrix: &Arc<Matrix>, nick: &str) {
     );
 
     for watcher_uid in watcher_uids {
-        let sender = matrix.user_manager.senders.get_cloned(&watcher_uid);
-        if let Some(sender) = sender {
-            let _ = sender.send(Arc::new(reply.clone())).await;
-        }
+        matrix
+            .user_manager
+            .send_to_uid(&watcher_uid, Arc::new(reply.clone()))
+            .await;
     }
 }
 
@@ -430,10 +430,10 @@ pub async fn notify_extended_monitor_watchers(
         };
 
         if should_send {
-            let sender = matrix.user_manager.senders.get_cloned(&watcher_uid);
-            if let Some(sender) = sender {
-                let _ = sender.send(Arc::new(msg.clone())).await;
-            }
+            matrix
+                .user_manager
+                .send_to_uid(&watcher_uid, Arc::new(msg.clone()))
+                .await;
         }
     }
 }

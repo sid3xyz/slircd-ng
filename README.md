@@ -4,7 +4,7 @@
 
 [![Rust 1.85+](https://img.shields.io/badge/Rust-1.85+-orange?logo=rust)](https://www.rust-lang.org)
 [![License: Unlicense](https://img.shields.io/badge/License-Unlicense-blue)](LICENSE)
-[![Alpha Release](https://img.shields.io/badge/Release-v1.0.0--alpha.1-brightgreen)](https://github.com/sid3xyz/slircd-ng/releases/tag/v1.0.0-alpha.1)
+[![Alpha Release](https://img.shields.io/badge/Release-v1.0.0--rc.1-brightgreen)](https://github.com/sid3xyz/slircd-ng/releases/tag/v1.0.0-rc.1)
 [![CI/CD](https://github.com/sid3xyz/slircd-ng/actions/workflows/ci.yml/badge.svg)](https://github.com/sid3xyz/slircd-ng/actions)
 
 > **A high-performance, distributed IRC daemon** written in Rust with modern architecture: zero-copy parsing, actor-based channels, and CRDT state synchronization.
@@ -44,6 +44,10 @@ line3 = "Admin URL"
 
 [database]
 path = "data/irc.db"
+
+[multiclient]
+enabled = true
+always_on = "opt-in"
 ```
 
 Then run:
@@ -61,7 +65,7 @@ Connect with your IRC client:
 
 ---
 
-## Status: v1.0.0-alpha.1 ✅
+## Status: v1.0.0-rc.1 ✅
 
 ### Release Highlights
 

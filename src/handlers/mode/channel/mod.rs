@@ -102,20 +102,21 @@ async fn validate_key_mode(
     Ok(ModeValidation::Valid)
 }
 
-/// Validate a channel forward mode.
+/// Validate a channel forward/redirect mode.
 ///
 /// Checks that:
 /// - The target channel name is valid (starts with channel prefix)
 /// - The target channel exists
-/// - The user has channel ops in the target channel (if +f being set)
-async fn validate_forward_mode(
+/// - The user has channel ops in the target channel (if being set)
+async fn validate_channel_target_mode(
     ctx: &mut Context<'_, RegisteredState>,
     mode: &Mode<ChannelMode>,
     nick: &str,
     canonical_name: &str,
+    mode_char: char,
 ) -> Result<ModeValidation, HandlerError> {
     if !mode.is_plus() {
-        // Removing forward is always valid
+        // Removing target is always valid
         return Ok(ModeValidation::Valid);
     }
 
@@ -132,7 +133,7 @@ async fn validate_forward_mode(
             vec![
                 nick.to_string(),
                 canonical_name.to_string(),
-                "f".to_string(),
+                mode_char.to_string(),
                 target.to_string(),
                 "Invalid target channel".to_string(),
             ],
@@ -156,7 +157,7 @@ async fn validate_forward_mode(
             vec![
                 nick.to_string(),
                 canonical_name.to_string(),
-                "f".to_string(),
+                mode_char.to_string(),
                 target.to_string(),
                 "Target channel does not exist".to_string(),
             ],
@@ -202,6 +203,45 @@ async fn validate_forward_mode(
             ctx.sender.send(reply).await?;
             return Ok(ModeValidation::Invalid);
         }
+    }
+
+    Ok(ModeValidation::Valid)
+}
+
+/// Validate a channel flood mode.
+async fn validate_flood_mode(
+    ctx: &mut Context<'_, RegisteredState>,
+    mode: &Mode<ChannelMode>,
+    nick: &str,
+    canonical_name: &str,
+) -> Result<ModeValidation, HandlerError> {
+    if !mode.is_plus() {
+        return Ok(ModeValidation::Valid);
+    }
+
+    let Some(param) = mode.arg() else {
+        return Ok(ModeValidation::NoArg);
+    };
+
+    // Check format: lines:seconds
+    let parts: Vec<&str> = param.split(':').collect();
+    if parts.len() != 2
+        || parts[0].parse::<u32>().is_err()
+        || parts[1].parse::<u32>().is_err()
+    {
+        let reply = server_reply(
+            ctx.server_name(),
+            Response::ERR_INVALIDMODEPARAM,
+            vec![
+                nick.to_string(),
+                canonical_name.to_string(),
+                "f".to_string(),
+                param.to_string(),
+                "Invalid flood parameter (format: lines:seconds)".to_string(),
+            ],
+        );
+        ctx.sender.send(reply).await?;
+        return Ok(ModeValidation::Invalid);
     }
 
     Ok(ModeValidation::Valid)
@@ -330,9 +370,15 @@ pub async fn handle_channel_mode(
                 }
                 // Channel key validation
                 ChannelMode::Key => validate_key_mode(ctx, mode, &nick, &canonical_name).await?,
-                // Channel forwarding validation
-                ChannelMode::Forward => {
-                    validate_forward_mode(ctx, mode, &nick, &canonical_name).await?
+                // Channel forwarding/redirect validation
+                ChannelMode::JoinForward => {
+                    validate_channel_target_mode(ctx, mode, &nick, &canonical_name, 'F').await?
+                }
+                ChannelMode::Flood => {
+                    validate_flood_mode(ctx, mode, &nick, &canonical_name).await?
+                }
+                ChannelMode::Redirect => {
+                    validate_channel_target_mode(ctx, mode, &nick, &canonical_name, 'L').await?
                 }
                 // All other modes pass through
                 _ => ModeValidation::Valid,

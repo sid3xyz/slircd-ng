@@ -304,6 +304,9 @@ impl CapabilityAuthority {
 
         /// Request capability to configure spam detection.
         request_spamconf_cap -> SpamConfCap,
+
+        /// Request capability to clear channel state (CLEARCHAN).
+        request_clearchan_cap -> ClearChanCap,
     }
 
     /// Request capability to bypass mode restrictions on a channel.

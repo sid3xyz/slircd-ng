@@ -131,6 +131,9 @@ define_capability!(oper WallopsCap, "oper:wallops",
 define_capability!(oper GlobOpsCap, "oper:globops",
     "Capability to send GLOBOPS. Required: IRC operator with globops privilege.");
 
+define_capability!(oper ClearChanCap, "oper:clearchan",
+    "Capability to clear channel state (CLEARCHAN). Required: IRC operator with clearchan privilege.");
+
 // ============================================================================
 // Special Capabilities
 // ============================================================================

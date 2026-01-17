@@ -15,10 +15,10 @@
 //! See: <https://modern.ircdocs.horse/ctcp.html>
 
 use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_prefix};
-use super::common::{
+use super::delivery::{send_cannot_send, send_no_such_channel};
+use super::routing::{route_to_channel_with_snapshot, route_to_user_with_snapshot};
+use super::types::{
     ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult,
-    route_to_channel_with_snapshot, route_to_user_with_snapshot, send_cannot_send,
-    send_no_such_channel,
 };
 use super::errors::*;
 use super::validation::{ErrorStrategy, validate_message_send};
@@ -340,6 +340,12 @@ async fn route_to_channel_target(
             }
             ChannelRouteResult::BlockedBanned => {
                 send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_BANNED).await?;
+            }
+            ChannelRouteResult::BlockedAntiCaps => {
+                send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_ANTI_CAPS).await?;
+            }
+            ChannelRouteResult::BlockedCensored => {
+                send_cannot_send(ctx, &snapshot.nick, target, CANNOT_SEND_CENSORED).await?;
             }
         }
     }

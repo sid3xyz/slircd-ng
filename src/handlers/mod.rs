@@ -37,6 +37,7 @@ mod monitor;
 mod oper;
 mod server;
 mod server_query;
+mod s2s;
 mod service_aliases;
 mod user_query;
 mod user_status;

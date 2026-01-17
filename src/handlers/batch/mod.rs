@@ -21,7 +21,6 @@ use super::{
     Context, HandlerResult, PostRegHandler, ResponseMiddleware, resolve_nick_or_nosuchnick,
 };
 use crate::state::RegisteredState;
-use crate::state::dashmap_ext::DashMapExt;
 use async_trait::async_trait;
 use slirc_proto::{
     BatchSubCommand, ChannelExt, Command, Message, MessageRef, Prefix, Response, Tag,
@@ -283,7 +282,7 @@ async fn deliver_multiline_to_channel(
         if member_uid == ctx.uid {
             // Echo to self - use pre-fetched has_echo_message
             if member_caps.has_echo_message {
-                let Some(sender) = ctx.matrix.user_manager.senders.get_cloned(ctx.uid) else {
+                let Some(sender) = ctx.matrix.user_manager.get_first_sender(ctx.uid) else {
                     continue;
                 };
 
@@ -314,7 +313,7 @@ async fn deliver_multiline_to_channel(
             }
         } else {
             // Send to other member - use direct channel and pre-fetched caps
-            let Some(member_sender) = ctx.matrix.user_manager.senders.get_cloned(member_uid) else {
+            let Some(member_sender) = ctx.matrix.user_manager.get_first_sender(member_uid) else {
                 continue;
             };
 
@@ -363,7 +362,7 @@ async fn deliver_multiline_to_user(
     };
 
     // Get target's sender
-    let Some(target_sender) = ctx.matrix.user_manager.senders.get_cloned(&target_uid) else {
+    let Some(target_sender) = ctx.matrix.user_manager.get_first_sender(&target_uid) else {
         return Ok(());
     };
 
@@ -431,7 +430,7 @@ async fn deliver_multiline_to_user(
     // Echo to sender if echo-message enabled (using pre-fetched caps)
     if sender_has_echo {
         // Get direct sender channel to bypass middleware and apply label manually
-        let Some(sender) = ctx.matrix.user_manager.senders.get_cloned(ctx.uid) else {
+        let Some(sender) = ctx.matrix.user_manager.get_first_sender(ctx.uid) else {
             return Ok(());
         };
 

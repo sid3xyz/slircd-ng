@@ -28,9 +28,7 @@ pub(super) async fn join_channel(
     let sender = ctx
         .matrix
         .user_manager
-        .senders
-        .get(ctx.uid)
-        .map(|s| s.value().clone())
+        .get_first_sender(ctx.uid)
         .ok_or(HandlerError::Internal("No sender found".into()))?;
 
     // Attempt to clone matrix as Arc - assuming ctx.matrix creates an Arc reference
@@ -51,10 +49,10 @@ pub(super) async fn join_channel(
     .await?;
 
     // Synchronization for sibling sessions (Multiclient)
-    if ctx.matrix.config.multiclient.enabled {
-        if let Some(join_msg) = join_msg {
-            broadcast_to_account(ctx, join_msg, true).await?;
-        }
+    if ctx.matrix.config.multiclient.enabled
+        && let Some(join_msg) = join_msg
+    {
+        broadcast_to_account(ctx, join_msg, true).await?;
     }
 
     Ok(())
@@ -126,41 +124,39 @@ pub(crate) async fn join_channel_internal(
     });
 
     // Check AKICK before joining (pass pre-fetched host)
-    if let Some(db) = db {
-        if matrix
+    if let Some(db) = db
+        && matrix
             .channel_manager
             .registered_channels
             .contains(&channel_lower)
-            && let Some(akick) =
-                check_akick(db, &channel_lower, &nick, &user_name, &real_host).await
-        {
-            let reason = akick
-                .reason
-                .as_deref()
-                .unwrap_or("You are banned from this channel");
-            let notice = Message {
-                tags: None,
-                prefix: Some(Prefix::new(
-                    "ChanServ".to_string(),
-                    "ChanServ".to_string(),
-                    "services.".to_string(),
-                )),
-                command: Command::NOTICE(
-                    nick.clone(),
-                    format!(
-                        "You are not permitted to be on \x02{}\x02: {}",
-                        channel_name, reason
-                    ),
+        && let Some(akick) = check_akick(db, &channel_lower, &nick, &user_name, &real_host).await
+    {
+        let reason = akick
+            .reason
+            .as_deref()
+            .unwrap_or("You are banned from this channel");
+        let notice = Message {
+            tags: None,
+            prefix: Some(Prefix::new(
+                "ChanServ".to_string(),
+                "ChanServ".to_string(),
+                "services.".to_string(),
+            )),
+            command: Command::NOTICE(
+                nick.clone(),
+                format!(
+                    "You are not permitted to be on \x02{}\x02: {}",
+                    channel_name, reason
                 ),
-            };
-            sender.send(Arc::new(notice)).await?;
-            info!(
-                nick = %nick,
-                channel = %channel_name,
-                "AKICK triggered"
-            );
-            return Ok(None);
-        }
+            ),
+        };
+        sender.send(Arc::new(notice)).await?;
+        info!(
+            nick = %nick,
+            channel = %channel_name,
+            "AKICK triggered"
+        );
+        return Ok(None);
     }
 
     // Check auto modes if registered

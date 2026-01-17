@@ -3,7 +3,6 @@
 use super::types::BatchState;
 use crate::handlers::core::traits::ServerHandler;
 use crate::handlers::{Context, HandlerResult};
-use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{BatchRouting, ServerState};
 use async_trait::async_trait;
 use slirc_proto::MessageRef;
@@ -113,7 +112,7 @@ impl ServerHandler for ServerBatchHandler {
                                         );
                                         // Send batch start to local user
                                         if let Some(sender) =
-                                            ctx.matrix.user_manager.senders.get_cloned(&uid)
+                                            ctx.matrix.user_manager.get_first_sender(&uid)
                                         {
                                             let msg_owned = msg.to_owned();
                                             let _ = sender.send(Arc::new(msg_owned)).await;
@@ -189,7 +188,7 @@ impl ServerHandler for ServerBatchHandler {
                     }
                     BatchRouting::Local(uid) => {
                         // Route to local user
-                        if let Some(sender) = ctx.matrix.user_manager.senders.get_cloned(uid) {
+                        if let Some(sender) = ctx.matrix.user_manager.get_first_sender(uid) {
                             let msg_owned = msg.to_owned();
                             let _ = sender.send(Arc::new(msg_owned)).await;
                         }

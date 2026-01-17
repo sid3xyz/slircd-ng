@@ -152,6 +152,30 @@ pub fn apply_user_modes_typed(
                 user_modes.no_ctcp = adding;
                 applied.push(mode.clone());
             }
+            UserMode::HideChannels => {
+                // +p - Hide channels in WHOIS
+                user_modes.hide_channels = adding;
+                applied.push(mode.clone());
+            }
+            UserMode::Deaf => {
+                // +d - Deaf mode
+                user_modes.deaf = adding;
+                applied.push(mode.clone());
+            }
+            UserMode::CallerId => {
+                // +g - CallerID
+                user_modes.caller_id = adding;
+                applied.push(mode.clone());
+            }
+            UserMode::NetAdmin => {
+                // +N - Network Admin (protected)
+                if !adding {
+                    user_modes.net_admin = false;
+                    applied.push(mode.clone());
+                } else {
+                    rejected.push(mode_type.clone());
+                }
+            }
             UserMode::ServerNotices => {
                 if let Some(arg) = mode.arg() {
                     for c in arg.chars() {

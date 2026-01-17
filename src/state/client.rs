@@ -45,6 +45,10 @@ pub struct Client {
     /// Current nickname (may be same as account in nick-equals-account mode).
     pub nick: String,
 
+    /// Primary UID for this account (shared by all sessions in bouncer mode).
+    /// Set when the first session registers; subsequent sessions share this UID.
+    pub primary_uid: Option<String>,
+
     /// Currently attached session IDs (0 when always-on but disconnected).
     pub sessions: HashSet<SessionId>,
 
@@ -121,6 +125,7 @@ impl Client {
         Self {
             account,
             nick,
+            primary_uid: None,
             sessions: HashSet::new(),
             always_on: false,
             auto_away: false,

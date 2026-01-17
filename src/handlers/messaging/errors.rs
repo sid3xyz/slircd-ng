@@ -28,6 +28,12 @@ pub const CANNOT_SEND_CTCP: &str = "Cannot send CTCP to channel (+C)";
 /// Cannot send NOTICE to channel - NOTICE blocked (+T mode)
 pub const CANNOT_SEND_NOTICE: &str = "Cannot send NOTICE to channel (+T)";
 
+/// Cannot send to channel - too many caps (+B mode)
+pub const CANNOT_SEND_ANTI_CAPS: &str = "Your message contains too many capital letters (+B)";
+
+/// Cannot send to channel - censored word (+G mode)
+pub const CANNOT_SEND_CENSORED: &str = "Your message contains censored words (+G)";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,6 +51,8 @@ mod tests {
         assert!(!CANNOT_SEND_BANNED.is_empty());
         assert!(!CANNOT_SEND_CTCP.is_empty());
         assert!(!CANNOT_SEND_NOTICE.is_empty());
+        assert!(!CANNOT_SEND_ANTI_CAPS.is_empty());
+        assert!(!CANNOT_SEND_CENSORED.is_empty());
     }
 
     #[test]

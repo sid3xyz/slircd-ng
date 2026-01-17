@@ -3,7 +3,6 @@
 //! This module handles conversion between the actor's internal state
 //! and the CRDT representation used for distributed synchronization.
 
-use crate::state::dashmap_ext::DashMapExt;
 use crate::state::{ListEntry, MemberModes, Topic};
 use slirc_proto::sync::channel::{ChannelCrdt, ListEntryCrdt, TopicCrdt};
 use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
@@ -97,12 +96,35 @@ impl ChannelActor {
             self.mode_timestamps
                 .insert('z', crdt.modes.ssl_only.timestamp());
         }
+        if *crdt.modes.delayed_join.value() {
+            new_modes.insert(ChannelMode::DelayedJoin);
+            self.mode_timestamps
+                .insert('D', crdt.modes.delayed_join.timestamp());
+        }
+        if *crdt.modes.strip_colors.value() {
+            new_modes.insert(ChannelMode::StripColors);
+            self.mode_timestamps
+                .insert('S', crdt.modes.strip_colors.timestamp());
+        }
+        if *crdt.modes.anti_caps.value() {
+            new_modes.insert(ChannelMode::AntiCaps);
+            self.mode_timestamps
+                .insert('B', crdt.modes.anti_caps.timestamp());
+        }
+        if *crdt.modes.censor.value() {
+            new_modes.insert(ChannelMode::Censor);
+            self.mode_timestamps
+                .insert('G', crdt.modes.censor.timestamp());
+        }
 
         if let Some(key) = crdt.key.value() {
             new_modes.insert(ChannelMode::Key(key.clone(), crdt.key.timestamp()));
         }
         if let Some(limit) = crdt.limit.value() {
             new_modes.insert(ChannelMode::Limit(*limit as usize, crdt.limit.timestamp()));
+        }
+        if let Some(redirect) = crdt.modes.redirect.value() {
+            new_modes.insert(ChannelMode::Redirect(redirect.clone(), crdt.modes.redirect.timestamp()));
         }
         self.modes = new_modes;
     }
@@ -131,7 +153,7 @@ impl ChannelActor {
                 if !self.senders.contains_key(uid) {
                     if let Some(matrix) = self.matrix.upgrade() {
                         // Try to get sender from UserManager (local user)
-                        if let Some(sender) = matrix.user_manager.senders.get_cloned(uid) {
+                        if let Some(sender) = matrix.user_manager.get_first_sender(uid) {
                             self.senders.insert(uid.clone(), sender);
                         } else {
                             // Remote user - use router
@@ -309,11 +331,46 @@ impl ChannelActor {
                         .unwrap_or(fallback_ts);
                     crdt.modes.ssl_only.update(true, ts);
                 }
+                ChannelMode::DelayedJoin => {
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'D')
+                        .copied()
+                        .unwrap_or(fallback_ts);
+                    crdt.modes.delayed_join.update(true, ts);
+                }
+                ChannelMode::StripColors => {
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'S')
+                        .copied()
+                        .unwrap_or(fallback_ts);
+                    crdt.modes.strip_colors.update(true, ts);
+                }
+                ChannelMode::AntiCaps => {
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'B')
+                        .copied()
+                        .unwrap_or(fallback_ts);
+                    crdt.modes.anti_caps.update(true, ts);
+                }
+                ChannelMode::Censor => {
+                    let ts = self
+                        .mode_timestamps
+                        .get(&'G')
+                        .copied()
+                        .unwrap_or(fallback_ts);
+                    crdt.modes.censor.update(true, ts);
+                }
                 ChannelMode::Key(k, ts) => {
                     crdt.key.update(Some(k.clone()), *ts);
                 }
                 ChannelMode::Limit(l, ts) => {
                     crdt.limit.update(Some(*l as u32), *ts);
+                }
+                ChannelMode::Redirect(target, ts) => {
+                    crdt.modes.redirect.update(Some(target.clone()), *ts);
                 }
                 _ => {} // Other modes not yet in CRDT
             }

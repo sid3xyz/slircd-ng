@@ -59,10 +59,6 @@ async fn attach_session_to_client<S: SessionState + SaslAccess>(
 
     // Get session_id from the session state
     let session_id = ctx.state.session_id();
-    
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/slircd_debug.log") {
-        let _ = writeln!(file, "SASL attach_session: account={} session_id={}", account, session_id);
-    }
 
     // Get nick for client tracking
     let nick = ctx.state.nick_or_star();
@@ -70,8 +66,13 @@ async fn attach_session_to_client<S: SessionState + SaslAccess>(
     // For now, we use an empty IP string (could be enhanced to track actual IP)
     let ip = String::new();
 
-    // Check policies for this account (per-account overrides can be added later)
-    let multiclient_allowed = ctx.matrix.config.multiclient.is_multiclient_enabled(None);
+    // Check policies for this account, honoring per-account override from NickServ
+    let override_opt = ctx.matrix.client_manager.get_multiclient_override(account);
+    let multiclient_allowed = ctx
+        .matrix
+        .config
+        .multiclient
+        .is_multiclient_enabled(override_opt);
     let always_on_enabled = ctx.matrix.config.multiclient.is_always_on_enabled(None);
     let auto_away_enabled = ctx.matrix.config.multiclient.is_auto_away_enabled(None);
 
@@ -87,6 +88,7 @@ async fn attach_session_to_client<S: SessionState + SaslAccess>(
         always_on_enabled,
         auto_away_enabled,
     };
+
     let result = ctx.matrix.client_manager.attach_session(request).await;
 
     match &result {
@@ -116,38 +118,39 @@ async fn attach_session_to_client<S: SessionState + SaslAccess>(
             if let Some(client_arc) = ctx.matrix.client_manager.get_client(account) {
                 let client = client_arc.read().await;
 
-                // Only set up autoreplay if the client has channels
-                if !client.channels.is_empty() {
-                    // Extract channels with membership info
-                    let channels: Vec<(String, crate::state::ChannelMembership)> = client
-                        .channels
-                        .iter()
-                        .map(|(name, membership)| (name.clone(), membership.clone()))
-                        .collect();
+                // Get the existing UID for this account (for UID sharing in bouncer mode)
+                let existing_uid = ctx.matrix.client_manager.get_existing_uid(account);
 
-                    // Get last_seen timestamp for this device (if available)
-                    let replay_since = device_id.as_ref().and_then(|dev| client.get_last_seen(dev));
+                // Extract channels with membership info
+                let channels: Vec<(String, crate::state::ChannelMembership)> = client
+                    .channels
+                    .iter()
+                    .map(|(name, membership)| (name.clone(), membership.clone()))
+                    .collect();
 
-                    // Build ReattachInfo
-                    let reattach_info = crate::state::ReattachInfo {
-                        account: account.to_string(),
-                        device_id: device_id.clone(),
-                        channels,
-                        replay_since,
-                    };
+                // Get last_seen timestamp for this device (if available)
+                let replay_since = device_id.as_ref().and_then(|dev| client.get_last_seen(dev));
 
-                    // Store in session state (will be moved to RegisteredState on registration)
-                    ctx.state.set_reattach_info(Some(reattach_info));
+                // Build ReattachInfo with existing UID
+                let reattach_info = crate::state::ReattachInfo {
+                    account: account.to_string(),
+                    device_id: device_id.clone(),
+                    channels,
+                    replay_since,
+                    existing_uid,
+                };
 
-                    debug!(
-                        account = %account,
-                        device = ?device_id,
-                        channel_count = client.channels.len(),
-                        has_replay_timestamp = replay_since.is_some(),
-                        reattach = %reattach,
-                        "Prepared autoreplay info for multiclient session"
-                    );
-                }
+                // Store in session state (will be moved to RegisteredState on registration)
+                ctx.state.set_reattach_info(Some(reattach_info));
+
+                debug!(
+                    account = %account,
+                    device = ?device_id,
+                    channel_count = client.channels.len(),
+                    has_replay_timestamp = replay_since.is_some(),
+                    reattach = %reattach,
+                    "Prepared autoreplay info for multiclient session"
+                );
             }
         }
         crate::state::managers::client::AttachResult::MulticlientNotAllowed => {

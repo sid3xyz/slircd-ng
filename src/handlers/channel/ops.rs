@@ -94,12 +94,7 @@ pub async fn force_join_channel<S>(
                 is_oper: user.modes.oper,
                 oper_type: user.modes.oper_type.clone(),
             });
-        let sender = ctx
-            .matrix
-            .user_manager
-            .senders
-            .get(target.uid)
-            .map(|s| s.value().clone());
+        let sender = ctx.matrix.user_manager.get_first_sender(target.uid);
         (user.caps.clone(), context, sender, user.session_id)
     } else {
         return Ok(());

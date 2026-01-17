@@ -31,6 +31,7 @@
 //! - **Lock-copy-release**: Acquire lock, copy needed data, release before next operation
 
 use crate::db::Database;
+use crate::state::client::SessionId;
 use crate::state::managers::client::ClientManager;
 use crate::state::{
     ChannelManager, LifecycleManager, MonitorManager, SecurityManager, SecurityManagerParams,
@@ -295,9 +296,17 @@ impl Matrix {
         )
     }
 
-    /// Register a user's message sender for routing.
-    pub fn register_sender(&self, uid: &str, sender: mpsc::Sender<Arc<Message>>) {
-        self.user_manager.senders.insert(uid.to_string(), sender);
+    /// Register a session's message sender for routing, along with its capabilities.
+    /// For bouncer mode, multiple sessions may share a UID, so we append to the list.
+    pub fn register_session_sender(
+        &self,
+        uid: &str,
+        session_id: crate::state::client::SessionId,
+        sender: mpsc::Sender<Arc<Message>>,
+        caps: std::collections::HashSet<String>,
+    ) {
+        self.user_manager
+            .register_session_sender(uid, session_id, sender, caps);
     }
 
     /// Get the current hybrid timestamp for CRDT operations.
@@ -331,9 +340,24 @@ impl Matrix {
         target_uid: &Uid,
         quit_reason: &str,
     ) -> Vec<String> {
+        // When session_id is not provided, fall back to looking it up from User
+        // This is used by KILL and other commands that don't have a session context
+        self.disconnect_user_session(target_uid, quit_reason, None)
+            .await
+    }
+
+    /// Disconnect a user session with explicit session_id.
+    ///
+    /// If session_id is provided, use it for session tracking.
+    /// If None, fall back to looking it up from the User object.
+    pub async fn disconnect_user_session(
+        self: &Arc<Self>,
+        target_uid: &Uid,
+        quit_reason: &str,
+        explicit_session_id: Option<SessionId>,
+    ) -> Vec<String> {
         use crate::state::managers::client::DetachResult;
         use slirc_proto::{Command, Prefix};
-        println!("DEBUG: disconnect_user called for UID={}", target_uid);
 
         // Get user info before removal
         let (nick, user, host, realname, user_channels, session_id, account) = {
@@ -350,7 +374,8 @@ impl Matrix {
                     user.host.clone(),
                     user.realname.clone(),
                     user.channels.iter().cloned().collect::<Vec<_>>(),
-                    user.session_id,
+                    // Use explicit session_id if provided, otherwise fall back to user's
+                    explicit_session_id.unwrap_or(user.session_id),
                     user.account.clone(),
                 )
             } else {
@@ -361,22 +386,13 @@ impl Matrix {
         // If user has an account and multiclient is enabled, detach the session
         let detach_result = if self.config.multiclient.enabled {
             if account.is_some() {
-                let res = self.client_manager.detach_session(session_id).await;
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/slircd_debug.log") {
-                    let _ = writeln!(file, "disconnect_user: uid={} session_id={}", target_uid, session_id);
-                    let _ = writeln!(file, "detach_session result: {:?}", res);
-                }
-                res
+                self.client_manager.detach_session(session_id).await
             } else {
                 DetachResult::NotFound
             }
         } else {
             DetachResult::NotFound
         };
-
-        // Determine if we should broadcast QUIT (only if not detached session of multiclient)
-        let shout = !matches!(detach_result, DetachResult::Detached { .. });
-        println!("DEBUG: shout decision: {}", shout);
 
         // Log the detachment result
         match &detach_result {
@@ -387,6 +403,11 @@ impl Matrix {
                     remaining = %remaining_sessions,
                     "Session detached, other sessions remain"
                 );
+
+                // CRITICAL: If other sessions remain, the user stays in channels and online.
+                // We only detached this specific session from the ClientManager.
+                // Return the list of channels the user is in (for potential future use).
+                return user_channels;
             }
             DetachResult::Persisting => {
                 tracing::info!(
@@ -432,69 +453,42 @@ impl Matrix {
         // Clean up this user's MONITOR entries (session-specific state)
         cleanup_monitors(self, target_uid.as_str());
 
-        if shout {
-            // Record WHOWAS entry before user is removed
-            self.user_manager
-                .record_whowas(&nick, &user, &host, &realname);
+        // Record WHOWAS entry before user is removed
+        self.user_manager
+            .record_whowas(&nick, &user, &host, &realname);
 
-            // Notify MONITOR watchers that this nick is going offline
-            notify_monitors_offline(self, &nick).await;
+        // Notify MONITOR watchers that this nick is going offline
+        notify_monitors_offline(self, &nick).await;
 
-            // Build QUIT message
-            let quit_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::new(nick.clone(), user, host)),
-                command: Command::QUIT(Some(quit_reason.to_string())),
-            };
+        // Build QUIT message
+        let quit_msg = Message {
+            tags: None,
+            prefix: Some(Prefix::new(nick.clone(), user, host)),
+            command: Command::QUIT(Some(quit_reason.to_string())),
+        };
 
-            // Remove from channels and broadcast QUIT
-            for channel_name in &user_channels {
-                let channel_tx = self
-                    .channel_manager
-                    .channels
-                    .get(channel_name)
-                    .map(|s| s.value().clone());
-                if let Some(channel_tx) = channel_tx {
-                    let (tx, rx) = tokio::sync::oneshot::channel();
-                    let _ = channel_tx
-                        .send(ChannelEvent::Quit {
-                            uid: target_uid.clone(),
-                            quit_msg: quit_msg.clone(),
-                            reply_tx: Some(tx),
-                        })
-                        .await;
+        // Remove from channels and broadcast QUIT
+        for channel_name in &user_channels {
+            let channel_tx = self
+                .channel_manager
+                .channels
+                .get(channel_name)
+                .map(|s| s.value().clone());
+            if let Some(channel_tx) = channel_tx {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let _ = channel_tx
+                    .send(ChannelEvent::Quit {
+                        uid: target_uid.clone(),
+                        quit_msg: quit_msg.clone(),
+                        reply_tx: Some(tx),
+                    })
+                    .await;
 
-                    if let Ok(remaining) = rx.await
-                        && remaining == 0
-                        && self.channel_manager.channels.remove(channel_name).is_some()
-                    {
-                        crate::metrics::ACTIVE_CHANNELS.dec();
-                    }
-                }
-            }
-        } else {
-            // Silent removal from channels (Multiclient Detach)
-            for channel_name in &user_channels {
-                let channel_tx = self
-                    .channel_manager
-                    .channels
-                    .get(channel_name)
-                    .map(|s| s.value().clone());
-                if let Some(channel_tx) = channel_tx {
-                    let (tx, rx) = tokio::sync::oneshot::channel();
-                    let _ = channel_tx
-                        .send(ChannelEvent::Detach {
-                            uid: target_uid.clone(),
-                            reply_tx: tx,
-                        })
-                        .await;
-
-                    if let Ok(remaining) = rx.await
-                        && remaining == 0
-                        && self.channel_manager.channels.remove(channel_name).is_some()
-                    {
-                        crate::metrics::ACTIVE_CHANNELS.dec();
-                    }
+                if let Ok(remaining) = rx.await
+                    && remaining == 0
+                    && self.channel_manager.channels.remove(channel_name).is_some()
+                {
+                    crate::metrics::ACTIVE_CHANNELS.dec();
                 }
             }
         }

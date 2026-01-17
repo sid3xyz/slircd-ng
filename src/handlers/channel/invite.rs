@@ -213,12 +213,7 @@ impl PostRegHandler for InviteHandler {
                         },
                     };
 
-                    let target_sender = ctx
-                        .matrix
-                        .user_manager
-                        .senders
-                        .get(&target_uid)
-                        .map(|s| s.value().clone());
+                    let target_sender = ctx.matrix.user_manager.get_first_sender(&target_uid);
                     if let Some(target_sender) = target_sender {
                         let _ = target_sender.send(Arc::new(invite_msg)).await;
                     }
@@ -294,12 +289,7 @@ impl PostRegHandler for InviteHandler {
                 },
             };
 
-            let target_sender = ctx
-                .matrix
-                .user_manager
-                .senders
-                .get(&target_uid)
-                .map(|s| s.value().clone());
+            let target_sender = ctx.matrix.user_manager.get_first_sender(&target_uid);
             if let Some(target_sender) = target_sender {
                 let _ = target_sender.send(Arc::new(invite_msg)).await;
             }

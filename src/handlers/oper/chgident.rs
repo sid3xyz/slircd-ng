@@ -91,7 +91,7 @@ impl PostRegHandler for ChgIdentHandler {
                 .await;
         }
 
-        let target_sender = ctx.matrix.user_manager.senders.get_cloned(&target_uid);
+        let target_sender = ctx.matrix.user_manager.get_first_sender(&target_uid);
         let target_user_arc = ctx.matrix.user_manager.users.get_cloned(&target_uid);
         if let (Some(target_sender), Some(target_user_arc)) = (target_sender, target_user_arc) {
             let user = target_user_arc.read().await;

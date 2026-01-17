@@ -1,5 +1,6 @@
 //! User-related types and state.
 
+use crate::state::client::SessionId;
 use slirc_proto::sync::clock::HybridTimestamp;
 use slirc_proto::sync::traits::LwwRegister;
 use slirc_proto::sync::user::{UserCrdt, UserModesCrdt};
@@ -59,6 +60,10 @@ pub struct UserModes {
     /// +s - Server notices with granular snomasks (c, r, k, o, etc.)
     /// Empty set means no server notices
     pub snomasks: HashSet<char>,
+    pub hide_channels: bool,   // +p
+    pub deaf: bool,            // +d
+    pub caller_id: bool,       // +g
+    pub net_admin: bool,       // +N
     /// Operator type (e.g., "admin", "oper") for privilege differentiation.
     /// None means not an operator, Some("oper") for regular opers,
     /// Some("admin") for server admins.
@@ -99,6 +104,18 @@ impl UserModes {
         if !self.snomasks.is_empty() {
             s.push('s');
         }
+        if self.hide_channels {
+            s.push('p');
+        }
+        if self.deaf {
+            s.push('d');
+        }
+        if self.caller_id {
+            s.push('g');
+        }
+        if self.net_admin {
+            s.push('N');
+        }
         if s == "+" { "+".to_string() } else { s }
     }
 
@@ -120,6 +137,10 @@ impl UserModes {
             bot: *crdt.bot.value(),
             snomasks: crdt.snomasks.iter().cloned().collect(),
             oper_type: crdt.oper_type.value().clone(),
+            hide_channels: *crdt.hide_channels.value(),
+            deaf: *crdt.deaf.value(),
+            caller_id: *crdt.caller_id.value(),
+            net_admin: *crdt.net_admin.value(),
             service: false, // Services are never remote users
         }
     }
@@ -139,6 +160,10 @@ impl UserModes {
             crdt.snomasks.add(mask, timestamp);
         }
         crdt.oper_type = LwwRegister::new(self.oper_type.clone(), timestamp);
+        crdt.hide_channels = LwwRegister::new(self.hide_channels, timestamp);
+        crdt.deaf = LwwRegister::new(self.deaf, timestamp);
+        crdt.caller_id = LwwRegister::new(self.caller_id, timestamp);
+        crdt.net_admin = LwwRegister::new(self.net_admin, timestamp);
         crdt
     }
 }
@@ -157,6 +182,7 @@ pub struct UserParams {
     pub caps: HashSet<String>,
     pub certfp: Option<String>,
     pub last_modified: HybridTimestamp,
+    pub session_id: SessionId,
 }
 
 impl User {
@@ -178,6 +204,7 @@ impl User {
             caps,
             certfp,
             last_modified,
+            session_id,
         } = params;
 
         // Try to parse as IP for proper cloaking, fall back to hostname cloaking
@@ -198,7 +225,7 @@ impl User {
             host,
             ip,
             visible_host,
-            session_id: Uuid::new_v4(),
+            session_id,
             channels: HashSet::new(),
             modes: UserModes::default(),
             account: None,
@@ -446,6 +473,7 @@ mod tests {
             service: true,
             snomasks,
             oper_type: Some("admin".to_string()),
+            ..Default::default()
         };
         assert_eq!(modes.as_mode_string(), "+iworZRTBSs");
     }

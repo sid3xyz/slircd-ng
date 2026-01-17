@@ -263,6 +263,9 @@ pub struct ReattachInfo {
     pub channels: Vec<(String, crate::state::ChannelMembership)>,
     /// When to replay history from (typically client's last_seen).
     pub replay_since: Option<chrono::DateTime<chrono::Utc>>,
+    /// Existing UID to reuse (for bouncer UID sharing).
+    /// If set, the welcome burst should NOT create a new User.
+    pub existing_uid: Option<String>,
 }
 
 // ============================================================================

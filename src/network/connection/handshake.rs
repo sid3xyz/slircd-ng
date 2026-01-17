@@ -20,7 +20,8 @@ pub enum HandshakeExit {
 #[derive(Debug)]
 pub enum HandshakeSuccess {
     /// Connection registered as a user.
-    User,
+    /// If `effective_uid` is Some, this connection shares that UID with other sessions (bouncer mode).
+    User { effective_uid: Option<String> },
     /// Connection registered as a server.
     Server,
 }
@@ -377,11 +378,29 @@ pub async fn run_handshake_loop(
 
                 // Check if registration is possible
                 if unreg_state.can_register() && !matrix.user_manager.users.contains_key(uid) {
+                    // Check for bouncer reattachment before creating writer
+                    let existing_uid = unreg_state
+                        .reattach_info
+                        .as_ref()
+                        .and_then(|r| r.existing_uid.clone());
+
                     let writer =
                         WelcomeBurstWriter::new(uid, matrix, transport, unreg_state, db, addr);
-                    if let Err(e) = writer.send().await {
-                        warn!(error = ?e, "Failed to send welcome burst");
-                        return Err(HandshakeExit::WriteError(unreg_state.nick.clone()));
+                    match writer.send().await {
+                        Ok(true) => {
+                            // Bouncer reattachment: shared existing User, handshake complete
+                            // Pass the existing_uid so connection uses it for routing
+                            return Ok(HandshakeSuccess::User {
+                                effective_uid: existing_uid,
+                            });
+                        }
+                        Ok(false) => {
+                            // Normal registration: new User created, will be checked below
+                        }
+                        Err(e) => {
+                            warn!(error = ?e, "Failed to send welcome burst");
+                            return Err(HandshakeExit::WriteError(unreg_state.nick.clone()));
+                        }
                     }
                 }
 
@@ -392,7 +411,9 @@ pub async fn run_handshake_loop(
 
                 // Check if handshake complete
                 if matrix.user_manager.users.contains_key(uid) {
-                    return Ok(HandshakeSuccess::User);
+                    return Ok(HandshakeSuccess::User {
+                        effective_uid: None,
+                    });
                 }
             }
         }

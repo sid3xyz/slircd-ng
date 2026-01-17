@@ -14,10 +14,8 @@
 //! Only IRC operators can use this command (security measure).
 
 use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, server_reply};
-use super::common::{
-    RouteMeta, RouteOptions, SenderSnapshot, route_to_channel_with_snapshot,
-    route_to_user_with_snapshot,
-};
+use super::routing::{route_to_channel_with_snapshot, route_to_user_with_snapshot};
+use super::types::{RouteMeta, RouteOptions, SenderSnapshot};
 use crate::handlers::helpers::with_label;
 use crate::history::{MessageEnvelope, StoredMessage};
 use crate::state::RegisteredState;

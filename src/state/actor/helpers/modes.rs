@@ -34,7 +34,11 @@ impl ChannelActor {
             ChannelMode::Permanent => Some('P'),
             ChannelMode::RegisteredOnly => Some('R'),
             ChannelMode::Roleplay => Some('E'),
-            ChannelMode::Key(_, _) | ChannelMode::Limit(_, _) | ChannelMode::Forward(_, _) => None, // Parametric modes use separate timestamp fields
+            ChannelMode::DelayedJoin => Some('D'),
+            ChannelMode::StripColors => Some('S'),
+            ChannelMode::AntiCaps => Some('B'),
+            ChannelMode::Censor => Some('G'),
+            ChannelMode::Key(_, _) | ChannelMode::Limit(_, _) | ChannelMode::JoinForward(_, _) | ChannelMode::Flood(_, _) | ChannelMode::Redirect(_, _) => None, // Parametric modes use separate timestamp fields
         }
     }
 
@@ -159,6 +163,21 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
     if modes.contains(&ChannelMode::RegisteredOnly) {
         flags.push('R');
     }
+    if modes.contains(&ChannelMode::DelayedJoin) {
+        flags.push('D');
+    }
+    if modes.contains(&ChannelMode::StripColors) {
+        flags.push('S');
+    }
+    if modes.contains(&ChannelMode::AntiCaps) {
+        flags.push('B');
+    }
+    if modes.contains(&ChannelMode::Censor) {
+        flags.push('G');
+    }
+    if modes.contains(&ChannelMode::Roleplay) {
+        flags.push('E');
+    }
 
     // Param modes
     for mode in modes {
@@ -175,9 +194,21 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
                     params.push(l.to_string());
                 }
             }
-            ChannelMode::Forward(target, _) => {
+            ChannelMode::JoinForward(target, _) => {
+                if !flags.contains('F') {
+                    flags.push('F');
+                    params.push(target.clone());
+                }
+            }
+            ChannelMode::Flood(target, _) => {
                 if !flags.contains('f') {
                     flags.push('f');
+                    params.push(target.clone());
+                }
+            }
+            ChannelMode::Redirect(target, _) => {
+                if !flags.contains('L') {
+                    flags.push('L');
                     params.push(target.clone());
                 }
             }

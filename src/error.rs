@@ -191,6 +191,9 @@ pub enum ChannelError {
     #[error("invites are disabled in this channel (+V)")]
     NoInviteActive,
 
+    #[error("channel is full, redirecting to {0}")]
+    Redirect(String),
+
     #[error("{0}")]
     Generic(String),
 }
@@ -319,6 +322,10 @@ impl ChannelError {
             Self::Generic(msg) => (
                 Response::ERR_UNKNOWNERROR,
                 vec![nick.to_string(), channel.to_string(), msg.clone()],
+            ),
+            Self::Redirect(target) => (
+                Response::ERR_LINKCHANNEL,
+                vec![nick.to_string(), channel.to_string(), target.clone(), "Forwarding to another channel".to_string()],
             ),
             // These don't have standard IRC numerics - use generic error
             Self::CannotKnock | Self::ChanOpen | Self::ChannelTombstone | Self::SessionInvalid => (

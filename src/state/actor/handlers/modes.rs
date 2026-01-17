@@ -87,6 +87,10 @@ impl ChannelActor {
                 ProtoChannelMode::FreeInvite => self.set_flag_mode(ChannelMode::FreeInvite, adding),
                 ProtoChannelMode::TlsOnly => self.set_flag_mode(ChannelMode::TlsOnly, adding),
                 ProtoChannelMode::Roleplay => self.set_flag_mode(ChannelMode::Roleplay, adding),
+                ProtoChannelMode::DelayedJoin => self.set_flag_mode(ChannelMode::DelayedJoin, adding),
+                ProtoChannelMode::StripColors => self.set_flag_mode(ChannelMode::StripColors, adding),
+                ProtoChannelMode::AntiCaps => self.set_flag_mode(ChannelMode::AntiCaps, adding),
+                ProtoChannelMode::Censor => self.set_flag_mode(ChannelMode::Censor, adding),
                 ProtoChannelMode::Ban => {
                     if let Some(mask) = arg {
                         Self::apply_list_mode(
@@ -165,18 +169,15 @@ impl ChannelActor {
                             )
                         })
                     } else {
-                        self.replace_param_mode(
-                            |mode| matches!(mode, ChannelMode::Limit(_, _)),
-                            None,
-                        )
+                        self.replace_param_mode(|mode| matches!(mode, ChannelMode::Limit(_, _)), None)
                     }
                 }
-                ProtoChannelMode::Forward => {
+                ProtoChannelMode::JoinForward => {
                     if adding {
                         if let Some(target) = arg {
                             self.replace_param_mode(
-                                |mode| matches!(mode, ChannelMode::Forward(_, _)),
-                                Some(ChannelMode::Forward(
+                                |mode| matches!(mode, ChannelMode::JoinForward(_, _)),
+                                Some(ChannelMode::JoinForward(
                                     target.to_string(),
                                     HybridTimestamp::now(&self.server_id),
                                 )),
@@ -186,7 +187,63 @@ impl ChannelActor {
                         }
                     } else {
                         self.replace_param_mode(
-                            |mode| matches!(mode, ChannelMode::Forward(_, _)),
+                            |mode| matches!(mode, ChannelMode::JoinForward(_, _)),
+                            None,
+                        )
+                    }
+                }
+                ProtoChannelMode::Flood => {
+                    if adding {
+                        if let Some(param) = arg {
+                            // Format: lines:seconds
+                            let parts: Vec<&str> = param.split(':').collect();
+                            if parts.len() == 2 {
+                                let lines = parts[0].parse::<u32>().unwrap_or(0);
+                                let seconds = parts[1].parse::<u32>().unwrap_or(0);
+                                if lines > 0 && seconds > 0 {
+                                    self.flood_config = Some((lines, seconds));
+                                    self.flood_message_limiters.clear();
+                                    self.replace_param_mode(
+                                        |mode| matches!(mode, ChannelMode::Flood(_, _)),
+                                        Some(ChannelMode::Flood(
+                                            param.to_string(),
+                                            HybridTimestamp::now(&self.server_id),
+                                        )),
+                                    )
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        self.flood_config = None;
+                        self.flood_message_limiters.clear();
+                        self.replace_param_mode(
+                            |mode| matches!(mode, ChannelMode::Flood(_, _)),
+                            None,
+                        )
+                    }
+                }
+                ProtoChannelMode::Redirect => {
+                    if adding {
+                        if let Some(target) = arg {
+                            self.replace_param_mode(
+                                |mode| matches!(mode, ChannelMode::Redirect(_, _)),
+                                Some(ChannelMode::Redirect(
+                                    target.to_string(),
+                                    HybridTimestamp::now(&self.server_id),
+                                )),
+                            )
+                        } else {
+                            false
+                        }
+                    } else {
+                        self.replace_param_mode(
+                            |mode| matches!(mode, ChannelMode::Redirect(_, _)),
                             None,
                         )
                     }
@@ -378,6 +435,14 @@ fn proto_mode_to_char(mode: &ProtoChannelMode) -> char {
         ProtoChannelMode::OperOnly => 'O',
         ProtoChannelMode::FreeInvite => 'g',
         ProtoChannelMode::TlsOnly => 'z',
+        ProtoChannelMode::Roleplay => 'E',
+        ProtoChannelMode::DelayedJoin => 'D',
+        ProtoChannelMode::StripColors => 'S',
+        ProtoChannelMode::AntiCaps => 'B',
+        ProtoChannelMode::Censor => 'G',
+        ProtoChannelMode::Redirect => 'L',
+        ProtoChannelMode::Flood => 'f',
+        ProtoChannelMode::JoinForward => 'F',
         ProtoChannelMode::Ban => 'b',
         ProtoChannelMode::Exception => 'e',
         ProtoChannelMode::InviteException => 'I',

@@ -1,172 +1,24 @@
-//! Common utilities for message handling.
+//! Core message routing logic.
 //!
-//! Shared helpers for PRIVMSG, NOTICE, and TAGMSG handlers including shun checking,
-//! routing logic, channel validation, and error responses.
+//! Handles routing messages to channels and users, including:
+//! - Channel permission checks (modes, bans)
+//! - User presence checks
+//! - Automatic multiclient fan-out
+//! - Remote user routing (S2S)
 
-use super::super::{Context, HandlerResult, server_reply};
-use crate::security::UserContext;
-use crate::state::User;
+use super::delivery::{build_local_recipient_message};
+// use super::delivery::{send_cannot_send};
+use super::multiclient::echo_to_other_sessions;
+use super::types::{
+    ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult,
+};
+use crate::handlers::core::Context;
+use crate::handlers::server_reply;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
 use slirc_proto::{Command, Message, Prefix, Response};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::debug;
-
-// ============================================================================
-// Sender Snapshot - Pre-fetched user data to avoid redundant lookups
-// ============================================================================
-
-/// Pre-captured sender information to eliminate redundant user lookups.
-///
-/// InspIRCd pattern: Build complete sender context once at handler entry,
-/// then pass by reference to all routing functions.
-#[derive(Debug, Clone)]
-pub struct SenderSnapshot {
-    /// Sender's nickname.
-    pub nick: String,
-    /// Sender's username (ident).
-    pub user: String,
-    /// Sender's real hostname.
-    pub host: String,
-    /// Sender's visible (possibly cloaked) hostname.
-    pub visible_host: String,
-    /// Sender's realname (GECOS).
-    pub realname: String,
-    /// Sender's IP address.
-    pub ip: String,
-    /// Account name if identified.
-    pub account: Option<String>,
-    /// Whether sender is identified (+r).
-    pub is_registered: bool,
-    /// Whether sender is an IRC operator.
-    pub is_oper: bool,
-    /// Whether sender is marked as a bot (+B).
-    pub is_bot: bool,
-    /// Whether sender is on a TLS connection.
-    pub is_tls: bool,
-}
-
-impl SenderSnapshot {
-    /// Build a snapshot from context with a single user read.
-    ///
-    /// Returns None if the user is not found (shouldn't happen for registered users).
-    pub async fn build<S>(ctx: &Context<'_, S>) -> Option<Self> {
-        let user_arc = ctx
-            .matrix
-            .user_manager
-            .users
-            .get(ctx.uid)
-            .map(|u| u.value().clone())?;
-        let user = user_arc.read().await;
-        Some(Self {
-            nick: user.nick.clone(),
-            user: user.user.clone(),
-            host: user.host.clone(),
-            visible_host: user.visible_host.clone(),
-            realname: user.realname.clone(),
-            ip: user.ip.clone(),
-            account: user.account.clone(),
-            is_registered: user.modes.registered,
-            is_oper: user.modes.oper,
-            is_bot: user.modes.bot,
-            is_tls: user.modes.secure,
-        })
-    }
-
-    /// Get the hostmask for shun checking (user@host).
-    pub fn shun_mask(&self) -> String {
-        format!("{}@{}", self.user, self.host)
-    }
-
-    /// Get the full hostmask (nick!user@visible_host).
-    pub fn full_mask(&self) -> String {
-        format!("{}!{}@{}", self.nick, self.user, self.visible_host)
-    }
-
-    /// Build UserContext for channel routing (extended ban checks, etc.).
-    pub fn to_user_context(&self, server_name: &str) -> UserContext {
-        UserContext::for_registration(crate::security::RegistrationParams {
-            hostname: self.host.clone(),
-            nickname: self.nick.clone(),
-            username: self.user.clone(),
-            realname: self.realname.clone(),
-            server: server_name.to_string(),
-            account: self.account.clone(),
-            is_tls: self.is_tls,
-            is_oper: self.is_oper,
-            oper_type: None, // oper_type not yet tracked
-        })
-    }
-}
-
-// ============================================================================
-// Shun Checking
-// ============================================================================
-
-/// Check if a user is shunned using pre-fetched snapshot.
-///
-/// Returns true if the user is shunned and their command should be silently ignored.
-pub async fn is_shunned_with_snapshot<S>(ctx: &Context<'_, S>, snapshot: &SenderSnapshot) -> bool {
-    // Check database for shuns using pre-fetched hostmask
-    match ctx.db.bans().matches_shun(&snapshot.shun_mask()).await {
-        Ok(Some(shun)) => {
-            debug!(
-                uid = %ctx.uid,
-                mask = %shun.mask,
-                reason = ?shun.reason,
-                "Shunned user attempted to send message"
-            );
-            true
-        }
-        _ => false,
-    }
-}
-
-// ============================================================================
-// Message Routing Types
-// ============================================================================
-
-pub use crate::state::actor::ChannelRouteResult;
-
-/// Result of attempting to route a message to a user.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Some variants used for internal flow control
-pub enum UserRouteResult {
-    /// Message was successfully sent (or queued).
-    Sent,
-    /// Target user does not exist.
-    NoSuchNick,
-    /// Blocked by +R (registered-only PMs).
-    BlockedRegisteredOnly,
-    /// Blocked by SILENCE list.
-    BlockedSilence,
-    /// Blocked by +T (no CTCP).
-    BlockedCtcp,
-}
-
-/// Options for message routing behavior.
-pub struct RouteOptions {
-    /// Whether to send RPL_AWAY for user targets (only PRIVMSG).
-    pub send_away_reply: bool,
-    /// Status prefix for channel messages (e.g. @#chan).
-    pub status_prefix: Option<char>,
-}
-
-/// Extra per-message metadata for routing.
-///
-/// Grouped into a struct to keep routing helpers readable and clippy-clean.
-pub struct RouteMeta {
-    pub timestamp: Option<String>,
-    pub msgid: Option<String>,
-    pub override_nick: Option<String>,
-    /// For RELAYMSG: the nick of the user who issued the RELAYMSG command.
-    /// If Some, adds `draft/relaymsg=<nick>` tag for recipients with that cap.
-    pub relaymsg_sender_nick: Option<String>,
-}
-
-// ============================================================================
-// Routing Functions
-// ============================================================================
 
 /// Check if sender can speak in a channel using pre-fetched snapshot, and broadcast if allowed.
 ///
@@ -186,6 +38,9 @@ pub async fn route_to_channel_with_snapshot(
         override_nick,
         relaymsg_sender_nick,
     } = meta;
+
+    let timestamp_clone = timestamp.clone();
+    let msgid_clone = msgid.clone();
 
     let channel_tx = ctx
         .matrix
@@ -238,68 +93,16 @@ pub async fn route_to_channel_with_snapshot(
         return ChannelRouteResult::NoSuchChannel; // Actor died
     }
 
-    match reply_rx.await {
+    let result = match reply_rx.await {
         Ok(result) => result,
         Err(_) => ChannelRouteResult::NoSuchChannel,
-    }
-}
+    };
 
-/// Build a recipient-specific message for a local user, applying capability-aware tag filtering.
-fn build_local_recipient_message(
-    base: &Message,
-    recipient: &User,
-    snapshot: &SenderSnapshot,
-    msgid_str: &str,
-    timestamp_str: &str,
-    sender_label: Option<&String>,
-) -> Message {
-    let has_message_tags = recipient.caps.contains("message-tags");
-    let has_server_time = recipient.caps.contains("server-time");
-
-    let mut result = base.clone();
-
-    // Strip label tag from recipient copies (label is sender-only)
-    if sender_label.is_some() {
-        result.tags = result
-            .tags
-            .map(|tags| {
-                tags.into_iter()
-                    .filter(|tag| tag.0.as_ref() != "label")
-                    .collect::<Vec<_>>()
-            })
-            .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-    }
-
-    // If recipient doesn't have message-tags, strip client-only tags
-    if !has_message_tags {
-        result.tags = result
-            .tags
-            .map(|tags| {
-                tags.into_iter()
-                    .filter(|tag| !tag.0.starts_with('+'))
-                    .collect::<Vec<_>>()
-            })
-            .and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
-    } else {
-        // Add msgid for users with message-tags
-        result = result.with_tag("msgid", Some(msgid_str.to_string()));
-    }
-
-    // Add server-time if capability is enabled
-    if has_server_time {
-        result = result.with_tag("time", Some(timestamp_str.to_string()));
-    }
-
-    // Add account-tag if sender is logged in and recipient has capability
-    if let Some(account) = snapshot.account.as_ref()
-        && recipient.caps.contains("account-tag")
-    {
-        result = result.with_tag("account", Some(account.clone()));
-    }
-
-    // Add bot tag if sender is a bot and recipient has message-tags
-    if snapshot.is_bot && has_message_tags {
-        result = result.with_tag("bot", None::<String>);
+    if result == ChannelRouteResult::Sent {
+        // Self-echo to other sessions (bouncer support)
+        if let (Some(ts), Some(mid)) = (&timestamp_clone, &msgid_clone) {
+             echo_to_other_sessions(ctx, &msg, snapshot, ts, mid).await;
+        }
     }
 
     result
@@ -318,8 +121,15 @@ pub async fn route_to_user_with_snapshot(
     msgid: Option<String>,
     snapshot: &SenderSnapshot,
 ) -> UserRouteResult {
+    // Deduplicate target UIDs to avoid duplicate deliveries if the nick map contains repeated entries
     let target_uids = if let Some(uids) = ctx.matrix.user_manager.nicks.get(target_lower) {
-        uids.clone()
+        let mut uniq: Vec<String> = Vec::new();
+        for uid in uids.iter() {
+            if !uniq.contains(uid) {
+                uniq.push(uid.clone());
+            }
+        }
+        uniq
     } else {
         debug!(
             "Target nick '{}' not found in nicks map. Map size: {}",
@@ -404,7 +214,7 @@ pub async fn route_to_user_with_snapshot(
 
                 let mut blocked_by_silence = false;
                 for silence_mask in &target_user.silence_list {
-                    if super::super::matches_hostmask(silence_mask, &sender_mask) {
+                    if crate::handlers::matches_hostmask(silence_mask, &sender_mask) {
                         // Silently drop the message
                         debug!(
                             target = %target_user.nick,
@@ -480,38 +290,39 @@ pub async fn route_to_user_with_snapshot(
         }
 
         // Check if target is local or remote
-        let target_sender = ctx
+        if ctx
             .matrix
             .user_manager
-            .senders
-            .get(target_uid)
-            .map(|s| s.value().clone());
-
-        if let Some(target_sender) = target_sender {
+            .get_first_sender(target_uid)
+            .is_some()
+        {
             // LOCAL USER: Check target's capabilities and build appropriate message
-            let msg_for_target = if let Some(user_arc) = ctx
-                .matrix
-                .user_manager
-                .users
-                .get(target_uid)
-                .map(|u| u.value().clone())
-            {
-                let user = user_arc.read().await;
-                build_local_recipient_message(
-                    &msg,
-                    &user,
-                    snapshot,
-                    &msgid_str,
-                    &timestamp_str,
-                    ctx.label.as_ref(),
-                )
-            } else {
-                msg.clone()
-            };
-            let _ = target_sender.send(Arc::new(msg_for_target)).await;
-            crate::metrics::MESSAGES_SENT.inc();
-            sent_count += 1;
-            delivered_local.insert(target_uid.clone());
+            // LOCAL USER: deliver to all sessions with per-session caps
+            if let Some(sessions) = ctx.matrix.user_manager.get_senders_cloned(target_uid) {
+                let mut any_sent = false;
+                for sess in sessions {
+                    let caps = ctx
+                        .matrix
+                        .user_manager
+                        .get_session_caps(sess.session_id)
+                        .unwrap_or_default();
+                    let msg_for_target = build_local_recipient_message(
+                        &msg,
+                        &caps,
+                        snapshot,
+                        &msgid_str,
+                        &timestamp_str,
+                        ctx.label.as_ref(),
+                    );
+                    let _ = sess.tx.send(Arc::new(msg_for_target)).await;
+                    any_sent = true;
+                    crate::metrics::MESSAGES_SENT.inc();
+                    sent_count += 1;
+                }
+                if any_sent {
+                    delivered_local.insert(target_uid.clone());
+                }
+            }
         } else {
             // REMOTE USER: Route via SyncManager
             // Construct S2S message: :SourceUID PRIVMSG TargetUID :text
@@ -585,23 +396,30 @@ pub async fn route_to_user_with_snapshot(
                 continue;
             }
 
-            if let Some(sender) = ctx
-                .matrix
-                .user_manager
-                .senders
-                .get(&sibling_uid)
-                .map(|s| s.value().clone())
-            {
-                let msg_for_sibling = build_local_recipient_message(
-                    &msg,
-                    &sibling,
-                    snapshot,
-                    &msgid_str,
-                    &timestamp_str,
-                    None, // self-echo copies never carry labels
-                );
-                let _ = sender.send(Arc::new(msg_for_sibling)).await;
-                delivered_local.insert(sibling_uid.clone());
+            if let Some(sessions) = ctx.matrix.user_manager.get_senders_cloned(&sibling_uid) {
+                let mut delivered_any = false;
+                for sess in sessions {
+                    let caps = ctx
+                        .matrix
+                        .user_manager
+                        .get_session_caps(sess.session_id)
+                        .unwrap_or_default();
+                    let msg_for_sibling = build_local_recipient_message(
+                        &msg,
+                        &caps,
+                        snapshot,
+                        &msgid_str,
+                        &timestamp_str,
+                        None, // self-echo copies never carry labels
+                    );
+                    let _ = sess.tx.send(Arc::new(msg_for_sibling)).await;
+                    delivered_any = true;
+                    crate::metrics::MESSAGES_SENT.inc();
+                    sent_count += 1;
+                }
+                if delivered_any {
+                    delivered_local.insert(sibling_uid.clone());
+                }
             }
         }
     }
@@ -632,73 +450,12 @@ pub async fn route_to_user_with_snapshot(
     }
 
     if sent_count > 0 {
+        // Self-echo to other sessions (bouncer support)
+        if let (Some(ts), Some(mid)) = (&timestamp, &msgid) {
+             echo_to_other_sessions(ctx, &msg, snapshot, ts, mid).await;
+        }
         UserRouteResult::Sent
     } else {
         UserRouteResult::NoSuchNick
-    }
-}
-
-// ============================================================================
-// Error Response Helpers
-// ============================================================================
-
-/// Send ERR_CANNOTSENDTOCHAN with the given reason.
-pub async fn send_cannot_send<S>(
-    ctx: &Context<'_, S>,
-    nick: &str,
-    target: &str,
-    reason: &str,
-) -> HandlerResult {
-    let reply = server_reply(
-        ctx.server_name(),
-        Response::ERR_CANNOTSENDTOCHAN,
-        vec![nick.to_string(), target.to_string(), reason.to_string()],
-    );
-    ctx.sender.send(reply).await?;
-    Ok(())
-}
-
-/// Send ERR_NOSUCHCHANNEL.
-pub async fn send_no_such_channel<S>(
-    ctx: &Context<'_, S>,
-    nick: &str,
-    target: &str,
-) -> HandlerResult {
-    let reply = Response::err_nosuchchannel(nick, target).with_prefix(ctx.server_prefix());
-    ctx.send_error("PRIVMSG", "ERR_NOSUCHCHANNEL", reply)
-        .await?;
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn create_test_snapshot() -> SenderSnapshot {
-        SenderSnapshot {
-            nick: "testnick".to_string(),
-            user: "testuser".to_string(),
-            host: "real.host.com".to_string(),
-            visible_host: "visible.host.com".to_string(),
-            realname: "Real Name".to_string(),
-            ip: "127.0.0.1".to_string(),
-            account: Some("testaccount".to_string()),
-            is_registered: true,
-            is_oper: false,
-            is_bot: false,
-            is_tls: true,
-        }
-    }
-
-    #[test]
-    fn test_sender_snapshot_shun_mask() {
-        let snapshot = create_test_snapshot();
-        assert_eq!(snapshot.shun_mask(), "testuser@real.host.com");
-    }
-
-    #[test]
-    fn test_sender_snapshot_full_mask() {
-        let snapshot = create_test_snapshot();
-        assert_eq!(snapshot.full_mask(), "testnick!testuser@visible.host.com");
     }
 }

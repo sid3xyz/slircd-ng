@@ -1,6 +1,6 @@
 //! Operator command handlers split into submodules.
 
-mod admin;
+mod lifecycle;
 mod auth;
 mod chghost;
 mod chgident;
@@ -10,8 +10,9 @@ mod spamconf;
 mod trace;
 mod vhost;
 mod wallops;
+mod clearchan;
 
-pub use admin::{DieHandler, RehashHandler, RestartHandler};
+pub use lifecycle::{DieHandler, RehashHandler, RestartHandler};
 pub use auth::OperHandler;
 pub use chghost::ChghostHandler;
 pub use chgident::ChgIdentHandler;
@@ -21,6 +22,7 @@ pub use spamconf::SpamConfHandler;
 pub use trace::TraceHandler;
 pub use vhost::VhostHandler;
 pub use wallops::WallopsHandler;
+pub use clearchan::ClearchanHandler;
 
 use crate::handlers::PostRegHandler;
 use std::collections::HashMap;
@@ -39,6 +41,7 @@ pub fn register(map: &mut HashMap<&'static str, Box<dyn PostRegHandler>>) {
     map.insert("VHOST", Box::new(VhostHandler));
     map.insert("TRACE", Box::new(TraceHandler));
     map.insert("SPAMCONF", Box::new(SpamConfHandler));
+    map.insert("CLEARCHAN", Box::new(ClearchanHandler));
 }
 
 /// Validate hostname per RFC 952/1123 rules.

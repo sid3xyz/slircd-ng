@@ -3,11 +3,12 @@
 //! This module contains the `UserManager` struct, which isolates all
 //! user-related state and logic from the main Matrix struct.
 
-use crate::state::dashmap_ext::DashMapExt;
+use crate::state::client::SessionId;
 use crate::state::{Uid, UidGenerator, User, WhowasEntry, observer::StateObserver};
 use dashmap::DashMap;
 use slirc_proto::sync::clock::ServerId;
 use slirc_proto::{Command, Message, Prefix};
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
@@ -25,10 +26,21 @@ const MAX_WHOWAS_PER_NICK: usize = 10;
 /// - Maintaining WHOWAS history for disconnected users.
 /// - Generating unique identifiers (UIDs).
 /// - Handling server-wide notices (snomasks).
+///   Sender bound to a specific session, used for per-session routing.
+#[derive(Clone)]
+pub struct SessionSender {
+    pub session_id: SessionId,
+    pub tx: mpsc::Sender<Arc<Message>>,
+}
+
 pub struct UserManager {
     pub users: DashMap<Uid, Arc<RwLock<User>>>,
     pub nicks: DashMap<String, Vec<Uid>>,
-    pub senders: DashMap<Uid, mpsc::Sender<Arc<Message>>>,
+    /// Senders for message routing. For bouncer mode, multiple sessions may share a UID,
+    /// so each UID can have multiple senders.
+    pub senders: DashMap<Uid, Vec<SessionSender>>,
+    /// Per-session capabilities (IRCv3 caps negotiated by that session).
+    pub session_caps: DashMap<SessionId, HashSet<String>>,
     pub whowas: DashMap<String, VecDeque<WhowasEntry>>,
     pub uid_gen: UidGenerator,
     pub enforce_timers: DashMap<Uid, Instant>,
@@ -50,6 +62,7 @@ impl UserManager {
             users: DashMap::new(),
             nicks: DashMap::new(),
             senders: DashMap::new(),
+            session_caps: DashMap::new(),
             whowas: DashMap::new(),
             uid_gen: UidGenerator::new(server_sid),
             enforce_timers: DashMap::new(),
@@ -67,6 +80,101 @@ impl UserManager {
     /// Most code should migrate to handling multiple UIDs per nick.
     pub fn get_first_uid(&self, nick_lower: &str) -> Option<String> {
         self.nicks.get(nick_lower).and_then(|v| v.first().cloned())
+    }
+
+    /// Send a message to all sessions for a given UID.
+    /// For bouncer mode, multiple sessions may share a UID, so we broadcast to all.
+    /// Returns the number of sessions the message was sent to.
+    pub async fn send_to_uid(&self, uid: &str, msg: Arc<Message>) -> usize {
+        if let Some(senders) = self.senders.get(uid) {
+            let senders_clone: Vec<_> = senders.value().clone();
+            drop(senders); // Release DashMap lock before awaiting
+
+            let mut sent = 0;
+            for sess in senders_clone {
+                if sess.tx.send(msg.clone()).await.is_ok() {
+                    sent += 1;
+                }
+            }
+            sent
+        } else {
+            0
+        }
+    }
+
+    /// Try to send a message to all sessions for a given UID (non-blocking).
+    /// For bouncer mode, multiple sessions may share a UID, so we broadcast to all.
+    /// Returns the number of sessions the message was sent to.
+    pub fn try_send_to_uid(&self, uid: &str, msg: Arc<Message>) -> usize {
+        if let Some(senders) = self.senders.get(uid) {
+            let mut sent = 0;
+            for sess in senders.value().iter() {
+                if sess.tx.try_send(msg.clone()).is_ok() {
+                    sent += 1;
+                }
+            }
+            sent
+        } else {
+            0
+        }
+    }
+
+    /// Get a cloned list of senders for a UID (for cases that need direct access).
+    #[allow(dead_code)]
+    pub fn get_senders_cloned(&self, uid: &str) -> Option<Vec<SessionSender>> {
+        self.senders.get(uid).map(|r| r.value().clone())
+    }
+
+    /// Get a cloned first sender for a UID (for backward compatibility).
+    /// This returns the first sender if any exist.
+    pub fn get_first_sender(&self, uid: &str) -> Option<mpsc::Sender<Arc<Message>>> {
+        self.senders
+            .get(uid)
+            .and_then(|r| r.value().first().map(|s| s.tx.clone()))
+    }
+
+    /// Register a session sender and its initial capabilities under a UID.
+    pub fn register_session_sender(
+        &self,
+        uid: &str,
+        session_id: SessionId,
+        sender: mpsc::Sender<Arc<Message>>,
+        caps: HashSet<String>,
+    ) {
+        self.session_caps.insert(session_id, caps);
+        // Prevent duplicate session registrations; update existing sender if present
+        if let Some(mut entry) = self.senders.get_mut(uid) {
+            let vec = entry.value_mut();
+            if let Some(existing) = vec.iter_mut().find(|s| s.session_id == session_id) {
+                existing.tx = sender;
+                return;
+            }
+            vec.push(SessionSender {
+                session_id,
+                tx: sender,
+            });
+        } else {
+            self.senders.insert(
+                uid.to_string(),
+                vec![SessionSender {
+                    session_id,
+                    tx: sender,
+                }],
+            );
+        }
+    }
+
+    /// Update capabilities for a specific session.
+    #[allow(dead_code)]
+    pub fn update_session_caps(&self, session_id: SessionId, caps: HashSet<String>) {
+        self.session_caps.insert(session_id, caps);
+    }
+
+    /// Get capabilities for a specific session.
+    pub fn get_session_caps(&self, session_id: SessionId) -> Option<HashSet<String>> {
+        self.session_caps
+            .get(&session_id)
+            .map(|c| c.value().clone())
     }
 
     /// Set the state observer.
@@ -320,10 +428,8 @@ impl UserManager {
 
         for (uid, user_arc) in user_data {
             let user_guard = user_arc.read().await;
-            if user_guard.modes.has_snomask(mask)
-                && let Some(sender) = self.senders.get_cloned(&uid)
-            {
-                let _ = sender.send(notice_msg.clone()).await;
+            if user_guard.modes.has_snomask(mask) {
+                self.send_to_uid(&uid, notice_msg.clone()).await;
             }
         }
     }
@@ -344,10 +450,8 @@ impl UserManager {
 
         for (uid, user_arc) in user_data {
             let user_guard = user_arc.read().await;
-            if user_guard.modes.oper
-                && let Some(sender) = self.senders.get_cloned(&uid)
-            {
-                let _ = sender.send(notice_msg.clone()).await;
+            if user_guard.modes.oper {
+                self.send_to_uid(&uid, notice_msg.clone()).await;
             }
         }
     }

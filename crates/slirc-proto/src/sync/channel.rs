@@ -93,10 +93,18 @@ pub struct ChannelModesCrdt {
     pub no_colors: LwwRegister<bool>,
     /// +C: No CTCP allowed.
     pub no_ctcp: LwwRegister<bool>,
-    /// +S: SSL/TLS users only.
+    /// +z: SSL/TLS users only.
     pub ssl_only: LwwRegister<bool>,
-    /// +z: Reduced moderation (ops/voiced see blocked messages).
-    pub reduced_moderation: LwwRegister<bool>,
+    /// +D: Delayed join.
+    pub delayed_join: LwwRegister<bool>,
+    /// +S: Strip color codes.
+    pub strip_colors: LwwRegister<bool>,
+    /// +B: Anti-caps.
+    pub anti_caps: LwwRegister<bool>,
+    /// +L: Redirect to another channel when limit reached.
+    pub redirect: LwwRegister<Option<String>>,
+    /// +G: Channel censorship filter.
+    pub censor: LwwRegister<bool>,
 }
 
 impl ChannelModesCrdt {
@@ -114,7 +122,11 @@ impl ChannelModesCrdt {
             no_colors: LwwRegister::new(false, timestamp),
             no_ctcp: LwwRegister::new(false, timestamp),
             ssl_only: LwwRegister::new(false, timestamp),
-            reduced_moderation: LwwRegister::new(false, timestamp),
+            delayed_join: LwwRegister::new(false, timestamp),
+            strip_colors: LwwRegister::new(false, timestamp),
+            anti_caps: LwwRegister::new(false, timestamp),
+            redirect: LwwRegister::new(None, timestamp),
+            censor: LwwRegister::new(false, timestamp),
         }
     }
 }
@@ -131,7 +143,11 @@ impl Crdt for ChannelModesCrdt {
         self.no_colors.merge(&other.no_colors);
         self.no_ctcp.merge(&other.no_ctcp);
         self.ssl_only.merge(&other.ssl_only);
-        self.reduced_moderation.merge(&other.reduced_moderation);
+        self.delayed_join.merge(&other.delayed_join);
+        self.strip_colors.merge(&other.strip_colors);
+        self.anti_caps.merge(&other.anti_caps);
+        self.redirect.merge(&other.redirect);
+        self.censor.merge(&other.censor);
     }
 
     fn dominates(&self, other: &Self) -> bool {
@@ -145,7 +161,11 @@ impl Crdt for ChannelModesCrdt {
             && self.no_colors.dominates(&other.no_colors)
             && self.no_ctcp.dominates(&other.no_ctcp)
             && self.ssl_only.dominates(&other.ssl_only)
-            && self.reduced_moderation.dominates(&other.reduced_moderation)
+            && self.delayed_join.dominates(&other.delayed_join)
+            && self.strip_colors.dominates(&other.strip_colors)
+            && self.anti_caps.dominates(&other.anti_caps)
+            && self.redirect.dominates(&other.redirect)
+            && self.censor.dominates(&other.censor)
     }
 }
 

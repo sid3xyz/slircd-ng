@@ -68,3 +68,17 @@ max_connections_per_ip = 10
 # Use sparingly for trusted operators, bots, or services.
 # Example: exempt_ips = ["192.168.1.100", "10.0.0.1"]
 exempt_ips = []
+
+[multiclient]
+# Enable multiclient/bouncer support (multiple connections per account)
+enabled = true
+# Allow multiclient usage by default without explicit opt-in
+allowed_by_default = true
+# Always-on policy: disabled, opt-in, opt-out, mandatory
+always_on = "opt-in"
+# Expiration for always-on sessions (e.g. "30d", "24h", "0" for never)
+always_on_expiration = "30d"
+# Auto-away policy: disabled, opt-in, opt-out
+auto_away = "opt-out"
+# Maximum concurrent sessions per account
+max_sessions_per_account = 10

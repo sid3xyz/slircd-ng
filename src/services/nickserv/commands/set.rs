@@ -69,6 +69,29 @@ pub async fn handle_set(
 
     // Handle bouncer-specific options in memory (ClientManager)
     match option.as_str() {
+        "MULTICLIENT" => {
+            let enabled = match value.to_uppercase().as_str() {
+                "ON" | "TRUE" | "1" | "YES" => true,
+                "OFF" | "FALSE" | "0" | "NO" => false,
+                _ => {
+                    return reply_effects(uid, vec!["Value must be ON or OFF."]);
+                }
+            };
+
+            // Update override in ClientManager
+            matrix
+                .client_manager
+                .set_multiclient_override(&account_name, enabled);
+            info!(account = %account_name, enabled = enabled, "MULTICLIENT setting changed");
+
+            return reply_effects(
+                uid,
+                vec![&format!(
+                    "\x02MULTICLIENT\x02 has been set to \x02{}\x02.",
+                    if enabled { "ON" } else { "OFF" }
+                )],
+            );
+        }
         "ALWAYS-ON" => {
             let enabled = match value.to_uppercase().as_str() {
                 "ON" | "TRUE" | "1" | "YES" => true,
@@ -168,7 +191,7 @@ pub async fn handle_set(
         Err(crate::db::DbError::UnknownOption(opt)) => reply_effects(
             uid,
             vec![&format!(
-                "Unknown option: \x02{}\x02. Valid options: ALWAYS-ON, AUTO-AWAY, EMAIL, ENFORCE, HIDEMAIL, PASSWORD",
+                "Unknown option: \x02{}\x02. Valid options: MULTICLIENT, ALWAYS-ON, AUTO-AWAY, EMAIL, ENFORCE, HIDEMAIL, PASSWORD",
                 opt
             )],
         ),

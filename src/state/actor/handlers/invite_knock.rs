@@ -5,7 +5,6 @@
 use super::{ChannelActor, ChannelError, ChannelMode, InviteParams, Uid};
 use slirc_proto::{Command, Message, Prefix};
 use std::sync::Arc;
-use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::oneshot;
 
 impl ChannelActor {
@@ -54,19 +53,18 @@ impl ChannelActor {
             command: Command::INVITE(target_nick, self.name.clone()),
         };
 
-        for (uid, _) in &self.members {
-            if *uid == target_uid {
-                continue;
-            }
+        // Broadcast invite-notify to all members with invite-notify capability
+        if let Some(matrix) = self.matrix.upgrade() {
+            let msg_arc = Arc::new(invite_msg);
+            for (uid, _) in &self.members {
+                if *uid == target_uid {
+                    continue;
+                }
 
-            if let Some(caps) = self.user_caps.get(uid)
-                && caps.contains("invite-notify")
-                && let Some(sender) = self.senders.get(uid)
-                && let Err(err) = sender.try_send(Arc::new(invite_msg.clone()))
-            {
-                match err {
-                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
-                    TrySendError::Closed(_) => {}
+                if let Some(caps) = self.user_caps.get(uid)
+                    && caps.contains("invite-notify")
+                {
+                    matrix.user_manager.try_send_to_uid(uid, msg_arc.clone());
                 }
             }
         }
@@ -107,14 +105,12 @@ impl ChannelActor {
             command: Command::NOTICE(self.name.clone(), msg_text),
         };
 
-        for (uid, modes) in &self.members {
-            if (modes.op || modes.halfop)
-                && let Some(sender) = self.senders.get(uid)
-                && let Err(err) = sender.try_send(Arc::new(msg.clone()))
-            {
-                match err {
-                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
-                    TrySendError::Closed(_) => {}
+        // Send knock notification to ops/halfops using multi-sender
+        if let Some(matrix) = self.matrix.upgrade() {
+            let msg_arc = Arc::new(msg);
+            for (uid, modes) in &self.members {
+                if modes.op || modes.halfop {
+                    matrix.user_manager.try_send_to_uid(uid, msg_arc.clone());
                 }
             }
         }

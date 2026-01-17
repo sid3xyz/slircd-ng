@@ -160,26 +160,43 @@ impl PostRegHandler for WhoisHandler {
                 .await?;
 
                 // RPL_WHOISCHANNELS (319): <nick> :{[@|+]<channel>}
-                // Skip if target is invisible and requester doesn't share any channels
-                let show_channels = if target_modes.invisible && target_uid != ctx.uid {
-                    // Check if requester shares any channel with target
-                    let mut shares_channel = false;
-                    let requester_arc = ctx
-                        .matrix
-                        .user_manager
-                        .users
-                        .get(ctx.uid)
-                        .map(|u| u.value().clone());
-                    if let Some(requester_arc) = requester_arc {
-                        let requester = requester_arc.read().await;
-                        for ch in &target_channels {
-                            if requester.channels.contains(ch) {
-                                shares_channel = true;
-                                break;
+                // Skip if target has +p (HideChannels) or target is invisible and requester doesn't share channels
+                let is_oper = ctx
+                    .matrix
+                    .user_manager
+                    .users
+                    .get(ctx.uid)
+                    .map(|u| u.value().clone())
+                    .map(|arc| {
+                        // Use try_read for synchronous check within the block
+                        arc.try_read().map(|u| u.modes.oper).unwrap_or(false)
+                    })
+                    .unwrap_or(false);
+                let show_channels = if target_uid != ctx.uid && !is_oper {
+                    if target_modes.hide_channels {
+                        false
+                    } else if target_modes.invisible {
+                        // Check if requester shares any channel with target
+                        let mut shares_channel = false;
+                        let requester_arc = ctx
+                            .matrix
+                            .user_manager
+                            .users
+                            .get(ctx.uid)
+                            .map(|u| u.value().clone());
+                        if let Some(requester_arc) = requester_arc {
+                            let requester = requester_arc.read().await;
+                            for ch in &target_channels {
+                                if requester.channels.contains(ch) {
+                                    shares_channel = true;
+                                    break;
+                                }
                             }
                         }
+                        shares_channel
+                    } else {
+                        true
                     }
-                    shares_channel
                 } else {
                     true
                 };

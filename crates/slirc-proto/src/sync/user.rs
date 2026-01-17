@@ -81,6 +81,14 @@ pub struct UserModesCrdt {
     pub snomasks: AwSet<char>,
     /// Operator type name (if opered).
     pub oper_type: LwwRegister<Option<String>>,
+    /// Hide channels in WHOIS (+p).
+    pub hide_channels: LwwRegister<bool>,
+    /// Deaf mode (+d).
+    pub deaf: LwwRegister<bool>,
+    /// CallerID (+g).
+    pub caller_id: LwwRegister<bool>,
+    /// Network Administrator (+N).
+    pub net_admin: LwwRegister<bool>,
 }
 
 impl UserModesCrdt {
@@ -98,6 +106,10 @@ impl UserModesCrdt {
             bot: LwwRegister::new(false, timestamp),
             snomasks: AwSet::new(),
             oper_type: LwwRegister::new(None, timestamp),
+            hide_channels: LwwRegister::new(false, timestamp),
+            deaf: LwwRegister::new(false, timestamp),
+            caller_id: LwwRegister::new(false, timestamp),
+            net_admin: LwwRegister::new(false, timestamp),
         }
     }
 }
@@ -114,6 +126,10 @@ impl Crdt for UserModesCrdt {
         self.bot.merge(&other.bot);
         self.snomasks.merge(&other.snomasks);
         self.oper_type.merge(&other.oper_type);
+        self.hide_channels.merge(&other.hide_channels);
+        self.deaf.merge(&other.deaf);
+        self.caller_id.merge(&other.caller_id);
+        self.net_admin.merge(&other.net_admin);
     }
 
     fn dominates(&self, other: &Self) -> bool {
@@ -127,6 +143,10 @@ impl Crdt for UserModesCrdt {
             && self.bot.dominates(&other.bot)
             && self.snomasks.dominates(&other.snomasks)
             && self.oper_type.dominates(&other.oper_type)
+            && self.hide_channels.dominates(&other.hide_channels)
+            && self.deaf.dominates(&other.deaf)
+            && self.caller_id.dominates(&other.caller_id)
+            && self.net_admin.dominates(&other.net_admin)
     }
 }
 

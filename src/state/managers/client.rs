@@ -37,6 +37,10 @@ pub struct ClientManager {
 
     /// Persistent storage for always-on clients (optional).
     store: Option<Arc<AlwaysOnStore>>,
+
+    /// Per-account multiclient override (NickServ SET MULTICLIENT ON|OFF).
+    /// Key: account_lower, Value: whether multiclient is allowed.
+    multiclient_override: DashMap<String, bool>,
 }
 
 /// Result of attempting to attach a session.
@@ -93,6 +97,7 @@ impl ClientManager {
             session_info: DashMap::new(),
             max_sessions_per_account: 10,
             store: None,
+            multiclient_override: DashMap::new(),
         }
     }
 
@@ -104,6 +109,7 @@ impl ClientManager {
             session_info: DashMap::new(),
             max_sessions_per_account: max_sessions,
             store: None,
+            multiclient_override: DashMap::new(),
         }
     }
 
@@ -115,6 +121,7 @@ impl ClientManager {
             session_info: DashMap::new(),
             max_sessions_per_account: max_sessions,
             store: Some(store),
+            multiclient_override: DashMap::new(),
         }
     }
 
@@ -186,12 +193,18 @@ impl ClientManager {
         }
 
         // Attach the session
-        let (was_new_client, was_first_session);
+        let (was_new_client, was_first_session, primary_uid);
         {
             let mut client_guard = client.write().await;
             was_first_session = !client_guard.is_connected();
             was_new_client = client_guard.channels.is_empty() && was_first_session;
             client_guard.attach_session(session_id);
+
+            // Set primary_uid on first session (for UID sharing in bouncer mode)
+            if client_guard.primary_uid.is_none() {
+                client_guard.primary_uid = Some(uid.to_string());
+            }
+            primary_uid = client_guard.primary_uid.clone();
 
             // Apply policy flags from configuration and account defaults
             client_guard.set_always_on(always_on_enabled);
@@ -211,7 +224,9 @@ impl ClientManager {
             }
         }
 
-        // Record session mapping
+        // Record session mapping - use the primary_uid, not this session's UID
+        // This ensures all sessions map to the same UID for bouncer mode
+        let shared_uid = primary_uid.unwrap_or_else(|| uid.to_string());
         self.session_to_client.insert(session_id, client.clone());
         self.session_info.insert(
             session_id,
@@ -219,7 +234,7 @@ impl ClientManager {
                 session_id,
                 device_id,
                 account: account_lower,
-                uid: uid.to_string(),
+                uid: shared_uid,
                 ip,
                 attached_at: Utc::now(),
             },
@@ -233,6 +248,20 @@ impl ClientManager {
                 first_session: was_first_session,
             }
         }
+    }
+
+    /// Set per-account multiclient override.
+    pub fn set_multiclient_override(&self, account: &str, enabled: bool) {
+        let account_lower = irc_to_lower(account);
+        self.multiclient_override.insert(account_lower, enabled);
+    }
+
+    /// Get per-account multiclient override.
+    pub fn get_multiclient_override(&self, account: &str) -> Option<bool> {
+        let account_lower = irc_to_lower(account);
+        self.multiclient_override
+            .get(&account_lower)
+            .map(|e| *e.value())
     }
 
     /// Detach a session from its client.
@@ -289,6 +318,21 @@ impl ClientManager {
             .filter(|s| s.value().account == account_lower)
             .map(|s| s.value().clone())
             .collect()
+    }
+
+    /// Get the primary UID for an account (the UID of the first session).
+    ///
+    /// For bouncer mode, all sessions of the same account share one UID.
+    /// This returns that UID if the account has an established primary UID.
+    pub fn get_existing_uid(&self, account: &str) -> Option<String> {
+        let account_lower = irc_to_lower(account);
+        if let Some(client_arc) = self.clients.get(&account_lower) {
+            // Use try_read to avoid async - primary_uid is set early and rarely changes
+            if let Ok(client) = client_arc.try_read() {
+                return client.primary_uid.clone();
+            }
+        }
+        None
     }
 
     /// Track a successful channel join for an account-backed client.

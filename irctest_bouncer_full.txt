@@ -1,0 +1,919 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-8.3.5, pluggy-1.5.0
+rootdir: /home/straylight/slircd-ng/slirc-irctest
+configfile: pytest.ini
+plugins: typeguard-4.4.2
+collected 7 items
+
+irctest/server_tests/bouncer.py ---- new test ----
+1768650148.733 1: connects to server.
+1768650148.734 1 -> S: CAP LS 302
+1768650148.734 S -> 1: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650148.734 1 -> S: CAP REQ :sasl
+1768650148.734 S -> 1: :My.Little.Server CAP * ACK sasl
+1768650148.734 1 -> S: AUTHENTICATE PLAIN
+1768650148.734 S -> 1: :My.Little.Server AUTHENTICATE +
+1768650148.734 1 -> S: AUTHENTICATE b2JzZXJ2ZXIAb2JzZXJ2ZXIAb2JzZXJ2ZXJwYXNzd29yZA==
+1768650148.757 S -> 1: :My.Little.Server 900 * *!*@* observer :You are now logged in as observer
+1768650148.757 1 -> S: NICK observer
+1768650148.757 1 -> S: USER username * * :Realname
+1768650148.757 1 -> S: CAP END
+1768650148.757 S -> 1: :My.Little.Server 903 * :SASL authentication successful
+1768650148.757 S -> 1: :My.Little.Server 001 observer :Welcome to the TestNet IRC Network observer!username@7sllo.eg3ii.gea2m.test
+1768650148.757 1 -> S: PING foo
+1768650148.757 1 -> S: PING synchronize212681.928334686
+1768650148.757 S -> 1: :My.Little.Server 002 observer :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650148.757 S -> 1: :My.Little.Server 003 observer :This server was created at startup
+1768650148.757 S -> 1: :My.Little.Server 004 observer My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650148.757 S -> 1: :My.Little.Server 005 observer NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650148.757 S -> 1: :My.Little.Server 005 observer TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650148.757 S -> 1: :My.Little.Server 396 observer 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650148.757 S -> 1: :My.Little.Server 375 observer :- My.Little.Server Message of the Day -
+1768650148.757 S -> 1: :My.Little.Server 372 observer :- Welcome to slircd-ng test server!
+1768650148.757 S -> 1: :My.Little.Server 376 observer :End of /MOTD command.
+1768650148.758 S -> 1: :My.Little.Server PONG My.Little.Server foo
+1768650148.801 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212681.928334686
+1768650148.802 1 -> S: JOIN #chan
+1768650148.802 1 -> S: PING synchronize212681.972952465
+1768650148.802 S -> 1: @msgid=1768650148801-1;time=2026-01-17T11:42:28.000Z :observer!username@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650148.845 S -> 1: :My.Little.Server 353 observer = #chan @observer
+1768650148.845 S -> 1: :My.Little.Server 366 observer #chan :End of /NAMES list
+1768650148.845 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212681.972952465
+1768650148.845 1 -> S: CAP REQ :message-tags server-time
+1768650148.846 1 -> S: PING synchronize212682.016627626
+1768650148.846 S -> 1: :My.Little.Server CAP observer ACK :message-tags server-time
+1768650148.889 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212682.016627626
+1768650148.890 2: connects to server.
+1768650148.890 2 -> S: CAP LS 302
+1768650148.890 2 -> S: AUTHENTICATE PLAIN
+1768650148.890 2 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650148.890 2 -> S: NICK testnick
+1768650148.890 2 -> S: USER a 0 * a
+1768650148.890 2 -> S: CAP REQ :server-time message-tags
+1768650148.890 2 -> S: CAP END
+1768650148.890 2 -> S: PING synchronize212682.061028153
+1768650148.890 S -> 2: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650148.890 S -> 2: :My.Little.Server AUTHENTICATE +
+1768650148.934 S -> 2: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650148.934 S -> 2: :My.Little.Server 903 * :SASL authentication successful
+1768650148.935 S -> 2: :My.Little.Server CAP testnick ACK :server-time message-tags
+1768650148.935 S -> 2: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650148.935 S -> 2: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650148.935 S -> 2: :My.Little.Server 003 testnick :This server was created at startup
+1768650148.935 S -> 2: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650148.935 S -> 2: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650148.935 S -> 2: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650148.935 S -> 2: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650148.935 S -> 2: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650148.935 S -> 2: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650148.935 S -> 2: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650148.936 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212682.061028153
+1768650148.936 2 -> S: JOIN #chan
+1768650148.936 2 -> S: PING synchronize212682.107515253
+1768650148.937 S -> 2: @msgid=1768650148936-3;time=2026-01-17T11:42:28.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650148.977 S -> 2: :My.Little.Server 353 testnick = #chan :@observer testnick
+1768650148.977 S -> 2: :My.Little.Server 366 testnick #chan :End of /NAMES list
+1768650148.977 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212682.107515253
+1768650148.977 3: connects to server.
+1768650148.977 3 -> S: CAP LS 302
+1768650148.978 3 -> S: AUTHENTICATE PLAIN
+1768650148.978 3 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650148.978 3 -> S: NICK testnick
+1768650148.978 3 -> S: USER a 0 * a
+1768650148.978 3 -> S: CAP REQ :server-time message-tags account-tag
+1768650148.978 3 -> S: CAP END
+1768650148.978 3 -> S: PING synchronize212682.148703439
+1768650148.978 S -> 3: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650148.978 S -> 3: :My.Little.Server AUTHENTICATE +
+1768650149.003 S -> 3: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650149.003 S -> 3: :My.Little.Server 903 * :SASL authentication successful
+1768650149.003 S -> 3: :My.Little.Server CAP testnick ACK :server-time message-tags account-tag
+1768650149.004 S -> 3: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650149.004 S -> 3: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650149.004 S -> 3: :My.Little.Server 003 testnick :This server was created at startup
+1768650149.004 S -> 3: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650149.004 S -> 3: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650149.004 S -> 3: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650149.004 S -> 3: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650149.004 S -> 3: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650149.004 S -> 3: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650149.004 S -> 3: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650149.004 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.005 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.005 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212682.148703439
+.1768650149.009 1: disconnects from server.
+1768650149.009 2: disconnects from server.
+1768650149.009 3: disconnects from server.
+---- new test ----
+1768650149.190 1: connects to server.
+1768650149.190 1 -> S: CAP LS 302
+1768650149.190 S -> 1: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650149.190 1 -> S: CAP REQ :sasl
+1768650149.190 S -> 1: :My.Little.Server CAP * ACK sasl
+1768650149.190 1 -> S: AUTHENTICATE PLAIN
+1768650149.190 S -> 1: :My.Little.Server AUTHENTICATE +
+1768650149.190 1 -> S: AUTHENTICATE b2JzZXJ2ZXIAb2JzZXJ2ZXIAb2JzZXJ2ZXJwYXNzd29yZA==
+1768650149.217 S -> 1: :My.Little.Server 900 * *!*@* observer :You are now logged in as observer
+1768650149.217 1 -> S: NICK observer
+1768650149.217 1 -> S: USER username * * :Realname
+1768650149.217 1 -> S: CAP END
+1768650149.217 S -> 1: :My.Little.Server 903 * :SASL authentication successful
+1768650149.218 S -> 1: :My.Little.Server 001 observer :Welcome to the TestNet IRC Network observer!username@7sllo.eg3ii.gea2m.test
+1768650149.218 1 -> S: PING foo
+1768650149.218 1 -> S: PING synchronize212682.389196245
+1768650149.218 S -> 1: :My.Little.Server 002 observer :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650149.218 S -> 1: :My.Little.Server 003 observer :This server was created at startup
+1768650149.218 S -> 1: :My.Little.Server 004 observer My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650149.218 S -> 1: :My.Little.Server 005 observer NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650149.218 S -> 1: :My.Little.Server 005 observer TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650149.218 S -> 1: :My.Little.Server 396 observer 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650149.218 S -> 1: :My.Little.Server 375 observer :- My.Little.Server Message of the Day -
+1768650149.218 S -> 1: :My.Little.Server 372 observer :- Welcome to slircd-ng test server!
+1768650149.218 S -> 1: :My.Little.Server 376 observer :End of /MOTD command.
+1768650149.219 S -> 1: :My.Little.Server PONG My.Little.Server foo
+1768650149.261 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212682.389196245
+1768650149.262 1 -> S: JOIN #chan
+1768650149.262 1 -> S: PING synchronize212682.432826973
+1768650149.262 S -> 1: @msgid=1768650149261-1;time=2026-01-17T11:42:29.000Z :observer!username@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.309 S -> 1: :My.Little.Server 353 observer = #chan @observer
+1768650149.309 S -> 1: :My.Little.Server 366 observer #chan :End of /NAMES list
+1768650149.309 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212682.432826973
+1768650149.309 1 -> S: CAP REQ :message-tags server-time
+1768650149.310 1 -> S: PING synchronize212682.480602858
+1768650149.310 S -> 1: :My.Little.Server CAP observer ACK :message-tags server-time
+1768650149.353 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212682.480602858
+1768650149.353 2: connects to server.
+1768650149.354 2 -> S: CAP LS 302
+1768650149.354 2 -> S: AUTHENTICATE PLAIN
+1768650149.354 2 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650149.354 2 -> S: NICK testnick
+1768650149.354 2 -> S: USER a 0 * a
+1768650149.354 2 -> S: CAP REQ :server-time message-tags
+1768650149.354 2 -> S: CAP END
+1768650149.354 2 -> S: PING synchronize212682.524868125
+1768650149.354 S -> 2: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650149.354 S -> 2: :My.Little.Server AUTHENTICATE +
+1768650149.403 S -> 2: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650149.403 S -> 2: :My.Little.Server 903 * :SASL authentication successful
+1768650149.403 S -> 2: :My.Little.Server CAP testnick ACK :server-time message-tags
+1768650149.404 S -> 2: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650149.404 S -> 2: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650149.404 S -> 2: :My.Little.Server 003 testnick :This server was created at startup
+1768650149.404 S -> 2: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650149.404 S -> 2: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650149.404 S -> 2: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650149.404 S -> 2: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650149.404 S -> 2: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650149.404 S -> 2: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650149.404 S -> 2: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650149.405 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212682.524868125
+1768650149.405 2 -> S: JOIN #chan
+1768650149.405 2 -> S: PING synchronize212682.5759177
+1768650149.405 S -> 2: @msgid=1768650149404-3;time=2026-01-17T11:42:29.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.449 S -> 2: :My.Little.Server 353 testnick = #chan :@observer testnick
+1768650149.449 S -> 2: :My.Little.Server 366 testnick #chan :End of /NAMES list
+1768650149.449 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212682.5759177
+1768650149.450 3: connects to server.
+1768650149.450 3 -> S: CAP LS 302
+1768650149.450 3 -> S: AUTHENTICATE PLAIN
+1768650149.450 3 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650149.450 3 -> S: NICK testnick
+1768650149.450 3 -> S: USER a 0 * a
+1768650149.450 3 -> S: CAP REQ :server-time message-tags account-tag
+1768650149.450 3 -> S: CAP END
+1768650149.450 3 -> S: PING synchronize212682.620893884
+1768650149.450 S -> 3: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650149.450 S -> 3: :My.Little.Server AUTHENTICATE +
+1768650149.486 S -> 3: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650149.486 S -> 3: :My.Little.Server 903 * :SASL authentication successful
+1768650149.486 S -> 3: :My.Little.Server CAP testnick ACK :server-time message-tags account-tag
+1768650149.487 S -> 3: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650149.487 S -> 3: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650149.487 S -> 3: :My.Little.Server 003 testnick :This server was created at startup
+1768650149.487 S -> 3: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650149.487 S -> 3: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650149.487 S -> 3: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650149.487 S -> 3: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650149.487 S -> 3: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650149.487 S -> 3: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650149.487 S -> 3: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650149.487 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.488 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.488 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212682.620893884
+1768650149.488 4: connects to server.
+1768650149.488 4 -> S: CAP LS 302
+1768650149.488 4 -> S: AUTHENTICATE PLAIN
+1768650149.488 4 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650149.488 4 -> S: NICK testnick
+1768650149.488 4 -> S: USER a 0 * a
+1768650149.488 4 -> S: CAP REQ server-time
+1768650149.488 4 -> S: CAP END
+1768650149.488 4 -> S: PING synchronize212682.659495507
+1768650149.489 S -> 4: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650149.489 S -> 4: :My.Little.Server AUTHENTICATE +
+1768650149.511 S -> 4: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650149.511 S -> 4: :My.Little.Server 903 * :SASL authentication successful
+1768650149.511 S -> 4: :My.Little.Server CAP testnick ACK server-time
+1768650149.511 S -> 4: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650149.511 S -> 4: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650149.511 S -> 4: :My.Little.Server 003 testnick :This server was created at startup
+1768650149.511 S -> 4: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650149.511 S -> 4: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650149.511 S -> 4: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650149.511 S -> 4: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650149.511 S -> 4: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650149.511 S -> 4: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650149.511 S -> 4: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650149.511 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.512 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.512 S -> 4: :My.Little.Server PONG My.Little.Server synchronize212682.659495507
+1768650149.512 1 -> S: @+clientOnlyTag=Value PRIVMSG #chan :hey
+1768650149.512 1 -> S: PING synchronize212682.683379348
+1768650149.512 S -> 1: @msgid=1768650149404-3;time=2026-01-17T11:42:29.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.513 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212682.683379348
+1768650149.513 2 -> S: PING synchronize212682.683795386
+1768650149.513 S -> 2: @time=2026-01-17T11:42:29.512Z;+clientOnlyTag=Value;msgid=d78f7e1e-37a9-40b3-b4fb-e9ce313a1f01 :observer!username@127.0.0.1 PRIVMSG #chan :hey
+1768650149.513 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212682.683795386
+1768650149.513 3 -> S: PING synchronize212682.683909728
+1768650149.513 S -> 3: @time=2026-01-17T11:42:29.512Z;+clientOnlyTag=Value;msgid=d78f7e1e-37a9-40b3-b4fb-e9ce313a1f01;account=observer :observer!username@127.0.0.1 PRIVMSG #chan :hey
+1768650149.513 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212682.683909728
+1768650149.513 4 -> S: PING synchronize212682.684013319
+1768650149.513 S -> 4: @time=2026-01-17T11:42:29.512Z :observer!username@127.0.0.1 PRIVMSG #chan :hey
+1768650149.513 S -> 4: :My.Little.Server PONG My.Little.Server synchronize212682.684013319
+.1768650149.517 1: disconnects from server.
+1768650149.517 2: disconnects from server.
+1768650149.517 3: disconnects from server.
+1768650149.517 4: disconnects from server.
+---- new test ----
+1768650149.754 1: connects to server.
+1768650149.754 1 -> S: CAP LS 302
+1768650149.754 S -> 1: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650149.754 1 -> S: CAP REQ :sasl
+1768650149.754 S -> 1: :My.Little.Server CAP * ACK sasl
+1768650149.754 1 -> S: AUTHENTICATE PLAIN
+1768650149.754 S -> 1: :My.Little.Server AUTHENTICATE +
+1768650149.754 1 -> S: AUTHENTICATE b2JzZXJ2ZXIAb2JzZXJ2ZXIAb2JzZXJ2ZXJwYXNzd29yZA==
+1768650149.779 S -> 1: :My.Little.Server 900 * *!*@* observer :You are now logged in as observer
+1768650149.779 1 -> S: NICK observer
+1768650149.780 1 -> S: USER username * * :Realname
+1768650149.780 1 -> S: CAP END
+1768650149.780 S -> 1: :My.Little.Server 903 * :SASL authentication successful
+1768650149.781 S -> 1: :My.Little.Server 001 observer :Welcome to the TestNet IRC Network observer!username@7sllo.eg3ii.gea2m.test
+1768650149.781 1 -> S: PING foo
+1768650149.781 1 -> S: PING synchronize212682.951744863
+1768650149.781 S -> 1: :My.Little.Server 002 observer :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650149.781 S -> 1: :My.Little.Server 003 observer :This server was created at startup
+1768650149.781 S -> 1: :My.Little.Server 004 observer My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650149.781 S -> 1: :My.Little.Server 005 observer NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650149.781 S -> 1: :My.Little.Server 005 observer TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650149.781 S -> 1: :My.Little.Server 396 observer 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650149.781 S -> 1: :My.Little.Server 375 observer :- My.Little.Server Message of the Day -
+1768650149.781 S -> 1: :My.Little.Server 372 observer :- Welcome to slircd-ng test server!
+1768650149.781 S -> 1: :My.Little.Server 376 observer :End of /MOTD command.
+1768650149.782 S -> 1: :My.Little.Server PONG My.Little.Server foo
+1768650149.825 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212682.951744863
+1768650149.826 1 -> S: JOIN #chan
+1768650149.826 1 -> S: PING synchronize212682.99693527
+1768650149.826 S -> 1: @msgid=1768650149825-1;time=2026-01-17T11:42:29.000Z :observer!username@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650149.869 S -> 1: :My.Little.Server 353 observer = #chan @observer
+1768650149.869 S -> 1: :My.Little.Server 366 observer #chan :End of /NAMES list
+1768650149.869 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212682.99693527
+1768650149.869 1 -> S: CAP REQ :message-tags server-time
+1768650149.870 1 -> S: PING synchronize212683.040534893
+1768650149.870 S -> 1: :My.Little.Server CAP observer ACK :message-tags server-time
+1768650149.913 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212683.040534893
+1768650149.914 2: connects to server.
+1768650149.914 2 -> S: CAP LS 302
+1768650149.914 2 -> S: AUTHENTICATE PLAIN
+1768650149.914 2 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650149.914 2 -> S: NICK testnick
+1768650149.914 2 -> S: USER a 0 * a
+1768650149.914 2 -> S: CAP REQ :server-time message-tags
+1768650149.914 2 -> S: CAP END
+1768650149.914 2 -> S: PING synchronize212683.085261724
+1768650149.914 S -> 2: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650149.914 S -> 2: :My.Little.Server AUTHENTICATE +
+1768650149.962 S -> 2: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650149.962 S -> 2: :My.Little.Server 903 * :SASL authentication successful
+1768650149.963 S -> 2: :My.Little.Server CAP testnick ACK :server-time message-tags
+1768650149.963 S -> 2: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650149.963 S -> 2: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650149.963 S -> 2: :My.Little.Server 003 testnick :This server was created at startup
+1768650149.963 S -> 2: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650149.963 S -> 2: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650149.963 S -> 2: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650149.963 S -> 2: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650149.963 S -> 2: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650149.963 S -> 2: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650149.963 S -> 2: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650149.964 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212683.085261724
+1768650149.964 2 -> S: JOIN #chan
+1768650149.964 2 -> S: PING synchronize212683.135317746
+1768650149.964 S -> 2: @msgid=1768650149964-3;time=2026-01-17T11:42:29.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.005 S -> 2: :My.Little.Server 353 testnick = #chan :testnick @observer
+1768650150.005 S -> 2: :My.Little.Server 366 testnick #chan :End of /NAMES list
+1768650150.005 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212683.135317746
+1768650150.005 3: connects to server.
+1768650150.005 3 -> S: CAP LS 302
+1768650150.005 3 -> S: AUTHENTICATE PLAIN
+1768650150.005 3 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650150.005 3 -> S: NICK testnick
+1768650150.005 3 -> S: USER a 0 * a
+1768650150.006 3 -> S: CAP REQ :server-time message-tags account-tag
+1768650150.006 3 -> S: CAP END
+1768650150.006 3 -> S: PING synchronize212683.176660737
+1768650150.006 S -> 3: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650150.006 S -> 3: :My.Little.Server AUTHENTICATE +
+1768650150.037 S -> 3: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650150.037 S -> 3: :My.Little.Server 903 * :SASL authentication successful
+1768650150.037 S -> 3: :My.Little.Server CAP testnick ACK :server-time message-tags account-tag
+1768650150.038 S -> 3: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650150.038 S -> 3: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650150.038 S -> 3: :My.Little.Server 003 testnick :This server was created at startup
+1768650150.038 S -> 3: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650150.038 S -> 3: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650150.038 S -> 3: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650150.038 S -> 3: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650150.038 S -> 3: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650150.038 S -> 3: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650150.038 S -> 3: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650150.038 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.039 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.039 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212683.176660737
+1768650150.039 4: connects to server.
+1768650150.039 4 -> S: CAP LS 302
+1768650150.039 4 -> S: AUTHENTICATE PLAIN
+1768650150.039 4 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650150.039 4 -> S: NICK testnick
+1768650150.039 4 -> S: USER a 0 * a
+1768650150.039 4 -> S: CAP REQ server-time
+1768650150.039 4 -> S: CAP END
+1768650150.039 4 -> S: PING synchronize212683.210501408
+1768650150.039 S -> 4: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650150.040 S -> 4: :My.Little.Server AUTHENTICATE +
+1768650150.061 S -> 4: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650150.061 S -> 4: :My.Little.Server 903 * :SASL authentication successful
+1768650150.061 S -> 4: :My.Little.Server CAP testnick ACK server-time
+1768650150.062 S -> 4: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650150.062 S -> 4: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650150.062 S -> 4: :My.Little.Server 003 testnick :This server was created at startup
+1768650150.062 S -> 4: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650150.062 S -> 4: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650150.062 S -> 4: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650150.062 S -> 4: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650150.062 S -> 4: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650150.062 S -> 4: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650150.062 S -> 4: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650150.062 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.063 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.063 S -> 4: :My.Little.Server PONG My.Little.Server synchronize212683.210501408
+1768650150.063 2 -> S: @+clientOnlyTag=Value PRIVMSG #chan :hey
+1768650150.063 2 -> S: PING synchronize212683.23387289
+1768650150.063 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212683.23387289
+1768650150.063 1 -> S: PING synchronize212683.23418183
+1768650150.063 S -> 1: @msgid=1768650149964-3;time=2026-01-17T11:42:29.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.063 S -> 1: :testnick!a@127.0.0.1 PRIVMSG #chan :hey
+1768650150.063 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212683.23418183
+1768650150.063 3 -> S: PING synchronize212683.234291509
+1768650150.063 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212683.234291509
+F1768650150.068 1: disconnects from server.
+1768650150.068 2: disconnects from server.
+1768650150.068 3: disconnects from server.
+1768650150.068 4: disconnects from server.
+---- new test ----
+1768650150.274 1: connects to server.
+1768650150.274 1 -> S: CAP LS 302
+1768650150.275 S -> 1: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650150.275 1 -> S: CAP REQ :sasl
+1768650150.275 S -> 1: :My.Little.Server CAP * ACK sasl
+1768650150.275 1 -> S: AUTHENTICATE PLAIN
+1768650150.276 S -> 1: :My.Little.Server AUTHENTICATE +
+1768650150.276 1 -> S: AUTHENTICATE b2JzZXJ2ZXIAb2JzZXJ2ZXIAb2JzZXJ2ZXJwYXNzd29yZA==
+1768650150.324 S -> 1: :My.Little.Server 900 * *!*@* observer :You are now logged in as observer
+1768650150.324 1 -> S: NICK observer
+1768650150.324 1 -> S: USER username * * :Realname
+1768650150.324 1 -> S: CAP END
+1768650150.324 S -> 1: :My.Little.Server 903 * :SASL authentication successful
+1768650150.325 S -> 1: :My.Little.Server 001 observer :Welcome to the TestNet IRC Network observer!username@7sllo.eg3ii.gea2m.test
+1768650150.325 1 -> S: PING foo
+1768650150.325 1 -> S: PING synchronize212683.495929306
+1768650150.325 S -> 1: :My.Little.Server 002 observer :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650150.325 S -> 1: :My.Little.Server 003 observer :This server was created at startup
+1768650150.325 S -> 1: :My.Little.Server 004 observer My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650150.325 S -> 1: :My.Little.Server 005 observer NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650150.325 S -> 1: :My.Little.Server 005 observer TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650150.325 S -> 1: :My.Little.Server 396 observer 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650150.325 S -> 1: :My.Little.Server 375 observer :- My.Little.Server Message of the Day -
+1768650150.325 S -> 1: :My.Little.Server 372 observer :- Welcome to slircd-ng test server!
+1768650150.325 S -> 1: :My.Little.Server 376 observer :End of /MOTD command.
+1768650150.326 S -> 1: :My.Little.Server PONG My.Little.Server foo
+1768650150.369 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212683.495929306
+1768650150.370 1 -> S: JOIN #chan
+1768650150.370 1 -> S: PING synchronize212683.540788926
+1768650150.370 S -> 1: @msgid=1768650150369-1;time=2026-01-17T11:42:30.000Z :observer!username@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.413 S -> 1: :My.Little.Server 353 observer = #chan @observer
+1768650150.413 S -> 1: :My.Little.Server 366 observer #chan :End of /NAMES list
+1768650150.413 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212683.540788926
+1768650150.413 1 -> S: CAP REQ :message-tags server-time
+1768650150.413 1 -> S: PING synchronize212683.58449866
+1768650150.414 S -> 1: :My.Little.Server CAP observer ACK :message-tags server-time
+1768650150.457 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212683.58449866
+1768650150.457 2: connects to server.
+1768650150.458 2 -> S: CAP LS 302
+1768650150.458 2 -> S: AUTHENTICATE PLAIN
+1768650150.458 2 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650150.458 2 -> S: NICK testnick
+1768650150.458 2 -> S: USER a 0 * a
+1768650150.458 2 -> S: CAP REQ :server-time message-tags
+1768650150.458 2 -> S: CAP END
+1768650150.458 2 -> S: PING synchronize212683.628912041
+1768650150.458 S -> 2: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650150.458 S -> 2: :My.Little.Server AUTHENTICATE +
+1768650150.519 S -> 2: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650150.519 S -> 2: :My.Little.Server 903 * :SASL authentication successful
+1768650150.520 S -> 2: :My.Little.Server CAP testnick ACK :server-time message-tags
+1768650150.520 S -> 2: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650150.520 S -> 2: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650150.520 S -> 2: :My.Little.Server 003 testnick :This server was created at startup
+1768650150.520 S -> 2: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650150.520 S -> 2: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650150.520 S -> 2: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650150.520 S -> 2: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650150.520 S -> 2: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650150.520 S -> 2: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650150.520 S -> 2: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650150.522 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212683.628912041
+1768650150.522 2 -> S: JOIN #chan
+1768650150.522 2 -> S: PING synchronize212683.692884147
+1768650150.522 S -> 2: @msgid=1768650150521-3;time=2026-01-17T11:42:30.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.565 S -> 2: :My.Little.Server 353 testnick = #chan :testnick @observer
+1768650150.565 S -> 2: :My.Little.Server 366 testnick #chan :End of /NAMES list
+1768650150.565 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212683.692884147
+1768650150.566 3: connects to server.
+1768650150.566 3 -> S: CAP LS 302
+1768650150.566 3 -> S: AUTHENTICATE PLAIN
+1768650150.566 3 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650150.566 3 -> S: NICK testnick
+1768650150.566 3 -> S: USER a 0 * a
+1768650150.566 3 -> S: CAP REQ :server-time message-tags account-tag
+1768650150.566 3 -> S: CAP END
+1768650150.566 3 -> S: PING synchronize212683.736877304
+1768650150.566 S -> 3: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650150.566 S -> 3: :My.Little.Server AUTHENTICATE +
+1768650150.603 S -> 3: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650150.603 S -> 3: :My.Little.Server 903 * :SASL authentication successful
+1768650150.603 S -> 3: :My.Little.Server CAP testnick ACK :server-time message-tags account-tag
+1768650150.603 S -> 3: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650150.603 S -> 3: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650150.603 S -> 3: :My.Little.Server 003 testnick :This server was created at startup
+1768650150.603 S -> 3: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650150.603 S -> 3: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650150.603 S -> 3: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650150.603 S -> 3: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650150.603 S -> 3: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650150.603 S -> 3: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650150.603 S -> 3: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650150.603 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.604 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.604 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212683.736877304
+1768650150.605 4: connects to server.
+1768650150.605 4 -> S: CAP LS 302
+1768650150.605 4 -> S: AUTHENTICATE PLAIN
+1768650150.605 4 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650150.605 4 -> S: NICK testnick
+1768650150.605 4 -> S: USER a 0 * a
+1768650150.605 4 -> S: CAP REQ server-time
+1768650150.605 4 -> S: CAP END
+1768650150.605 4 -> S: PING synchronize212683.775823836
+1768650150.605 S -> 4: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650150.605 S -> 4: :My.Little.Server AUTHENTICATE +
+1768650150.645 S -> 4: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650150.645 S -> 4: :My.Little.Server 903 * :SASL authentication successful
+1768650150.645 S -> 4: :My.Little.Server CAP testnick ACK server-time
+1768650150.645 S -> 4: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650150.645 S -> 4: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650150.645 S -> 4: :My.Little.Server 003 testnick :This server was created at startup
+1768650150.645 S -> 4: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650150.645 S -> 4: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650150.645 S -> 4: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650150.645 S -> 4: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650150.645 S -> 4: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650150.645 S -> 4: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650150.645 S -> 4: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650150.645 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.645 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.645 S -> 4: :My.Little.Server PONG My.Little.Server synchronize212683.775823836
+1768650150.645 1 -> S: PRIVMSG testnick :this is a direct message
+1768650150.645 1 -> S: PING synchronize212683.8163412
+1768650150.645 S -> 1: @msgid=1768650150521-3;time=2026-01-17T11:42:30.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650150.646 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212683.8163412
+1768650150.646 2 -> S: PING synchronize212683.816919221
+1768650150.646 S -> 2: @msgid=3a605612-5ae1-4405-b89d-871cbd2c8408;time=2026-01-17T11:42:30.645Z :observer!username@7sllo.eg3ii.gea2m.test PRIVMSG testnick :this is a direct message
+1768650150.646 S -> 2: @msgid=3a605612-5ae1-4405-b89d-871cbd2c8408;time=2026-01-17T11:42:30.645Z :observer!username@7sllo.eg3ii.gea2m.test PRIVMSG testnick :this is a direct message
+1768650150.689 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212683.816919221
+1768650150.689 3 -> S: PING synchronize212683.860327771
+1768650150.689 S -> 3: @msgid=3a605612-5ae1-4405-b89d-871cbd2c8408;time=2026-01-17T11:42:30.645Z;account=observer :observer!username@7sllo.eg3ii.gea2m.test PRIVMSG testnick :this is a direct message
+1768650150.689 S -> 3: @msgid=3a605612-5ae1-4405-b89d-871cbd2c8408;time=2026-01-17T11:42:30.645Z;account=observer :observer!username@7sllo.eg3ii.gea2m.test PRIVMSG testnick :this is a direct message
+1768650150.689 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212683.860327771
+.1768650150.697 1: disconnects from server.
+1768650150.698 2: disconnects from server.
+1768650150.698 3: disconnects from server.
+1768650150.698 4: disconnects from server.
+---- new test ----
+1768650150.934 1: connects to server.
+1768650150.934 1 -> S: CAP LS 302
+1768650150.934 S -> 1: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650150.934 1 -> S: CAP REQ :sasl
+1768650150.934 S -> 1: :My.Little.Server CAP * ACK sasl
+1768650150.934 1 -> S: AUTHENTICATE PLAIN
+1768650150.934 S -> 1: :My.Little.Server AUTHENTICATE +
+1768650150.934 1 -> S: AUTHENTICATE b2JzZXJ2ZXIAb2JzZXJ2ZXIAb2JzZXJ2ZXJwYXNzd29yZA==
+1768650150.954 S -> 1: :My.Little.Server 900 * *!*@* observer :You are now logged in as observer
+1768650150.954 1 -> S: NICK observer
+1768650150.954 1 -> S: USER username * * :Realname
+1768650150.954 1 -> S: CAP END
+1768650150.954 S -> 1: :My.Little.Server 903 * :SASL authentication successful
+1768650150.955 S -> 1: :My.Little.Server 001 observer :Welcome to the TestNet IRC Network observer!username@7sllo.eg3ii.gea2m.test
+1768650150.955 1 -> S: PING foo
+1768650150.955 1 -> S: PING synchronize212684.126046994
+1768650150.955 S -> 1: :My.Little.Server 002 observer :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650150.955 S -> 1: :My.Little.Server 003 observer :This server was created at startup
+1768650150.955 S -> 1: :My.Little.Server 004 observer My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650150.955 S -> 1: :My.Little.Server 005 observer NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650150.955 S -> 1: :My.Little.Server 005 observer TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650150.955 S -> 1: :My.Little.Server 396 observer 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650150.955 S -> 1: :My.Little.Server 375 observer :- My.Little.Server Message of the Day -
+1768650150.955 S -> 1: :My.Little.Server 372 observer :- Welcome to slircd-ng test server!
+1768650150.955 S -> 1: :My.Little.Server 376 observer :End of /MOTD command.
+1768650150.956 S -> 1: :My.Little.Server PONG My.Little.Server foo
+1768650150.997 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.126046994
+1768650150.998 1 -> S: JOIN #chan
+1768650150.998 1 -> S: PING synchronize212684.16879721
+1768650150.998 S -> 1: @msgid=1768650150997-1;time=2026-01-17T11:42:30.000Z :observer!username@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.041 S -> 1: :My.Little.Server 353 observer = #chan @observer
+1768650151.041 S -> 1: :My.Little.Server 366 observer #chan :End of /NAMES list
+1768650151.041 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.16879721
+1768650151.041 1 -> S: CAP REQ :message-tags server-time
+1768650151.042 1 -> S: PING synchronize212684.212539
+1768650151.042 S -> 1: :My.Little.Server CAP observer ACK :message-tags server-time
+1768650151.089 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.212539
+1768650151.090 2: connects to server.
+1768650151.090 2 -> S: CAP LS 302
+1768650151.090 2 -> S: AUTHENTICATE PLAIN
+1768650151.090 2 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650151.090 2 -> S: NICK testnick
+1768650151.090 2 -> S: USER a 0 * a
+1768650151.090 2 -> S: CAP REQ :server-time message-tags
+1768650151.090 2 -> S: CAP END
+1768650151.090 2 -> S: PING synchronize212684.261013008
+1768650151.090 S -> 2: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650151.090 S -> 2: :My.Little.Server AUTHENTICATE +
+1768650151.139 S -> 2: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650151.139 S -> 2: :My.Little.Server 903 * :SASL authentication successful
+1768650151.139 S -> 2: :My.Little.Server CAP testnick ACK :server-time message-tags
+1768650151.140 S -> 2: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650151.140 S -> 2: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650151.140 S -> 2: :My.Little.Server 003 testnick :This server was created at startup
+1768650151.140 S -> 2: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650151.140 S -> 2: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650151.140 S -> 2: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650151.140 S -> 2: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650151.140 S -> 2: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650151.140 S -> 2: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650151.140 S -> 2: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650151.141 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212684.261013008
+1768650151.141 2 -> S: JOIN #chan
+1768650151.141 2 -> S: PING synchronize212684.311983386
+1768650151.141 S -> 2: @msgid=1768650151140-3;time=2026-01-17T11:42:31.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.189 S -> 2: :My.Little.Server 353 testnick = #chan :testnick @observer
+1768650151.189 S -> 2: :My.Little.Server 366 testnick #chan :End of /NAMES list
+1768650151.189 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212684.311983386
+1768650151.189 3: connects to server.
+1768650151.189 3 -> S: CAP LS 302
+1768650151.189 3 -> S: AUTHENTICATE PLAIN
+1768650151.189 3 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650151.189 3 -> S: NICK testnick
+1768650151.189 3 -> S: USER a 0 * a
+1768650151.189 3 -> S: CAP REQ :server-time message-tags account-tag
+1768650151.190 3 -> S: CAP END
+1768650151.190 3 -> S: PING synchronize212684.360639119
+1768650151.190 S -> 3: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650151.190 S -> 3: :My.Little.Server AUTHENTICATE +
+1768650151.211 S -> 3: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650151.211 S -> 3: :My.Little.Server 903 * :SASL authentication successful
+1768650151.212 S -> 3: :My.Little.Server CAP testnick ACK :server-time message-tags account-tag
+1768650151.212 S -> 3: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650151.212 S -> 3: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650151.212 S -> 3: :My.Little.Server 003 testnick :This server was created at startup
+1768650151.212 S -> 3: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650151.212 S -> 3: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650151.212 S -> 3: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650151.212 S -> 3: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650151.212 S -> 3: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650151.212 S -> 3: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650151.212 S -> 3: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650151.212 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.213 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.213 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212684.360639119
+1768650151.214 4: connects to server.
+1768650151.214 4 -> S: CAP LS 302
+1768650151.214 4 -> S: AUTHENTICATE PLAIN
+1768650151.214 4 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650151.214 4 -> S: NICK testnick
+1768650151.214 4 -> S: USER a 0 * a
+1768650151.214 4 -> S: CAP REQ server-time
+1768650151.214 4 -> S: CAP END
+1768650151.214 4 -> S: PING synchronize212684.384771979
+1768650151.214 S -> 4: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650151.214 S -> 4: :My.Little.Server AUTHENTICATE +
+1768650151.234 S -> 4: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650151.234 S -> 4: :My.Little.Server 903 * :SASL authentication successful
+1768650151.234 S -> 4: :My.Little.Server CAP testnick ACK server-time
+1768650151.234 S -> 4: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650151.234 S -> 4: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650151.234 S -> 4: :My.Little.Server 003 testnick :This server was created at startup
+1768650151.234 S -> 4: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650151.234 S -> 4: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650151.234 S -> 4: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650151.234 S -> 4: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650151.234 S -> 4: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650151.234 S -> 4: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650151.234 S -> 4: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650151.234 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.235 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.235 S -> 4: :My.Little.Server PONG My.Little.Server synchronize212684.384771979
+1768650151.235 2 -> S: PRIVMSG observer :this is a direct message
+1768650151.235 2 -> S: PING synchronize212684.406415946
+1768650151.236 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212684.406415946
+1768650151.236 1 -> S: PING synchronize212684.406863384
+1768650151.236 S -> 1: @msgid=1768650151140-3;time=2026-01-17T11:42:31.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.236 S -> 1: :testnick!a@7sllo.eg3ii.gea2m.test PRIVMSG observer :this is a direct message
+1768650151.236 S -> 1: :testnick!a@7sllo.eg3ii.gea2m.test PRIVMSG observer :this is a direct message
+1768650151.236 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.406863384
+1768650151.236 3 -> S: PING synchronize212684.40699827
+1768650151.236 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212684.40699827
+F1768650151.240 1: disconnects from server.
+1768650151.240 2: disconnects from server.
+1768650151.240 3: disconnects from server.
+1768650151.240 4: disconnects from server.
+---- new test ----
+1768650151.485 1: connects to server.
+1768650151.485 1 -> S: CAP LS 302
+1768650151.486 S -> 1: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650151.486 1 -> S: CAP REQ :sasl
+1768650151.486 S -> 1: :My.Little.Server CAP * ACK sasl
+1768650151.486 1 -> S: AUTHENTICATE PLAIN
+1768650151.486 S -> 1: :My.Little.Server AUTHENTICATE +
+1768650151.486 1 -> S: AUTHENTICATE b2JzZXJ2ZXIAb2JzZXJ2ZXIAb2JzZXJ2ZXJwYXNzd29yZA==
+1768650151.513 S -> 1: :My.Little.Server 900 * *!*@* observer :You are now logged in as observer
+1768650151.513 1 -> S: NICK observer
+1768650151.513 1 -> S: USER username * * :Realname
+1768650151.513 1 -> S: CAP END
+1768650151.513 S -> 1: :My.Little.Server 903 * :SASL authentication successful
+1768650151.515 S -> 1: :My.Little.Server 001 observer :Welcome to the TestNet IRC Network observer!username@7sllo.eg3ii.gea2m.test
+1768650151.515 1 -> S: PING foo
+1768650151.515 1 -> S: PING synchronize212684.685738388
+1768650151.515 S -> 1: :My.Little.Server 002 observer :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650151.515 S -> 1: :My.Little.Server 003 observer :This server was created at startup
+1768650151.515 S -> 1: :My.Little.Server 004 observer My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650151.515 S -> 1: :My.Little.Server 005 observer NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650151.515 S -> 1: :My.Little.Server 005 observer TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650151.515 S -> 1: :My.Little.Server 396 observer 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650151.515 S -> 1: :My.Little.Server 375 observer :- My.Little.Server Message of the Day -
+1768650151.515 S -> 1: :My.Little.Server 372 observer :- Welcome to slircd-ng test server!
+1768650151.515 S -> 1: :My.Little.Server 376 observer :End of /MOTD command.
+1768650151.515 S -> 1: :My.Little.Server PONG My.Little.Server foo
+1768650151.557 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.685738388
+1768650151.558 1 -> S: JOIN #chan
+1768650151.558 1 -> S: PING synchronize212684.728871538
+1768650151.558 S -> 1: @msgid=1768650151557-1;time=2026-01-17T11:42:31.000Z :observer!username@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.601 S -> 1: :My.Little.Server 353 observer = #chan @observer
+1768650151.601 S -> 1: :My.Little.Server 366 observer #chan :End of /NAMES list
+1768650151.601 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.728871538
+1768650151.601 1 -> S: CAP REQ :message-tags server-time
+1768650151.601 1 -> S: PING synchronize212684.772483433
+1768650151.602 S -> 1: :My.Little.Server CAP observer ACK :message-tags server-time
+1768650151.645 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.772483433
+1768650151.645 2: connects to server.
+1768650151.646 2 -> S: CAP LS 302
+1768650151.646 2 -> S: AUTHENTICATE PLAIN
+1768650151.646 2 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650151.646 2 -> S: NICK testnick
+1768650151.646 2 -> S: USER a 0 * a
+1768650151.646 2 -> S: CAP REQ :server-time message-tags
+1768650151.646 2 -> S: CAP END
+1768650151.646 2 -> S: PING synchronize212684.816903931
+1768650151.646 S -> 2: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650151.646 S -> 2: :My.Little.Server AUTHENTICATE +
+1768650151.690 S -> 2: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650151.690 S -> 2: :My.Little.Server 903 * :SASL authentication successful
+1768650151.690 S -> 2: :My.Little.Server CAP testnick ACK :server-time message-tags
+1768650151.691 S -> 2: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650151.691 S -> 2: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650151.691 S -> 2: :My.Little.Server 003 testnick :This server was created at startup
+1768650151.691 S -> 2: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650151.691 S -> 2: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650151.691 S -> 2: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650151.691 S -> 2: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650151.691 S -> 2: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650151.691 S -> 2: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650151.691 S -> 2: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650151.692 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212684.816903931
+1768650151.692 2 -> S: JOIN #chan
+1768650151.692 2 -> S: PING synchronize212684.863023225
+1768650151.692 S -> 2: @msgid=1768650151691-3;time=2026-01-17T11:42:31.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.733 S -> 2: :My.Little.Server 353 testnick = #chan :testnick @observer
+1768650151.733 S -> 2: :My.Little.Server 366 testnick #chan :End of /NAMES list
+1768650151.733 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212684.863023225
+1768650151.733 3: connects to server.
+1768650151.733 3 -> S: CAP LS 302
+1768650151.733 3 -> S: AUTHENTICATE PLAIN
+1768650151.733 3 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650151.733 3 -> S: NICK testnick
+1768650151.733 3 -> S: USER a 0 * a
+1768650151.733 3 -> S: CAP REQ :server-time message-tags account-tag
+1768650151.733 3 -> S: CAP END
+1768650151.734 3 -> S: PING synchronize212684.904617927
+1768650151.734 S -> 3: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650151.734 S -> 3: :My.Little.Server AUTHENTICATE +
+1768650151.756 S -> 3: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650151.756 S -> 3: :My.Little.Server 903 * :SASL authentication successful
+1768650151.756 S -> 3: :My.Little.Server CAP testnick ACK :server-time message-tags account-tag
+1768650151.756 S -> 3: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650151.756 S -> 3: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650151.756 S -> 3: :My.Little.Server 003 testnick :This server was created at startup
+1768650151.756 S -> 3: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650151.756 S -> 3: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650151.756 S -> 3: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650151.756 S -> 3: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650151.756 S -> 3: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650151.756 S -> 3: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650151.756 S -> 3: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650151.756 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.757 S -> 3: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.757 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212684.904617927
+1768650151.757 4: connects to server.
+1768650151.757 4 -> S: CAP LS 302
+1768650151.757 4 -> S: AUTHENTICATE PLAIN
+1768650151.757 4 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650151.757 4 -> S: NICK testnick
+1768650151.757 4 -> S: USER a 0 * a
+1768650151.758 4 -> S: CAP REQ server-time
+1768650151.758 4 -> S: CAP END
+1768650151.758 4 -> S: PING synchronize212684.928659756
+1768650151.758 S -> 4: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650151.758 S -> 4: :My.Little.Server AUTHENTICATE +
+1768650151.778 S -> 4: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650151.778 S -> 4: :My.Little.Server 903 * :SASL authentication successful
+1768650151.778 S -> 4: :My.Little.Server CAP testnick ACK server-time
+1768650151.778 S -> 4: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650151.778 S -> 4: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650151.778 S -> 4: :My.Little.Server 003 testnick :This server was created at startup
+1768650151.778 S -> 4: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650151.778 S -> 4: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650151.778 S -> 4: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650151.778 S -> 4: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650151.778 S -> 4: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650151.778 S -> 4: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650151.778 S -> 4: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650151.778 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.779 S -> 4: :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.779 S -> 4: :My.Little.Server PONG My.Little.Server synchronize212684.928659756
+1768650151.780 2 -> S: QUIT :two out
+1768650151.780 2 -> S: PING synchronize212684.950644171
+1768650151.780 S -> 2: :testnick!a@127.0.0.1 QUIT :two out
+1768650151.780 S -> 2: ERROR :Closing Link: 127.0.0.1 (Quit: two out)
+1768650151.780 1 -> S: PING synchronize212684.950838129
+1768650151.780 S -> 1: @msgid=1768650151691-3;time=2026-01-17T11:42:31.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650151.780 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.950838129
+1768650151.780 3 -> S: PING synchronize212684.951003983
+1768650151.780 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212684.951003983
+1768650151.780 1 -> S: @+clientOnlyTag=Value PRIVMSG #chan :hey again
+1768650151.780 1 -> S: PING synchronize212684.951181645
+1768650151.781 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.951181645
+1768650151.781 3 -> S: PING synchronize212684.951637396
+1768650151.781 S -> 3: @time=2026-01-17T11:42:31.780Z;+clientOnlyTag=Value;msgid=4b5fe7c9-1c5a-4f0b-890c-746756e6f2e0;account=observer :observer!username@127.0.0.1 PRIVMSG #chan :hey again
+1768650151.821 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212684.951637396
+1768650151.821 4 -> S: QUIT :four out
+1768650151.821 4 -> S: PING synchronize212684.992263084
+1768650151.821 S -> 4: @time=2026-01-17T11:42:31.780Z :observer!username@127.0.0.1 PRIVMSG #chan :hey again
+1768650151.821 S -> 4: :testnick!a@127.0.0.1 QUIT :four out
+1768650151.821 S -> 4: ERROR :Closing Link: 127.0.0.1 (Quit: four out)
+1768650151.821 3 -> S: QUIT :three out
+1768650151.821 3 -> S: PING synchronize212684.99248524
+1768650151.821 S -> 3: :testnick!a@127.0.0.1 QUIT :three out
+1768650151.822 1 -> S: PING synchronize212684.992998081
+1768650151.822 S -> 1: :testnick!a@127.0.0.1 QUIT :three out
+1768650151.822 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212684.992998081
+.1768650151.826 1: disconnects from server.
+1768650151.826 2: disconnects from server.
+1768650151.826 3: disconnects from server.
+1768650151.826 4: disconnects from server.
+---- new test ----
+1768650152.017 1: connects to server.
+1768650152.018 1 -> S: CAP LS 302
+1768650152.018 S -> 1: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650152.018 1 -> S: CAP REQ :sasl
+1768650152.018 S -> 1: :My.Little.Server CAP * ACK sasl
+1768650152.018 1 -> S: AUTHENTICATE PLAIN
+1768650152.018 S -> 1: :My.Little.Server AUTHENTICATE +
+1768650152.018 1 -> S: AUTHENTICATE b2JzZXJ2ZXIAb2JzZXJ2ZXIAb2JzZXJ2ZXJwYXNzd29yZA==
+1768650152.042 S -> 1: :My.Little.Server 900 * *!*@* observer :You are now logged in as observer
+1768650152.042 1 -> S: NICK observer
+1768650152.042 1 -> S: USER username * * :Realname
+1768650152.042 1 -> S: CAP END
+1768650152.042 S -> 1: :My.Little.Server 903 * :SASL authentication successful
+1768650152.043 S -> 1: :My.Little.Server 001 observer :Welcome to the TestNet IRC Network observer!username@7sllo.eg3ii.gea2m.test
+1768650152.043 1 -> S: PING foo
+1768650152.043 1 -> S: PING synchronize212685.213989737
+1768650152.043 S -> 1: :My.Little.Server 002 observer :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650152.043 S -> 1: :My.Little.Server 003 observer :This server was created at startup
+1768650152.043 S -> 1: :My.Little.Server 004 observer My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650152.043 S -> 1: :My.Little.Server 005 observer NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650152.043 S -> 1: :My.Little.Server 005 observer TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650152.043 S -> 1: :My.Little.Server 396 observer 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650152.043 S -> 1: :My.Little.Server 375 observer :- My.Little.Server Message of the Day -
+1768650152.043 S -> 1: :My.Little.Server 372 observer :- Welcome to slircd-ng test server!
+1768650152.043 S -> 1: :My.Little.Server 376 observer :End of /MOTD command.
+1768650152.044 S -> 1: :My.Little.Server PONG My.Little.Server foo
+1768650152.089 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212685.213989737
+1768650152.090 1 -> S: JOIN #chan
+1768650152.090 1 -> S: PING synchronize212685.260830198
+1768650152.090 S -> 1: @msgid=1768650152089-1;time=2026-01-17T11:42:32.000Z :observer!username@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650152.133 S -> 1: :My.Little.Server 353 observer = #chan @observer
+1768650152.133 S -> 1: :My.Little.Server 366 observer #chan :End of /NAMES list
+1768650152.133 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212685.260830198
+1768650152.133 1 -> S: CAP REQ :message-tags server-time
+1768650152.134 1 -> S: PING synchronize212685.304580773
+1768650152.134 S -> 1: :My.Little.Server CAP observer ACK :message-tags server-time
+1768650152.177 S -> 1: :My.Little.Server PONG My.Little.Server synchronize212685.304580773
+1768650152.177 2: connects to server.
+1768650152.177 2 -> S: CAP LS 302
+1768650152.177 2 -> S: AUTHENTICATE PLAIN
+1768650152.178 2 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650152.178 2 -> S: NICK testnick
+1768650152.178 2 -> S: USER a 0 * a
+1768650152.178 2 -> S: CAP REQ :server-time message-tags
+1768650152.178 2 -> S: CAP END
+1768650152.178 2 -> S: PING synchronize212685.348820515
+1768650152.178 S -> 2: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650152.178 S -> 2: :My.Little.Server AUTHENTICATE +
+1768650152.221 S -> 2: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650152.221 S -> 2: :My.Little.Server 903 * :SASL authentication successful
+1768650152.222 S -> 2: :My.Little.Server CAP testnick ACK :server-time message-tags
+1768650152.222 S -> 2: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650152.222 S -> 2: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650152.222 S -> 2: :My.Little.Server 003 testnick :This server was created at startup
+1768650152.222 S -> 2: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650152.222 S -> 2: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650152.222 S -> 2: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650152.222 S -> 2: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650152.222 S -> 2: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650152.222 S -> 2: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650152.222 S -> 2: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650152.223 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212685.348820515
+1768650152.223 2 -> S: JOIN #chan
+1768650152.223 2 -> S: PING synchronize212685.394258573
+1768650152.223 S -> 2: @msgid=1768650152223-3;time=2026-01-17T11:42:32.000Z :testnick!a@7sllo.eg3ii.gea2m.test JOIN #chan
+1768650152.265 S -> 2: :My.Little.Server 353 testnick = #chan :@observer testnick
+1768650152.265 S -> 2: :My.Little.Server 366 testnick #chan :End of /NAMES list
+1768650152.265 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212685.394258573
+1768650152.265 2 -> S: NS SET MULTICLIENT OFF
+1768650152.265 2 -> S: PING synchronize212685.436500609
+1768650152.266 S -> 2: :NickServ NOTICE testnick :MULTICLIENT has been set to OFF.
+1768650152.313 S -> 2: :My.Little.Server PONG My.Little.Server synchronize212685.436500609
+1768650152.313 3: connects to server.
+1768650152.313 3 -> S: CAP LS 302
+1768650152.313 3 -> S: AUTHENTICATE PLAIN
+1768650152.313 3 -> S: AUTHENTICATE dGVzdHVzZXIAdGVzdHVzZXIAbXlwYXNzd29yZA==
+1768650152.313 3 -> S: NICK testnick
+1768650152.313 3 -> S: USER a 0 * a
+1768650152.313 3 -> S: CAP REQ :server-time message-tags
+1768650152.313 3 -> S: CAP END
+1768650152.314 3 -> S: PING synchronize212685.484621274
+1768650152.314 S -> 3: :My.Little.Server CAP * LS :multi-prefix userhost-in-names server-time echo-message sasl=SCRAM-SHA-256,PLAIN batch message-tags labeled-response setname away-notify account-notify extended-join invite-notify chghost monitor extended-monitor cap-notify account-tag draft/multiline=max-bytes=40000,max-lines=100 draft/account-registration=custom-account-name draft/chathistory draft/event-playback draft/relaymsg tls
+1768650152.314 S -> 3: :My.Little.Server AUTHENTICATE +
+1768650152.356 S -> 3: :My.Little.Server 900 * *!*@* testuser :You are now logged in as testuser
+1768650152.356 S -> 3: :My.Little.Server 903 * :SASL authentication successful
+1768650152.356 S -> 3: :My.Little.Server CAP testnick ACK :server-time message-tags
+1768650152.357 S -> 3: :My.Little.Server 001 testnick :Welcome to the TestNet IRC Network testnick!a@7sllo.eg3ii.gea2m.test
+1768650152.357 S -> 3: :My.Little.Server 002 testnick :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768650152.357 S -> 3: :My.Little.Server 003 testnick :This server was created at startup
+1768650152.357 S -> 3: :My.Little.Server 004 testnick My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768650152.357 S -> 3: :My.Little.Server 005 testnick NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768650152.357 S -> 3: :My.Little.Server 005 testnick TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768650152.357 S -> 3: :My.Little.Server 396 testnick 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768650152.357 S -> 3: :My.Little.Server 375 testnick :- My.Little.Server Message of the Day -
+1768650152.357 S -> 3: :My.Little.Server 372 testnick :- Welcome to slircd-ng test server!
+1768650152.357 S -> 3: :My.Little.Server 376 testnick :End of /MOTD command.
+1768650152.358 S -> 3: :My.Little.Server PONG My.Little.Server synchronize212685.484621274
+F1768650152.363 1: disconnects from server.
+1768650152.363 2: disconnects from server.
+1768650152.363 3: disconnects from server.
+
+
+=========================== short test summary info ============================
+FAILED irctest/server_tests/bouncer.py::BouncerTestCase::testChannelMessageFromSelf
+FAILED irctest/server_tests/bouncer.py::BouncerTestCase::testDirectMessageFromSelf
+FAILED irctest/server_tests/bouncer.py::BouncerTestCase::testDisableAutomaticResumption
+========================= 3 failed, 4 passed in 3.87s ==========================
