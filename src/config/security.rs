@@ -30,6 +30,12 @@ pub struct SecurityConfig {
     /// after registration with ERR_SASLFAIL message.
     #[serde(default)]
     pub require_sasl: bool,
+    /// Allow SASL PLAIN authentication on non-TLS (plaintext) connections.
+    /// This is NOT RECOMMENDED as it exposes passwords to network eavesdroppers.
+    /// Only enable this if you have a specific need for legacy clients on a
+    /// trusted network.
+    #[serde(default)]
+    pub allow_plaintext_sasl_plain: bool,
 }
 
 impl Default for SecurityConfig {
@@ -41,6 +47,7 @@ impl Default for SecurityConfig {
             spam: SpamConfig::default(),
             rate_limits: RateLimitConfig::default(),
             require_sasl: false,
+            allow_plaintext_sasl_plain: false,
         }
     }
 }
@@ -69,11 +76,9 @@ fn default_cloak_secret() -> String {
         .take(32)
         .map(char::from)
         .collect();
-    tracing::warn!(
-        "No cloak_secret configured - using ephemeral random secret. \
-         Cloaked hostnames will NOT be consistent across server restarts. \
-         Set [security].cloak_secret in config.toml for production use."
-    );
+        tracing::warn!(
+            "No cloak_secret configured - using ephemeral random secret. Cloaked hostnames will NOT be consistent across server restarts. Set [security].cloak_secret in config.toml for production use."
+        );
     secret
 }
 

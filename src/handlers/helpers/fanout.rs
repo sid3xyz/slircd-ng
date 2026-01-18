@@ -1,6 +1,7 @@
 //! Account fan-out helpers for multiclient/bouncer.
 
 use crate::handlers::{Context, HandlerResult, user_prefix};
+use crate::state::client::SessionId;
 use crate::state::{SessionState, session::SaslAccess};
 use slirc_proto::{Command, Message};
 use std::future::Future;
@@ -8,7 +9,7 @@ use std::sync::Arc;
 
 /// Broadcast a message to all sessions on the same account.
 ///
-/// If `skip_self` is true, the current session (`ctx.uid`) is excluded.
+/// If `skip_self` is true, the current session (`ctx.state.session_id()`) is excluded.
 pub fn broadcast_to_account<S>(
     ctx: &Context<'_, S>,
     message: Message,
@@ -18,15 +19,17 @@ where
     S: SessionState + SaslAccess,
 {
     let matrix = Arc::clone(ctx.matrix);
-    let uid = ctx.uid.to_string();
+    let session_id = ctx.state.session_id();
     let account = ctx.state.account().map(String::from);
 
-    async move { broadcast_to_account_inner(matrix, uid, account, message, skip_self).await }
+    async move {
+        broadcast_to_account_inner(matrix, session_id, account, message, skip_self).await
+    }
 }
 
 async fn broadcast_to_account_inner(
     matrix: Arc<crate::state::Matrix>,
-    uid: String,
+    session_id: SessionId,
     account: Option<String>,
     message: Message,
     skip_self: bool,
@@ -37,7 +40,7 @@ async fn broadcast_to_account_inner(
 
     let sessions = matrix.client_manager.get_sessions(&account);
     for session in sessions {
-        if skip_self && session.uid.as_str() == uid {
+        if skip_self && session.session_id == session_id {
             continue;
         }
 
@@ -72,7 +75,7 @@ async fn broadcast_to_account_inner(
 
         matrix
             .user_manager
-            .send_to_uid(sibling_uid, Arc::new(msg))
+            .send_to_session(sibling_uid, session.session_id, Arc::new(msg))
             .await;
     }
 

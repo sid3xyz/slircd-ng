@@ -145,15 +145,11 @@ impl PostRegHandler for ListHandler {
 
         // RPL_LISTSTART (321): Channel :Users Name (optional, some clients don't expect it)
 
-        // Collect channel senders first to avoid holding DashMap lock across await points
-        // This prevents deadlocks if the actor tries to access the channel map
-        let channels: Vec<_> = ctx
+        let all_channels = ctx
             .matrix
             .channel_manager
-            .channels
-            .iter()
-            .map(|r| r.value().clone())
-            .collect();
+            .get_all_channel_info(Some(ctx.uid.to_string()))
+            .await;
 
         // Result limiting to prevent flooding
         let max_channels = ctx.matrix.config.limits.max_list_channels;
@@ -161,25 +157,12 @@ impl PostRegHandler for ListHandler {
         let mut truncated = false;
 
         // Iterate channels
-        for sender in channels {
+        for channel in all_channels {
             // Check result limit
             if result_count >= max_channels {
                 truncated = true;
                 break;
             }
-
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let _ = sender
-                .send(crate::state::actor::ChannelEvent::GetInfo {
-                    requester_uid: Some(ctx.uid.to_string()),
-                    reply_tx: tx,
-                })
-                .await;
-
-            let channel = match rx.await {
-                Ok(info) => info,
-                Err(_) => continue,
-            };
 
             // Skip secret channels unless user is a member
             if channel
