@@ -10,4 +10,5 @@ pub mod lifecycle;
 pub mod monitor;
 pub mod security;
 pub mod service;
+pub mod stats;
 pub mod user;

@@ -48,48 +48,20 @@ impl PostRegHandler for LusersHandler {
             }
         }
 
-        // Count users and channels
-        // Collect user refs first to avoid holding DashMap shard lock across await points
-        let user_refs: Vec<_> = ctx
-            .matrix
-            .user_manager
-            .users
-            .iter()
-            .map(|r| r.value().clone())
-            .collect();
-
-        let mut total_users: usize = 0;
-        let mut invisible_count: usize = 0;
-        let mut oper_count: usize = 0;
-        let mut local_users: usize = 0;
-
-        let local_sid_str = ctx.matrix.server_info.sid.as_str();
-
-        for user_ref in user_refs {
-            let user = user_ref.read().await;
-            // Skip service pseudoclients - they are not real users
-            if user.modes.service {
-                continue;
-            }
-            total_users += 1;
-            if user.modes.invisible {
-                invisible_count += 1;
-            }
-            if user.modes.oper {
-                oper_count += 1;
-            }
-            if user.uid.starts_with(local_sid_str) {
-                local_users += 1;
-            }
-        }
-
+        // Get stats from StatsManager (efficient atomic counters)
+        let stats = &ctx.matrix.stats_manager;
+        let total_users = stats.global_users();
+        let invisible_count = stats.invisible_users();
+        let oper_count = stats.global_opers();
+        let local_users = stats.local_users();
         let visible_users = total_users.saturating_sub(invisible_count);
-        let channel_count = ctx.matrix.channel_manager.channels.len();
+        let channel_count = stats.channels();
 
         // Server counts: topology servers + 1 (us)
         let total_servers = ctx.matrix.sync_manager.topology.servers.len() + 1;
 
         // Direct links: servers where via is None (and not us)
+        let local_sid_str = ctx.matrix.server_info.sid.as_str();
         let local_sid = slirc_proto::sync::clock::ServerId::new(local_sid_str);
 
         let mut direct_links = 0;

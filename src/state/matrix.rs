@@ -76,6 +76,9 @@ pub struct Matrix {
     /// Sync management state (Innovation 2: Distributed Server Linking).
     pub sync_manager: SyncManager,
 
+    /// Runtime statistics (user/channel counts, uptime).
+    pub stats_manager: crate::state::managers::stats::StatsManager,
+
     /// This server's identity.
     pub server_info: ServerInfo,
 
@@ -267,6 +270,7 @@ impl Matrix {
                 lifecycle_manager: LifecycleManager::new(disconnect_tx),
                 sync_manager: Arc::try_unwrap(sync_manager_arc)
                     .unwrap_or_else(|arc| (*arc).clone()),
+                stats_manager: crate::state::managers::stats::StatsManager::new(),
                 server_info: ServerInfo {
                     name: config.server.name.clone(),
                     network: config.server.network.clone(),
@@ -517,6 +521,10 @@ impl Matrix {
 
         // Update connected user metric
         crate::metrics::CONNECTED_USERS.dec();
+
+        // Update StatsManager counters
+        self.stats_manager.user_disconnected();
+        // Note: invisible/oper decrement should happen in mode change handlers, not here
 
         user_channels
     }

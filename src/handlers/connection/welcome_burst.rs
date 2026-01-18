@@ -601,6 +601,10 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         crate::metrics::CONNECTED_USERS.inc();
 
+        // Update StatsManager counters
+        self.matrix.stats_manager.user_connected();
+        // Note: invisible status is tracked in mode handler when +i is applied
+
         // Use real_user_count to exclude service pseudoclients from max tracking
         let current_count = self.matrix.user_manager.real_user_count().await;
         self.matrix
