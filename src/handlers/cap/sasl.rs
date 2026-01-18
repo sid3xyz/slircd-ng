@@ -245,6 +245,12 @@ async fn handle_sasl_init<S: SessionState + SaslAccess>(
     mechanism: &str,
 ) -> HandlerResult {
     if mechanism.eq_ignore_ascii_case("PLAIN") {
+        if !ctx.state.is_tls() && !ctx.matrix.config.security.allow_plaintext_sasl {
+            send_sasl_fail(ctx, nick, "SASL PLAIN requires TLS connection").await?;
+            ctx.state.set_sasl_state(SaslState::None);
+            return Ok(());
+        }
+
         ctx.state.set_sasl_state(SaslState::WaitingForData);
         // Send empty challenge (AUTHENTICATE +)
         let reply = Message {

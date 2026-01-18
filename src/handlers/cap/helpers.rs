@@ -10,6 +10,8 @@ pub struct CapListParams<'a> {
     pub is_tls: bool,
     /// Whether the client presented a TLS certificate
     pub has_cert: bool,
+    /// Whether to allow plaintext SASL (passed for runtime override)
+    pub allow_plaintext_sasl: bool,
     /// Account registration config
     pub acct_cfg: &'a AccountRegistrationConfig,
     /// Security config
@@ -27,10 +29,16 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
         version,
         is_tls,
         has_cert,
+        allow_plaintext_sasl,
         acct_cfg,
         sec_cfg,
         sts_cfg,
     } = params;
+
+    // Plaintext SASL is allowed if either:
+    // 1. The runtime parameter says so (allow_plaintext_sasl), OR
+    // 2. The security config explicitly enables it (allow_plaintext_sasl_plain)
+    let plaintext_sasl_ok = *allow_plaintext_sasl || sec_cfg.allow_plaintext_sasl_plain;
 
     SUPPORTED_CAPS
         .iter()
@@ -40,16 +48,13 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
                 match cap {
                     Capability::Sasl => {
                         // Advertise SASL on TLS connections, or if plaintext SASL is allowed.
-                        if *is_tls {
-                            if *has_cert {
+                        if *is_tls || plaintext_sasl_ok {
+                            if *has_cert && *is_tls {
+                                // EXTERNAL requires TLS client cert
                                 Some("sasl=SCRAM-SHA-256,PLAIN,EXTERNAL".to_string())
                             } else {
                                 Some("sasl=SCRAM-SHA-256,PLAIN".to_string())
                             }
-                        } else if sec_cfg.allow_plaintext_sasl_plain {
-                            // Insecure plaintext connection, but config allows it.
-                            // Do not advertise EXTERNAL, as it requires TLS.
-                            Some("sasl=SCRAM-SHA-256,PLAIN".to_string())
                         } else {
                             None
                         }
@@ -113,10 +118,7 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
                 } else if *cap == Capability::Sts {
                     // STS requires CAP 302+ for values
                     None
-                } else if *cap == Capability::Sasl
-                    && !*is_tls
-                    && !sec_cfg.allow_plaintext_sasl_plain
-                {
+                } else if *cap == Capability::Sasl && !*is_tls && !plaintext_sasl_ok {
                     // For older clients, only advertise SASL on TLS connections
                     // unless plaintext is explicitly allowed.
                     None
@@ -212,6 +214,7 @@ mod tests {
             version,
             is_tls,
             has_cert,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sec_cfg,
             sts_cfg: None,
@@ -415,6 +418,7 @@ mod tests {
             version: 302,
             is_tls: true,
             has_cert: false,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sec_cfg,
             sts_cfg: Some(sts_cfg),
@@ -451,6 +455,7 @@ mod tests {
             version: 302,
             is_tls: false,
             has_cert: false,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sec_cfg,
             sts_cfg: Some(sts_cfg),
@@ -487,6 +492,7 @@ mod tests {
             version: 302,
             is_tls: true,
             has_cert: false,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sec_cfg,
             sts_cfg: Some(sts_cfg),
@@ -584,6 +590,7 @@ mod tests {
             version: 302,
             is_tls: false,
             has_cert: false,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sts_cfg: None,
             sec_cfg,
@@ -608,6 +615,7 @@ mod tests {
             version: 302,
             is_tls: false,
             has_cert: false,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sts_cfg: None,
             sec_cfg,
@@ -633,6 +641,7 @@ mod tests {
             version: 301,
             is_tls: false,
             has_cert: false,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sts_cfg: None,
             sec_cfg,

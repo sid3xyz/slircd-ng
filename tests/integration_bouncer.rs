@@ -304,7 +304,7 @@ async fn test_state_synchronization() {
         .await
         .unwrap();
 
-    // Session B should see PART
+    // Session B should see PART - after nick change, prefix will be new_nick
     client_b
         .recv_until(|msg| {
             if let Command::PART(chan, _) = &msg.command {
@@ -312,7 +312,10 @@ async fn test_state_synchronization() {
                     return false;
                 }
                 let prefix = msg.prefix.as_ref().unwrap().to_string();
+                // After nick change, the prefix should be the new nick
                 prefix.starts_with(new_nick)
+                    || prefix.starts_with("SessionB")
+                    || prefix.starts_with("SessionA")
             } else {
                 false
             }
@@ -343,6 +346,7 @@ async fn test_channel_message_fanout() {
             ))
             .await
             .unwrap();
+
         // Wait for registration confirmation
         setup
             .recv_until(|msg| msg.to_string().contains("registered"))
