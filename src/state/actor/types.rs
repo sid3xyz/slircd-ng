@@ -396,8 +396,103 @@ pub enum ChannelMode {
     Redirect(String, slirc_proto::sync::clock::HybridTimestamp),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FloodType {
+    Message, // 'm'
+    Join,    // 'j'
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloodParam {
+    pub count: u32,
+    pub period: u32,
+    pub type_: FloodType,
+}
+
+impl std::str::FromStr for FloodParam {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Format: [<count>][<type>][:<seconds>]
+        // E.g. "5m:10", "10j:60", "3:5" (defaults to m)
+
+        let (rest, period_str) = s.rsplit_once(':').ok_or("Missing period separator ':'")?;
+        
+        let period = period_str.parse::<u32>().map_err(|_| "Invalid period")?;
+        if period == 0 {
+            return Err("Period must be positive");
+        }
+
+        // Parse rest: "<count>[<type>]"
+        // Find split point between digits and type char
+        let split_idx = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+        
+        let (count_str, type_str) = rest.split_at(split_idx);
+        
+        let count = count_str.parse::<u32>().map_err(|_| "Invalid count")?;
+        if count == 0 {
+            return Err("Count must be positive");
+        }
+
+        let type_ = match type_str {
+            "" | "m" => FloodType::Message,
+            "j" => FloodType::Join,
+            _ => return Err("Unknown flood type (supported: m, j)"),
+        };
+
+        Ok(FloodParam { count, period, type_ })
+    }
+}
+
+impl ToString for FloodParam {
+    fn to_string(&self) -> String {
+        let type_char = match self.type_ {
+            FloodType::Message => "m",
+            FloodType::Join => "j",
+        };
+        format!("{}{}:{}", self.count, type_char, self.period)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct InviteEntry {
     pub uid: Uid,
     pub set_at: Instant,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_flood_param_parsing() {
+        // Default m
+        let p = FloodParam::from_str("5:10").unwrap();
+        assert_eq!(p.count, 5);
+        assert_eq!(p.period, 10);
+        assert_eq!(p.type_, FloodType::Message);
+
+        // Explicit m
+        let p = FloodParam::from_str("3m:5").unwrap();
+        assert_eq!(p.count, 3);
+        assert_eq!(p.period, 5);
+        assert_eq!(p.type_, FloodType::Message);
+
+        // Join
+        let p = FloodParam::from_str("10j:60").unwrap();
+        assert_eq!(p.count, 10);
+        assert_eq!(p.period, 60);
+        assert_eq!(p.type_, FloodType::Join);
+    }
+
+    #[test]
+    fn test_flood_param_parsing_errors() {
+        assert!(FloodParam::from_str("invalid").is_err());
+        assert!(FloodParam::from_str("5:").is_err()); // No period
+        assert!(FloodParam::from_str(":10").is_err()); // No count
+        assert!(FloodParam::from_str("0:10").is_err()); // Zero count
+        assert!(FloodParam::from_str("5:0").is_err()); // Zero period
+        assert!(FloodParam::from_str("5x:10").is_err()); // Invalid type
+    }
 }

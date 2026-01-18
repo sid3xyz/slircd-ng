@@ -193,26 +193,63 @@ impl ChannelActor {
                     }
                 }
                 ProtoChannelMode::Flood => {
+                    use std::str::FromStr;
+                    use governor::{Quota, RateLimiter};
+                    use std::num::NonZeroU32;
+
                     if adding {
-                        if let Some(param) = arg {
-                            // Format: lines:seconds
-                            let parts: Vec<&str> = param.split(':').collect();
-                            if parts.len() == 2 {
-                                let lines = parts[0].parse::<u32>().unwrap_or(0);
-                                let seconds = parts[1].parse::<u32>().unwrap_or(0);
-                                if lines > 0 && seconds > 0 {
-                                    self.flood_config = Some((lines, seconds));
-                                    self.flood_message_limiters.clear();
-                                    self.replace_param_mode(
-                                        |mode| matches!(mode, ChannelMode::Flood(_, _)),
-                                        Some(ChannelMode::Flood(
-                                            param.to_string(),
-                                            HybridTimestamp::now(&self.server_id),
-                                        )),
-                                    )
-                                } else {
-                                    false
+                        if let Some(param_str) = arg {
+                            let mut valid_params = Vec::new();
+
+                            // Support comma-separated list: "5j:10,3m:5"
+                            for part in param_str.split(',') {
+                                if let Ok(param) = super::FloodParam::from_str(part) {
+                                    valid_params.push(param);
                                 }
+                            }
+
+                            if !valid_params.is_empty() {
+                                // If replacing, we should probably merge or overwrite?
+                                // Standard behavior: +f overwrites all flood settings with the new string.
+                                self.flood_config.clear();
+                                self.flood_message_limiters.clear();
+                                self.flood_join_limiter = None;
+
+                                for param in &valid_params {
+                                    self.flood_config.insert(param.type_, *param);
+
+                                    match param.type_ {
+                                        super::FloodType::Message => {
+                                             // Message limiters are created per-user on demand in message handler
+                                             // We just cleared the map, so they will be recreated with new policy.
+                                        }
+                                        super::FloodType::Join => {
+                                             // Calculate period per join allowed
+                                             // period (secs) / count (joins)
+                                             let period_per_action = std::time::Duration::from_secs_f64(
+                                                 param.period as f64 / param.count as f64
+                                             );
+                                             
+                                             if let Some(quota) = Quota::with_period(period_per_action) {
+                                                 let quota = quota.allow_burst(NonZeroU32::new(param.count).unwrap());
+                                                 self.flood_join_limiter = Some(RateLimiter::direct(quota));
+                                             }
+                                        }
+                                    }
+                                }
+
+                                // Reconstruct canonical string
+                                let mut parts: Vec<String> = self.flood_config.values().map(|p| p.to_string()).collect();
+                                parts.sort(); // Deterministic order
+                                let canonical = parts.join(",");
+
+                                self.replace_param_mode(
+                                    |mode| matches!(mode, ChannelMode::Flood(_, _)),
+                                    Some(ChannelMode::Flood(
+                                        canonical,
+                                        HybridTimestamp::now(&self.server_id),
+                                    )),
+                                )
                             } else {
                                 false
                             }
@@ -220,8 +257,10 @@ impl ChannelActor {
                             false
                         }
                     } else {
-                        self.flood_config = None;
+                        // Remove -f
+                        self.flood_config.clear();
                         self.flood_message_limiters.clear();
+                        self.flood_join_limiter = None;
                         self.replace_param_mode(
                             |mode| matches!(mode, ChannelMode::Flood(_, _)),
                             None,

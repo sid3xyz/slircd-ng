@@ -6,6 +6,7 @@ use super::super::validation::{create_user_mask, is_banned};
 use super::{
     ActorState, ChannelActor, ChannelError, ChannelMode, JoinParams, JoinSuccessData, MemberModes,
 };
+use slirc_proto::{Command, Message};
 use tokio::sync::oneshot;
 use tracing::debug;
 
@@ -111,21 +112,48 @@ impl ChannelActor {
         }
 
         // 4b. Join Flood (+f)
-        if let Some((limit, seconds)) = self.flood_config {
-            use governor::{Quota, RateLimiter as GovRateLimiter};
-            use std::num::NonZeroU32;
-            use std::time::Duration;
-
-            let limiter = self.flood_join_limiters.entry(uid.clone()).or_insert_with(|| {
-                GovRateLimiter::direct(
-                    Quota::with_period(Duration::from_secs(seconds as u64))
-                        .unwrap()
-                        .allow_burst(NonZeroU32::new(limit).unwrap()),
-                )
-            });
-
+        // 4b. Join Flood (+f)
+        if let Some(limiter) = &self.flood_join_limiter {
             if limiter.check().is_err() {
-                let _ = reply_tx.send(Err(ChannelError::ChannelIsFull)); // Or a better error if we add one
+                // Trigger protection: Set +i if not already set
+                if !self.modes.contains(&ChannelMode::InviteOnly) {
+                    self.set_flag_mode(ChannelMode::InviteOnly, true);
+                    
+                    // Broadcast mode change
+                    let msg = Message {
+                        tags: None,
+                        prefix: Some(slirc_proto::Prefix::new(
+                            self.server_id.to_string(),
+                            "system".to_string(),
+                            self.server_id.to_string(),
+                        )),
+                        command: Command::ChannelMODE(
+                            self.name.clone(),
+                            vec![slirc_proto::mode::Mode::plus(
+                                slirc_proto::mode::ChannelMode::InviteOnly,
+                                None
+                            )]
+                        ),
+                    };
+                    self.handle_broadcast(msg, None).await;
+                    
+                    // Also send a notice explaining why
+                    let notice = Message {
+                        tags: None,
+                        prefix: Some(slirc_proto::Prefix::new(
+                            self.server_id.to_string(),
+                            "system".to_string(),
+                            self.server_id.to_string(),
+                        )),
+                        command: Command::NOTICE(
+                            self.name.clone(),
+                            "Channel join flood detected. Invite-only mode enabled (+i).".to_string()
+                        ),
+                    };
+                    self.handle_broadcast(notice, None).await;
+                }
+                
+                let _ = reply_tx.send(Err(ChannelError::ChannelIsFull));
                 return;
             }
         }

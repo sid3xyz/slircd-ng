@@ -67,12 +67,12 @@ pub struct ChannelActor {
     // State
     pub invites: VecDeque<InviteEntry>,
     pub kicked_users: HashMap<Uid, Instant>,
-    /// Flood protection config (lines, seconds)
-    pub flood_config: Option<(u32, u32)>,
+    /// Flood protection config (by type)
+    pub flood_config: HashMap<FloodType, FloodParam>,
     /// Per-user message flood limiters for this channel
     pub flood_message_limiters: HashMap<Uid, governor::DefaultDirectRateLimiter>,
-    /// Per-user join flood limiters for this channel (if applicable)
-    pub flood_join_limiters: HashMap<Uid, governor::DefaultDirectRateLimiter>,
+    /// Channel-wide join limiter for 'j' mode
+    pub flood_join_limiter: Option<governor::DefaultDirectRateLimiter>,
     matrix: Weak<Matrix>,
     state: ActorState,
     observer: Option<Arc<dyn StateObserver>>,
@@ -131,9 +131,9 @@ impl ChannelActor {
             invites: VecDeque::new(),
             silent_members: HashSet::new(),
             kicked_users: HashMap::new(),
-            flood_config: None,
+            flood_config: HashMap::new(),
             flood_message_limiters: HashMap::new(),
-            flood_join_limiters: HashMap::new(),
+            flood_join_limiter: None,
             matrix,
             state: ActorState::Active,
             observer,
@@ -383,9 +383,9 @@ mod tests {
             invites: VecDeque::new(),
             silent_members: HashSet::new(),
             kicked_users: HashMap::new(),
-            flood_config: None,
+            flood_config: HashMap::new(),
             flood_message_limiters: HashMap::new(),
-            flood_join_limiters: HashMap::new(),
+            flood_join_limiter: None,
             matrix: Weak::new(),
             state: ActorState::Active,
             observer: None,

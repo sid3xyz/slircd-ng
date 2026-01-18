@@ -2616,6 +2616,7 @@ dependencies = [
  "im",
  "ipnet",
  "lazy_static",
+ "nonzero_ext",
  "parking_lot",
  "prometheus",
  "rand 0.8.5",

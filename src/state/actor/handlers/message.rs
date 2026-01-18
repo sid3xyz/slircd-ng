@@ -190,13 +190,13 @@ impl ChannelActor {
             }
 
             // Check +f (Flood protection)
-            let is_flooding = if let Some((lines, seconds)) = self.flood_config {
+            let is_flooding = if let Some(param) = self.flood_config.get(&super::FloodType::Message) {
                 let limiter = self.flood_message_limiters.entry(sender_uid.clone()).or_insert_with(|| {
-                    GovRateLimiter::direct(
-                        Quota::with_period(Duration::from_secs(seconds as u64))
-                            .expect("Invalid duration")
-                            .allow_burst(NonZeroU32::new(lines).expect("Lines must be > 0")),
-                    )
+                    let period_per_token = Duration::from_secs_f64(param.period as f64 / param.count as f64);
+                    let quota = Quota::with_period(period_per_token)
+                        .expect("Invalid flood period")
+                        .allow_burst(NonZeroU32::new(param.count).expect("Count must be > 0"));
+                    GovRateLimiter::direct(quota)
                 });
                 
                 limiter.check().is_err()
@@ -226,7 +226,6 @@ impl ChannelActor {
                 self.user_nicks.remove(&sender_uid);
                 self.user_caps.remove(&sender_uid);
                 self.flood_message_limiters.remove(&sender_uid);
-                self.flood_join_limiters.remove(&sender_uid);
                 
                 self.handle_broadcast(kick_msg, None).await;
                 self.cleanup_if_empty();
