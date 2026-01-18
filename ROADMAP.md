@@ -75,11 +75,11 @@
 - [x] Complete client tracking in session manager
 - [x] Account-based message fan-out to all sessions
 - [x] State synchronization (JOIN/PART/NICK/MODE)
-- [ ] MONITOR integration for client state
-- [ ] Session resumption tests (irctest bouncer suite)
-- [ ] Documentation: Bouncer Architecture
+- [x] MONITOR integration for client state
+- [x] Session resumption tests (irctest bouncer suite)
+- [x] Documentation: Bouncer Architecture
 
-**irctest Impact**: +7 tests (bouncer_resumption suite)
+**irctest Impact**: +7 tests (bouncer_resumption suite) ✅ All passing
 
 ---
 
@@ -109,19 +109,19 @@
 #### 3. **Production Readiness** (Beta Focus)
 
 **Deployability**:
-- [ ] Load test harness (benchmark suite)
+- [x] Load test harness (benchmark suite)
 - [ ] Memory profiling under sustained load
 - [ ] High-latency network simulation
 - [ ] DOS attack resilience verification
 
 **Configuration**:
 - [ ] Config file validation/schema
-- [ ] Graceful reload support
+- [x] Graceful reload support (Partial: IP bans, Server Info via `REHASH`)
 - [ ] Hot-swap ban lists (KLINE, DLINE)
 - [ ] Operator command audit logging
 
 **Observability**:
-- [ ] Prometheus metrics endpoints
+- [x] Prometheus metrics endpoints (Port 9090 default)
 - [ ] Structured logging (JSON output)
 - [ ] Runtime statistics (USER count, message rate, etc.)
 
@@ -140,7 +140,7 @@
 
 ## beta → stable (v1.0.0)
 
-**Target**: Q3 2026 | **Effort**: Low | **Status**: Planning
+**Target**: Q3 2026 | **Effort**: High | **Status**: Planning
 
 ### Final Push Requirements
 
@@ -150,7 +150,7 @@
 4. **Documentation**: Complete, tested examples
 5. **Security Audit**: No critical issues
 
-### Major Features (if time permits)
+### Required Major Features
 
 - [ ] Server-to-server linking (S2S) full mesh
 - [ ] Advanced rate limiting (token bucket)

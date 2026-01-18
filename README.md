@@ -143,6 +143,7 @@ Connect with your IRC client:
 - **CertFP**: Certificate fingerprint authentication
 - **Ban Management**: KLINE, DLINE, GLINE, XLINE, SHUN with CIDR support
 - **Rate Limiting**: Per-client message throttling and join/part limits
+- **Flood Protection (`+f`)**: Channel mode for per-channel rate limiting (Note: Ergo-style channel forwarding uses `+f` differently; slircd-ng uses `+f` exclusively for flood control)
 - **Audit Logging**: Operator actions and service commands
 
 ### 💾 Persistence
