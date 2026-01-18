@@ -432,57 +432,47 @@ impl<'a> ChannelRepository<'a> {
         user: &str,
         host: &str,
     ) -> Result<Option<ChannelAkick>, DbError> {
-        let akicks = self.list_akicks(channel_id).await?;
         let full_mask = format!("{}!{}@{}", nick, user, host);
 
-        for akick in akicks {
-            if Self::mask_matches(&akick.mask, &full_mask) {
-                return Ok(Some(akick));
-            }
-        }
+        // Optimization: Use SQL filtering with LIKE instead of fetching all rows.
+        // We translate IRC wildcards (*, ?) to SQL LIKE wildcards (%, _) and escape SQL special chars.
+        // We also use LOWER() to ensure case-insensitive matching.
+        let row = sqlx::query_as::<_, (i64, i64, String, Option<String>, String, i64)>(
+            r#"
+            SELECT id, channel_id, mask, reason, set_by, set_at
+            FROM channel_akick
+            WHERE channel_id = ?
+            AND LOWER(?) LIKE REPLACE(
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(LOWER(mask), '\', '\\'),
+                            '%', '\%'
+                        ),
+                        '_', '\_'
+                    ),
+                    '*', '%'
+                ),
+                '?', '_'
+            ) ESCAPE '\'
+            ORDER BY set_at ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(channel_id)
+        .bind(&full_mask)
+        .fetch_optional(self.pool)
+        .await?;
 
-        Ok(None)
-    }
-
-    /// Check if a mask pattern matches a full hostmask.
-    /// Supports wildcards: * (matches any sequence) and ? (matches single char).
-    fn mask_matches(pattern: &str, hostmask: &str) -> bool {
-        let pattern = pattern.to_lowercase();
-        let hostmask = hostmask.to_lowercase();
-
-        // Convert IRC wildcard pattern to regex-like matching
-        let mut pattern_idx = 0;
-        let mut hostmask_idx = 0;
-        let pattern_chars: Vec<char> = pattern.chars().collect();
-        let hostmask_chars: Vec<char> = hostmask.chars().collect();
-
-        let mut star_idx: Option<usize> = None;
-        let mut match_idx = 0;
-
-        while hostmask_idx < hostmask_chars.len() {
-            if pattern_idx < pattern_chars.len()
-                && (pattern_chars[pattern_idx] == '?'
-                    || pattern_chars[pattern_idx] == hostmask_chars[hostmask_idx])
-            {
-                pattern_idx += 1;
-                hostmask_idx += 1;
-            } else if pattern_idx < pattern_chars.len() && pattern_chars[pattern_idx] == '*' {
-                star_idx = Some(pattern_idx);
-                match_idx = hostmask_idx;
-                pattern_idx += 1;
-            } else if let Some(idx) = star_idx {
-                pattern_idx = idx + 1;
-                match_idx += 1;
-                hostmask_idx = match_idx;
-            } else {
-                return false;
-            }
-        }
-
-        while pattern_idx < pattern_chars.len() && pattern_chars[pattern_idx] == '*' {
-            pattern_idx += 1;
-        }
-
-        pattern_idx == pattern_chars.len()
+        Ok(row.map(
+            |(id, channel_id, mask, reason, set_by, set_at)| ChannelAkick {
+                id,
+                channel_id,
+                mask,
+                reason,
+                set_by,
+                set_at,
+            },
+        ))
     }
 }
