@@ -3,12 +3,13 @@
 //! This module contains the `ChannelManager` struct, which isolates all
 //! channel-related state from the main Matrix struct.
 
-use crate::state::actor::ChannelEvent;
+use crate::state::actor::{ChannelEvent, ChannelInfo};
 use crate::state::observer::StateObserver;
 use dashmap::{DashMap, DashSet};
+use futures_util::future::join_all;
 use slirc_proto::Message;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 /// Channel management state and behavior.
 ///
@@ -135,5 +136,59 @@ impl ChannelManager {
                 })
                 .await;
         }
+    }
+
+    /// Get information for all channels concurrently.
+    ///
+    /// This method:
+    /// 1. Collects all channel senders from the DashMap
+    /// 2. Spawns concurrent tasks to send GetInfo events to each channel actor
+    /// 3. Uses `futures::future::join_all` to await all responses concurrently
+    /// 4. Filters out failed responses and returns the collected ChannelInfo structs
+    ///
+    /// # Arguments
+    /// * `requester_uid` - Optional UID of the user requesting the info (for membership checks)
+    ///
+    /// # Returns
+    /// Vector of `ChannelInfo` structs for all successfully queried channels
+    pub async fn get_all_channel_info(&self, requester_uid: Option<String>) -> Vec<ChannelInfo> {
+        // Collect all channel senders from the DashMap
+        let channel_senders: Vec<_> = self
+            .channels
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+
+        // Spawn concurrent tasks to query each channel
+        let tasks: Vec<_> = channel_senders
+            .into_iter()
+            .map(|channel_tx| {
+                let requester_uid = requester_uid.clone();
+                async move {
+                    let (reply_tx, reply_rx) = oneshot::channel();
+                    
+                    // Send GetInfo event to channel actor
+                    if channel_tx
+                        .send(ChannelEvent::GetInfo {
+                            requester_uid,
+                            reply_tx,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        return None;
+                    }
+
+                    // Await response from channel actor
+                    reply_rx.await.ok()
+                }
+            })
+            .collect();
+
+        // Wait for all tasks to complete concurrently
+        let results = join_all(tasks).await;
+
+        // Filter out failed responses and collect successful ones
+        results.into_iter().flatten().collect()
     }
 }
