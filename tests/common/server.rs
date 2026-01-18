@@ -45,7 +45,7 @@ path = "{}/test.db"
 cloak_secret = "TestSecret-2026-Secure!9X"
 cloak_suffix = "test"
 spam_detection_enabled = false
-allow_plaintext_sasl = true
+allow_plaintext_sasl_plain = true
 
 [security.rate_limits]
 message_rate_per_second = 1000

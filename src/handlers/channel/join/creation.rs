@@ -123,12 +123,14 @@ pub(crate) async fn join_channel_internal(
         oper_type,
     });
 
+    let is_registered_channel = matrix
+        .channel_manager
+        .registered_channels
+        .contains(&channel_lower);
+
     // Check AKICK before joining (pass pre-fetched host)
     if let Some(db) = db
-        && matrix
-            .channel_manager
-            .registered_channels
-            .contains(&channel_lower)
+        && is_registered_channel
         && let Some(akick) = check_akick(db, &channel_lower, &nick, &user_name, &real_host).await
     {
         let reason = akick
@@ -161,10 +163,7 @@ pub(crate) async fn join_channel_internal(
 
     // Check auto modes if registered
     let initial_modes = if let Some(db) = db
-        && matrix
-            .channel_manager
-            .registered_channels
-            .contains(&channel_lower)
+        && is_registered_channel
     {
         check_auto_modes(db, &channel_lower, is_registered, &account).await
     } else {
@@ -198,10 +197,6 @@ pub(crate) async fn join_channel_internal(
     };
 
     let mut attempt = 0;
-    let is_registered_channel = matrix
-        .channel_manager
-        .registered_channels
-        .contains(&channel_lower);
 
     // Pre-load saved topic for registered channels (passed to actor at spawn)
     let initial_topic = if is_registered_channel {

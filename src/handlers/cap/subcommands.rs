@@ -43,8 +43,8 @@ pub async fn handle_ls<S: SessionState>(
         is_tls: ctx.state.is_tls(),
         has_cert: ctx.state.is_tls() && ctx.state.certfp().is_some(),
         acct_cfg: &ctx.matrix.config.account_registration,
-        sts_cfg,
         sec_cfg: &ctx.matrix.config.security,
+        sts_cfg,
     });
 
     // CAP LS may need to be split across multiple lines to satisfy the IRC 512-byte limit.
