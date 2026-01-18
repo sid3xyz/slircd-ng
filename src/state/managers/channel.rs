@@ -143,7 +143,7 @@ impl ChannelManager {
     /// This method:
     /// 1. Collects all channel senders from the DashMap
     /// 2. Spawns concurrent tasks to send GetInfo events to each channel actor
-    /// 3. Uses `futures::future::join_all` to await all responses concurrently
+    /// 3. Uses `futures_util::future::join_all` to await all responses concurrently
     /// 4. Filters out failed responses and returns the collected ChannelInfo structs
     ///
     /// # Arguments
