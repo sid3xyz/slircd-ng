@@ -26,7 +26,7 @@ pub async fn handle_group(
         .link_nickname(nick, account_name, password)
         .await
     {
-        Ok(()) => {
+        Ok(id) => {
             info!(nick = %nick, account = %account_name, "Nickname grouped");
             vec![
                 reply_effect(
@@ -40,6 +40,7 @@ pub async fn handle_group(
                 ServiceEffect::AccountIdentify {
                     target_uid: uid.to_string(),
                     account: account_name.to_string(),
+                    account_id: Some(id),
                 },
                 ServiceEffect::BroadcastAccount {
                     target_uid: uid.to_string(),
