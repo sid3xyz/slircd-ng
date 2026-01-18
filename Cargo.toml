@@ -104,3 +104,8 @@ nonzero_ext = "0.3.0"
 
 [dev-dependencies]
 tempfile = "3"
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "throughput"
+harness = false
