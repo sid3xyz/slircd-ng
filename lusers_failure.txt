@@ -1,0 +1,300 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-8.3.5, pluggy-1.5.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/straylight/slircd-ng/slirc-irctest
+configfile: pytest.ini
+plugins: typeguard-4.4.2
+collecting ... collected 9 items
+
+irctest/server_tests/lusers.py::BasicLusersTestCase::testLusers ---- new test ----
+1768709693.223 bar: connects to server.
+1768709693.223 bar -> S: NICK bar
+1768709693.223 bar -> S: USER username * * :Realname
+1768709693.224 S -> bar: :My.Little.Server 001 bar :Welcome to the TestNet IRC Network bar!username@7sllo.eg3ii.gea2m.test
+1768709693.224 bar -> S: PING foo
+1768709693.224 bar -> S: PING synchronize272226.395428314
+1768709693.224 S -> bar: :My.Little.Server 002 bar :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768709693.224 S -> bar: :My.Little.Server 003 bar :This server was created at startup
+1768709693.224 S -> bar: :My.Little.Server 004 bar My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768709693.224 S -> bar: :My.Little.Server 005 bar NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768709693.224 S -> bar: :My.Little.Server 005 bar TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768709693.224 S -> bar: :My.Little.Server 396 bar 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768709693.224 S -> bar: :My.Little.Server 375 bar :- My.Little.Server Message of the Day -
+1768709693.224 S -> bar: :My.Little.Server 372 bar :- Welcome to slircd-ng test server!
+1768709693.224 S -> bar: :My.Little.Server 376 bar :End of /MOTD command.
+1768709693.224 S -> bar: :My.Little.Server PONG My.Little.Server foo
+1768709693.265 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.395428314
+1768709693.266 bar -> S: LUSERS
+1768709693.266 bar -> S: PING synchronize272226.436804327
+1768709693.266 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709693.309 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709693.309 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709693.309 S -> bar: :My.Little.Server 265 bar 1 1 :Current local users 1, max 1
+1768709693.309 S -> bar: :My.Little.Server 266 bar 1 1 :Current global users 1, max 1
+1768709693.309 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.436804327
+1768709693.311 qux: connects to server.
+1768709693.311 qux -> S: NICK qux
+1768709693.311 qux -> S: USER username * * :Realname
+1768709693.316 S -> qux: :My.Little.Server 001 qux :Welcome to the TestNet IRC Network qux!username@7sllo.eg3ii.gea2m.test
+1768709693.316 qux -> S: PING foo
+1768709693.316 qux -> S: PING synchronize272226.487316139
+1768709693.316 S -> qux: :My.Little.Server 002 qux :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768709693.316 S -> qux: :My.Little.Server 003 qux :This server was created at startup
+1768709693.316 S -> qux: :My.Little.Server 004 qux My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768709693.316 S -> qux: :My.Little.Server 005 qux NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768709693.316 S -> qux: :My.Little.Server 005 qux TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768709693.316 S -> qux: :My.Little.Server 396 qux 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768709693.316 S -> qux: :My.Little.Server 375 qux :- My.Little.Server Message of the Day -
+1768709693.316 S -> qux: :My.Little.Server 372 qux :- Welcome to slircd-ng test server!
+1768709693.316 S -> qux: :My.Little.Server 376 qux :End of /MOTD command.
+1768709693.357 S -> qux: :My.Little.Server PONG My.Little.Server foo
+1768709693.357 S -> qux: :My.Little.Server PONG My.Little.Server synchronize272226.487316139
+1768709693.358 qux -> S: LUSERS
+1768709693.358 qux -> S: PING synchronize272226.528768384
+1768709693.358 S -> qux: :My.Little.Server 251 qux :There are 2 users and 0 invisible on 1 servers
+1768709693.358 S -> qux: :My.Little.Server 252 qux 0 :operator(s) online
+1768709693.358 S -> qux: :My.Little.Server 255 qux :I have 2 clients and 0 servers
+1768709693.401 S -> qux: :My.Little.Server 265 qux 2 2 :Current local users 2, max 2
+1768709693.401 S -> qux: :My.Little.Server 266 qux 2 2 :Current global users 2, max 2
+1768709693.401 S -> qux: :My.Little.Server PONG My.Little.Server synchronize272226.528768384
+1768709693.401 qux -> S: QUIT
+1768709693.401 qux -> S: PING synchronize272226.572304093
+1768709693.401 S -> qux: :qux!username@127.0.0.1 QUIT
+1768709693.401 bar -> S: LUSERS
+1768709693.402 bar -> S: PING synchronize272226.572612167
+1768709693.402 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709693.402 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709693.402 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709693.402 S -> bar: :My.Little.Server 265 bar 1 2 :Current local users 1, max 2
+1768709693.402 S -> bar: :My.Little.Server 266 bar 1 2 :Current global users 1, max 2
+1768709693.402 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.572612167
+PASSED1768709693.406 bar: disconnects from server.
+
+irctest/server_tests/lusers.py::BasicLusersTestCase::testLusersFull ---- new test ----
+1768709693.439 bar: connects to server.
+1768709693.439 bar -> S: NICK bar
+1768709693.439 bar -> S: USER username * * :Realname
+1768709693.440 S -> bar: :My.Little.Server 001 bar :Welcome to the TestNet IRC Network bar!username@7sllo.eg3ii.gea2m.test
+1768709693.440 S -> bar: :My.Little.Server 002 bar :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768709693.440 S -> bar: :My.Little.Server 003 bar :This server was created at startup
+1768709693.440 S -> bar: :My.Little.Server 004 bar My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768709693.440 S -> bar: :My.Little.Server 005 bar NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768709693.440 S -> bar: :My.Little.Server 005 bar TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768709693.440 bar -> S: PING foo
+1768709693.440 bar -> S: PING synchronize272226.611376027
+1768709693.440 S -> bar: :My.Little.Server 396 bar 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768709693.440 S -> bar: :My.Little.Server 375 bar :- My.Little.Server Message of the Day -
+1768709693.440 S -> bar: :My.Little.Server 372 bar :- Welcome to slircd-ng test server!
+1768709693.440 S -> bar: :My.Little.Server 376 bar :End of /MOTD command.
+1768709693.442 S -> bar: :My.Little.Server PONG My.Little.Server foo
+1768709693.485 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.611376027
+1768709693.485 bar -> S: LUSERS
+1768709693.485 bar -> S: PING synchronize272226.656483628
+1768709693.485 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709693.529 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709693.529 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709693.529 S -> bar: :My.Little.Server 265 bar 1 1 :Current local users 1, max 1
+1768709693.529 S -> bar: :My.Little.Server 266 bar 1 1 :Current global users 1, max 1
+1768709693.529 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.656483628
+1768709693.529 qux: connects to server.
+1768709693.529 qux -> S: NICK qux
+1768709693.529 qux -> S: USER username * * :Realname
+1768709693.530 S -> qux: :My.Little.Server 001 qux :Welcome to the TestNet IRC Network qux!username@7sllo.eg3ii.gea2m.test
+1768709693.530 qux -> S: PING foo
+1768709693.530 qux -> S: PING synchronize272226.701513759
+1768709693.530 S -> qux: :My.Little.Server 002 qux :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768709693.530 S -> qux: :My.Little.Server 003 qux :This server was created at startup
+1768709693.531 S -> qux: :My.Little.Server 004 qux My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768709693.531 S -> qux: :My.Little.Server 005 qux NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768709693.531 S -> qux: :My.Little.Server 005 qux TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768709693.531 S -> qux: :My.Little.Server 396 qux 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768709693.531 S -> qux: :My.Little.Server 375 qux :- My.Little.Server Message of the Day -
+1768709693.531 S -> qux: :My.Little.Server 372 qux :- Welcome to slircd-ng test server!
+1768709693.531 S -> qux: :My.Little.Server 376 qux :End of /MOTD command.
+1768709693.573 S -> qux: :My.Little.Server PONG My.Little.Server foo
+1768709693.573 S -> qux: :My.Little.Server PONG My.Little.Server synchronize272226.701513759
+1768709693.574 qux -> S: LUSERS
+1768709693.574 qux -> S: PING synchronize272226.744734458
+1768709693.574 S -> qux: :My.Little.Server 251 qux :There are 2 users and 0 invisible on 1 servers
+1768709693.617 S -> qux: :My.Little.Server 252 qux 0 :operator(s) online
+1768709693.617 S -> qux: :My.Little.Server 255 qux :I have 2 clients and 0 servers
+1768709693.617 S -> qux: :My.Little.Server 265 qux 2 2 :Current local users 2, max 2
+1768709693.617 S -> qux: :My.Little.Server 266 qux 2 2 :Current global users 2, max 2
+1768709693.617 S -> qux: :My.Little.Server PONG My.Little.Server synchronize272226.744734458
+1768709693.617 qux -> S: QUIT
+1768709693.617 qux -> S: PING synchronize272226.788478518
+1768709693.617 S -> qux: :qux!username@127.0.0.1 QUIT
+1768709693.618 bar -> S: LUSERS
+1768709693.618 bar -> S: PING synchronize272226.788874042
+1768709693.618 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709693.618 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709693.618 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709693.618 S -> bar: :My.Little.Server 265 bar 1 2 :Current local users 1, max 2
+1768709693.618 S -> bar: :My.Little.Server 266 bar 1 2 :Current global users 1, max 2
+1768709693.618 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.788874042
+PASSED1768709693.622 bar: disconnects from server.
+
+irctest/server_tests/lusers.py::LusersUnregisteredTestCase::testLusersRfc2812 ---- new test ----
+1768709693.667 bar: connects to server.
+1768709693.667 bar -> S: NICK bar
+1768709693.667 bar -> S: USER username * * :Realname
+1768709693.669 S -> bar: :My.Little.Server 001 bar :Welcome to the TestNet IRC Network bar!username@7sllo.eg3ii.gea2m.test
+1768709693.669 S -> bar: :My.Little.Server 002 bar :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768709693.669 bar -> S: PING foo
+1768709693.669 bar -> S: PING synchronize272226.840308502
+1768709693.669 S -> bar: :My.Little.Server 003 bar :This server was created at startup
+1768709693.669 S -> bar: :My.Little.Server 004 bar My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768709693.669 S -> bar: :My.Little.Server 005 bar NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768709693.669 S -> bar: :My.Little.Server 005 bar TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768709693.669 S -> bar: :My.Little.Server 396 bar 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768709693.669 S -> bar: :My.Little.Server 375 bar :- My.Little.Server Message of the Day -
+1768709693.669 S -> bar: :My.Little.Server 372 bar :- Welcome to slircd-ng test server!
+1768709693.669 S -> bar: :My.Little.Server 376 bar :End of /MOTD command.
+1768709693.671 S -> bar: :My.Little.Server PONG My.Little.Server foo
+1768709693.713 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.840308502
+1768709693.714 bar -> S: LUSERS
+1768709693.714 bar -> S: PING synchronize272226.88476409
+1768709693.714 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709693.761 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709693.761 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709693.761 S -> bar: :My.Little.Server 265 bar 1 1 :Current local users 1, max 1
+1768709693.761 S -> bar: :My.Little.Server 266 bar 1 1 :Current global users 1, max 1
+1768709693.761 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.88476409
+1768709693.761 qux: connects to server.
+1768709693.761 qux -> S: NICK qux
+1768709693.761 qux -> S: PING PARAM
+1768709693.762 S -> qux: :My.Little.Server PONG My.Little.Server PARAM
+1768709693.762 bar -> S: LUSERS
+1768709693.762 bar -> S: PING synchronize272226.932909162
+1768709693.762 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709693.805 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709693.805 S -> bar: :My.Little.Server 253 bar 1 :unknown connection(s)
+1768709693.805 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709693.805 S -> bar: :My.Little.Server 265 bar 1 1 :Current local users 1, max 1
+1768709693.805 S -> bar: :My.Little.Server 266 bar 1 1 :Current global users 1, max 1
+1768709693.805 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.932909162
+1768709693.805 bat: connects to server.
+1768709693.805 bat -> S: NICK bat
+1768709693.805 bat -> S: PING PARAM
+1768709693.806 S -> bat: :My.Little.Server PONG My.Little.Server PARAM
+1768709693.806 bar -> S: LUSERS
+1768709693.806 bar -> S: PING synchronize272226.976987801
+1768709693.806 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709693.806 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709693.806 S -> bar: :My.Little.Server 253 bar 2 :unknown connection(s)
+1768709693.806 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709693.806 S -> bar: :My.Little.Server 265 bar 1 1 :Current local users 1, max 1
+1768709693.806 S -> bar: :My.Little.Server 266 bar 1 1 :Current global users 1, max 1
+1768709693.849 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272226.976987801
+1768709693.849 qux -> S: USER u s e r
+1768709693.850 S -> qux: :My.Little.Server 001 qux :Welcome to the TestNet IRC Network qux!u@7sllo.eg3ii.gea2m.test
+1768709693.850 S -> qux: :My.Little.Server 002 qux :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768709693.850 S -> qux: :My.Little.Server 003 qux :This server was created at startup
+1768709693.850 S -> qux: :My.Little.Server 004 qux My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768709693.850 bar -> S: LUSERS
+1768709693.850 bar -> S: PING synchronize272227.02100792
+1768709693.850 S -> bar: :My.Little.Server 251 bar :There are 2 users and 0 invisible on 1 servers
+1768709693.893 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709693.893 S -> bar: :My.Little.Server 253 bar 1 :unknown connection(s)
+1768709693.893 S -> bar: :My.Little.Server 255 bar :I have 2 clients and 0 servers
+1768709693.893 S -> bar: :My.Little.Server 265 bar 2 2 :Current local users 2, max 2
+1768709693.893 S -> bar: :My.Little.Server 266 bar 2 2 :Current global users 2, max 2
+1768709693.893 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272227.02100792
+1768709693.893 bat -> S: QUIT
+1768709693.893 bat -> S: PING synchronize272227.06426985
+1768709693.893 S -> bat: ERROR :Closing Link: 127.0.0.1 (Client Quit)
+1768709693.893 bar -> S: LUSERS
+1768709693.893 bar -> S: PING synchronize272227.064524992
+1768709693.893 S -> bar: :My.Little.Server 251 bar :There are 2 users and 0 invisible on 1 servers
+1768709693.937 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709693.937 S -> bar: :My.Little.Server 255 bar :I have 2 clients and 0 servers
+1768709693.937 S -> bar: :My.Little.Server 265 bar 2 2 :Current local users 2, max 2
+1768709693.937 S -> bar: :My.Little.Server 266 bar 2 2 :Current global users 2, max 2
+1768709693.937 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272227.064524992
+PASSED1768709693.941 bar: disconnects from server.
+1768709693.941 qux: disconnects from server.
+
+irctest/server_tests/lusers.py::LusersUnregisteredTestCase::testLusersFull ---- new test ----
+1768709693.976 bar: connects to server.
+1768709693.976 bar -> S: NICK bar
+1768709693.976 bar -> S: USER username * * :Realname
+1768709693.977 S -> bar: :My.Little.Server 001 bar :Welcome to the TestNet IRC Network bar!username@7sllo.eg3ii.gea2m.test
+1768709693.977 S -> bar: :My.Little.Server 002 bar :Your host is My.Little.Server, running version slircd-ng-0.1.0
+1768709693.977 S -> bar: :My.Little.Server 003 bar :This server was created at startup
+1768709693.977 S -> bar: :My.Little.Server 004 bar My.Little.Server slircd-ng-0.1.0 iowrZ beIiklmnopqrstv
+1768709693.977 bar -> S: PING foo
+1768709693.977 bar -> S: PING synchronize272227.148540574
+1768709693.978 S -> bar: :My.Little.Server 005 bar NETWORK=TestNet METADATA CASEMAPPING=rfc1459 CHANTYPES=#&+! PREFIX=(qaohv)~&@%+ CHANMODES=beIq,k,l,imnrstMU NICKLEN=30 CHANNELLEN=50 TOPICLEN=390 KICKLEN=390 AWAYLEN=200 MODES=6 MAXTARGETS=4 :are supported by this server
+1768709693.978 S -> bar: :My.Little.Server 005 bar TARGMAX=JOIN:10,PART:10,KICK:4,PRIVMSG:4,NOTICE:4,NAMES:10,WHOIS:1,WHOWAS:10 MONITOR=100 EXCEPTS=e INVEX=I EXTBAN=,m ELIST=MNU STATUSMSG=~&@%+ BOT=B WHOX UTF8ONLY :are supported by this server
+1768709693.978 S -> bar: :My.Little.Server 396 bar 7sllo.eg3ii.gea2m.test :is now your displayed host
+1768709693.978 S -> bar: :My.Little.Server 375 bar :- My.Little.Server Message of the Day -
+1768709693.978 S -> bar: :My.Little.Server 372 bar :- Welcome to slircd-ng test server!
+1768709693.978 S -> bar: :My.Little.Server 376 bar :End of /MOTD command.
+1768709693.979 S -> bar: :My.Little.Server PONG My.Little.Server foo
+1768709694.021 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272227.148540574
+1768709694.022 bar -> S: LUSERS
+1768709694.022 bar -> S: PING synchronize272227.192727664
+1768709694.022 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709694.065 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709694.065 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709694.065 S -> bar: :My.Little.Server 265 bar 1 1 :Current local users 1, max 1
+1768709694.065 S -> bar: :My.Little.Server 266 bar 1 1 :Current global users 1, max 1
+1768709694.065 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272227.192727664
+1768709694.065 qux: connects to server.
+1768709694.065 qux -> S: NICK qux
+1768709694.065 qux -> S: PING PARAM
+1768709694.066 S -> qux: :My.Little.Server PONG My.Little.Server PARAM
+1768709694.066 bar -> S: LUSERS
+1768709694.066 bar -> S: PING synchronize272227.236950457
+1768709694.066 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709694.066 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709694.066 S -> bar: :My.Little.Server 253 bar 1 :unknown connection(s)
+1768709694.066 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709694.066 S -> bar: :My.Little.Server 265 bar 1 1 :Current local users 1, max 1
+1768709694.066 S -> bar: :My.Little.Server 266 bar 1 1 :Current global users 1, max 1
+1768709694.109 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272227.236950457
+1768709694.109 bat: connects to server.
+1768709694.109 bat -> S: NICK bat
+1768709694.109 bat -> S: PING PARAM
+1768709694.110 S -> bat: :My.Little.Server PONG My.Little.Server PARAM
+1768709694.110 bar -> S: LUSERS
+1768709694.110 bar -> S: PING synchronize272227.280970523
+1768709694.110 S -> bar: :My.Little.Server 251 bar :There are 1 users and 0 invisible on 1 servers
+1768709694.157 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709694.157 S -> bar: :My.Little.Server 253 bar 2 :unknown connection(s)
+1768709694.157 S -> bar: :My.Little.Server 255 bar :I have 1 clients and 0 servers
+1768709694.157 S -> bar: :My.Little.Server 265 bar 1 1 :Current local users 1, max 1
+1768709694.157 S -> bar: :My.Little.Server 266 bar 1 1 :Current global users 1, max 1
+1768709694.157 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272227.280970523
+1768709694.157 qux -> S: USER u s e r
+1768709694.159 S -> qux: :My.Little.Server 001 qux :Welcome to the TestNet IRC Network qux!u@7sllo.eg3ii.gea2m.test
+1768709694.159 bar -> S: LUSERS
+1768709694.159 bar -> S: PING synchronize272227.32985527
+1768709694.159 S -> bar: :My.Little.Server 251 bar :There are 2 users and 0 invisible on 1 servers
+1768709694.201 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709694.201 S -> bar: :My.Little.Server 253 bar 1 :unknown connection(s)
+1768709694.201 S -> bar: :My.Little.Server 255 bar :I have 2 clients and 0 servers
+1768709694.201 S -> bar: :My.Little.Server 265 bar 2 2 :Current local users 2, max 2
+1768709694.201 S -> bar: :My.Little.Server 266 bar 2 2 :Current global users 2, max 2
+1768709694.201 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272227.32985527
+1768709694.202 bat -> S: QUIT
+1768709694.202 bat -> S: PING synchronize272227.372991597
+1768709694.202 S -> bat: ERROR :Closing Link: 127.0.0.1 (Client Quit)
+1768709694.203 bar -> S: LUSERS
+1768709694.203 bar -> S: PING synchronize272227.373733167
+1768709694.203 S -> bar: :My.Little.Server 251 bar :There are 2 users and 0 invisible on 1 servers
+1768709694.249 S -> bar: :My.Little.Server 252 bar 0 :operator(s) online
+1768709694.249 S -> bar: :My.Little.Server 255 bar :I have 2 clients and 0 servers
+1768709694.249 S -> bar: :My.Little.Server 265 bar 2 2 :Current local users 2, max 2
+1768709694.249 S -> bar: :My.Little.Server 266 bar 2 2 :Current global users 2, max 2
+1768709694.249 S -> bar: :My.Little.Server PONG My.Little.Server synchronize272227.373733167
+PASSED1768709694.254 bar: disconnects from server.
+1768709694.254 qux: disconnects from server.
+
+irctest/server_tests/lusers.py::LusersUnregisteredDefaultInvisibleTestCase::testLusersRfc2812 ---- new test ----
+FAILED
+
+=========================== short test summary info ============================
+FAILED irctest/server_tests/lusers.py::LusersUnregisteredDefaultInvisibleTestCase::testLusersRfc2812
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+========================= 1 failed, 4 passed in 1.10s ==========================

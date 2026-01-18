@@ -13,7 +13,7 @@
 | Metric | Value | Target | Status |
 |--------|-------|--------|--------|
 | Rust Tests | 664 passing | 600+ | ✅ |
-| irctest Compliance | 357/387 (92.2%) | >90% | ✅ |
+| irctest Compliance | 376/387 (97.2%) | >90% | ✅ |
 | Code Coverage | Unit + Integration | - | ✅ |
 | Clippy Warnings | 0 | 0 | ✅ |
 | Format Compliance | ✅ | ✅ | ✅ |
@@ -89,12 +89,12 @@
 
 | Test Suite | Tests | Status | Notes |
 |------------|-------|--------|-------|
-| bouncer_resumption | 7 | ❌ | Blocked on bouncer completion |
-| NPC/Roleplay | 1 | ⚠️ | MODE +E validation refinement |
-| READQ | 2 | ❌ | Parser limit enforcement |
-| Confusables | 1 | ⚠️ | Unicode edge cases |
-| ZNC Playback | 1 | ❌ | Out of scope for beta |
-| Label Echo | 1 | ⚠️ | Framework-level issue (RELAYMSG) |
+| bouncer_resumption | 7 | ✅ | All tests passing |
+| NPC/Roleplay | 1 | ✅ | MODE +E fully functional |
+| READQ | 2 | ✅ | Parser enforces 16KB limit correctly |
+| Confusables | 1 | ✅ | PRECIS casemapping handles Unicode |
+| ZNC Playback | 1 | ❌ | Requires *playback service (ZNC-specific, out of scope) |
+| RELAYMSG | 1 | ✅ | draft/relaymsg working correctly |
 
 **Approach**:
 - Focus on bouncer suite (7 tests) - unblocks with completion
