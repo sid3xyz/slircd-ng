@@ -194,10 +194,20 @@ mod tests {
 
     // Helper to create CapListParams for tests
     fn make_params(version: u32, is_tls: bool, has_cert: bool) -> CapListParams<'static> {
+        make_params_with_sec_cfg(version, is_tls, has_cert, SecurityConfig::default())
+    }
+
+    // Helper to create CapListParams with custom security config
+    fn make_params_with_sec_cfg(
+        version: u32,
+        is_tls: bool,
+        has_cert: bool,
+        sec_cfg: SecurityConfig,
+    ) -> CapListParams<'static> {
         // Use leaked boxes to get 'static lifetime for tests
         let acct_cfg: &'static AccountRegistrationConfig =
             Box::leak(Box::new(AccountRegistrationConfig::default()));
-        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(SecurityConfig::default()));
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_cfg));
         CapListParams {
             version,
             is_tls,
@@ -215,19 +225,9 @@ mod tests {
     #[test]
     fn test_cap_list_plaintext_sasl_allowed() {
         // Test non-TLS SASL when allow_plaintext_sasl_plain is true (CAP 302)
-        let acct_cfg: &'static AccountRegistrationConfig =
-            Box::leak(Box::new(AccountRegistrationConfig::default()));
         let mut sec_cfg = SecurityConfig::default();
         sec_cfg.allow_plaintext_sasl_plain = true;
-        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_cfg));
-        let caps = build_cap_list_tokens(&CapListParams {
-            version: 302,
-            is_tls: false,
-            has_cert: false,
-            acct_cfg,
-            sec_cfg,
-            sts_cfg: None,
-        });
+        let caps = build_cap_list_tokens(&make_params_with_sec_cfg(302, false, false, sec_cfg));
 
         assert!(
             caps.iter().any(|c| c == "sasl=SCRAM-SHA-256,PLAIN"),
@@ -239,19 +239,9 @@ mod tests {
     #[test]
     fn test_cap_list_plaintext_sasl_allowed_301() {
         // Test non-TLS SASL when allow_plaintext_sasl_plain is true (CAP 301)
-        let acct_cfg: &'static AccountRegistrationConfig =
-            Box::leak(Box::new(AccountRegistrationConfig::default()));
         let mut sec_cfg = SecurityConfig::default();
         sec_cfg.allow_plaintext_sasl_plain = true;
-        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_cfg));
-        let caps = build_cap_list_tokens(&CapListParams {
-            version: 301,
-            is_tls: false,
-            has_cert: false,
-            acct_cfg,
-            sec_cfg,
-            sts_cfg: None,
-        });
+        let caps = build_cap_list_tokens(&make_params_with_sec_cfg(301, false, false, sec_cfg));
 
         assert!(
             caps.iter().any(|c| c == "sasl"),
