@@ -671,7 +671,7 @@ impl<'a> WelcomeBurstWriter<'a> {
         let chanmodes = ChanModesBuilder::new()
             .list_modes("beIq")
             .param_always("k")
-            .param_set("l")
+            .param_set("fl")  // l = limit, f = flood protection (takes param on set)
             .no_param("imnrstMU");
 
         let targmax = TargMaxBuilder::new()

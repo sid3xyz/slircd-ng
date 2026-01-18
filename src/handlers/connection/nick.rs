@@ -200,16 +200,44 @@ impl<S: SessionState + SaslAccess> UniversalHandler<S> for NickHandler {
                         None
                     };
 
+
                     // Allow if both have accounts and they match
+                    // Clone current_account for use in the fallback arm
+                    let current_account_for_fallback = current_account.clone();
                     match (current_account, existing_account) {
                         (Some(ref cur_acc), Some(ref exist_acc)) if cur_acc == exist_acc => {
-                            // Same account - append this UID to the vector
-                            existing_uids.push(ctx.uid.to_string());
+                            // Same account - check if multiclient is allowed for this account
+                            let override_opt = ctx.matrix.client_manager.get_multiclient_override(cur_acc);
+                            let multiclient_allowed = ctx
+                                .matrix
+                                .config
+                                .multiclient
+                                .is_multiclient_enabled(override_opt);
+
+                            if multiclient_allowed {
+                                // Allowed - append this UID to the vector
+                                existing_uids.push(ctx.uid.to_string());
+                            } else {
+                                // Multiclient disabled for this account - reject
+                                return Err(HandlerError::NicknameInUse(nick.to_string()));
+                            }
                         }
                         _ => {
                             // During pre-registration with multiclient enabled, defer validation
                             // The account might not be set yet (SASL may still be in progress)
-                            if !ctx.state.is_registered() && ctx.matrix.config.multiclient.enabled {
+                            // But if we DO know the account, we must enforce the policy now
+                            let multiclient_globally_enabled = ctx.matrix.config.multiclient.enabled;
+                            
+                            // If we have an account, check specific policy
+                            let specific_allowed = if let Some(ref acc) = current_account_for_fallback {
+                                let override_opt = ctx.matrix.client_manager.get_multiclient_override(acc);
+                                ctx.matrix.config.multiclient.is_multiclient_enabled(override_opt)
+                            } else {
+                                // No account yet, fall back to global setting
+                                multiclient_globally_enabled
+                            };
+
+                            if !ctx.state.is_registered() && specific_allowed {
                                 // Allow the nick collision temporarily
                                 // Final validation happens at registration completion
                                 debug!(
@@ -219,7 +247,7 @@ impl<S: SessionState + SaslAccess> UniversalHandler<S> for NickHandler {
                                 );
                                 existing_uids.push(ctx.uid.to_string());
                             } else {
-                                // Either no accounts or accounts don't match - reject
+                                // Either no matching accounts or multiclient disabled - reject
                                 return Err(HandlerError::NicknameInUse(nick.to_string()));
                             }
                         }
