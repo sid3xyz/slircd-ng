@@ -26,7 +26,6 @@ use crate::state::Matrix;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
 
 /// Resolve the configuration path from CLI arguments.
 /// Supports `-c <path>`, `--config <path>`, or a bare path.
@@ -52,21 +51,33 @@ fn resolve_config_path() -> String {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .with_target(true)
-        .init();
-
-    // Load configuration
+    // Load configuration first (before tracing, so we can use log_format)
     let config_path = resolve_config_path();
 
     let config = Config::load(&config_path).map_err(|e| {
-        error!(path = %config_path, error = %e, "Failed to load config");
+        eprintln!("ERROR: Failed to load config from {}: {}", config_path, e);
         e
     })?;
+
+    // Initialize tracing based on config
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    match config.server.log_format {
+        crate::config::LogFormat::Json => {
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .with_target(true)
+                .json()
+                .init();
+        }
+        crate::config::LogFormat::Pretty => {
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .with_target(true)
+                .init();
+        }
+    }
 
     // Validate configuration
     if let Err(errors) = crate::config::validate(&config) {

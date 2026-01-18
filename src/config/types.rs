@@ -118,6 +118,13 @@ pub struct ServerConfig {
     /// - `precis`: Ergo-style Unicode-aware nickname policy (enables some UTF-8 nicks)
     #[serde(default)]
     pub casemapping: Casemapping,
+
+    /// Log output format.
+    ///
+    /// - `pretty` (default): Human-readable colored output for development
+    /// - `json`: Structured JSON output for production/log aggregation
+    #[serde(default)]
+    pub log_format: LogFormat,
 }
 
 /// IRC casemapping policy.
@@ -136,6 +143,17 @@ impl Casemapping {
             Self::Precis => "precis",
         }
     }
+}
+
+/// Log output format.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    /// Human-readable colored output (default)
+    #[default]
+    Pretty,
+    /// Structured JSON output for log aggregation
+    Json,
 }
 
 /// Idle timeout configuration for client connection keepalive.

@@ -28,5 +28,5 @@ pub use listen::{ClientAuth, ListenConfig, S2STlsConfig, StsConfig, TlsConfig, W
 pub use multiclient::{AlwaysOnPolicy, MulticlientConfig};
 pub use oper::{OperBlock, WebircBlock};
 pub use security::{HeuristicsConfig, RateLimitConfig, RblConfig, SecurityConfig};
-pub use types::{AccountRegistrationConfig, Casemapping, Config, IdleTimeoutsConfig, ServerConfig};
+pub use types::{AccountRegistrationConfig, Casemapping, Config, IdleTimeoutsConfig, LogFormat, ServerConfig};
 pub use validation::validate;
