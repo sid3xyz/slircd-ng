@@ -57,6 +57,7 @@ pub const SUPPORTED_CAPS: &[Capability] = &[
     Capability::DraftRelaymsg,
     Capability::Tls, // STARTTLS - only useful on plaintext connections
     Capability::Sts, // Strict Transport Security - advertised dynamically based on config
+    Capability::StandardReplies, // FAIL/WARN/NOTE standard replies
 ];
 
 /// Maximum bytes allowed in a multiline batch message.
