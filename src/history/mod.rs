@@ -25,6 +25,8 @@ pub struct HistoryQuery {
     pub target: String,
     pub start: Option<i64>,
     pub end: Option<i64>,
+    pub start_id: Option<String>,
+    pub end_id: Option<String>,
     pub limit: usize,
     pub reverse: bool,
 }

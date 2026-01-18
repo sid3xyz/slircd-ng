@@ -79,8 +79,32 @@ impl HistoryProvider for RedbProvider {
             .map_err(|e| HistoryError::Database(e.to_string()))?;
 
         let target_lower = irc_to_lower(&filter.target);
-        let start_key = format!("{}\0{:020}\0", target_lower, filter.start.unwrap_or(0));
-        let end_key = format!("{}\0{:020}\0", target_lower, filter.end.unwrap_or(i64::MAX));
+
+        // Precise paging logic:
+        // Key format: target\0timestamp\0msgid
+        //
+        // If start_id/end_id are provided, use them to form a precise boundary key.
+        // Otherwise, use the default boundary (start of timestamp / end of timestamp).
+
+        let start_key = if let (Some(ts), Some(id)) = (filter.start, &filter.start_id) {
+            // Precise start: target\0timestamp\0msgid
+            format!("{}\0{:020}\0{}", target_lower, ts, id)
+        } else {
+            // Loose start: target\0timestamp\0 (start of this millisecond)
+            format!("{}\0{:020}\0", target_lower, filter.start.unwrap_or(0))
+        };
+
+        let end_key = if let (Some(ts), Some(id)) = (filter.end, &filter.end_id) {
+            // Precise end: target\0timestamp\0msgid
+            format!("{}\0{:020}\0{}", target_lower, ts, id)
+        } else {
+            // Loose end: target\0timestamp\0 (end of global)
+            format!(
+                "{}\0{:020}\0",
+                target_lower,
+                filter.end.unwrap_or(i64::MAX)
+            )
+        };
 
         let range = table
             .range(start_key.as_str()..end_key.as_str())

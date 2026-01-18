@@ -152,6 +152,8 @@ async fn replay_channel_history(
         target: target.to_string(),
         start: Some(start_ts),
         end: None,
+        start_id: None,
+        end_id: None,
         limit: 1000,    // Reasonable limit for catch-up
         reverse: false, // Oldest first
     };
