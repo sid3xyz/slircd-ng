@@ -31,6 +31,7 @@ pub async fn handle_identify(
                 ServiceEffect::AccountIdentify {
                     target_uid: uid.to_string(),
                     account: account.name.clone(),
+                    account_id: Some(account.id),
                 },
                 ServiceEffect::BroadcastAccount {
                     target_uid: uid.to_string(),

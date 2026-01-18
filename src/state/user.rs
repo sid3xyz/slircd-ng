@@ -27,6 +27,8 @@ pub struct User {
     pub modes: UserModes,
     /// Account name if identified to NickServ.
     pub account: Option<String>,
+    /// Account ID if identified (cached).
+    pub account_id: Option<i64>,
     /// Away message if user is marked away (RFC 2812).
     pub away: Option<String>,
     /// User metadata (key-value pairs) - Ergo extension.
@@ -229,6 +231,7 @@ impl User {
             channels: HashSet::new(),
             modes: UserModes::default(),
             account: None,
+            account_id: None,
             away: None,
             metadata: std::collections::HashMap::new(),
             caps,
@@ -284,6 +287,7 @@ impl User {
             channels: crdt.channels.iter().cloned().collect(),
             modes: UserModes::from_crdt(&crdt.modes),
             account: crdt.account.value().clone(),
+            account_id: None, // Cached ID not synced via CRDT
             away: crdt.away.value().clone(),
             metadata: std::collections::HashMap::new(),
             caps: crdt.caps.iter().cloned().collect(),
@@ -308,7 +312,13 @@ impl User {
         self.visible_host = merged.visible_host.value().clone();
         self.channels = merged.channels.iter().cloned().collect();
         self.modes = UserModes::from_crdt(&merged.modes);
-        self.account = merged.account.value().clone();
+
+        let new_account = merged.account.value().clone();
+        if self.account != new_account {
+             self.account_id = None;
+        }
+        self.account = new_account;
+
         self.away = merged.away.value().clone();
         self.caps = merged.caps.iter().cloned().collect();
         self.silence_list = merged.silence_list.iter().cloned().collect();

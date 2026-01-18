@@ -396,7 +396,7 @@ impl<'a> AccountRepository<'a> {
         nick: &str,
         account_name: &str,
         password: &str,
-    ) -> Result<(), DbError> {
+    ) -> Result<i64, DbError> {
         // Verify the account password
         let account = self.identify(account_name, password).await?;
 
@@ -417,7 +417,7 @@ impl<'a> AccountRepository<'a> {
         .execute(self.pool)
         .await?;
 
-        Ok(())
+        Ok(account.id)
     }
 
     /// Unlink a nickname from the current account (UNGROUP).

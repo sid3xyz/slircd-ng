@@ -74,19 +74,44 @@ pub trait ServiceBase {
                 .users
                 .get(uid)
                 .map(|u| u.value().clone())?;
-            let user = user_arc.read().await;
 
-            if !user.modes.registered {
-                return None;
+            // Fast path: Check cache with read lock
+            {
+                let user = user_arc.read().await;
+                if let Some(id) = user.account_id {
+                    return Some(id);
+                }
+                if !user.modes.registered || user.account.is_none() {
+                    return None;
+                }
             }
 
-            let account_name = user.account.as_ref()?;
+            // Slow path: Need lookup
+            // We need to clone account name to release lock before await
+            let account_name = {
+                let user = user_arc.read().await;
+                user.account.clone()?
+            };
 
             // Look up account ID
-            match self.db().accounts().find_by_name(account_name).await {
-                Ok(Some(account)) => Some(account.id),
-                _ => None,
+            let account_id = match self.db().accounts().find_by_name(&account_name).await {
+                Ok(Some(account)) => account.id,
+                _ => return None,
+            };
+
+            // Cache the result
+            // Re-acquire lock (write) to update cache
+            {
+                let mut user = user_arc.write().await;
+                // Verify account name hasn't changed while we were looking up
+                if let Some(current_account) = &user.account {
+                    if current_account == &account_name {
+                        user.account_id = Some(account_id);
+                    }
+                }
             }
+
+            Some(account_id)
         }
     }
 }
