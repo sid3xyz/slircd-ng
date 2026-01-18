@@ -9,6 +9,17 @@ use std::io::{BufReader, BufWriter};
 use std::path::Path;
 use tracing::{debug, warn};
 
+/// Save a snapshot of the deny list to disk.
+pub(super) fn save_snapshot(snapshot: &super::IpDenyListSnapshot) -> Result<(), std::io::Error> {
+    save(
+        &snapshot.ipv4_bitmap,
+        &snapshot.ipv4_cidrs,
+        &snapshot.ipv6_cidrs,
+        &snapshot.metadata,
+        &snapshot.persist_path,
+    )
+}
+
 /// Save the deny list to disk using MessagePack.
 ///
 /// Uses atomic write (temp file + rename) to prevent corruption.
