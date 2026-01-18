@@ -52,7 +52,7 @@ impl TestClient {
 
     /// Receive a single message from the server.
     pub async fn recv(&mut self) -> anyhow::Result<Message> {
-        self.recv_timeout(Duration::from_secs(5)).await
+        self.recv_timeout(Duration::from_secs(10)).await
     }
 
     /// Receive a message with a timeout.

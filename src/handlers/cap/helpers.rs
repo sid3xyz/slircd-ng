@@ -10,6 +10,8 @@ pub struct CapListParams<'a> {
     pub is_tls: bool,
     /// Whether the client presented a TLS certificate
     pub has_cert: bool,
+    /// Whether to allow plaintext SASL
+    pub allow_plaintext_sasl: bool,
     /// Account registration config
     pub acct_cfg: &'a AccountRegistrationConfig,
     /// STS (Strict Transport Security) config, if enabled
@@ -25,6 +27,7 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
         version,
         is_tls,
         has_cert,
+        allow_plaintext_sasl,
         acct_cfg,
         sts_cfg,
     } = params;
@@ -36,8 +39,9 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
             if *version >= 302 {
                 match cap {
                     Capability::Sasl => {
-                        // Advertise SASL only on TLS connections; include EXTERNAL when a client certificate is present.
-                        if *is_tls {
+                        // Advertise SASL on TLS connections OR if allow_plaintext_sasl is true.
+                        // Include EXTERNAL only when a client certificate is present.
+                        if *is_tls || *allow_plaintext_sasl {
                             if *has_cert {
                                 Some("sasl=SCRAM-SHA-256,PLAIN,EXTERNAL".to_string())
                             } else {
@@ -106,7 +110,7 @@ pub fn build_cap_list_tokens(params: &CapListParams<'_>) -> Vec<String> {
                 } else if *cap == Capability::Sts {
                     // STS requires CAP 302+ for values
                     None
-                } else if *cap == Capability::Sasl && !*is_tls {
+                } else if *cap == Capability::Sasl && !*is_tls && !*allow_plaintext_sasl {
                     None
                 } else {
                     Some(cap.as_ref().to_string())
@@ -189,6 +193,7 @@ mod tests {
             version,
             is_tls,
             has_cert,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sts_cfg: None,
         }
@@ -357,6 +362,7 @@ mod tests {
             version: 302,
             is_tls: true,
             has_cert: false,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sts_cfg: Some(sts_cfg),
         });
@@ -391,6 +397,7 @@ mod tests {
             version: 302,
             is_tls: false,
             has_cert: false,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sts_cfg: Some(sts_cfg),
         });
@@ -425,6 +432,7 @@ mod tests {
             version: 302,
             is_tls: true,
             has_cert: false,
+            allow_plaintext_sasl: false,
             acct_cfg,
             sts_cfg: Some(sts_cfg),
         });
