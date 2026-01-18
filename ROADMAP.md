@@ -115,14 +115,14 @@
 - [ ] DOS attack resilience verification
 
 **Configuration**:
-- [ ] Config file validation/schema
+- [x] Config file validation/schema
 - [x] Graceful reload support (Partial: IP bans, Server Info via `REHASH`)
 - [ ] Hot-swap ban lists (KLINE, DLINE)
 - [ ] Operator command audit logging
 
 **Observability**:
 - [x] Prometheus metrics endpoints (Port 9090 default)
-- [ ] Structured logging (JSON output)
+- [x] Structured logging (JSON output via `log_format = "json"`)
 - [ ] Runtime statistics (USER count, message rate, etc.)
 
 ---
