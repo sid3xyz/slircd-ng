@@ -568,4 +568,29 @@ mod tests {
             caps
         );
     }
+
+    #[test]
+    fn test_cap_list_version_301_plaintext_sasl_config() {
+        // Verify that CAP 301 advertises bare 'sasl' on plaintext when allow_plaintext_sasl=true
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let mut sec_config = SecurityConfig::default();
+        sec_config.allow_plaintext_sasl = true;
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_config));
+
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 301,
+            is_tls: false,
+            has_cert: false,
+            acct_cfg,
+            sts_cfg: None,
+            sec_cfg,
+        });
+
+        assert!(
+            caps.iter().any(|c| c == "sasl"),
+            "Should advertise bare 'sasl' on plaintext with CAP 301 and allow_plaintext_sasl=true: {:?}",
+            caps
+        );
+    }
 }
