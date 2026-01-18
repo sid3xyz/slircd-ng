@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_cap_list_plaintext_sasl_allowed() {
-        // Test non-TLS SASL when allow_plaintext_sasl_plain is true
+        // Test non-TLS SASL when allow_plaintext_sasl_plain is true (CAP 302)
         let acct_cfg: &'static AccountRegistrationConfig =
             Box::leak(Box::new(AccountRegistrationConfig::default()));
         let mut sec_cfg = SecurityConfig::default();
@@ -232,6 +232,35 @@ mod tests {
         assert!(
             caps.iter().any(|c| c == "sasl=SCRAM-SHA-256,PLAIN"),
             "Plaintext with allow_plaintext_sasl_plain should advertise SASL: {:?}",
+            caps
+        );
+    }
+
+    #[test]
+    fn test_cap_list_plaintext_sasl_allowed_301() {
+        // Test non-TLS SASL when allow_plaintext_sasl_plain is true (CAP 301)
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let mut sec_cfg = SecurityConfig::default();
+        sec_cfg.allow_plaintext_sasl_plain = true;
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_cfg));
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 301,
+            is_tls: false,
+            has_cert: false,
+            acct_cfg,
+            sec_cfg,
+            sts_cfg: None,
+        });
+
+        assert!(
+            caps.iter().any(|c| c == "sasl"),
+            "Plaintext with allow_plaintext_sasl_plain should advertise SASL for CAP 301: {:?}",
+            caps
+        );
+        assert!(
+            !caps.iter().any(|c| c.contains('=')),
+            "CAP 301 should not have capability values: {:?}",
             caps
         );
     }
