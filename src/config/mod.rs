@@ -17,6 +17,7 @@ mod multiclient;
 mod oper;
 mod security;
 mod types;
+mod validation;
 
 // Re-export all public types for convenient access
 // Some may be unused currently but are part of the public API
@@ -28,3 +29,4 @@ pub use multiclient::{AlwaysOnPolicy, MulticlientConfig};
 pub use oper::{OperBlock, WebircBlock};
 pub use security::{HeuristicsConfig, RateLimitConfig, RblConfig, SecurityConfig};
 pub use types::{AccountRegistrationConfig, Casemapping, Config, IdleTimeoutsConfig, ServerConfig};
+pub use validation::validate;

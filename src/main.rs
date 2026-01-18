@@ -68,6 +68,17 @@ async fn main() -> anyhow::Result<()> {
         e
     })?;
 
+    // Validate configuration
+    if let Err(errors) = crate::config::validate(&config) {
+        for err in &errors {
+            error!(error = %err, "Configuration validation failed");
+        }
+        return Err(anyhow::anyhow!(
+            "Configuration validation failed with {} error(s)",
+            errors.len()
+        ));
+    }
+
     info!(
         server = %config.server.name,
         network = %config.server.network,
