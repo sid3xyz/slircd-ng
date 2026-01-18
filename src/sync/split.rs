@@ -8,7 +8,7 @@
 
 use crate::state::Matrix;
 use slirc_proto::sync::clock::ServerId;
-use slirc_proto::{Command, Message, Prefix};
+use slirc_proto::{BatchSubCommand, Command, Message, Prefix, Tag, generate_batch_ref};
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -18,7 +18,7 @@ use tracing::{debug, info};
 /// 1. Calculates all servers that became unreachable
 /// 2. Removes all users from those servers
 /// 3. Updates the topology graph
-/// 4. Notifies local clients via QUIT messages
+/// 4. Notifies local clients of the splits (using BATCH if capable)
 ///
 /// # Arguments
 /// * `matrix` - The server state matrix
@@ -81,6 +81,9 @@ pub async fn handle_netsplit(
         affected_users.len()
     );
 
+    // Collection of QUIT messages for batch broadcast
+    let mut quit_msgs = Vec::with_capacity(affected_users.len());
+
     // 3. Process each affected user
     for uid in &affected_users {
         // Clone Arc to release DashMap lock before awaiting
@@ -89,21 +92,21 @@ pub async fn handle_netsplit(
             .users
             .get(uid)
             .map(|r| r.value().clone());
-        let quit_msg = if let Some(user_arc) = user_arc {
+
+        if let Some(user_arc) = user_arc {
             let user = user_arc.read().await;
             let nick = user.nick.clone();
             let user_str = user.user.clone();
             let host = user.visible_host.clone();
 
-            // Build QUIT message to notify local users
-            Some(Message {
+            // Build QUIT message
+            let msg = Message {
                 tags: None,
                 prefix: Some(Prefix::Nickname(nick.clone(), user_str, host)),
                 command: Command::QUIT(Some(quit_reason.clone())),
-            })
-        } else {
-            None
-        };
+            };
+            quit_msgs.push(msg);
+        }
 
         // Remove user from channels first
         remove_user_from_channels(matrix, uid).await;
@@ -133,12 +136,10 @@ pub async fn handle_netsplit(
             // Remove sender if present
             matrix.user_manager.senders.remove(uid);
         }
-
-        // Broadcast QUIT to local users
-        if let Some(msg) = quit_msg {
-            broadcast_to_local_users(matrix, msg).await;
-        }
     }
+
+    // Broadcast QUITs to local users (using batch if possible)
+    broadcast_netsplit_batch(matrix, remote_name, quit_msgs).await;
 
     // 4. Remove affected servers from topology
     let sid_list: Vec<ServerId> = affected_sids.into_iter().collect();
@@ -197,18 +198,76 @@ async fn remove_user_from_channels(matrix: &Matrix, uid: &str) {
     }
 }
 
-/// Broadcast a message to all local users.
-async fn broadcast_to_local_users(matrix: &Matrix, msg: Message) {
-    let msg_arc = Arc::new(msg);
-    // Collect all UIDs first
-    let uids: Vec<_> = matrix
-        .user_manager
-        .senders
-        .iter()
-        .map(|e| e.key().clone())
-        .collect();
-    for uid in uids {
-        matrix.user_manager.send_to_uid(&uid, msg_arc.clone()).await;
+/// Broadcast a batch of netsplit QUITs to all local users.
+///
+/// Uses IRCv3 BATCH capability if supported by the client.
+async fn broadcast_netsplit_batch(
+    matrix: &Matrix,
+    remote_server: &str,
+    quit_msgs: Vec<Message>,
+) {
+    if quit_msgs.is_empty() {
+        return;
+    }
+
+    let batch_ref = generate_batch_ref();
+
+    // BATCH +ref netsplit <remote_server>
+    let batch_start = Message {
+        tags: None,
+        prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
+        command: Command::BATCH(
+            format!("+{}", batch_ref),
+            Some(BatchSubCommand::NETSPLIT),
+            Some(vec![remote_server.to_string()]),
+        ),
+    };
+
+    // BATCH -ref
+    let batch_end = Message {
+        tags: None,
+        prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
+        command: Command::BATCH(format!("-{}", batch_ref), None, None),
+    };
+
+    let start_arc = Arc::new(batch_start);
+    let end_arc = Arc::new(batch_end);
+
+    // Pre-calculate tagged messages for batch-capable clients
+    let tagged_msgs: Vec<Arc<Message>> = quit_msgs.iter().map(|msg| {
+        let mut m = msg.clone();
+        m.tags = Some(vec![Tag::new("batch", Some(batch_ref.clone()))]);
+        Arc::new(m)
+    }).collect();
+
+    // Pre-calculate legacy messages
+    let legacy_msgs: Vec<Arc<Message>> = quit_msgs.into_iter().map(Arc::new).collect();
+
+    // Collect all sessions to iterate (avoids holding lock on senders map)
+    // We need the sender and session_id
+    let mut sessions = Vec::new();
+    for entry in matrix.user_manager.senders.iter() {
+        for session in entry.value() {
+            sessions.push((session.tx.clone(), session.session_id));
+        }
+    }
+
+    for (tx, session_id) in sessions {
+        let caps = matrix.user_manager.get_session_caps(session_id).unwrap_or_default();
+
+        if caps.contains("batch") {
+            // Send batch
+            let _ = tx.try_send(start_arc.clone());
+            for msg in &tagged_msgs {
+                let _ = tx.try_send(msg.clone());
+            }
+            let _ = tx.try_send(end_arc.clone());
+        } else {
+            // Send individual messages
+            for msg in &legacy_msgs {
+                let _ = tx.try_send(msg.clone());
+            }
+        }
     }
 }
 
