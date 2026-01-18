@@ -42,7 +42,7 @@ pub async fn handle_ls<S: SessionState>(
         version,
         is_tls: ctx.state.is_tls(),
         has_cert: ctx.state.is_tls() && ctx.state.certfp().is_some(),
-        allow_plaintext_sasl: ctx.matrix.config.security.allow_plaintext_sasl,
+
         acct_cfg: &ctx.matrix.config.account_registration,
         sec_cfg: &ctx.matrix.config.security,
         sts_cfg,
