@@ -8,6 +8,7 @@ use super::super::super::{Context, HandlerError, HandlerResult, user_prefix};
 use super::enforcement::{check_akick, check_auto_modes};
 use super::responses::{JoinSuccessContext, handle_join_success, send_join_error};
 use crate::error::ChannelError;
+use crate::handlers::ResponseMiddleware;
 use crate::handlers::helpers::fanout::broadcast_to_account;
 use crate::security::UserContext;
 use crate::state::{RegisteredState, Topic};
@@ -38,6 +39,7 @@ pub(super) async fn join_channel(
         matrix_arc.clone(),
         ctx.uid,
         &sender,
+        ctx.sender.clone(),
         ctx.server_name(),
         ctx.state.is_tls,
         channel_name,
@@ -64,6 +66,7 @@ pub(crate) async fn join_channel_internal(
     matrix: Arc<crate::state::Matrix>,
     uid: &str,
     sender: &tokio::sync::mpsc::Sender<Arc<Message>>,
+    response_sender: ResponseMiddleware<'_>,
     server_name: &str,
     is_tls: bool,
     channel_name: &str,
@@ -152,7 +155,10 @@ pub(crate) async fn join_channel_internal(
                 ),
             ),
         };
-        sender.send(Arc::new(notice)).await?;
+        response_sender
+            .send(notice)
+            .await
+            .map_err(|_| HandlerError::Internal("Failed to send AKICK notice".into()))?;
         info!(
             nick = %nick,
             channel = %channel_name,
@@ -269,7 +275,7 @@ pub(crate) async fn join_channel_internal(
         match reply_rx.await {
             Ok(Ok(data)) => {
                 let self_join_msg = handle_join_success(JoinSuccessContext {
-                    sender: sender.clone(),
+                    response_sender: response_sender.clone(),
                     server_name: server_name.to_string(),
                     active_batch_id: batch_id.map(String::from),
                     label: label.map(String::from),
@@ -309,7 +315,7 @@ pub(crate) async fn join_channel_internal(
                     continue;
                 }
 
-                send_join_error(sender, server_name, &nick, channel_name, error).await?;
+                send_join_error(response_sender, server_name, &nick, channel_name, error).await?;
                 return Ok(None);
             }
             Err(_) => {
@@ -326,7 +332,7 @@ pub(crate) async fn join_channel_internal(
                     continue;
                 }
                 send_join_error(
-                    sender,
+                    response_sender,
                     server_name,
                     &nick,
                     channel_name,

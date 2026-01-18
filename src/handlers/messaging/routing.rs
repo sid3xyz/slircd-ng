@@ -145,6 +145,8 @@ pub async fn route_to_user_with_snapshot(
     // For bouncer support: send to ALL UIDs with this nick
     let mut sent_count = 0;
     let mut delivered_local: HashSet<String> = HashSet::new();
+    let mut blocked_by_regged_only = false;
+    let mut blocked_by_silence = false;
 
     // Precompute msgid/time once for this fan-out
     let timestamp_str = timestamp.clone().unwrap_or_else(|| {
@@ -203,6 +205,7 @@ pub async fn route_to_user_with_snapshot(
                     let sender_nick_lower = slirc_proto::irc_to_lower(&snapshot.nick);
                     if !target_user.accept_list.contains(&sender_nick_lower) {
                         debug!("Blocked by +R for UID {}", target_uid);
+                        blocked_by_regged_only = true;
                         continue; // Skip this UID
                     }
                 }
@@ -212,7 +215,7 @@ pub async fn route_to_user_with_snapshot(
             if !target_user.silence_list.is_empty() {
                 let sender_mask = snapshot.full_mask();
 
-                let mut blocked_by_silence = false;
+                let mut is_locally_silenced = false;
                 for silence_mask in &target_user.silence_list {
                     if crate::handlers::matches_hostmask(silence_mask, &sender_mask) {
                         // Silently drop the message
@@ -222,11 +225,12 @@ pub async fn route_to_user_with_snapshot(
                             mask = %silence_mask,
                             "Message blocked by SILENCE"
                         );
-                        blocked_by_silence = true;
+                        is_locally_silenced = true;
                         break;
                     }
                 }
-                if blocked_by_silence {
+                if is_locally_silenced {
+                    blocked_by_silence = true;
                     continue; // Skip this UID
                 }
             }
@@ -455,6 +459,10 @@ pub async fn route_to_user_with_snapshot(
              echo_to_other_sessions(ctx, &msg, snapshot, ts, mid).await;
         }
         UserRouteResult::Sent
+    } else if blocked_by_regged_only {
+        UserRouteResult::BlockedRegisteredOnly
+    } else if blocked_by_silence {
+        UserRouteResult::BlockedSilence
     } else {
         UserRouteResult::NoSuchNick
     }

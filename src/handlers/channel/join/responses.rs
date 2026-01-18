@@ -2,13 +2,14 @@
 
 use super::super::super::{HandlerResult, server_reply, user_prefix, with_label};
 use crate::error::ChannelError;
+use crate::handlers::ResponseMiddleware;
 use crate::state::actor::ChannelEvent;
 use crate::state::managers::client::ClientManager;
 use slirc_proto::{Command, Message, Prefix, Response};
 
 /// Context for handling successful JOIN responses.
 pub(super) struct JoinSuccessContext<'a> {
-    pub sender: tokio::sync::mpsc::Sender<std::sync::Arc<Message>>,
+    pub response_sender: ResponseMiddleware<'a>,
     pub server_name: String,
     pub active_batch_id: Option<String>,
     pub label: Option<String>,
@@ -37,7 +38,7 @@ pub(super) async fn handle_join_success(
     join_ctx: JoinSuccessContext<'_>,
 ) -> Result<Option<Message>, crate::error::HandlerError> {
     let JoinSuccessContext {
-        sender,
+        response_sender,
         server_name,
         active_batch_id,
         label,
@@ -129,9 +130,10 @@ pub(super) async fn handle_join_success(
         self_join_msg = self_join_msg.with_tag("batch", Some(batch_id));
     }
 
-    sender
-        .send(std::sync::Arc::new(self_join_msg.clone()))
-        .await?;
+    response_sender
+        .send(self_join_msg.clone())
+        .await
+        .map_err(|_| crate::error::HandlerError::Internal("Failed to send JOIN response".into()))?;
 
     // Broadcast AWAY if user is away
     if let Some(away_text) = away_message {
@@ -153,7 +155,7 @@ pub(super) async fn handle_join_success(
 
     // Send topic if exists
     send_channel_topic(
-        sender.clone(),
+        response_sender.clone(),
         &server_name,
         active_batch_id.as_deref(),
         nick,
@@ -163,7 +165,7 @@ pub(super) async fn handle_join_success(
 
     // Send names list
     send_names_list(
-        sender.clone(),
+        response_sender.clone(),
         &server_name,
         active_batch_id.as_deref(),
         label.as_deref(),
@@ -179,7 +181,7 @@ pub(super) async fn handle_join_success(
 
 /// Send channel topic to user (RPL_TOPIC and RPL_TOPICWHOTIME).
 pub(super) async fn send_channel_topic(
-    sender: tokio::sync::mpsc::Sender<std::sync::Arc<Message>>,
+    sender: ResponseMiddleware<'_>,
     server_name: &str,
     active_batch_id: Option<&str>,
     nick: &str,
@@ -201,7 +203,7 @@ pub(super) async fn send_channel_topic(
             topic_reply = topic_reply.with_tag("batch", Some(batch_id));
         }
 
-        sender.send(std::sync::Arc::new(topic_reply)).await?;
+        sender.send(topic_reply).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send TOPIC".into()))?;
 
         let topic_who_reply = server_reply(
             server_name,
@@ -213,7 +215,7 @@ pub(super) async fn send_channel_topic(
                 topic.set_at.to_string(),
             ],
         );
-        sender.send(std::sync::Arc::new(topic_who_reply)).await?;
+        sender.send(topic_who_reply).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send TOPICWHOTIME".into()))?;
     }
     Ok(())
 }
@@ -221,7 +223,7 @@ pub(super) async fn send_channel_topic(
 /// Send channel names list to user (RPL_NAMREPLY and RPL_ENDOFNAMES).
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn send_names_list(
-    sender: tokio::sync::mpsc::Sender<std::sync::Arc<Message>>,
+    sender: ResponseMiddleware<'_>,
     server_name: &str,
     active_batch_id: Option<&str>,
     label: Option<&str>,
@@ -269,7 +271,7 @@ pub(super) async fn send_names_list(
             names_reply = names_reply.with_tag("batch", Some(batch_id));
         }
 
-        sender.send(std::sync::Arc::new(names_reply)).await?;
+        sender.send(names_reply).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send NAMREPLY".into()))?;
     }
 
     let mut end_names = with_label(
@@ -290,20 +292,20 @@ pub(super) async fn send_names_list(
         end_names = end_names.with_tag("batch", Some(batch_id));
     }
 
-    sender.send(std::sync::Arc::new(end_names)).await?;
+    sender.send(end_names).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send ENDOFNAMES".into()))?;
 
     Ok(())
 }
 
 /// Send appropriate error response for JOIN failure.
 pub(super) async fn send_join_error(
-    sender: &tokio::sync::mpsc::Sender<std::sync::Arc<Message>>,
+    sender: ResponseMiddleware<'_>,
     server_name: &str,
     nick: &str,
     channel_name: &str,
     error: ChannelError,
 ) -> HandlerResult {
     let reply = error.to_irc_reply(server_name, nick, channel_name);
-    sender.send(std::sync::Arc::new(reply)).await?;
+    sender.send(reply).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send error".into()))?;
     Ok(())
 }
