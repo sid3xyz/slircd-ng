@@ -76,11 +76,9 @@ fn default_cloak_secret() -> String {
         .take(32)
         .map(char::from)
         .collect();
-    tracing::warn!(
-        "No cloak_secret configured - using ephemeral random secret. \
-         Cloaked hostnames will NOT be consistent across server restarts. \
-         Set [security].cloak_secret in config.toml for production use."
-    );
+        tracing::warn!(
+            "No cloak_secret configured - using ephemeral random secret. Cloaked hostnames will NOT be consistent across server restarts. Set [security].cloak_secret in config.toml for production use."
+        );
     secret
 }
 

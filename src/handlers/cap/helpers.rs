@@ -570,4 +570,78 @@ mod tests {
             "Very long cap should be included"
         );
     }
+
+    #[test]
+    fn test_cap_list_sasl_plaintext_config() {
+        // Verify that setting allow_plaintext_sasl_plain=true enables SASL on plaintext
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let mut sec_config = SecurityConfig::default();
+        sec_config.allow_plaintext_sasl_plain = true;
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_config));
+
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 302,
+            is_tls: false,
+            has_cert: false,
+            acct_cfg,
+            sts_cfg: None,
+            sec_cfg,
+        });
+
+        assert!(
+            caps.iter().any(|c| c.contains("sasl=SCRAM-SHA-256,PLAIN")),
+            "Should advertise SASL on plaintext when config allows it: {:?}",
+            caps
+        );
+    }
+
+    #[test]
+    fn test_cap_list_sasl_plaintext_disabled() {
+        // Verify that default config (allow_plaintext_sasl_plain=false) does NOT enable SASL on plaintext
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let sec_config = SecurityConfig::default(); // allow_plaintext_sasl_plain = false by default
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_config));
+
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 302,
+            is_tls: false,
+            has_cert: false,
+            acct_cfg,
+            sts_cfg: None,
+            sec_cfg,
+        });
+
+        assert!(
+            !caps.iter().any(|c| c.starts_with("sasl")),
+            "Should NOT advertise SASL on plaintext by default: {:?}",
+            caps
+        );
+    }
+
+    #[test]
+    fn test_cap_list_version_301_plaintext_sasl_config() {
+        // Verify that CAP 301 advertises bare 'sasl' on plaintext when allow_plaintext_sasl_plain=true
+        let acct_cfg: &'static AccountRegistrationConfig =
+            Box::leak(Box::new(AccountRegistrationConfig::default()));
+        let mut sec_config = SecurityConfig::default();
+        sec_config.allow_plaintext_sasl_plain = true;
+        let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_config));
+
+        let caps = build_cap_list_tokens(&CapListParams {
+            version: 301,
+            is_tls: false,
+            has_cert: false,
+            acct_cfg,
+            sts_cfg: None,
+            sec_cfg,
+        });
+
+        assert!(
+            caps.iter().any(|c| c == "sasl"),
+            "Should advertise bare 'sasl' on plaintext with CAP 301 and allow_plaintext_sasl_plain=true: {:?}",
+            caps
+        );
+    }
 }
