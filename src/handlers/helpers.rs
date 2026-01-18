@@ -168,7 +168,21 @@ pub fn server_notice<T: Into<String>>(server_name: &str, target: &str, text: T) 
 /// messages outside the normal dispatch path.
 pub fn with_label(msg: Message, label: Option<&str>) -> Message {
     match label {
-        Some(value) => msg.with_tag("label", Some(value)),
+        Some(value) => {
+            // Check if label already exists
+            if let Some(tags) = &msg.tags {
+                for tag in tags {
+                    if tag.0 == "label" {
+                        if let Some(ref existing) = tag.1 {
+                            if existing == value {
+                                return msg; // Already labeled correctly
+                            }
+                        }
+                    }
+                }
+            }
+            msg.with_tag("label", Some(value))
+        }
         None => msg,
     }
 }
