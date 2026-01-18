@@ -14,6 +14,7 @@ pub mod dashmap_ext;
 pub mod managers;
 mod matrix;
 pub mod observer;
+pub mod persistence;
 pub mod session;
 mod uid;
 mod user;
