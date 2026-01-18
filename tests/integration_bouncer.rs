@@ -263,7 +263,7 @@ async fn test_state_synchronization() {
     // The test asserts "Session B receives a JOIN event for #slircd-dev".
 
     // We expect B to see the join (Prefix: SessionA or SessionB depending on implementation).
-    let join_msg = client_b
+    let _join_msg = client_b
         .recv_until(|msg| {
             if let Command::JOIN(chan, _, _) = &msg.command {
                 if chan != channel {
@@ -287,7 +287,7 @@ async fn test_state_synchronization() {
         .await
         .unwrap();
 
-    let nick_msg = client_b
+    let _nick_msg = client_b
         .recv_until(|msg| {
             if let Command::NICK(nick) = &msg.command {
                 nick == new_nick

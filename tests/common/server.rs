@@ -2,6 +2,8 @@
 //!
 //! Spawns and manages slircd-ng instances for integration testing.
 
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::Duration;

@@ -16,8 +16,6 @@
 mod common;
 
 use common::{TestClient, TestServer};
-use slirc_proto::Command;
-use std::time::Instant;
 
 /// Test that channel state merges correctly after a network partition.
 #[tokio::test]
@@ -78,7 +76,7 @@ async fn test_crdt_concurrent_modifications() {
         .await
         .expect("Failed to spawn test server");
 
-    let address = server.address();
+    let _address = server.address();
 
     // In a full test, this would:
     // 1. Have multiple servers with concurrent modifications
@@ -92,7 +90,7 @@ async fn test_crdt_concurrent_modifications() {
 #[tokio::test]
 async fn test_state_matrix_causality() {
     let port = 16672;
-    let server = TestServer::spawn(port)
+    let _server = TestServer::spawn(port)
         .await
         .expect("Failed to spawn test server");
 

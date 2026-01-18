@@ -13,7 +13,6 @@
 mod common;
 
 use common::{TestClient, TestServer};
-use slirc_proto::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;

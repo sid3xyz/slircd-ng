@@ -89,6 +89,8 @@ impl QueryExecutor {
             target: query_target,
             start,
             end: None,
+            start_id: None,
+            end_id: None,
             limit: limit as usize,
             reverse: true,
         };
@@ -127,6 +129,8 @@ impl QueryExecutor {
             target: query_target,
             start: None,
             end,
+            start_id: None,
+            end_id: None,
             limit: limit as usize,
             reverse: true,
         };
@@ -165,6 +169,8 @@ impl QueryExecutor {
             target: query_target,
             start,
             end: None,
+            start_id: None,
+            end_id: None,
             limit: limit as usize,
             reverse: false,
         };
@@ -205,9 +211,12 @@ impl QueryExecutor {
             target: query_target.clone(),
             start: None,
             end: Some(center_ts),
+            start_id: None,
+            end_id: Some(msgref_str.to_string()),
             limit: limit_before as usize,
             reverse: true,
         };
+
         let mut before = ctx
             .matrix
             .service_manager
@@ -215,15 +224,20 @@ impl QueryExecutor {
             .query(before_query)
             .await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
+
+        // Reverse back to chronological
         before.reverse();
 
         let after_query = HistoryQuery {
-            target: query_target,
+            target: query_target.clone(),
             start: Some(center_ts),
             end: None,
+            start_id: Some(msgref_str.to_string()),
+            end_id: None,
             limit: limit_after as usize,
             reverse: false,
         };
+
         let after = ctx
             .matrix
             .service_manager
@@ -232,9 +246,34 @@ impl QueryExecutor {
             .await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
 
-        before.extend(after);
-        Ok(before)
+        // We use precise paging now, so IDs are boundaries and inclusive range query might return them
+        // if exact timestamp match. However, our key construction logic makes them exclusive bound for open-ended side?
+        // Let's refine: Redb range is [start, end).
+        //
+        // If we want "before X" (reverse), our range is (..., X).
+        // If we want "after X", our range is (X, ...).
+        //
+        // With `end_id=msgref_str`, the key is `...ts...id`.
+        // Range end is exclusive. So `..key` excludes `key`. Correct for "before".
+        //
+        // With `start_id=msgref_str`, key is `...ts...id`.
+        // Range start is inclusive. So `key..` includes `key`.
+        // The center message IS the boundary message, so it will be included in 'after' if start is inclusive.
+        // We keep it as-is; the center message naturally appears in 'after' results.
+
+        let mut result = before;
+        
+        // Filter out boundary from "after" results if present (we don't want duplicates)
+        for msg in after {
+            if msg.msgid != msgref_str {
+                result.push(msg);
+            }
+        }
+
+        Ok(result)
     }
+
+
 
     async fn handle_between(
         ctx: &Context<'_, RegisteredState>,
@@ -283,6 +322,8 @@ impl QueryExecutor {
             target: query_target,
             start,
             end,
+            start_id: None,
+            end_id: None,
             limit: limit as usize,
             reverse,
         };
