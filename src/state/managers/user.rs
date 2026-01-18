@@ -102,6 +102,23 @@ impl UserManager {
         }
     }
 
+    /// Send a message to a specific session of a user.
+    /// Returns true if the session was found and the message was sent (or queued).
+    pub async fn send_to_session(
+        &self,
+        uid: &str,
+        session_id: SessionId,
+        msg: Arc<Message>,
+    ) -> bool {
+        if let Some(senders) = self.senders.get(uid) {
+            let senders_vec = senders.value();
+            if let Some(sender) = senders_vec.iter().find(|s| s.session_id == session_id) {
+                return sender.tx.send(msg).await.is_ok();
+            }
+        }
+        false
+    }
+
     /// Try to send a message to all sessions for a given UID (non-blocking).
     /// For bouncer mode, multiple sessions may share a UID, so we broadcast to all.
     /// Returns the number of sessions the message was sent to.

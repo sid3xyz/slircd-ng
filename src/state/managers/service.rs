@@ -88,6 +88,7 @@ impl ServiceManager {
                     ..Default::default()
                 },
                 account: Some("NickServ".to_string()),
+                account_id: None,
                 away: None,
                 metadata: std::collections::HashMap::new(),
                 caps: HashSet::new(),
@@ -113,6 +114,7 @@ impl ServiceManager {
                     ..Default::default()
                 },
                 account: Some("ChanServ".to_string()),
+                account_id: None,
                 away: None,
                 metadata: std::collections::HashMap::new(),
                 caps: HashSet::new(),

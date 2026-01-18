@@ -34,7 +34,11 @@ pub enum ServiceEffect {
     },
 
     /// Set user's account and +r mode (successful IDENTIFY/REGISTER).
-    AccountIdentify { target_uid: String, account: String },
+    AccountIdentify {
+        target_uid: String,
+        account: String,
+        account_id: Option<i64>,
+    },
 
     /// Clear user's account and -r mode (DROP).
     AccountClear { target_uid: String },
@@ -207,6 +211,7 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
         ServiceEffect::AccountIdentify {
             target_uid,
             account,
+            account_id,
         } => {
             let nick = {
                 let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
@@ -225,6 +230,7 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
                 let mut user = user_arc.write().await;
                 user.modes.registered = true;
                 user.account = Some(account.clone());
+                user.account_id = account_id;
             }
 
             // Broadcast MODE +r to local users watching this user
@@ -254,6 +260,7 @@ pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: S
                 let mut user = user_arc.write().await;
                 user.modes.registered = false;
                 user.account = None;
+                user.account_id = None;
             }
         }
 
@@ -323,6 +330,7 @@ pub async fn apply_effect(
         ServiceEffect::AccountIdentify {
             target_uid,
             account,
+            account_id,
         } => {
             // Get user info for MODE broadcast before we modify the user
             let nick = {
@@ -343,6 +351,7 @@ pub async fn apply_effect(
                 let mut user = user_arc.write().await;
                 user.modes.registered = true;
                 user.account = Some(account.clone());
+                user.account_id = account_id;
             }
 
             // Broadcast to peers via S2S (Innovation 2)
@@ -390,6 +399,7 @@ pub async fn apply_effect(
                 let mut user = user_arc.write().await;
                 user.modes.registered = false;
                 user.account = None;
+                user.account_id = None;
             }
 
             // Broadcast to peers via S2S (Innovation 2)
