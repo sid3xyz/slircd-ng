@@ -69,3 +69,28 @@ tls/
 *.service
 !*.service.example
 test_confusables_main
+
+# Python virtual environments
+.venv/
+venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Test result files (automated test outputs)
+*_results.txt
+*_output.txt
+*_failure.txt
+*_debug.txt
+*_complete.txt
+*.log
+
+# Root-level test scripts (should live in scripts/ or tests/)
+/test_*.py
+/test_*.rs
+/test_*.sql
+/register_*.py
+/register_*.sh
+
+# Host-specific configs
+config.wintermute.toml
