@@ -2,19 +2,19 @@
 
 This document tracks known protocol gaps, compliance issues, and requirements for upcoming releases.
 
-## Blocking Issues (Alpha -> Beta)
+## Blocking Issues (Beta -> Stable)
 
 ### IRCv3 Compliance
-- [ ] **Labeled Responses**: Full support required for all command responses (currently partial).
-- [ ] **monitor**: Notification of checking target status change is required for proper bouncer UI support.
-- [ ] **batch**: Need to implement `netsplit` and `netjoin` batches for cleaner client history.
+- [x] **Labeled Responses**: Working in RELAYMSG tests.
+- [ ] **monitor**: Basic support exists; extended-monitor needs verification (Priority: Low).
+- [x] **batch**: CHATHISTORY batches working.
+- [x] **RELAYMSG**: draft/relaymsg fully functional.
 
 ### Core Protocol
-- [ ] **READQ Enforcement**: Strict byte-limit enforcement on input buffers to prevent DOS.
-- [ ] **Unicode Handling**: Edge case validation for "confusables" in nicknames (prevent impersonation).
+- [x] **READQ Enforcement**: 16KB parser limit enforced.
+- [x] **Unicode Handling**: PRECIS casemapping handles Cyrillic.
+- [ ] **CHATHISTORY**: Partial support (some queries work), edge cases remain.
 
-### Extensions
-- [ ] **RELAYMSG**: Needs standardization or better compatibility with other relay bots.
 
 ## Enhancements (Post-1.0)
 

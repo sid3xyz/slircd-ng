@@ -4,16 +4,16 @@
 
 ---
 
-## Current Release: v1.0.0-alpha.1
+## Current Release: v1.0.0-rc.1
 
-**Status**: ✅ **RELEASED** (January 15, 2026)
+**Status**: ✅ **RELEASED** (January 19, 2026)
 
 ### Release Metrics
 
 | Metric | Value | Target | Status |
 |--------|-------|--------|--------|
 | Rust Tests | 664 passing | 600+ | ✅ |
-| irctest Compliance | 357/387 (92.2%) | >90% | ✅ |
+| irctest Compliance | 92.2% (357/387) | >90% | ✅ |
 | Code Coverage | Unit + Integration | - | ✅ |
 | Clippy Warnings | 0 | 0 | ✅ |
 | Format Compliance | ✅ | ✅ | ✅ |
