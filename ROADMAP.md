@@ -20,8 +20,8 @@
     - [x] Advertise `standard-replies` capability.
     - [x] Implement `WARN` for deprecated commands.
     - [x] Implement `NOTE` for connection info/MOTD.
-- [ ] **Setname**
-    - [ ] Audit `SETNAME` length checks and error responses.
+- [x] **Setname**
+    - [x] Audit `SETNAME` length checks and error responses.
 - [x] **Bot Mode (+B)**
     - [x] Ensure `+B` mode is correctly propagated and visible in `WHOIS`.
 
@@ -38,8 +38,8 @@
 ## Phase 4: Configuration Mastery (Exceeds)
 *Goal: Best-in-class configuration experience.*
 
-- [ ] **Modular Config**
-    - [ ] Support `include "conf.d/*.toml"` directive.
+- [x] **Modular Config**
+    - [x] Support `include "conf.d/*.toml"` directive.
 - [ ] **Advanced Hot-Reload**
     - [ ] Atomic swap of global config (Limits, Security) via `REHASH`.
     - [ ] Transactional reload (validate *before* apply).
@@ -59,6 +59,6 @@
 - [x] **Flood Protection (+f)**
     - [x] Implement channel mode `+f <lines>:<seconds>`.
     - [ ] Verify message rate enforcement (Integration Test needed).
-- [ ] **Spam Defense**
-    - [ ] Integrate molecular entropy scanner (completed in `spam.rs`).
-    - [ ] Tune thresholds for false positives.
+- [x] **Spam Defense**
+    - [x] Integrate molecular entropy scanner (completed in `spam.rs`).
+    - [x] Tune thresholds for false positives.
