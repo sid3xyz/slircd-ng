@@ -117,6 +117,8 @@ impl PostRegHandler for WhoisHandler {
                     target_away,
                     target_uid_owned,
                     target_certfp,
+                    target_last_active,
+                    target_signon,
                 ) = {
                     let target_user = target_user_arc.read().await;
                     (
@@ -129,7 +131,10 @@ impl PostRegHandler for WhoisHandler {
                         target_user.account.clone(),
                         target_user.away.clone(),
                         target_user.uid.clone(),
+
                         target_user.certfp.clone(),
+                        target_user.last_active.load(std::sync::atomic::Ordering::Relaxed),
+                        target_user.created_at,
                     )
                 }; // Lock dropped here
 
@@ -148,13 +153,49 @@ impl PostRegHandler for WhoisHandler {
                 .await?;
 
                 // RPL_WHOISSERVER (312): <nick> <server> :<server info>
+                // Resolve server name correctly for remote users
+                let (real_server_name, real_server_info) = if target_uid_owned.starts_with(ctx.matrix.server_id.as_str()) {
+                    (server_name.to_string(), ctx.matrix.server_info.description.clone())
+                } else {
+                    // Remote user - look up server in topology
+                    let sid = &target_uid_owned[0..3];
+                    let sid_obj = slirc_proto::sync::clock::ServerId::new(sid.to_string());
+                    if let Some(entry) = ctx.matrix.sync_manager.topology.servers.get(&sid_obj) {
+                        (entry.name.clone(), entry.info.clone())
+                    } else {
+                        // Fallback if server missing from topology (should not happen)
+                        (sid.to_string(), "Unknown Server".to_string())
+                    }
+                };
+
                 ctx.send_reply(
                     Response::RPL_WHOISSERVER,
                     vec![
                         nick.clone(),
                         target_nick.clone(),
-                        server_name.to_string(),
-                        ctx.matrix.server_info.description.clone(),
+                        real_server_name,
+                        real_server_info,
+                    ],
+                )
+                .await?;
+
+                // RPL_WHOISIDLE (317): <nick> <integer> <integer> :seconds idle, signon time
+                let now = chrono::Utc::now().timestamp();
+                let last_active_secs = target_last_active / 1000;
+                let idle_secs = if now > last_active_secs {
+                    now - last_active_secs
+                } else {
+                    0
+                };
+
+                ctx.send_reply(
+                    Response::RPL_WHOISIDLE,
+                    vec![
+                        nick.clone(),
+                        target_nick.clone(),
+                        idle_secs.to_string(),
+                        target_signon.to_string(),
+                        "seconds idle, signon time".to_string(),
                     ],
                 )
                 .await?;

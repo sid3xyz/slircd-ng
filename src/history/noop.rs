@@ -3,7 +3,7 @@
 //! Used when history storage is disabled or unavailable.
 //! All operations succeed but store nothing.
 
-use super::{HistoryError, HistoryProvider, HistoryQuery, StoredMessage};
+use super::{HistoryError, HistoryProvider, HistoryQuery, StoredMessage, types::HistoryItem};
 use async_trait::async_trait;
 use std::time::Duration;
 
@@ -15,7 +15,11 @@ impl HistoryProvider for NoOpProvider {
         Ok(())
     }
 
-    async fn query(&self, _filter: HistoryQuery) -> Result<Vec<StoredMessage>, HistoryError> {
+    async fn store_item(&self, _target: &str, _item: HistoryItem) -> Result<(), HistoryError> {
+        Ok(())
+    }
+
+    async fn query(&self, _filter: HistoryQuery) -> Result<Vec<HistoryItem>, HistoryError> {
         Ok(vec![])
     }
 

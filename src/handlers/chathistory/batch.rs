@@ -16,12 +16,12 @@ pub async fn send_history_batch(
     ctx: &mut Context<'_, RegisteredState>,
     _nick: &str,
     target: &str,
-    messages: Vec<StoredMessage>,
+    items: Vec<crate::history::types::HistoryItem>,
     batch_type: &str,
 ) -> Result<(), HandlerError> {
     let batch_id = format!("chathistory-{}", Uuid::new_v4().simple());
 
-    // Check if client has event-playback capability (Innovation 5)
+    // Check if client has event-playback capability
     let has_event_playback = ctx.state.capabilities.contains("draft/event-playback");
 
     // Start BATCH
@@ -44,103 +44,117 @@ pub async fn send_history_batch(
 
     let expected_target_lower = slirc_proto::irc_to_lower(target);
 
-    // Send each message with batch tag
-    for msg in messages {
-        if msg.envelope.command == "TARGET" {
-            // Special handling for TARGETS response
-            // Format: CHATHISTORY TARGETS <target> <timestamp>
-            let timestamp = msg.envelope.text.clone();
-            let history_msg = Message {
-                tags: Some(vec![Tag::new("batch", Some(batch_id.clone()))]),
-                prefix: None,
-                command: Command::ChatHistoryTargets {
-                    target: msg.target.clone(),
-                    timestamp,
-                },
-            };
-            ctx.sender.send(history_msg).await?;
-            continue;
-        }
-
-        // These fields are selected/stored separately for lookup; validate they remain consistent.
-        if !msg.target.is_empty() && msg.target != expected_target_lower {
-            warn!(
-                expected = %expected_target_lower,
-                db_target = %msg.target,
-                env_target = %msg.envelope.target,
-                msgid = %msg.msgid,
-                "History target mismatch"
-            );
-        }
-        if !msg.sender.is_empty() && !msg.envelope.prefix.starts_with(&msg.sender) {
-            warn!(
-                sender = %msg.sender,
-                prefix = %msg.envelope.prefix,
-                msgid = %msg.msgid,
-                "History sender mismatch"
-            );
-        }
-
-        // Filter events based on event-playback capability
-        let command_type = msg.envelope.command.as_str();
-        match command_type {
-            "PRIVMSG" | "NOTICE" => {
-                // Always include messages
+    // Send each message/event with batch tag
+    for item in items {
+        if let crate::history::types::HistoryItem::Message(msg) = &item {
+            if msg.envelope.command == "TARGET" {
+                // Formatting for TARGETS response
+                let timestamp = msg.envelope.text.clone();
+                let history_msg = Message {
+                    tags: Some(vec![Tag::new("batch", Some(batch_id.clone()))]),
+                    prefix: None,
+                    command: Command::ChatHistoryTargets {
+                        target: msg.target.clone(),
+                        timestamp,
+                    },
+                };
+                ctx.sender.send(history_msg).await?;
+                continue;
             }
-            "TOPIC" | "TAGMSG" => {
-                // Only include if client has event-playback
-                if !has_event_playback {
+
+            if !msg.target.is_empty() && msg.target != expected_target_lower {
+                warn!(
+                    expected = %expected_target_lower,
+                    db_target = %msg.target,
+                    env_target = %msg.envelope.target,
+                    msgid = %msg.msgid,
+                    "History target mismatch"
+                );
+            }
+        }
+
+        use crate::history::types::{HistoryItem, EventKind};
+
+        // Determine if we should skip this item based on capabilities
+        match &item {
+            HistoryItem::Message(msg) => {
+                let cmd = msg.envelope.command.as_str();
+                if (cmd == "TOPIC" || cmd == "TAGMSG") && !has_event_playback {
                     continue;
                 }
             }
-            _ => {
-                // Future event types (JOIN, PART, MODE, etc.) - require event-playback
+            HistoryItem::Event(_) => {
                 if !has_event_playback {
                     continue;
                 }
             }
         }
+
+        // Common tags
+        let (nanotime, msgid) = match &item {
+            HistoryItem::Message(m) => (m.nanotime, m.msgid.clone()),
+            HistoryItem::Event(e) => (e.nanotime, e.id.clone()),
+        };
+
+        // Timestamp ISO string
+        let time_iso = {
+             let secs = nanotime / 1_000_000_000;
+             let nanos = (nanotime % 1_000_000_000) as u32;
+             if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nanos) {
+                 dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+             } else {
+                 "1970-01-01T00:00:00.000Z".to_string()
+             }
+        };
 
         let mut tags = vec![
             Tag::new("batch", Some(batch_id.clone())),
-            Tag::new("time", Some(msg.timestamp_iso())),
-            Tag::new("msgid", Some(msg.msgid.clone())),
+            Tag::new("time", Some(time_iso)),
+            Tag::new("msgid", Some(msgid)),
         ];
 
-        if let Some(account) = &msg.account {
-            tags.push(Tag::new("account", Some(account.clone())));
-        }
-
-        // Add preserved client-only tags for TAGMSG
-        if let Some(env_tags) = &msg.envelope.tags {
-            for env_tag in env_tags {
-                if env_tag.key.starts_with('+') {
-                    tags.push(Tag::new(&env_tag.key, env_tag.value.clone()));
+        // Construct command
+        let (prefix, command) = match item {
+            HistoryItem::Message(msg) => {
+                if let Some(account) = &msg.account {
+                    tags.push(Tag::new("account", Some(account.clone())));
                 }
-            }
-        }
 
-        // Build the appropriate IRC command based on event type
-        let command = match command_type {
-            "PRIVMSG" => Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone()),
-            "NOTICE" => Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone()),
-            "TOPIC" => Command::TOPIC(msg.envelope.target.clone(), Some(msg.envelope.text.clone())),
-            "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
-            _ => {
-                // Unknown command type - skip
-                warn!(
-                    command = %command_type,
-                    sender = %msg.sender,
-                    target = %msg.target,
-                    "Unknown history command type"
-                );
-                continue;
+                // Add preserved client-only tags for TAGMSG
+                if let Some(env_tags) = &msg.envelope.tags {
+                    for env_tag in env_tags {
+                        if env_tag.key.starts_with('+') {
+                            tags.push(Tag::new(&env_tag.key, env_tag.value.clone()));
+                        }
+                    }
+                }
+
+                let cmd = match msg.envelope.command.as_str() {
+                    "PRIVMSG" => Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone()),
+                    "NOTICE" => Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone()),
+                    "TOPIC" => Command::TOPIC(msg.envelope.target.clone(), Some(msg.envelope.text.clone())),
+                    "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
+                    _ => continue,
+                };
+                (Some(Prefix::new_from_str(&msg.envelope.prefix)), cmd)
+            }
+            HistoryItem::Event(evt) => {
+                let cmd = match evt.kind {
+                    EventKind::Join => Command::JOIN(target.to_string(), None, None),
+                    EventKind::Part(reason) => Command::PART(target.to_string(), reason),
+                    EventKind::Quit(reason) => Command::QUIT(reason),
+                    EventKind::Kick { target: kicked, reason } => Command::KICK(target.to_string(), kicked, reason),
+                    EventKind::Mode { diff } => Command::MODE(target.to_string(), vec![diff]),
+                    EventKind::Topic { new_topic, .. } => Command::TOPIC(target.to_string(), Some(new_topic)),
+                    EventKind::Nick { new_nick } => Command::NICK(new_nick),
+                };
+                (Some(Prefix::new_from_str(&evt.source)), cmd)
             }
         };
 
         let history_msg = Message {
             tags: Some(tags),
-            prefix: Some(Prefix::new_from_str(&msg.envelope.prefix)),
+            prefix,
             command,
         };
         ctx.sender.send(history_msg).await?;

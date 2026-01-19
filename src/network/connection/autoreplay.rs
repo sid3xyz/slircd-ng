@@ -181,7 +181,16 @@ async fn replay_channel_history(
             let _ = ctx.transport.write_message(&batch_start).await;
 
             // Send each message with batch tag
-            for msg in messages {
+            // Send each message with batch tag
+            for item in messages {
+                let msg = match item {
+                    crate::history::types::HistoryItem::Message(m) => m,
+                    crate::history::types::HistoryItem::Event(_) => {
+                            // TODO: Support event replay in autoreplay
+                            continue;
+                    }
+                };
+                
                 // Filter based on capabilities (same logic as send_history_batch)
                 let command_type = msg.envelope.command.as_str();
                 match command_type {

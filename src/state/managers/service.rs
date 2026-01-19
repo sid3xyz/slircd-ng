@@ -97,6 +97,7 @@ impl ServiceManager {
                 accept_list: HashSet::new(),
                 created_at: chrono::Utc::now().timestamp(),
                 last_modified: now,
+                last_active: std::sync::atomic::AtomicI64::new(chrono::Utc::now().timestamp_millis()),
             },
             User {
                 uid: self.chanserv_uid.clone(),
@@ -123,6 +124,7 @@ impl ServiceManager {
                 accept_list: HashSet::new(),
                 created_at: chrono::Utc::now().timestamp(),
                 last_modified: now,
+                last_active: std::sync::atomic::AtomicI64::new(chrono::Utc::now().timestamp_millis()),
             },
         ]
     }

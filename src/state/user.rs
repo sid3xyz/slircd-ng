@@ -45,6 +45,9 @@ pub struct User {
     pub created_at: i64,
     /// Last modified timestamp for CRDT synchronization.
     pub last_modified: HybridTimestamp,
+    /// Last active timestamp (Unix millis) for IDLE tracking.
+    /// Updated on every PRIVMSG/NOTICE sent by the user.
+    pub last_active: std::sync::atomic::AtomicI64,
 }
 
 /// User modes.
@@ -240,6 +243,7 @@ impl User {
             accept_list: HashSet::new(),
             created_at: chrono::Utc::now().timestamp(),
             last_modified,
+            last_active: std::sync::atomic::AtomicI64::new(chrono::Utc::now().timestamp_millis()),
         }
     }
 
@@ -296,6 +300,8 @@ impl User {
             accept_list: crdt.accept_list.iter().cloned().collect(),
             created_at: last_modified.millis / 1000, // Convert from HybridTimestamp millis
             last_modified,
+            // For remote users, accurate idle time requires protocol extension. Default to 'now'.
+            last_active: std::sync::atomic::AtomicI64::new(last_modified.millis),
         }
     }
 

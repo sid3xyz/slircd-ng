@@ -72,6 +72,20 @@ impl UserManager {
         }
     }
 
+    /// Update the last_active timestamp for a user.
+    ///
+    /// This should be called whenever the user sends a command.
+    /// Uses Relaxed ordering as strict consistency is not required for idle time.
+    pub fn update_last_active(&self, uid: &str) {
+        if let Some(user_arc) = self.users.get(uid) {
+            user_arc
+                .read() // Acquire read lock (AtomicI64 has interior mutability)
+                .await
+                .last_active
+                .store(chrono::Utc::now().timestamp_millis(), std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
     /// Set the stats manager for the user manager.
     pub fn set_stats_manager(&mut self, stats: Arc<crate::state::managers::stats::StatsManager>) {
         self.stats_manager = Some(stats);

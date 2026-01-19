@@ -52,14 +52,38 @@ impl ChannelActor {
         // Build TOPIC message with time and msgid tags for event-playback (Innovation 5)
         let tags = Some(vec![
             Tag(Cow::Borrowed("time"), Some(timestamp)),
-            Tag(Cow::Borrowed("msgid"), Some(msgid)),
+            Tag(Cow::Borrowed("msgid"), Some(msgid.clone())),
         ]);
 
         let msg = Message {
             tags,
-            prefix: Some(sender_prefix),
-            command: Command::TOPIC(self.name.clone(), Some(topic)),
+            prefix: Some(sender_prefix.clone()),
+            command: Command::TOPIC(self.name.clone(), Some(topic.clone())),
         };
+
+        // Store TOPIC event in history (EventPlayback)
+        if let Some(matrix) = self.matrix.upgrade() {
+            // Use provided msgid or new one
+            let event_id = msgid.clone();
+            let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+            let source = sender_prefix.to_string();
+
+            let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                id: event_id,
+                nanotime: now,
+                source,
+                kind: crate::history::types::EventKind::Topic { 
+                    old_topic: None, 
+                    new_topic: topic 
+                },
+            });
+
+            let history = matrix.service_manager.history.clone();
+            let target = self.name.clone();
+            tokio::spawn(async move {
+                let _ = history.store_item(&target, event).await;
+            });
+        }
 
         for (uid, sender) in &self.senders {
             // Only send tags to clients that support message-tags

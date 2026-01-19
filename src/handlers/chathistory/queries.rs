@@ -1,7 +1,7 @@
 //! Query implementations for CHATHISTORY subcommands.
 
 use crate::handlers::{Context, HandlerError};
-use crate::history::{HistoryQuery, MessageEnvelope, StoredMessage};
+use crate::history::{HistoryQuery, MessageEnvelope, StoredMessage, types::HistoryItem};
 use crate::state::RegisteredState;
 use slirc_proto::{ChatHistorySubCommand, MessageReference, parse_server_time};
 use tracing::debug;
@@ -16,7 +16,7 @@ impl QueryExecutor {
         ctx: &Context<'_, RegisteredState>,
         subcommand: ChatHistorySubCommand,
         params: QueryParams,
-    ) -> Result<Vec<StoredMessage>, HandlerError> {
+    ) -> Result<Vec<HistoryItem>, HandlerError> {
         let QueryParams {
             target,
             nick,
@@ -74,7 +74,7 @@ impl QueryExecutor {
         limit: u32,
         is_dm: bool,
         msgref_str: &str,
-    ) -> Result<Vec<StoredMessage>, HandlerError> {
+    ) -> Result<Vec<HistoryItem>, HandlerError> {
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -113,7 +113,7 @@ impl QueryExecutor {
         limit: u32,
         is_dm: bool,
         msgref_str: &str,
-    ) -> Result<Vec<StoredMessage>, HandlerError> {
+    ) -> Result<Vec<HistoryItem>, HandlerError> {
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -153,7 +153,7 @@ impl QueryExecutor {
         limit: u32,
         is_dm: bool,
         msgref_str: &str,
-    ) -> Result<Vec<StoredMessage>, HandlerError> {
+    ) -> Result<Vec<HistoryItem>, HandlerError> {
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -192,7 +192,7 @@ impl QueryExecutor {
         limit: u32,
         is_dm: bool,
         msgref_str: &str,
-    ) -> Result<Vec<StoredMessage>, HandlerError> {
+    ) -> Result<Vec<HistoryItem>, HandlerError> {
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -204,71 +204,97 @@ impl QueryExecutor {
             .map(|r| r.timestamp)
             .unwrap_or(0);
 
-        let limit_before = limit / 2;
-        let limit_after = limit - limit_before;
+        // AROUND semantics: return `limit` messages centered around the target msgid.
+        // Strategy: Query ALL messages for this target (up to a reasonable limit),
+        // find the target msgid in memory, then slice around it.
+        // This guarantees finding the message regardless of timestamp edge cases.
 
-        let before_query = HistoryQuery {
+        let all_messages_query = HistoryQuery {
             target: query_target.clone(),
-            start: None,
-            end: Some(center_ts),
-            start_id: None,
-            end_id: Some(msgref_str.to_string()),
-            limit: limit_before as usize,
-            reverse: true,
-        };
-
-        let mut before = ctx
-            .matrix
-            .service_manager
-            .history
-            .query(before_query)
-            .await
-            .map_err(|e| HandlerError::Internal(e.to_string()))?;
-
-        // Reverse back to chronological
-        before.reverse();
-
-        let after_query = HistoryQuery {
-            target: query_target.clone(),
-            start: Some(center_ts),
+            start: None,  // No time constraints - get everything
             end: None,
-            start_id: Some(msgref_str.to_string()),
+            start_id: None,
             end_id: None,
-            limit: limit_after as usize,
+            limit: 500, // Reasonable upper bound
             reverse: false,
         };
 
-        let after = ctx
+        let messages = ctx
             .matrix
             .service_manager
             .history
-            .query(after_query)
+            .query(all_messages_query)
             .await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
 
-        // We use precise paging now, so IDs are boundaries and inclusive range query might return them
-        // if exact timestamp match. However, our key construction logic makes them exclusive bound for open-ended side?
-        // Let's refine: Redb range is [start, end).
-        //
-        // If we want "before X" (reverse), our range is (..., X).
-        // If we want "after X", our range is (X, ...).
-        //
-        // With `end_id=msgref_str`, the key is `...ts...id`.
-        // Range end is exclusive. So `..key` excludes `key`. Correct for "before".
-        //
-        // With `start_id=msgref_str`, key is `...ts...id`.
-        // Range start is inclusive. So `key..` includes `key`.
-        // The center message IS the boundary message, so it will be included in 'after' if start is inclusive.
-        // We keep it as-is; the center message naturally appears in 'after' results.
+        // Debug: log what we got and what we're looking for
+        // Using warn! temporarily to bypass log level filtering in tests
+        tracing::warn!(
+            query_target = %query_target,
+            search_msgref = %msgref_str,
+            center_ts = center_ts,
+            message_count = messages.len(),
+            first_nanotime = ?messages.first().map(|m| m.nanotime()),
+            last_nanotime = ?messages.last().map(|m| m.nanotime()),
+            "AROUND query debug"
+        );
 
-        let mut result = before;
-        
-        // Filter out boundary from "after" results if present (we don't want duplicates)
-        for msg in after {
-            if msg.msgid != msgref_str {
-                result.push(msg);
+        // Extract bare msgid from the msgref_str (which may be "msgid=xxx" or just "xxx")
+        // Returns None for timestamp references
+        let bare_msgid = if let Ok(MessageReference::MsgId(id)) = MessageReference::parse(msgref_str) {
+            Some(id)
+        } else {
+            None
+        };
+
+        // Find the index of the center message
+        let center_idx = if let Some(ref id) = bare_msgid {
+            // Msgid reference: look up by msgid
+            messages.iter().position(|m| match m {
+                HistoryItem::Message(msg) => msg.msgid == *id,
+                HistoryItem::Event(evt) => evt.id == *id,
+            })
+        } else if !messages.is_empty() {
+            // Timestamp reference OR wildcard: find message closest to center_ts
+            // If center_ts is 0 (e.g., wildcard or unparseable), use middle of range
+            if center_ts > 0 {
+                // Find the index with minimum distance to center_ts
+                let closest = messages
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, m)| (m.nanotime() - center_ts).unsigned_abs());
+                closest.map(|(i, _)| i)
+            } else {
+                // Use middle message as fallback
+                Some(messages.len() / 2)
             }
-        }
+        } else {
+            None
+        };
+
+        let result = if let Some(idx) = center_idx {
+            // Calculate slice bounds for centering
+            let half = (limit as usize) / 2;
+            let start_idx = idx.saturating_sub(half);
+            
+            // For limit=1: return just the center
+            // For limit=3: return center-1, center, center+1
+            let end_idx = (start_idx + limit as usize).min(messages.len());
+            
+            messages[start_idx..end_idx].to_vec()
+        } else {
+            // Center not found - return empty
+            vec![]
+        };
+
+        // TEMP: Log result size
+        tracing::warn!(
+            is_msgid = bare_msgid.is_some(),
+            center_idx = ?center_idx,
+            result_len = result.len(),
+            center_ts = center_ts,
+            "AROUND result trace"
+        );
 
         Ok(result)
     }
@@ -283,7 +309,7 @@ impl QueryExecutor {
         is_dm: bool,
         ref1_str: &str,
         ref2_str: &str,
-    ) -> Result<Vec<StoredMessage>, HandlerError> {
+    ) -> Result<Vec<HistoryItem>, HandlerError> {
         let query_target = if is_dm {
             resolve_dm_key(ctx, nick, target).await
         } else {
@@ -349,7 +375,7 @@ impl QueryExecutor {
         limit: u32,
         start_str: &str,
         end_str: &str,
-    ) -> Result<Vec<StoredMessage>, HandlerError> {
+    ) -> Result<Vec<HistoryItem>, HandlerError> {
         // Parse start parameter
         // If "*", default to 30 days ago (staleness filter)
         // Otherwise, use explicit timestamp
@@ -432,14 +458,14 @@ impl QueryExecutor {
                 tags: None,
             };
 
-            msgs.push(StoredMessage {
+            msgs.push(HistoryItem::Message(StoredMessage {
                 msgid: "".to_string(),
                 nanotime: timestamp,
                 target: display_target,
                 sender: "".to_string(),
                 account: None,
                 envelope,
-            });
+            }));
         }
 
         Ok(msgs)

@@ -51,11 +51,31 @@ impl ChannelActor {
         // Broadcast PART
         let part_msg = Message {
             tags: None,
-            prefix: Some(prefix),
-            command: Command::PART(self.name.clone(), reason),
+            prefix: Some(prefix.clone()),
+            command: Command::PART(self.name.clone(), reason.clone()),
         };
         self.handle_broadcast_with_cap(part_msg, exclude, None, None)
             .await;
+
+        // Store PART event in history (EventPlayback)
+        if let Some(matrix) = self.matrix.upgrade() {
+            let event_id = uuid::Uuid::new_v4().to_string();
+            let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+            let source = prefix.to_string(); // Prefix was consumed above? No, wait. 
+            
+            let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                id: event_id,
+                nanotime: now,
+                source,
+                kind: crate::history::types::EventKind::Part(reason.clone()),
+            });
+
+            let history = matrix.service_manager.history.clone();
+            let target = self.name.clone();
+            tokio::spawn(async move {
+                let _ = history.store_item(&target, event).await;
+            });
+        }
 
         // Remove member
         self.members.remove(&uid);
@@ -102,8 +122,40 @@ impl ChannelActor {
                 }
             }
 
-            self.handle_broadcast_with_cap(quit_msg, exclude, None, None)
+            self.handle_broadcast_with_cap(quit_msg.clone(), exclude, None, None)
                 .await;
+
+            // Store QUIT event in history (EventPlayback)
+            if let Some(matrix) = self.matrix.upgrade() {
+                let event_id = uuid::Uuid::new_v4().to_string();
+                let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+                
+                let source = if let Some(p) = &quit_msg.prefix {
+                    p.to_string()
+                } else {
+                    // Should not happen for QUIT from user
+                    format!("{}!unknown@unknown", uid)
+                };
+
+                let reason = if let Command::QUIT(r) = &quit_msg.command {
+                    r.clone()
+                } else {
+                    None
+                };
+
+                let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                    id: event_id,
+                    nanotime: now,
+                    source,
+                    kind: crate::history::types::EventKind::Quit(reason),
+                });
+
+                let history = matrix.service_manager.history.clone();
+                let target = self.name.clone();
+                tokio::spawn(async move {
+                    let _ = history.store_item(&target, event).await;
+                });
+            }
             self.members.remove(&uid);
             self.senders.remove(&uid);
             self.user_caps.remove(&uid);

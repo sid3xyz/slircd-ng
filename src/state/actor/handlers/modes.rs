@@ -357,7 +357,7 @@ impl ChannelActor {
         if !applied_modes.is_empty() {
             let msg = Arc::new(Message {
                 tags: None,
-                prefix: Some(sender_prefix),
+                prefix: Some(sender_prefix.clone()),
                 command: Command::ChannelMODE(self.name.clone(), applied_modes.clone()),
             });
             for (uid, sender) in &self.senders {
@@ -369,6 +369,48 @@ impl ChannelActor {
                 }
             }
             self.notify_observer(None);
+
+            // Store MODE event in history (EventPlayback)
+            if let Some(matrix) = self.matrix.upgrade() {
+                // Serialize modes to string
+                let mut mode_str = String::new();
+                let mut args = Vec::new();
+                let mut current_group_sign = None;
+                 
+                for mode in &applied_modes {
+                     let is_plus = mode.is_plus();
+                     if current_group_sign != Some(is_plus) {
+                         mode_str.push(if is_plus { '+' } else { '-' });
+                         current_group_sign = Some(is_plus);
+                     }
+                     mode_str.push(proto_mode_to_char(&mode.mode()));
+                     if let Some(arg) = mode.arg() {
+                         args.push(arg.to_string());
+                     }
+                }
+                 
+                if !args.is_empty() {
+                     mode_str.push(' ');
+                     mode_str.push_str(&args.join(" "));
+                }
+
+                let event_id = uuid::Uuid::new_v4().to_string();
+                let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+                let source = sender_prefix.to_string();
+
+                let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                    id: event_id,
+                    nanotime: now,
+                    source,
+                    kind: crate::history::types::EventKind::Mode { diff: mode_str },
+                });
+
+                let history = matrix.service_manager.history.clone();
+                let target = self.name.clone();
+                tokio::spawn(async move {
+                    let _ = history.store_item(&target, event).await;
+                });
+            }
         }
 
         let _ = reply_tx.send(Ok(applied_modes));
@@ -446,6 +488,48 @@ impl ChannelActor {
                     command: Command::ChannelMODE(self.name.clone(), chunk.to_vec()),
                 };
                 self.handle_broadcast(msg, None).await;
+
+                // Store MODE event in history (EventPlayback)
+                if let Some(matrix) = self.matrix.upgrade() {
+                    // Serialize modes to string
+                    let mut mode_str = String::new();
+                    let mut args = Vec::new();
+                    let mut current_group_sign = None;
+                    
+                    for mode in chunk {
+                        let is_plus = mode.is_plus();
+                        if current_group_sign != Some(is_plus) {
+                            mode_str.push(if is_plus { '+' } else { '-' });
+                            current_group_sign = Some(is_plus);
+                        }
+                        mode_str.push(proto_mode_to_char(&mode.mode()));
+                        if let Some(arg) = mode.arg() {
+                            args.push(arg.to_string());
+                        }
+                    }
+                    
+                    if !args.is_empty() {
+                        mode_str.push(' ');
+                        mode_str.push_str(&args.join(" "));
+                    }
+
+                    let event_id = uuid::Uuid::new_v4().to_string();
+                    let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+                    let source = sender_prefix.to_string();
+
+                    let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                        id: event_id,
+                        nanotime: now,
+                        source,
+                        kind: crate::history::types::EventKind::Mode { diff: mode_str },
+                    });
+
+                    let history = matrix.service_manager.history.clone();
+                    let target = self.name.clone();
+                    tokio::spawn(async move {
+                        let _ = history.store_item(&target, event).await;
+                    });
+                }
             }
         }
 

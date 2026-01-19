@@ -128,3 +128,54 @@ mod tests {
         assert_eq!(iso, "1970-01-01T00:00:01.000Z");
     }
 }
+
+// =================================================================================
+// EventPlayback Types
+// =================================================================================
+
+/// Unified history item (message or event).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HistoryItem {
+    Message(StoredMessage),
+    Event(StoredEvent),
+}
+
+impl HistoryItem {
+    /// Get the timestamp (nanoseconds) for sorting.
+    pub fn nanotime(&self) -> i64 {
+        match self {
+            Self::Message(m) => m.nanotime,
+            Self::Event(e) => e.nanotime,
+        }
+    }
+}
+
+/// Stored protocol event (JOIN, PART, MODE, etc.).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredEvent {
+    pub id: String, // UUID
+    pub nanotime: i64,
+    pub source: String, // Nick!User@Host
+    pub kind: EventKind,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EventKind {
+    Join,
+    Part(Option<String>), // Reason
+    Quit(Option<String>), // Reason
+    Kick {
+        target: String,
+        reason: Option<String>,
+    },
+    Mode {
+        diff: String,
+    }, // e.g., "+o user"
+    Topic {
+        old_topic: Option<String>,
+        new_topic: String,
+    },
+    Nick {
+        new_nick: String,
+    },
+}

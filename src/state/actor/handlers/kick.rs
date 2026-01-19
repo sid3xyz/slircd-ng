@@ -51,9 +51,32 @@ impl ChannelActor {
 
         let msg = Arc::new(Message {
             tags: None,
-            prefix: Some(sender_prefix),
-            command: Command::KICK(self.name.clone(), target_nick, Some(reason)),
+            prefix: Some(sender_prefix.clone()),
+            command: Command::KICK(self.name.clone(), target_nick.clone(), Some(reason.clone())),
         });
+
+         // Store KICK event in history (EventPlayback)
+        if let Some(matrix) = self.matrix.upgrade() {
+            let event_id = uuid::Uuid::new_v4().to_string();
+            let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+            let source = sender_prefix.to_string();
+
+            let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                id: event_id,
+                nanotime: now,
+                source,
+                kind: crate::history::types::EventKind::Kick { 
+                    target: target_nick, 
+                    reason: Some(reason) 
+                },
+            });
+
+            let history = matrix.service_manager.history.clone();
+            let target = self.name.clone();
+            tokio::spawn(async move {
+                let _ = history.store_item(&target, event).await;
+            });
+        }
 
         for (uid, sender) in &self.senders {
             if let Err(err) = sender.try_send(msg.clone()) {

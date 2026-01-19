@@ -36,8 +36,11 @@ pub trait HistoryProvider: Send + Sync {
     /// Store a message. Returns immediately (fire-and-forget).
     async fn store(&self, target: &str, msg: StoredMessage) -> Result<(), HistoryError>;
 
+    /// Store a generic history item (message or event).
+    async fn store_item(&self, target: &str, item: types::HistoryItem) -> Result<(), HistoryError>;
+
     /// Retrieve messages (Range Query).
-    async fn query(&self, filter: HistoryQuery) -> Result<Vec<StoredMessage>, HistoryError>;
+    async fn query(&self, filter: HistoryQuery) -> Result<Vec<types::HistoryItem>, HistoryError>;
 
     /// Prune old messages (Maintenance).
     async fn prune(&self, retention: Duration) -> Result<usize, HistoryError>;

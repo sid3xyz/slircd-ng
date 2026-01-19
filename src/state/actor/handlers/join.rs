@@ -266,6 +266,26 @@ impl ChannelActor {
                 Some(join_msg_standard.clone()),
             )
             .await;
+
+            // Store JOIN event in history (EventPlayback)
+            if let Some(matrix) = self.matrix.upgrade() {
+                let event_id = uuid::Uuid::new_v4().to_string();
+                let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+                let source_prefix = format!("{}!{}@{}", nick, user_context.username, user_context.hostname);
+
+                let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                    id: event_id,
+                    nanotime: now,
+                    source: source_prefix,
+                    kind: crate::history::types::EventKind::Join,
+                });
+
+                let history = matrix.service_manager.history.clone();
+                let target = self.name.clone();
+                tokio::spawn(async move {
+                    let _ = history.store_item(&target, event).await;
+                });
+            }
         } else {
             // Joiner is silent until they speak
             self.silent_members.insert(uid.clone());

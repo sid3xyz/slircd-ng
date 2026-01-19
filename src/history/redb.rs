@@ -3,7 +3,7 @@
 //! Implements [`HistoryProvider`] using the redb embedded database for
 //! durable message history with efficient range queries by target and time.
 
-use super::{HistoryError, HistoryProvider, HistoryQuery, StoredMessage};
+use super::{HistoryError, HistoryProvider, HistoryQuery, StoredMessage, types::{HistoryItem, StoredEvent}};
 use async_trait::async_trait;
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use slirc_proto::irc_to_lower;
@@ -38,9 +38,18 @@ impl RedbProvider {
 #[async_trait]
 impl HistoryProvider for RedbProvider {
     async fn store(&self, target: &str, msg: StoredMessage) -> Result<(), HistoryError> {
-        let key = Self::make_key(target, msg.nanotime, &msg.msgid);
+        self.store_item(target, HistoryItem::Message(msg)).await
+    }
+
+    async fn store_item(&self, target: &str, item: HistoryItem) -> Result<(), HistoryError> {
+        let (nanotime, id) = match &item {
+            HistoryItem::Message(m) => (m.nanotime, &m.msgid),
+            HistoryItem::Event(e) => (e.nanotime, &e.id),
+        };
+
+        let key = Self::make_key(target, nanotime, id);
         let value =
-            serde_json::to_vec(&msg).map_err(|e| HistoryError::Serialization(e.to_string()))?;
+            serde_json::to_vec(&item).map_err(|e| HistoryError::Serialization(e.to_string()))?;
 
         let write_txn = self
             .db
@@ -58,9 +67,9 @@ impl HistoryProvider for RedbProvider {
                 .open_table(MSGID_INDEX)
                 .map_err(|e| HistoryError::Database(e.to_string()))?;
             // Value: target\0timestamp
-            let index_val = format!("{}\0{}", target, msg.nanotime);
+            let index_val = format!("{}\0{}", target, nanotime);
             index
-                .insert(msg.msgid.as_str(), index_val.as_bytes())
+                .insert(id.as_str(), index_val.as_bytes())
                 .map_err(|e| HistoryError::Database(e.to_string()))?;
         }
         write_txn
@@ -69,7 +78,7 @@ impl HistoryProvider for RedbProvider {
         Ok(())
     }
 
-    async fn query(&self, filter: HistoryQuery) -> Result<Vec<StoredMessage>, HistoryError> {
+    async fn query(&self, filter: HistoryQuery) -> Result<Vec<HistoryItem>, HistoryError> {
         let read_txn = self
             .db
             .begin_read()
@@ -110,6 +119,21 @@ impl HistoryProvider for RedbProvider {
             .range(start_key.as_str()..end_key.as_str())
             .map_err(|e| HistoryError::Database(e.to_string()))?;
 
+        // Diagnostic: log the actual first key in range if exists
+        #[cfg(debug_assertions)]
+        {
+            if filter.start_id.is_some() {
+                tracing::error!(
+                    target: "history_debug",
+                    start_key = %start_key,
+                    end_key = %end_key,
+                    start_ts = ?filter.start,
+                    start_id = ?filter.start_id,
+                    "Query range bounds"
+                );
+            }
+        }
+
         let mut messages = Vec::with_capacity(filter.limit);
 
         if filter.reverse {
@@ -118,9 +142,18 @@ impl HistoryProvider for RedbProvider {
                     break;
                 }
                 let (_k, v) = item.map_err(|e| HistoryError::Database(e.to_string()))?;
-                let msg: StoredMessage = serde_json::from_slice(v.value())
-                    .map_err(|e| HistoryError::Serialization(e.to_string()))?;
-                messages.push(msg);
+                
+                // Try deserializing as generic HistoryItem first
+                let item: HistoryItem = match serde_json::from_slice(v.value()) {
+                    Ok(item) => item,
+                    Err(_) => {
+                        // Fallback: try legacy StoredMessage and wrap it
+                        let msg: StoredMessage = serde_json::from_slice(v.value())
+                            .map_err(|e| HistoryError::Serialization(format!("Corrupt or unknown history format: {}", e)))?;
+                        HistoryItem::Message(msg)
+                    }
+                };
+                messages.push(item);
             }
         } else {
             for item in range {
@@ -128,9 +161,18 @@ impl HistoryProvider for RedbProvider {
                     break;
                 }
                 let (_k, v) = item.map_err(|e| HistoryError::Database(e.to_string()))?;
-                let msg: StoredMessage = serde_json::from_slice(v.value())
-                    .map_err(|e| HistoryError::Serialization(e.to_string()))?;
-                messages.push(msg);
+                
+                // Try deserializing as generic HistoryItem first
+                let item: HistoryItem = match serde_json::from_slice(v.value()) {
+                    Ok(item) => item,
+                    Err(_) => {
+                        // Fallback: try legacy StoredMessage and wrap it
+                        let msg: StoredMessage = serde_json::from_slice(v.value())
+                            .map_err(|e| HistoryError::Serialization(format!("Corrupt or unknown history format: {}", e)))?;
+                        HistoryItem::Message(msg)
+                    }
+                };
+                messages.push(item);
             }
         }
 
