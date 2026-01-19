@@ -40,9 +40,9 @@
 
 - [x] **Modular Config**
     - [x] Support `include "conf.d/*.toml"` directive.
-- [ ] **Advanced Hot-Reload**
-    - [ ] Atomic swap of global config (Limits, Security) via `REHASH`.
-    - [ ] Transactional reload (validate *before* apply).
+- [x] **Advanced Hot-Reload**
+    - [x] Atomic swap of global config (Limits, Security) via `REHASH`.
+    - [x] Transactional reload (validate *before* apply).
 
 ## Phase 5: Ecosystem (Scaling)
 *Goal: Network federation and external auth.*
@@ -58,7 +58,7 @@
 
 - [x] **Flood Protection (+f)**
     - [x] Implement channel mode `+f <lines>:<seconds>`.
-    - [ ] Verify message rate enforcement (Integration Test needed).
+    - [x] Verify message rate enforcement (Integration Test needed).
 - [x] **Spam Defense**
     - [x] Integrate molecular entropy scanner (completed in `spam.rs`).
     - [x] Tune thresholds for false positives.
