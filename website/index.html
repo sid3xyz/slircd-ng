@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLIRCd - Next Gen Research IRCd</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <div class="logo">SLIRCd</div>
+            <div class="links">
+                <a href="#research">Research</a>
+                <a href="docs/book/index.html">Documentation</a>
+                <a href="https://github.com/sid3xyz/slircd-ng">GitHub</a>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <div class="badge">v1.0.0-rc.1</div>
+                <h1>Straylight IRC Daemon</h1>
+                <p class="tagline">Reimagining distributed messaging for the modern web.</p>
+                <div class="actions">
+                    <a href="docs/book/index.html" class="btn primary">Read the Docs</a>
+                    <a href="https://github.com/sid3xyz/slircd-ng" class="btn secondary">View Source</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="research" class="research-grid container">
+            <div class="card">
+                <h3>Zero-Copy Architecture</h3>
+                <p>Investigating the limits of safe memory borrowing in protocol parsers using Rust's ownership model.</p>
+            </div>
+            <div class="card">
+                <h3>Distributed State</h3>
+                <p>Exploring CRDTs (Conflict-free Replicated Data Types) for eventual consistency in channel state across distinct nodes.</p>
+            </div>
+            <div class="card">
+                <h3>Actor Model</h3>
+                <p>Implementing per-channel isolation with bounded mailboxes to prevent global lock contention.</p>
+            </div>
+            <div class="card">
+                <h3>Protocol Evolution</h3>
+                <p>Extending IRCv3 with modern features like structured logging, history sync, and native bouncer capabilities.</p>
+            </div>
+        </section>
+
+        <section class="status container">
+            <h2>Current Status</h2>
+            <p>SLIRCd is currently in <strong>Release Candidate</strong> phase. It passes 92% of the standard irctest suite.</p>
+            <a href="docs/book/roadmap.html" class="link-arrow">View Roadmap &rarr;</a>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 SLIRCd Project. Released to the Public Domain.</p>
+        </div>
+    </footer>
+</body>
+</html>

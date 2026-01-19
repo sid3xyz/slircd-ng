@@ -1,0 +1,11 @@
+[book]
+authors = ["slircd-ng developers"]
+language = "en"
+multilingual = false
+src = "src"
+title = "SLIRCd Documentation"
+
+[output.html]
+theme = "ayu"
+default-theme = "ayu"
+preferred-dark-theme = "ayu"
