@@ -2,7 +2,7 @@
 
 - [Introduction](index.md)
 - [Architecture](architecture.md)
-- [Usage](usage/installation.md)
+- Usage
     - [Installation](usage/installation.md)
     - [Configuration](usage/configuration.md)
 - [Development](development/protocol.md)
