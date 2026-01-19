@@ -121,17 +121,12 @@ pub struct ServerConfig {
 }
 
 /// IRC casemapping policy.
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Casemapping {
+    #[default]
     Rfc1459,
     Precis,
-}
-
-impl Default for Casemapping {
-    fn default() -> Self {
-        Self::Rfc1459
-    }
 }
 
 impl Casemapping {

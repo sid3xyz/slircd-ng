@@ -85,7 +85,7 @@ impl PostRegHandler for ClearchanHandler {
             reply_tx: tx,
         };
 
-        if let Err(_) = channel_sender.send(event).await {
+        if channel_sender.send(event).await.is_err() {
             ctx.send_reply(
                 Response::ERR_UNKNOWNERROR,
                 vec![ctx.nick().to_string(), channel_name.to_string(), "Channel actor is dead".to_string()],
