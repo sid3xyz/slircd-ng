@@ -26,7 +26,7 @@ slircd-ng is a high-performance, distributed IRC daemon written in Rust. It leve
 - **Traits**:
   - `PostRegHandler`: For standard commands (PRIVMSG, JOIN).
   - `PreRegHandler`: For registration handshake (NICK, USER, CAP).
-  - `AnyStateHandler`: For universal commands (PING, QUIT).
+  - `UniversalHandler<S>`: For universal commands (PING, QUIT).
 
 ### 5. Distributed State (CRDT)
 - **Conflict-Free Replicated Data Types** manage state across linked servers.
