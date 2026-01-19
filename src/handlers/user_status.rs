@@ -197,8 +197,25 @@ impl PostRegHandler for SetnameHandler {
             return Ok(());
         }
 
+        // Maximum realname length (common server limit, prevents abuse)
+        const MAX_REALNAME_LEN: usize = 128;
+
         let new_realname = match msg.arg(0) {
-            Some(name) if !name.is_empty() => name,
+            Some(name) if !name.is_empty() && name.len() <= MAX_REALNAME_LEN => name,
+            Some(name) if name.len() > MAX_REALNAME_LEN => {
+                // FAIL SETNAME INVALID_REALNAME :Realname too long (max 128 chars)
+                let fail = slirc_proto::Message {
+                    tags: None,
+                    prefix: None,
+                    command: Command::FAIL(
+                        "SETNAME".to_string(),
+                        "INVALID_REALNAME".to_string(),
+                        vec![format!("Realname too long (max {} chars)", MAX_REALNAME_LEN)],
+                    ),
+                };
+                ctx.sender.send(fail).await?;
+                return Ok(());
+            }
             _ => {
                 // FAIL SETNAME INVALID_REALNAME :Realname is not valid
                 let fail = slirc_proto::Message {
