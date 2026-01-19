@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-19 23:45 | Pre-release | Zero users
-> Last Session: Matrix disconnect refactor, Event loop pipeline, LifecycleManager
+> Updated: 2026-01-20 00:00 | Pre-release | Zero users
+> Last Session: Matrix disconnect refactor, Event loop pipeline, LifecycleManager, SyncManager extraction
 
 ---
 
@@ -74,6 +74,7 @@ Organized by domain:
 
 ### 2.6 Sync (`src/sync/`)
 Server-to-server linking (TS6-compatible):
+- `manager.rs` - Central SyncManager (routing, connections)
 - `handshake.rs` - S2S handshake state machine
 - `topology.rs` - Network graph
 - `routing.rs` - Message routing
