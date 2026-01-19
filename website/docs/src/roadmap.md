@@ -257,8 +257,8 @@ Every release requires:
 
 ## References
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System design deep dive
-- [README.md](README.md) - Quick start & overview
-- [PROTO_REQUIREMENTS.md](PROTO_REQUIREMENTS.md) - Proto blocking issues
-- [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) - Pre-deployment verification
-- [CHANGELOG.md](CHANGELOG.md) - Release notes & history
+- [ARCHITECTURE.md](https://github.com/slircd/slircd-ng/blob/main/ARCHITECTURE.md) - System design deep dive
+- [README.md](https://github.com/slircd/slircd-ng/blob/main/README.md) - Quick start & overview
+- [PROTO_REQUIREMENTS.md](https://github.com/slircd/slircd-ng/blob/main/PROTO_REQUIREMENTS.md) - Proto blocking issues
+- [DEPLOYMENT_CHECKLIST.md](https://github.com/slircd/slircd-ng/blob/main/DEPLOYMENT_CHECKLIST.md) - Pre-deployment verification
+- [CHANGELOG.md](https://github.com/slircd/slircd-ng/blob/main/CHANGELOG.md) - Release notes & history
