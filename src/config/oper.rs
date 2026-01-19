@@ -7,7 +7,7 @@ use serde::Deserialize;
 pub struct OperBlock {
     /// Operator name (used in OPER command).
     pub name: String,
-    /// Password (plaintext or bcrypt hash).
+    /// Password (plaintext or Argon2 hash).
     pub password: String,
     /// Optional hostmask restriction (e.g., "*!*@trusted.host").
     pub hostmask: Option<String>,
@@ -74,24 +74,24 @@ mod tests {
     }
 
     #[test]
-    fn verify_password_bcrypt_match() {
-        // Generate a bcrypt hash with low cost for fast tests
-        let hash = bcrypt::hash("secret123", 4).unwrap();
+    fn verify_password_argon2_match() {
+        // Generate Argon2 hash at runtime
+        let hash = crate::security::password::hash_password("secret123");
         let oper = make_oper(&hash);
         assert!(oper.verify_password("secret123"));
     }
 
     #[test]
-    fn verify_password_bcrypt_mismatch() {
-        let hash = bcrypt::hash("secret123", 4).unwrap();
+    fn verify_password_argon2_mismatch() {
+        let hash = crate::security::password::hash_password("secret123");
         let oper = make_oper(&hash);
         assert!(!oper.verify_password("wrongpassword"));
     }
 
     #[test]
-    fn verify_password_invalid_bcrypt_hash() {
-        // Starts with $2 but is not a valid bcrypt hash
-        let oper = make_oper("$2invalid_not_a_real_hash");
+    fn verify_password_invalid_argon2_hash() {
+        // Starts with $argon2 but is not a valid hash
+        let oper = make_oper("$argon2_invalid_not_a_real_hash");
         assert!(!oper.verify_password("anything"));
     }
 
