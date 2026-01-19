@@ -31,7 +31,7 @@ enum FloodCheckResult {
 }
 
 /// Handle labeled-response protocol (IRCv3 spec).
-async fn send_labeled_response(
+pub(crate) async fn send_labeled_response(
     transport: &mut slirc_proto::transport::ZeroCopyTransportEnum,
     server_name: &str,
     label: &str,
