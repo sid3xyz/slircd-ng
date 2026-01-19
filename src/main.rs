@@ -243,6 +243,61 @@ async fn main() -> anyhow::Result<()> {
         always_on_store: always_on_store.clone(),
     });
     let matrix = Arc::new(matrix_struct);
+    info!("Matrix initialized");
+
+    // Spawn signal handler for graceful shutdown (Innovation 1: Operational Safety)
+    {
+        let shutdown_tx = matrix.lifecycle_manager.shutdown_tx.clone();
+        tokio::spawn(async move {
+            use tokio::signal::unix::{SignalKind, signal};
+            let mut sigint = signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
+            let mut sigterm = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+
+            tokio::select! {
+                _ = sigint.recv() => info!("Received SIGINT - initiating graceful shutdown"),
+                _ = sigterm.recv() => info!("Received SIGTERM - initiating graceful shutdown"),
+            }
+
+            // Broadcast shutdown signal to all tasks
+            let _ = shutdown_tx.send(());
+        });
+    }
+
+    // Restore persistent channels from runtime state
+    {
+        let matrix = Arc::clone(&matrix);
+        tokio::spawn(async move {
+            let repo = crate::state::persistence::ChannelStateRepository::new(matrix.db.pool());
+            match repo.load_all().await {
+                Ok(states) => {
+                    if !states.is_empty() {
+                        info!(count = states.len(), "Restoring persistent channels");
+                        matrix
+                            .channel_manager
+                            .restore(states, Arc::downgrade(&matrix))
+                            .await;
+                    }
+                }
+                Err(e) => {
+                    error!(error = %e, "Failed to load channel states for restoration");
+                }
+            }
+        });
+    }
+
+    // Spawn periodic channel persistence sync task
+    {
+        let matrix = Arc::clone(&matrix);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // 5 minutes
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+            loop {
+                interval.tick().await;
+                matrix.channel_manager.sync_all_channels().await;
+            }
+        });
+    }
 
     // Spawn router task for remote messages
     {
@@ -345,11 +400,22 @@ async fn main() -> anyhow::Result<()> {
         let matrix = Arc::clone(&matrix);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+            let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
             loop {
-                interval.tick().await;
-                let written = matrix.client_manager.writeback_dirty().await;
-                if written > 0 {
-                    tracing::debug!(count = written, "Always-on writeback completed");
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let written = matrix.client_manager.writeback_dirty().await;
+                        if written > 0 {
+                            tracing::debug!(count = written, "Always-on writeback completed");
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        info!("Always-on writeback task stopping");
+                        // Perform one final writeback before exiting
+                        let written = matrix.client_manager.writeback_dirty().await;
+                        info!(count = written, "Final always-on writeback completed");
+                        break;
+                    }
                 }
             }
         });
@@ -365,10 +431,17 @@ async fn main() -> anyhow::Result<()> {
         let matrix = Arc::clone(&matrix);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+            let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
             loop {
-                interval.tick().await;
-                matrix.user_manager.cleanup_whowas(7);
-                info!("WHOWAS cleanup completed");
+                tokio::select! {
+                    _ = interval.tick() => {
+                        matrix.user_manager.cleanup_whowas(7);
+                        info!("WHOWAS cleanup completed");
+                    }
+                    _ = shutdown_rx.recv() => {
+                        break;
+                    }
+                }
             }
         });
     }
@@ -379,17 +452,24 @@ async fn main() -> anyhow::Result<()> {
         let matrix = Arc::clone(&matrix);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+            let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
             loop {
-                interval.tick().await;
-                let now = chrono::Utc::now().timestamp();
-                let before = matrix.security_manager.shuns.len();
-                matrix
-                    .security_manager
-                    .shuns
-                    .retain(|_, shun| shun.expires_at.is_none_or(|exp| exp > now));
-                let removed = before - matrix.security_manager.shuns.len();
-                if removed > 0 {
-                    info!(removed = removed, "Expired shuns removed");
+                tokio::select! {
+                     _ = interval.tick() => {
+                        let now = chrono::Utc::now().timestamp();
+                        let before = matrix.security_manager.shuns.len();
+                        matrix
+                            .security_manager
+                            .shuns
+                            .retain(|_, shun| shun.expires_at.is_none_or(|exp| exp > now));
+                        let removed = before - matrix.security_manager.shuns.len();
+                        if removed > 0 {
+                            info!(removed = removed, "Expired shuns removed");
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        break;
+                    }
                 }
             }
         });
@@ -402,32 +482,38 @@ async fn main() -> anyhow::Result<()> {
         let expiration = config.multiclient.parse_expiration();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+            let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
             loop {
-                interval.tick().await;
+                tokio::select! {
+                    _ = interval.tick() => {
+                        if let Some(expiration) = expiration {
+                            // Expire from memory
+                            let expired_memory = matrix.client_manager.expire_clients(expiration).await;
+                            if !expired_memory.is_empty() {
+                                info!(
+                                    count = expired_memory.len(),
+                                    "Expired stale always-on clients from memory"
+                                );
+                            }
 
-                if let Some(expiration) = expiration {
-                    // Expire from memory
-                    let expired_memory = matrix.client_manager.expire_clients(expiration).await;
-                    if !expired_memory.is_empty() {
-                        info!(
-                            count = expired_memory.len(),
-                            "Expired stale always-on clients from memory"
-                        );
+                            // Expire from storage
+                            let cutoff = chrono::Utc::now() - expiration;
+                            match matrix.client_manager.expire_from_storage(cutoff) {
+                                Ok(expired_storage) if !expired_storage.is_empty() => {
+                                    info!(
+                                        count = expired_storage.len(),
+                                        "Expired stale always-on clients from storage"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "Failed to expire clients from storage");
+                                }
+                                _ => {}
+                            }
+                        }
                     }
-
-                    // Expire from storage
-                    let cutoff = chrono::Utc::now() - expiration;
-                    match matrix.client_manager.expire_from_storage(cutoff) {
-                        Ok(expired_storage) if !expired_storage.is_empty() => {
-                            info!(
-                                count = expired_storage.len(),
-                                "Expired stale always-on clients from storage"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::warn!(error = %e, "Failed to expire clients from storage");
-                        }
-                        _ => {}
+                    _ = shutdown_rx.recv() => {
+                        break;
                     }
                 }
             }
@@ -440,21 +526,28 @@ async fn main() -> anyhow::Result<()> {
         let matrix = Arc::clone(&matrix);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
+            let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
             loop {
-                interval.tick().await;
-                let removed = matrix.security_manager.ban_cache.prune_expired();
-                if removed > 0 {
-                    info!(removed = removed, "Expired bans pruned from cache");
-                }
-                // Prune expired entries from IP deny list (in-memory bitmap)
-                if let Ok(mut deny_list) = matrix.security_manager.ip_deny_list.write() {
-                    let pruned = deny_list.prune_expired();
-                    if pruned > 0 {
-                        info!(removed = pruned, "Expired IP deny entries pruned");
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let removed = matrix.security_manager.ban_cache.prune_expired();
+                        if removed > 0 {
+                            info!(removed = removed, "Expired bans pruned from cache");
+                        }
+                        // Prune expired entries from IP deny list (in-memory bitmap)
+                        if let Ok(mut deny_list) = matrix.security_manager.ip_deny_list.write() {
+                            let pruned = deny_list.prune_expired();
+                            if pruned > 0 {
+                                info!(removed = pruned, "Expired IP deny entries pruned");
+                            }
+                        }
+                        // Cleanup rate limiters (connection_limiters keyed by IP grow unbounded)
+                        matrix.security_manager.rate_limiter.cleanup();
+                    }
+                    _ = shutdown_rx.recv() => {
+                        break;
                     }
                 }
-                // Cleanup rate limiters (connection_limiters keyed by IP grow unbounded)
-                matrix.security_manager.rate_limiter.cleanup();
             }
         });
     }
@@ -465,6 +558,8 @@ async fn main() -> anyhow::Result<()> {
         let matrix = Arc::clone(&matrix);
         tokio::spawn(async move {
             let retention = std::time::Duration::from_secs(30 * 86400);
+            let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
+            
             // Run immediately at startup
             match matrix.service_manager.history.prune(retention).await {
                 Ok(removed) if removed > 0 => {
@@ -482,14 +577,20 @@ async fn main() -> anyhow::Result<()> {
             // Then run daily (86400 seconds)
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(86400));
             loop {
-                interval.tick().await;
-                match matrix.service_manager.history.prune(retention).await {
-                    Ok(removed) if removed > 0 => {
-                        info!(removed = removed, "Old messages pruned from history");
+                tokio::select! {
+                    _ = interval.tick() => {
+                        match matrix.service_manager.history.prune(retention).await {
+                            Ok(removed) if removed > 0 => {
+                                info!(removed = removed, "Old messages pruned from history");
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(error = %e, "Failed to prune message history");
+                            }
+                        }
                     }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Failed to prune message history");
+                    _ = shutdown_rx.recv() => {
+                        break;
                     }
                 }
             }
@@ -533,9 +634,13 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Start S2S heartbeat
-    matrix.sync_manager.start_heartbeat();
+    matrix.sync_manager.start_heartbeat(matrix.lifecycle_manager.shutdown_tx.subscribe());
 
     gateway.run().await?;
+
+    info!("Gateway stopped, waiting for tasks to finish...");
+    // Give tasks a moment to flush buffers and close connections
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     Ok(())
 }

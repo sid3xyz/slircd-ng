@@ -174,6 +174,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanAddHandler<C> {
         };
 
         tracing::info!(
+            target: "audit",
             oper = %nick,
             target = %target,
             reason = %reason,
@@ -249,7 +250,7 @@ impl<C: BanConfig> PostRegHandler for GenericBanRemoveHandler<C> {
 
         let removed = db_removed || cache_removed;
         if removed {
-            tracing::info!(oper = %nick, target = %target, cmd = cmd_name, "{} removed", cmd_name);
+            tracing::info!(target: "audit", oper = %nick, target = %target, cmd = cmd_name, "{} removed", cmd_name);
 
             // Broadcast global ban removal to peer servers (Phase 3: Distributed Security)
             if let Some(global_type) = self.config.global_ban_type() {

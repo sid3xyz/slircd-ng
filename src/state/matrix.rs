@@ -77,7 +77,7 @@ pub struct Matrix {
     pub sync_manager: SyncManager,
 
     /// Runtime statistics (user/channel counts, uptime).
-    pub stats_manager: crate::state::managers::stats::StatsManager,
+    pub stats_manager: Arc<crate::state::managers::stats::StatsManager>,
 
     /// This server's identity.
     pub server_info: ServerInfo,
@@ -97,6 +97,9 @@ pub struct Matrix {
 
     /// Router channel for remote messages.
     pub router_tx: mpsc::Sender<Arc<Message>>,
+
+    /// Database handle for server-wide persistence.
+    pub db: crate::db::Database,
 }
 
 /// Configuration accessible to handlers via Matrix.
@@ -159,6 +162,7 @@ pub struct ServerInfo {
     pub network: String,
     pub sid: String,
     pub description: String,
+    #[allow(dead_code)]
     pub created: i64,
     /// MOTD lines loaded from config file.
     pub motd_lines: Vec<String>,
@@ -227,8 +231,11 @@ impl Matrix {
             UserManager::new(config.server.sid.clone(), config.server.name.clone());
         user_manager.set_observer(sync_manager_arc.clone());
 
+        let stats_manager = Arc::new(crate::state::managers::stats::StatsManager::new());
+        user_manager.set_stats_manager(stats_manager.clone());
+
         let mut channel_manager =
-            ChannelManager::with_registered_channels(registered_channel_names);
+            ChannelManager::with_registered_channels(registered_channel_names, stats_manager.clone());
         channel_manager.set_observer(sync_manager_arc.clone());
 
         // Create ServiceManager with server SID for service UIDs
@@ -270,7 +277,7 @@ impl Matrix {
                 lifecycle_manager: LifecycleManager::new(disconnect_tx),
                 sync_manager: Arc::try_unwrap(sync_manager_arc)
                     .unwrap_or_else(|arc| (*arc).clone()),
-                stats_manager: crate::state::managers::stats::StatsManager::new(),
+                stats_manager,
                 server_info: ServerInfo {
                     name: config.server.name.clone(),
                     network: config.server.network.clone(),
@@ -295,6 +302,7 @@ impl Matrix {
                 config_path,
                 hot_config: RwLock::new(HotConfig::from_config(config)),
                 router_tx,
+                db,
             },
             router_rx,
         )
@@ -364,7 +372,7 @@ impl Matrix {
         use slirc_proto::{Command, Prefix};
 
         // Get user info before removal
-        let (nick, user, host, realname, user_channels, session_id, account) = {
+        let (nick, user, host, realname, user_channels, session_id, account, is_invisible, is_oper) = {
             let user_arc = self
                 .user_manager
                 .users
@@ -381,6 +389,8 @@ impl Matrix {
                     // Use explicit session_id if provided, otherwise fall back to user's
                     explicit_session_id.unwrap_or(user.session_id),
                     user.account.clone(),
+                    user.modes.invisible,
+                    user.modes.oper,
                 )
             } else {
                 return vec![];
@@ -493,6 +503,7 @@ impl Matrix {
                     && self.channel_manager.channels.remove(channel_name).is_some()
                 {
                     crate::metrics::ACTIVE_CHANNELS.dec();
+                    self.stats_manager.channel_destroyed();
                 }
             }
         }
@@ -523,8 +534,22 @@ impl Matrix {
         crate::metrics::CONNECTED_USERS.dec();
 
         // Update StatsManager counters
-        self.stats_manager.user_disconnected();
-        // Note: invisible/oper decrement should happen in mode change handlers, not here
+        if target_uid.starts_with(self.server_id.as_str()) {
+            self.stats_manager.user_disconnected();
+            if is_invisible {
+                self.stats_manager.user_unset_invisible();
+            }
+            if is_oper {
+                self.stats_manager.user_deopered();
+            }
+        } else {
+            self.stats_manager.remote_user_disconnected();
+            if is_oper {
+                self.stats_manager.remote_user_deopered();
+            }
+            // Note: invisible users are not tracked globally in the current StatsManager implementation
+            // except via global_users total. If we add a global_invisible counter, update here.
+        }
 
         user_channels
     }

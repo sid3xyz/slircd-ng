@@ -28,6 +28,9 @@ pub struct ChannelManager {
 
     /// Observer for state changes (Innovation 2).
     pub observer: Option<Arc<dyn StateObserver>>,
+
+    /// Usage stats manager.
+    pub stats_manager: Arc<crate::state::managers::stats::StatsManager>,
 }
 
 impl ChannelManager {
@@ -42,16 +45,83 @@ impl ChannelManager {
             tx.clone()
         } else {
             use crate::state::actor::ChannelActor;
-            let tx =
-                ChannelActor::spawn_with_capacity(name, matrix, None, 100, self.observer.clone());
+            let tx = ChannelActor::spawn_with_capacity(
+                name,
+                matrix,
+                None, // initial_topic
+                None, // initial_modes
+                None, // created_at
+                100,  // capacity
+                self.observer.clone(),
+            );
             self.channels.insert(name_lower, tx.clone());
             crate::metrics::ACTIVE_CHANNELS.inc();
+            self.stats_manager.channel_created();
             tx
         }
     }
 
+    /// Restore channels from persistent state.
+    pub async fn restore(
+        &self,
+        states: Vec<crate::state::persistence::ChannelState>,
+        matrix: std::sync::Weak<crate::state::Matrix>,
+    ) {
+        use crate::state::actor::ChannelActor;
+        use crate::state::actor::modes_from_string;
+        use crate::state::Topic;
+
+        for state in states {
+            let name = state.name.clone();
+            let name_lower = name.to_lowercase();
+
+            let initial_topic = if let (Some(text), Some(set_by), Some(set_at)) =
+                (state.topic, state.topic_set_by, state.topic_set_at)
+            {
+                Some(Topic {
+                    text,
+                    set_by,
+                    set_at,
+                })
+            } else {
+                None
+            };
+
+            let initial_modes = Some(modes_from_string(&state.modes, state.key, state.user_limit));
+
+            let tx = ChannelActor::spawn_with_capacity(
+                name,
+                matrix.clone(),
+                initial_topic,
+                initial_modes,
+                Some(state.created_at),
+                100,
+                self.observer.clone(),
+            );
+
+            self.channels.insert(name_lower, tx);
+            crate::metrics::ACTIVE_CHANNELS.inc();
+            self.stats_manager.channel_created();
+        }
+    }
+
+    /// Trigger persistence sync for all active channels.
+    pub async fn sync_all_channels(&self) {
+        let channels: Vec<_> = self
+            .channels
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+        for tx in channels {
+            let _ = tx.send(ChannelEvent::CheckAndSave).await;
+        }
+    }
+
     /// Initialize with pre-loaded registered channels.
-    pub fn with_registered_channels(registered_channels: Vec<String>) -> Self {
+    pub fn with_registered_channels(
+        registered_channels: Vec<String>,
+        stats_manager: Arc<crate::state::managers::stats::StatsManager>,
+    ) -> Self {
         let registered_set = DashSet::with_capacity(registered_channels.len());
         for name in registered_channels {
             registered_set.insert(name);
@@ -61,6 +131,7 @@ impl ChannelManager {
             channels: DashMap::new(),
             registered_channels: registered_set,
             observer: None,
+            stats_manager,
         }
     }
 

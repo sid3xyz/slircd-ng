@@ -35,4 +35,6 @@ pub struct LifecycleChannels<'a> {
     pub tx: &'a mpsc::Sender<Arc<Message>>,
     /// Receiver for draining outgoing messages.
     pub rx: &'a mut mpsc::Receiver<Arc<Message>>,
+    /// Receiver for server shutdown signal.
+    pub shutdown_rx: &'a mut tokio::sync::broadcast::Receiver<()>,
 }

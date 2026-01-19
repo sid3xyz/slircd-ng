@@ -44,8 +44,8 @@ pub fn validate(config: &Config) -> Result<(), Vec<ValidationError>> {
     } else {
         let chars: Vec<char> = sid.chars().collect();
         let valid = chars[0].is_ascii_digit()
-            && chars[1].is_ascii_uppercase() || chars[1].is_ascii_digit()
-            && chars[2].is_ascii_uppercase() || chars[2].is_ascii_digit();
+            && (chars[1].is_ascii_uppercase() || chars[1].is_ascii_digit())
+            && (chars[2].is_ascii_uppercase() || chars[2].is_ascii_digit());
         if !valid {
             errors.push(ValidationError::InvalidSidFormat(sid.clone()));
         }

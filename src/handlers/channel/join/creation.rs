@@ -242,6 +242,8 @@ pub(crate) async fn join_channel_internal(
                     channel_name.to_string(),
                     Arc::downgrade(&matrix),
                     initial_topic.clone(),
+                    None, // initial_modes
+                    None, // created_at
                     mailbox_capacity,
                     observer,
                 )

@@ -266,6 +266,8 @@ pub enum ChannelEvent {
         uid: Uid,
         sender: tokio::sync::mpsc::Sender<std::sync::Arc<slirc_proto::Message>>,
     },
+    /// Periodic or event-driven check for channel state persistence.
+    CheckAndSave,
 }
 
 #[derive(Debug)]

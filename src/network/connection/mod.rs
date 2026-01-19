@@ -183,6 +183,9 @@ impl Connection {
         // Track unregistered connection count for LUSERS
         self.matrix.user_manager.increment_unregistered();
 
+        // Create shutdown receiver (Innovation 1: Operational Safety)
+        let mut shutdown_rx = self.matrix.lifecycle_manager.shutdown_tx.subscribe();
+
         // Phase 1: Handshake
         let success = match run_handshake_loop(
             ConnectionContext {
@@ -197,6 +200,7 @@ impl Connection {
             LifecycleChannels {
                 tx: &handshake_tx,
                 rx: &mut handshake_rx,
+                shutdown_rx: &mut shutdown_rx,
             },
             &mut unreg_state,
         )
@@ -258,6 +262,7 @@ impl Connection {
                     LifecycleChannels {
                         tx: &outgoing_tx,
                         rx: &mut outgoing_rx,
+                        shutdown_rx: &mut shutdown_rx,
                     },
                     &mut reg_state,
                 )

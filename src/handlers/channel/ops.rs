@@ -66,7 +66,9 @@ pub async fn force_join_channel<S>(
             crate::state::actor::ChannelActor::spawn_with_capacity(
                 channel_name.to_string(),
                 std::sync::Arc::downgrade(ctx.matrix),
-                None, // No initial topic for SAJOIN-created channels
+                None, // initial_topic
+                None, // initial_modes
+                None, // created_at
                 mailbox_capacity,
                 observer,
             )

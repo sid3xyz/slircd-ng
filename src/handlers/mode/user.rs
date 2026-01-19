@@ -78,6 +78,22 @@ pub async fn handle_user_mode(
 
         if !applied.is_empty() {
             ctx.matrix.user_manager.notify_observer(ctx.uid, None).await;
+
+            // Update stats
+            for mode in &applied {
+                match mode {
+                    Mode::Minus(UserMode::Oper, _) => {
+                        ctx.matrix.stats_manager.user_deopered();
+                    }
+                    Mode::Plus(UserMode::Invisible, _) => {
+                        ctx.matrix.stats_manager.user_set_invisible();
+                    }
+                    Mode::Minus(UserMode::Invisible, _) => {
+                        ctx.matrix.stats_manager.user_unset_invisible();
+                    }
+                    _ => {}
+                }
+            }
         }
 
         // Report any rejected modes (like +o which only server can set)

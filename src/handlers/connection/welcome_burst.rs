@@ -552,6 +552,19 @@ impl<'a> WelcomeBurstWriter<'a> {
                 );
             }
 
+            // Fix UID Leak (Innovation 1: Operational Safety)
+            // Remove the temporary session UID from the nicks map.
+            // We are adopting the existing user's identity (living at existing_uid),
+            // so this transient UID should not be associated with the nickname anymore.
+            let input_nick_lower = slirc_proto::irc_to_lower(nick);
+            if let Some(mut entry) = self.matrix.user_manager.nicks.get_mut(&input_nick_lower) {
+                entry.retain(|u| u != self.uid);
+                // Note: The map entry should not be empty because existing_uid should be there
+                // (or will be added if not, though it should be there because existing_user exists).
+                // If it becomes empty (edge case), we should remove it, but dashmap entry API makes that tricky safely here.
+                // Given existing_user exists, it's fine.
+            }
+
             return Ok(true); // Reattachment successful
         }
 
@@ -594,6 +607,9 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         let cloaked_host = user_obj.visible_host.clone();
 
+        let is_starting_invisible = user_obj.modes.invisible;
+        let is_starting_oper = user_obj.modes.oper;
+
         self.matrix.user_manager.add_local_user(user_obj).await;
 
         // User is now registered - decrement unregistered connection count
@@ -603,18 +619,15 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         // Update StatsManager counters
         self.matrix.stats_manager.user_connected();
-        // Note: invisible status is tracked in mode handler when +i is applied
+        
+        if is_starting_invisible {
+            self.matrix.stats_manager.user_set_invisible();
+        }
+        if is_starting_oper {
+            self.matrix.stats_manager.user_opered();
+        }
 
-        // Use real_user_count to exclude service pseudoclients from max tracking
-        let current_count = self.matrix.user_manager.real_user_count().await;
-        self.matrix
-            .user_manager
-            .max_local_users
-            .fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
-        self.matrix
-            .user_manager
-            .max_global_users
-            .fetch_max(current_count, std::sync::atomic::Ordering::Relaxed);
+
 
         info!(nick = %nick, user = %user, uid = %self.uid, account = ?self.state.account, "Client registered");
 

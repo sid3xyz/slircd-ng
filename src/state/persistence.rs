@@ -103,6 +103,7 @@ impl<'a> ChannelStateRepository<'a> {
     }
 
     /// Find channel state by name.
+    #[allow(dead_code)]
     pub async fn find_by_name(&self, name: &str) -> Result<Option<ChannelState>, DbError> {
         let row = sqlx::query_as::<
             _,
@@ -141,5 +142,82 @@ impl<'a> ChannelStateRepository<'a> {
                 }
             },
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn test_channel_persistence_cycle() {
+        // Setup in-memory DB
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        // Run migration manually for test
+        sqlx::query(
+            "CREATE TABLE channel_state (
+                name TEXT PRIMARY KEY NOT NULL,
+                modes TEXT NOT NULL DEFAULT '',
+                topic TEXT,
+                topic_set_by TEXT,
+                topic_set_at INTEGER,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                key TEXT,
+                user_limit INTEGER
+            );",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let repo = ChannelStateRepository::new(&pool);
+        let now = chrono::Utc::now().timestamp();
+
+        let state = ChannelState {
+            name: "#test".to_string(),
+            modes: "+ntk".to_string(),
+            topic: Some("Hello World".to_string()),
+            topic_set_by: Some("Admin".to_string()),
+            topic_set_at: Some(now),
+            created_at: now,
+            key: Some("secret".to_string()),
+            user_limit: Some(10),
+        };
+
+        // Test Save
+        repo.save(&state).await.expect("Failed to save state");
+
+        // Test Find
+        let found = repo
+            .find_by_name("#test")
+            .await
+            .expect("Failed to find state")
+            .expect("State not found");
+
+        assert_eq!(found.name, "#test");
+        assert_eq!(found.modes, "+ntk");
+        assert_eq!(found.topic.as_deref(), Some("Hello World"));
+        assert_eq!(found.key.as_deref(), Some("secret"));
+        assert_eq!(found.user_limit, Some(10));
+
+        // Test Load All
+        let all = repo.load_all().await.expect("Failed to load all");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].name, "#test");
+
+        // Test Delete
+        let deleted = repo.delete("#test").await.expect("Failed to delete");
+        assert!(deleted);
+
+        let missing = repo
+            .find_by_name("#test")
+            .await
+            .expect("Failed to check missing");
+        assert!(missing.is_none());
     }
 }

@@ -5,7 +5,7 @@ use crate::metrics::{S2S_BYTES_RECEIVED, S2S_BYTES_SENT, S2S_COMMANDS};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
-use std::time::{SystemTime, UNIX_EPOCH};
+
 
 /// Handler for STATS command.
 ///
@@ -43,12 +43,7 @@ impl PostRegHandler for StatsHandler {
         match query_char {
             'u' => {
                 // RPL_STATSUPTIME (242): Server uptime
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let created = ctx.matrix.server_info.created as u64;
-                let uptime = now.saturating_sub(created);
+                let uptime = ctx.matrix.stats_manager.uptime_secs();
 
                 let days = uptime / 86400;
                 let hours = (uptime % 86400) / 3600;
@@ -293,8 +288,8 @@ impl PostRegHandler for StatsHandler {
             }
             'c' | 'C' => {
                 // Connection statistics
-                let current_users = ctx.matrix.user_manager.users.len();
-                let current_channels = ctx.matrix.channel_manager.channels.len();
+                let local_users = ctx.matrix.stats_manager.local_users();
+                let current_channels = ctx.matrix.stats_manager.channels();
 
                 // Use RPL_LUSERCLIENT style for connection info
                 ctx.send_reply(
@@ -303,7 +298,7 @@ impl PostRegHandler for StatsHandler {
                         nick.to_string(),
                         format!(
                             "Current local users: {} | Channels: {}",
-                            current_users, current_channels
+                            local_users, current_channels
                         ),
                     ],
                 )
@@ -323,16 +318,16 @@ impl PostRegHandler for StatsHandler {
                     )
                     .await?;
                 } else {
-                    for (cmd, count) in stats {
-                        // :server 212 nick <command> <count> <byte_count> <remote_count>
-                        // We don't track byte_count and remote_count, so use 0
+                    for (cmd, count, timing) in stats {
+                        // :server 212 nick <command> <count> <total_micros> <remote_count>
+                        // We use the byte_count field to report total execution time in microseconds
                         ctx.send_reply(
                             Response::RPL_STATSCOMMANDS,
                             vec![
                                 nick.to_string(),
                                 cmd.to_string(),
                                 count.to_string(),
-                                "0".to_string(),
+                                timing.to_string(),
                                 "0".to_string(),
                             ],
                         )

@@ -44,6 +44,8 @@ impl ChannelActor {
             set_at: chrono::Utc::now().timestamp(),
         });
 
+        self.dirty = true;
+
         // Record timestamp for CRDT convergence
         self.topic_timestamp = Some(HybridTimestamp::now(&self.server_id));
 

@@ -64,6 +64,8 @@ pub struct Registry {
     universal_handlers: HashMap<&'static str, Box<dyn DynUniversalHandler>>,
     /// Command usage counters for STATS m
     command_counts: HashMap<&'static str, Arc<AtomicU64>>,
+    /// Total command execution time in microseconds
+    command_timings: HashMap<&'static str, Arc<AtomicU64>>,
 }
 
 impl Registry {
@@ -174,20 +176,23 @@ impl Registry {
         post_reg_handlers.insert("SANICK", Box::new(SanickHandler));
         post_reg_handlers.insert("SAMODE", Box::new(SamodeHandler));
 
-        // Initialize command counters for all registered commands
+        // Initialize command counters and timings for all registered commands
         let mut command_counts = HashMap::new();
-        for &cmd in pre_reg_handlers.keys() {
-            command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
+        let mut command_timings = HashMap::new();
+
+        macro_rules! init_stats {
+            ($map:expr) => {
+                for &cmd in $map.keys() {
+                    command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
+                    command_timings.insert(cmd, Arc::new(AtomicU64::new(0)));
+                }
+            };
         }
-        for &cmd in post_reg_handlers.keys() {
-            command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
-        }
-        for &cmd in server_handlers.keys() {
-            command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
-        }
-        for &cmd in universal_handlers.keys() {
-            command_counts.insert(cmd, Arc::new(AtomicU64::new(0)));
-        }
+
+        init_stats!(pre_reg_handlers);
+        init_stats!(post_reg_handlers);
+        init_stats!(server_handlers);
+        init_stats!(universal_handlers);
 
         Self {
             pre_reg_handlers,
@@ -195,16 +200,25 @@ impl Registry {
             server_handlers,
             universal_handlers,
             command_counts,
+            command_timings,
         }
     }
 
     /// Get command usage statistics for STATS m.
-    pub fn get_command_stats(&self) -> Vec<(&'static str, u64)> {
+    /// Returns: (Command, Count, TotalTimeMicros)
+    pub fn get_command_stats(&self) -> Vec<(&'static str, u64, u64)> {
         let mut stats: Vec<_> = self
             .command_counts
             .iter()
-            .map(|(cmd, count)| (*cmd, count.load(Ordering::Relaxed)))
-            .filter(|(_, count)| *count > 0) // Only include used commands
+            .map(|(cmd, count)| {
+                let timing = self
+                    .command_timings
+                    .get(cmd)
+                    .map(|t| t.load(Ordering::Relaxed))
+                    .unwrap_or(0);
+                (*cmd, count.load(Ordering::Relaxed), timing)
+            })
+            .filter(|(_, count, _)| *count > 0) // Only include used commands
             .collect();
 
         // Sort by usage count (descending)
@@ -255,6 +269,7 @@ impl Registry {
         );
 
         // Start timing for metrics
+        let start = std::time::Instant::now();
         let _timer = CommandTimer::new(&cmd_name);
 
         // Execute handler within the span
@@ -276,6 +291,12 @@ impl Registry {
                 cmd_name.clone(),
             ))
         };
+
+        // Record timing
+        let duration = start.elapsed().as_micros() as u64;
+        if let Some(timing) = self.command_timings.get(cmd_str) {
+            timing.fetch_add(duration, Ordering::Relaxed);
+        }
 
         // Copy values needed for error handling before passing ctx as mutable
         let uid = ctx.uid.to_string();
@@ -326,6 +347,7 @@ impl Registry {
         );
 
         // Start timing for metrics
+        let start = std::time::Instant::now();
         let _timer = CommandTimer::new(&cmd_name);
 
         // Execute handler within the span
@@ -348,6 +370,12 @@ impl Registry {
                 cmd_name.clone(),
             ))
         };
+
+        // Record timing
+        let duration = start.elapsed().as_micros() as u64;
+        if let Some(timing) = self.command_timings.get(cmd_str) {
+            timing.fetch_add(duration, Ordering::Relaxed);
+        }
 
         // Copy values needed for error handling before passing ctx as mutable
         let uid = ctx.uid.to_string();
@@ -381,6 +409,7 @@ impl Registry {
             server = %ctx.state.name
         );
 
+        let start = std::time::Instant::now();
         let result = async {
             // 1. Check universal handlers first
             if let Some(handler) = self.universal_handlers.get(cmd_str) {
@@ -402,6 +431,12 @@ impl Registry {
         }
         .instrument(span)
         .await;
+
+        // Record timing
+        let duration = start.elapsed().as_micros() as u64;
+        if let Some(timing) = self.command_timings.get(cmd_str) {
+            timing.fetch_add(duration, Ordering::Relaxed);
+        }
 
         // Record errors for metrics
         self.handle_dispatch_result(ctx.uid, None, &cmd_name, result, ctx)

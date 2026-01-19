@@ -260,6 +260,13 @@ impl Database {
             info!("Database migrations applied (007_scram_verifiers)");
         }
 
+        // 008_channels.sql: channel_state table for runtime persistence.
+        if !table_exists(pool, "channel_state").await {
+            Self::run_migration_file(pool, include_str!("../../migrations/008_channels.sql"))
+                .await;
+            info!("Database migrations applied (008_channels)");
+        }
+
         // Best-effort informational log.
         if core_ok
             && table_exists(pool, "shuns").await

@@ -46,12 +46,10 @@ pub struct UserManager {
     pub enforce_timers: DashMap<Uid, Instant>,
     /// This server's name (required for snomask and whowas).
     pub server_name: String,
-    /// Maximum local user count (historical peak).
-    pub max_local_users: AtomicUsize,
-    /// Maximum global user count (historical peak).
-    pub max_global_users: AtomicUsize,
-    /// Count of unregistered connections (NICK sent but not USER).
-    pub unregistered_connections: AtomicUsize,
+    /// This server's SID (TS6).
+    pub server_sid: String,
+
+    pub stats_manager: Option<Arc<crate::state::managers::stats::StatsManager>>,
     /// Observer for state changes (Innovation 2).
     pub observer: Option<Arc<dyn StateObserver>>,
 }
@@ -64,14 +62,19 @@ impl UserManager {
             senders: DashMap::new(),
             session_caps: DashMap::new(),
             whowas: DashMap::new(),
-            uid_gen: UidGenerator::new(server_sid),
+            uid_gen: UidGenerator::new(server_sid.clone()),
             enforce_timers: DashMap::new(),
             server_name,
-            max_local_users: AtomicUsize::new(0),
-            max_global_users: AtomicUsize::new(0),
-            unregistered_connections: AtomicUsize::new(0),
+            server_sid,
+
+            stats_manager: None,
             observer: None,
         }
+    }
+
+    /// Set the stats manager for the user manager.
+    pub fn set_stats_manager(&mut self, stats: Arc<crate::state::managers::stats::StatsManager>) {
+        self.stats_manager = Some(stats);
     }
 
     /// Get the first UID for a given nickname (for legacy single-connection lookups).
@@ -214,22 +217,7 @@ impl UserManager {
         }
     }
 
-    /// Count the number of real (non-service) users.
-    ///
-    /// This excludes service pseudoclients (NickServ, ChanServ) from the count,
-    /// as they are not actual users and should not be reported in LUSERS.
-    pub async fn real_user_count(&self) -> usize {
-        // Collect all Arcs first to release DashMap locks before awaiting
-        let user_arcs: Vec<_> = self.users.iter().map(|e| e.value().clone()).collect();
-        let mut count = 0;
-        for user_arc in user_arcs {
-            let user = user_arc.read().await;
-            if !user.modes.service {
-                count += 1;
-            }
-        }
-        count
-    }
+
 
     /// Add a local user to the state.
     pub async fn add_local_user(&self, user: User) {
@@ -303,7 +291,7 @@ impl UserManager {
             // We have a collision. Resolve it using TS rules.
             if incoming_ts < existing_ts {
                 // Incoming is older (Winner). Kill existing.
-                self.kill_user(&existing_uid, "Nick collision (older wins)")
+                self.kill_user(&existing_uid, "Nick collision (older wins)", source.clone())
                     .await;
                 crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL
                     .with_label_values(&["nick", "kill_existing"])
@@ -312,8 +300,8 @@ impl UserManager {
             } else if incoming_ts > existing_ts {
                 // Incoming is newer (Loser).
                 // Merge then kill so we have the record
-                self.perform_merge(crdt, source).await;
-                self.kill_user(&uid, "Nick collision (newer loses)").await;
+                self.perform_merge(crdt, source.clone()).await;
+                self.kill_user(&uid, "Nick collision (newer loses)", source).await;
                 crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL
                     .with_label_values(&["nick", "kill_incoming"])
                     .inc();
@@ -336,9 +324,9 @@ impl UserManager {
                 return;
             } else {
                 // Tie. Kill both.
-                self.kill_user(&existing_uid, "Nick collision (tie)").await;
-                self.perform_merge(crdt, source).await;
-                self.kill_user(&uid, "Nick collision (tie)").await;
+                self.kill_user(&existing_uid, "Nick collision (tie)", source.clone()).await;
+                self.perform_merge(crdt, source.clone()).await;
+                self.kill_user(&uid, "Nick collision (tie)", source).await;
                 crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL
                     .with_label_values(&["nick", "kill_both"])
                     .inc();
@@ -362,8 +350,44 @@ impl UserManager {
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
             let old_nick_lower = slirc_proto::irc_to_lower(&user.nick);
+            let old_oper = user.modes.oper;
+            let old_invisible = user.modes.invisible;
+            let is_local = user.uid.starts_with(&self.server_sid);
+
             user.merge_crdt(crdt);
+
             let new_nick_lower = slirc_proto::irc_to_lower(&user.nick);
+            let new_oper = user.modes.oper;
+            let new_invisible = user.modes.invisible;
+
+            // Update stats for mode changes
+            if let Some(stats) = &self.stats_manager {
+                // Oper change
+                if old_oper != new_oper {
+                    if new_oper {
+                        if is_local {
+                            stats.user_opered();
+                        } else {
+                            stats.remote_user_opered();
+                        }
+                    } else {
+                        if is_local {
+                            stats.user_deopered();
+                        } else {
+                            stats.remote_user_deopered();
+                        }
+                    }
+                }
+
+                // Invisible change (only tracked locally in current StatsManager)
+                if is_local && old_invisible != new_invisible {
+                    if new_invisible {
+                        stats.user_set_invisible();
+                    } else {
+                        stats.user_unset_invisible();
+                    }
+                }
+            }
 
             if old_nick_lower != new_nick_lower {
                 // Remove this UID from the old nick's vector
@@ -383,11 +407,24 @@ impl UserManager {
         } else {
             let user = User::from_crdt(crdt);
             let nick_lower = slirc_proto::irc_to_lower(&user.nick);
+            let is_remote = source.is_some();
+            let is_oper = user.modes.oper;
+
             self.nicks
                 .entry(nick_lower)
                 .or_insert_with(Vec::new)
                 .push(uid.clone());
             self.users.insert(uid.clone(), Arc::new(RwLock::new(user)));
+
+            // Update stats for new remote users
+            if let Some(stats) = &self.stats_manager {
+                if is_remote {
+                    stats.remote_user_connected();
+                    if is_oper {
+                        stats.remote_user_opered();
+                    }
+                }
+            }
         }
 
         // Notify observer to propagate the change (Split Horizon handled by source)
@@ -395,10 +432,22 @@ impl UserManager {
     }
 
     /// Kill a user (remove from state and notify observer).
-    pub async fn kill_user(&self, uid: &str, reason: &str) {
+    pub async fn kill_user(&self, uid: &str, reason: &str, source: Option<ServerId>) {
         if let Some((_, user_arc)) = self.users.remove(uid) {
             let user = user_arc.read().await;
             let nick_lower = slirc_proto::irc_to_lower(&user.nick);
+            let is_oper = user.modes.oper;
+
+            // Update stats for remote users
+            // (Local users are handled by matrix.disconnect_user_session)
+            if let Some(stats) = &self.stats_manager {
+                if source.is_some() {
+                    stats.remote_user_disconnected();
+                    if is_oper {
+                        stats.remote_user_deopered();
+                    }
+                }
+            }
 
             // Remove this UID from the nick vector
             if let Some(mut nick_vec) = self.nicks.get_mut(&nick_lower) {
@@ -477,16 +526,18 @@ impl UserManager {
     ///
     /// Call this when a new connection is established (before registration).
     pub fn increment_unregistered(&self) {
-        self.unregistered_connections
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if let Some(stats) = &self.stats_manager {
+            stats.increment_unregistered();
+        }
     }
 
     /// Decrement the unregistered connections counter.
     ///
     /// Call this when a connection registers or disconnects before registration.
     pub fn decrement_unregistered(&self) {
-        self.unregistered_connections
-            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        if let Some(stats) = &self.stats_manager {
+            stats.decrement_unregistered();
+        }
     }
 
     /// Record a WHOWAS entry for a user who is disconnecting.

@@ -25,7 +25,7 @@ mod helpers;
 mod types;
 pub mod validation;
 
-pub use helpers::modes_to_string;
+pub use helpers::{modes_from_string, modes_to_string};
 pub use types::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +76,8 @@ pub struct ChannelActor {
     matrix: Weak<Matrix>,
     state: ActorState,
     observer: Option<Arc<dyn StateObserver>>,
+    /// Flag indicating that the channel state has changed and needs saving.
+    pub dirty: bool,
 }
 
 const MAX_INVITES_PER_CHANNEL: usize = 100;
@@ -95,15 +97,20 @@ impl ChannelActor {
         name: String,
         matrix: Weak<Matrix>,
         initial_topic: Option<Topic>,
+        initial_modes: Option<HashSet<ChannelMode>>,
+        created_at: Option<i64>,
         capacity: usize,
         observer: Option<Arc<dyn StateObserver>>,
     ) -> mpsc::Sender<ChannelEvent> {
         let (tx, rx) = mpsc::channel(capacity);
 
-        // Default channel modes: +nt (NoExternal, TopicLock)
-        let mut modes = HashSet::with_capacity(8); // Typical channel mode count
-        modes.insert(ChannelMode::NoExternal);
-        modes.insert(ChannelMode::TopicLock);
+        // Default channel modes: +nt (NoExternal, TopicLock) if none provided
+        let modes = initial_modes.unwrap_or_else(|| {
+            let mut m = HashSet::with_capacity(8);
+            m.insert(ChannelMode::NoExternal);
+            m.insert(ChannelMode::TopicLock);
+            m
+        });
 
         // Get server_id from matrix (use default if matrix unavailable - shouldn't happen)
         let server_id = matrix
@@ -123,7 +130,7 @@ impl ChannelActor {
             server_id,
             metadata: HashMap::new(),
             topic: initial_topic,
-            created: Utc::now().timestamp(),
+            created: created_at.unwrap_or_else(|| Utc::now().timestamp()),
             bans: Vec::new(),
             excepts: Vec::new(),
             invex: Vec::new(),
@@ -137,6 +144,7 @@ impl ChannelActor {
             matrix,
             state: ActorState::Active,
             observer,
+            dirty: false,
         };
 
         tokio::spawn(async move {
@@ -317,6 +325,52 @@ impl ChannelActor {
                     self.senders.insert(uid, sender);
                 }
             }
+            ChannelEvent::CheckAndSave => {
+                self.handle_check_and_save().await;
+            }
+        }
+    }
+
+    async fn handle_check_and_save(&mut self) {
+        if !self.dirty {
+            return;
+        }
+
+        if let Some(matrix) = self.matrix.upgrade() {
+            let pool = matrix.db.pool();
+            let repo = crate::state::persistence::ChannelStateRepository::new(pool);
+
+            let key = self.modes.iter().find_map(|m| {
+                if let ChannelMode::Key(k, _) = m {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            });
+            let user_limit = self.modes.iter().find_map(|m| {
+                if let ChannelMode::Limit(l, _) = m {
+                    Some(*l as i32)
+                } else {
+                    None
+                }
+            });
+
+            let state = crate::state::persistence::ChannelState {
+                name: self.name.clone(),
+                modes: crate::state::actor::helpers::modes_to_string(&self.modes),
+                topic: self.topic.as_ref().map(|t| t.text.clone()),
+                topic_set_by: self.topic.as_ref().map(|t| t.set_by.clone()),
+                topic_set_at: self.topic.as_ref().map(|t| t.set_at),
+                created_at: self.created,
+                key,
+                user_limit,
+            };
+
+            if let Err(e) = repo.save(&state).await {
+                tracing::error!(channel = %self.name, error = %e, "Failed to save channel state");
+            } else {
+                self.dirty = false;
+            }
         }
     }
 
@@ -337,6 +391,15 @@ impl ChannelActor {
             }
 
             if let Some(matrix) = self.matrix.upgrade() {
+                let name_copy = self.name.clone();
+                let pool = matrix.db.pool().clone();
+                tokio::spawn(async move {
+                    let repo = crate::state::persistence::ChannelStateRepository::new(&pool);
+                    if let Err(e) = repo.delete(&name_copy).await {
+                        tracing::error!(channel = %name_copy, error = %e, "Failed to delete persistent channel state");
+                    }
+                });
+
                 let name_lower = self.name.to_lowercase();
                 if matrix
                     .channel_manager
@@ -390,6 +453,7 @@ mod tests {
             state: ActorState::Active,
             observer: None,
             metadata: HashMap::new(),
+            dirty: false,
         }
     }
 

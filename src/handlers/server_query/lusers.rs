@@ -99,11 +99,7 @@ impl PostRegHandler for LusersHandler {
 
         // RPL_LUSERUNKNOWN (253): <u> :unknown connection(s)
         // Count unregistered connections (those that have connected but not completed USER)
-        let unregistered_count = ctx
-            .matrix
-            .user_manager
-            .unregistered_connections
-            .load(std::sync::atomic::Ordering::Relaxed);
+        let unregistered_count = stats.unregistered_connections();
 
         if unregistered_count > 0 {
             ctx.send_reply(
@@ -144,11 +140,7 @@ impl PostRegHandler for LusersHandler {
         .await?;
 
         // RPL_LOCALUSERS (265): <u> <m> :Current local users <u>, max <m>
-        let max_local = ctx
-            .matrix
-            .user_manager
-            .max_local_users
-            .load(std::sync::atomic::Ordering::Relaxed);
+        let max_local = stats.peak_connections();
         ctx.send_reply(
             Response::RPL_LOCALUSERS,
             vec![
@@ -161,11 +153,7 @@ impl PostRegHandler for LusersHandler {
         .await?;
 
         // RPL_GLOBALUSERS (266): <u> <m> :Current global users <u>, max <m>
-        let max_global = ctx
-            .matrix
-            .user_manager
-            .max_global_users
-            .load(std::sync::atomic::Ordering::Relaxed);
+        let max_global = stats.peak_global_users();
         ctx.send_reply(
             Response::RPL_GLOBALUSERS,
             vec![

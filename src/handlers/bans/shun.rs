@@ -66,6 +66,7 @@ impl PostRegHandler for ShunHandler {
         }
 
         tracing::info!(
+            target: "audit",
             oper = %nick,
             mask = %mask,
             reason = %reason,
@@ -132,6 +133,7 @@ impl PostRegHandler for UnshunHandler {
             );
 
             tracing::info!(
+                target: "audit",
                 oper = %nick,
                 mask = %mask,
                 "SHUN removed"

@@ -28,6 +28,10 @@ pub struct StatsManager {
     connections_total: AtomicUsize,
     /// Peak concurrent connections.
     peak_connections: AtomicUsize,
+    /// Peak global users.
+    peak_global_users: AtomicUsize,
+    /// Unregistered connections.
+    unregistered_connections: AtomicUsize,
     /// Server startup time.
     started_at: Instant,
 }
@@ -44,6 +48,8 @@ impl StatsManager {
             channels: AtomicUsize::new(0),
             connections_total: AtomicUsize::new(0),
             peak_connections: AtomicUsize::new(0),
+            peak_global_users: AtomicUsize::new(0),
+            unregistered_connections: AtomicUsize::new(0),
             started_at: Instant::now(),
         }
     }
@@ -70,13 +76,51 @@ impl StatsManager {
             }
         }
 
+        // Update global peak
+        let mut peak_global = self.peak_global_users.load(Ordering::Relaxed);
+        while new_global > peak_global {
+            match self.peak_global_users.compare_exchange_weak(
+                peak_global,
+                new_global,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(current) => peak_global = current,
+            }
+        }
+
         new_global
     }
 
-    /// Decrement local user count. Returns new count.
+    /// Decrement local user count. Returns new global count.
     pub fn user_disconnected(&self) -> usize {
         self.local_users.fetch_sub(1, Ordering::Relaxed);
         self.global_users.fetch_sub(1, Ordering::Relaxed).saturating_sub(1)
+    }
+
+    /// Increment a remote user count (global only).
+    pub fn remote_user_connected(&self) {
+        let new_global = self.global_users.fetch_add(1, Ordering::Relaxed) + 1;
+
+        // Update global peak
+        let mut peak_global = self.peak_global_users.load(Ordering::Relaxed);
+        while new_global > peak_global {
+            match self.peak_global_users.compare_exchange_weak(
+                peak_global,
+                new_global,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(current) => peak_global = current,
+            }
+        }
+    }
+
+    /// Decrement a remote user count (global only).
+    pub fn remote_user_disconnected(&self) {
+        self.global_users.fetch_sub(1, Ordering::Relaxed);
     }
 
     /// Increment invisible user count.
@@ -89,16 +133,36 @@ impl StatsManager {
         self.invisible_users.fetch_sub(1, Ordering::Relaxed);
     }
 
-    /// Increment operator count.
+    /// Increment local operator count.
     pub fn user_opered(&self) {
         self.local_opers.fetch_add(1, Ordering::Relaxed);
         self.global_opers.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Decrement operator count.
+    /// Decrement local operator count.
     pub fn user_deopered(&self) {
         self.local_opers.fetch_sub(1, Ordering::Relaxed);
         self.global_opers.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    /// Increment a remote operator count (global only).
+    pub fn remote_user_opered(&self) {
+        self.global_opers.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Decrement a remote operator count (global only).
+    pub fn remote_user_deopered(&self) {
+        self.global_opers.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    /// Increment unregistered connection count.
+    pub fn increment_unregistered(&self) {
+        self.unregistered_connections.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Decrement unregistered connection count.
+    pub fn decrement_unregistered(&self) {
+        self.unregistered_connections.fetch_sub(1, Ordering::Relaxed);
     }
 
     // === Channel Counters ===
@@ -131,6 +195,7 @@ impl StatsManager {
     }
 
     /// Get local operator count.
+    #[allow(dead_code)]
     pub fn local_opers(&self) -> usize {
         self.local_opers.load(Ordering::Relaxed)
     }
@@ -146,6 +211,7 @@ impl StatsManager {
     }
 
     /// Get total connections since startup.
+    #[allow(dead_code)]
     pub fn connections_total(&self) -> usize {
         self.connections_total.load(Ordering::Relaxed)
     }
@@ -155,12 +221,23 @@ impl StatsManager {
         self.peak_connections.load(Ordering::Relaxed)
     }
 
+    /// Get peak global users.
+    pub fn peak_global_users(&self) -> usize {
+        self.peak_global_users.load(Ordering::Relaxed)
+    }
+
+    /// Get unregistered connection count.
+    pub fn unregistered_connections(&self) -> usize {
+        self.unregistered_connections.load(Ordering::Relaxed)
+    }
+
     /// Get server uptime in seconds.
     pub fn uptime_secs(&self) -> u64 {
         self.started_at.elapsed().as_secs()
     }
 
     /// Get number of servers (1 for standalone, more with S2S).
+    #[allow(dead_code)]
     pub fn servers(&self) -> usize {
         1 // TODO: integrate with SyncManager for linked servers
     }

@@ -52,6 +52,7 @@ impl ChannelActor {
 
         // Record timestamp for boolean mode changes
         if changed {
+            self.dirty = true;
             if let Some(mode_char) = Self::mode_to_char(&flag) {
                 self.mode_timestamps
                     .insert(mode_char, HybridTimestamp::now(&self.server_id));
@@ -80,6 +81,10 @@ impl ChannelActor {
 
         if let Some(mode) = new_mode {
             changed |= self.modes.insert(mode);
+        }
+
+        if changed {
+            self.dirty = true;
         }
 
         changed
@@ -220,6 +225,79 @@ pub fn modes_to_string(modes: &HashSet<ChannelMode>) -> String {
         flags
     } else {
         format!("{} {}", flags, params.join(" "))
+    }
+}
+
+/// Convert a mode string and parameters back to a set of `ChannelMode` variants.
+/// Used for restoring channel state from persistence.
+pub fn modes_from_string(
+    modes_str: &str,
+    key: Option<String>,
+    limit: Option<i32>,
+) -> HashSet<ChannelMode> {
+    let mut modes = HashSet::new();
+    let mut chars = modes_str.chars();
+
+    // First char should be + or -
+    if let Some(first) = chars.next() {
+        if first != '+' {
+            // If it's not a prefix, it might be the first flag
+            if let Some(m) = char_to_mode(first) {
+                modes.insert(m);
+            }
+        }
+    }
+
+    for c in chars {
+        if let Some(m) = char_to_mode(c) {
+            modes.insert(m);
+        }
+    }
+
+    use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
+    let ts = HybridTimestamp::new(0, 0, &ServerId::new("000"));
+
+    if let Some(k) = key {
+        modes.insert(ChannelMode::Key(k, ts));
+    }
+    if let Some(l) = limit {
+        modes.insert(ChannelMode::Limit(l as usize, ts));
+    }
+
+    modes
+}
+
+fn char_to_mode(c: char) -> Option<ChannelMode> {
+    match c {
+        'n' => Some(ChannelMode::NoExternal),
+        't' => Some(ChannelMode::TopicLock),
+        'm' => Some(ChannelMode::Moderated),
+        'M' => Some(ChannelMode::ModeratedUnreg),
+        'U' => Some(ChannelMode::OpModerated),
+        'N' => Some(ChannelMode::NoNickChange),
+        'c' => Some(ChannelMode::NoColors),
+        'z' => Some(ChannelMode::TlsOnly),
+        'K' => Some(ChannelMode::NoKnock),
+        'V' => Some(ChannelMode::NoInvite),
+        'T' => Some(ChannelMode::NoNotice),
+        'g' => Some(ChannelMode::FreeInvite),
+        'O' => Some(ChannelMode::OperOnly),
+        'A' => Some(ChannelMode::AdminOnly),
+        'u' => Some(ChannelMode::Auditorium),
+        'r' => Some(ChannelMode::Registered),
+        'Q' => Some(ChannelMode::NoKicks),
+        's' => Some(ChannelMode::Secret),
+        'p' => Some(ChannelMode::Private),
+        'i' => Some(ChannelMode::InviteOnly),
+        'C' => Some(ChannelMode::NoCtcp),
+        'P' => Some(ChannelMode::Permanent),
+        'R' => Some(ChannelMode::RegisteredOnly),
+        'E' => Some(ChannelMode::Roleplay),
+        'D' => Some(ChannelMode::DelayedJoin),
+        'S' => Some(ChannelMode::StripColors),
+        'B' => Some(ChannelMode::AntiCaps),
+        'G' => Some(ChannelMode::Censor),
+        _ => None,
     }
 }
 

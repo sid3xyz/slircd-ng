@@ -80,7 +80,7 @@ impl PostRegHandler for OperHandler {
                     ],
                 );
                 ctx.sender.send(reply).await?;
-                tracing::warn!(nick = %nick, attempts = ctx.state.failed_oper_attempts, "OPER brute-force lockout active");
+                tracing::warn!(target: "audit", nick = %nick, attempts = ctx.state.failed_oper_attempts, "OPER brute-force lockout active");
                 return Ok(());
             } else {
                 ctx.state.failed_oper_attempts = 0;
@@ -111,6 +111,7 @@ impl PostRegHandler for OperHandler {
 
             ctx.state.failed_oper_attempts += 1;
             tracing::warn!(
+                target: "audit",
                 nick = %nick,
                 oper_name = %name,
                 attempts = ctx.state.failed_oper_attempts,
@@ -131,6 +132,7 @@ impl PostRegHandler for OperHandler {
 
             ctx.state.failed_oper_attempts += 1;
             tracing::warn!(
+                target: "audit",
                 nick = %nick,
                 oper_name = %name,
                 "OPER failed: TLS required for this oper block"
@@ -153,6 +155,7 @@ impl PostRegHandler for OperHandler {
 
             ctx.state.failed_oper_attempts += 1;
             tracing::warn!(
+                target: "audit",
                 nick = %nick,
                 oper_name = %name,
                 attempts = ctx.state.failed_oper_attempts,
@@ -190,6 +193,7 @@ impl PostRegHandler for OperHandler {
 
                 ctx.state.failed_oper_attempts += 1;
                 tracing::warn!(
+                    target: "audit",
                     nick = %nick,
                     oper_name = %name,
                     user_mask = %user_mask,
@@ -239,12 +243,13 @@ impl PostRegHandler for OperHandler {
         {
             let mut user = user_arc.write().await;
             user.modes.oper = true;
+            ctx.matrix.stats_manager.user_opered();
         }
 
         // Notify observer of user update (Innovation 2)
         ctx.matrix.user_manager.notify_observer(ctx.uid, None).await;
 
-        tracing::info!(nick = %nick, oper_name = %name, "OPER successful");
+        tracing::info!(target: "audit", nick = %nick, oper_name = %name, "OPER successful");
 
         // Send snomask 'o'
         ctx.matrix

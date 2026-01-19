@@ -292,41 +292,48 @@ impl SyncManager {
         }
     }
 
-    pub fn start_heartbeat(&self) {
+    pub fn start_heartbeat(&self, mut shutdown_rx: tokio::sync::broadcast::Receiver<()>) {
         let manager = self.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
             loop {
-                interval.tick().await;
-                let now = Instant::now();
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let now = Instant::now();
 
-                // Collect SIDs to avoid holding lock while sending
-                let mut peers_to_ping = Vec::new();
-                let mut peers_to_drop = Vec::new();
+                        // Collect SIDs to avoid holding lock while sending
+                        let mut peers_to_ping = Vec::new();
+                        let mut peers_to_drop = Vec::new();
 
-                {
-                    for entry in manager.links.iter() {
-                        let sid = entry.key().clone();
-                        let link = entry.value();
+                        {
+                            for entry in manager.links.iter() {
+                                let sid = entry.key().clone();
+                                let link = entry.value();
 
-                        if now.duration_since(link.last_pong) > Duration::from_secs(90) {
-                            info!("Peer {} timed out", sid.as_str());
-                            peers_to_drop.push(sid);
-                        } else {
-                            peers_to_ping.push(sid);
+                                if now.duration_since(link.last_pong) > Duration::from_secs(90) {
+                                    info!("Peer {} timed out", sid.as_str());
+                                    peers_to_drop.push(sid);
+                                } else {
+                                    peers_to_ping.push(sid);
+                                }
+                            }
+                        }
+
+                        for sid in peers_to_drop {
+                            manager.links.remove(&sid);
+                        }
+
+                        for sid in peers_to_ping {
+                            if let Some(mut link) = manager.links.get_mut(&sid) {
+                                link.last_ping = now;
+                                let ping = Command::PING(manager.local_id.as_str().to_string(), None);
+                                let _ = link.tx.send(Arc::new(Message::from(ping))).await;
+                            }
                         }
                     }
-                }
-
-                for sid in peers_to_drop {
-                    manager.links.remove(&sid);
-                }
-
-                for sid in peers_to_ping {
-                    if let Some(mut link) = manager.links.get_mut(&sid) {
-                        link.last_ping = now;
-                        let ping = Command::PING(manager.local_id.as_str().to_string(), None);
-                        let _ = link.tx.send(Arc::new(Message::from(ping))).await;
+                    _ = shutdown_rx.recv() => {
+                        info!("S2S heartbeat stopping due to shutdown");
+                        break;
                     }
                 }
             }
@@ -461,36 +468,46 @@ impl SyncManager {
         let acceptor = TlsAcceptor::from(Arc::new(tls_config));
         let listener = tokio::net::TcpListener::bind(config.address).await?;
         info!(address = %config.address, "S2S TLS listener started");
+        
+        let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
 
         loop {
-            match listener.accept().await {
-                Ok((tcp_stream, addr)) => {
-                    info!(peer = %addr, "Inbound S2S TLS connection");
+            tokio::select! {
+                res = listener.accept() => {
+                    match res {
+                        Ok((tcp_stream, addr)) => {
+                            info!(peer = %addr, "Inbound S2S TLS connection");
 
-                    let manager = manager.clone();
-                    let matrix = Arc::clone(&matrix);
-                    let registry = Arc::clone(&registry);
-                    let db = db.clone();
-                    let acceptor = acceptor.clone();
+                            let manager = manager.clone();
+                            let matrix = Arc::clone(&matrix);
+                            let registry = Arc::clone(&registry);
+                            let db = db.clone();
+                            let acceptor = acceptor.clone();
 
-                    tokio::spawn(async move {
-                        match acceptor.accept(tcp_stream).await {
-                            Ok(tls_stream) => {
-                                let stream = S2SStream::TlsServer(tls_stream);
-                                Self::handle_inbound_connection(
-                                    manager, matrix, registry, db, stream, addr,
-                                    true, // is_tls
-                                )
-                                .await;
-                            }
-                            Err(e) => {
-                                tracing::warn!(peer = %addr, error = %e, "S2S TLS handshake failed");
-                            }
+                            tokio::spawn(async move {
+                                match acceptor.accept(tcp_stream).await {
+                                    Ok(tls_stream) => {
+                                        let stream = S2SStream::TlsServer(tls_stream);
+                                        Self::handle_inbound_connection(
+                                            manager, matrix, registry, db, stream, addr,
+                                            true, // is_tls
+                                        )
+                                        .await;
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(peer = %addr, error = %e, "S2S TLS handshake failed");
+                                    }
+                                }
+                            });
                         }
-                    });
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to accept S2S TLS connection");
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::error!(error = %e, "Failed to accept S2S TLS connection");
+                _ = shutdown_rx.recv() => {
+                    info!("S2S TLS listener stopping");
+                    break Ok(());
                 }
             }
         }
@@ -509,26 +526,36 @@ impl SyncManager {
         let listener = tokio::net::TcpListener::bind(addr).await?;
         info!(address = %addr, "S2S plaintext listener started");
 
+        let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
+
         loop {
-            match listener.accept().await {
-                Ok((tcp_stream, peer_addr)) => {
-                    info!(peer = %peer_addr, "Inbound S2S plaintext connection");
+            tokio::select! {
+                res = listener.accept() => {
+                    match res {
+                        Ok((tcp_stream, peer_addr)) => {
+                            info!(peer = %peer_addr, "Inbound S2S plaintext connection");
 
-                    let manager = manager.clone();
-                    let matrix = Arc::clone(&matrix);
-                    let registry = Arc::clone(&registry);
-                    let db = db.clone();
+                            let manager = manager.clone();
+                            let matrix = Arc::clone(&matrix);
+                            let registry = Arc::clone(&registry);
+                            let db = db.clone();
 
-                    tokio::spawn(async move {
-                        let stream = S2SStream::Plain(tcp_stream);
-                        Self::handle_inbound_connection(
-                            manager, matrix, registry, db, stream, peer_addr, false, // is_tls
-                        )
-                        .await;
-                    });
+                            tokio::spawn(async move {
+                                let stream = S2SStream::Plain(tcp_stream);
+                                Self::handle_inbound_connection(
+                                    manager, matrix, registry, db, stream, peer_addr, false, // is_tls
+                                )
+                                .await;
+                            });
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to accept S2S plaintext connection");
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::error!(error = %e, "Failed to accept S2S plaintext connection");
+                _ = shutdown_rx.recv() => {
+                    info!("S2S plaintext listener stopping");
+                    break Ok(());
                 }
             }
         }
@@ -544,6 +571,7 @@ impl SyncManager {
         remote_addr: std::net::SocketAddr,
         is_tls: bool,
     ) {
+        let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
         let mut framed = Framed::new(stream, LinesCodec::new());
 
         let mut machine = HandshakeMachine::new(
@@ -807,6 +835,17 @@ impl SyncManager {
                         }
                     }
                 }
+                _ = shutdown_rx.recv() => {
+                    info!(peer = %remote_addr, "Inbound S2S connection stopping due to shutdown");
+                    let _ = framed
+                        .send(
+                            Message::from(Command::ERROR("Server shutting down".into()))
+                                .to_string()
+                                .trim_end(),
+                        )
+                        .await;
+                    break;
+                }
             }
         }
 
@@ -830,7 +869,8 @@ impl SyncManager {
         let manager = self.clone();
         let matrix = matrix.clone();
         tokio::spawn(async move {
-            loop {
+            let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
+            'reconnect_loop: loop {
                 info!(hostname = %config.hostname, port = config.port, tls = config.tls, "Connecting to peer");
 
                 // Establish TCP connection
@@ -1107,6 +1147,17 @@ impl SyncManager {
 
                 loop {
                     tokio::select! {
+                        _ = shutdown_rx.recv() => {
+                            info!(peer = %config.hostname, "Outbound S2S connection stopping");
+                            let _ = framed
+                                .send(
+                                    Message::from(Command::ERROR("Server shutting down".into()))
+                                        .to_string()
+                                        .trim_end(),
+                                )
+                                .await;
+                            break 'reconnect_loop;
+                        }
                         msg = rx.recv() => {
                             match msg {
                                 Some(m) => {

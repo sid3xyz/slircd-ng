@@ -76,6 +76,7 @@ pub async fn run_handshake_loop(
     let LifecycleChannels {
         tx: handshake_tx,
         rx: handshake_rx,
+        ..
     } = channels;
     // Registration timeout from config
     let registration_timeout = Duration::from_secs(matrix.server_info.idle_timeouts.registration);

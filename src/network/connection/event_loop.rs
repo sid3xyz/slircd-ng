@@ -84,6 +84,7 @@ pub async fn run_event_loop(
     let LifecycleChannels {
         tx: outgoing_tx,
         rx: outgoing_rx,
+        shutdown_rx,
     } = channels;
     let mut flood_violations = 0u8;
     let mut quit_message: Option<String> = None;
@@ -301,6 +302,14 @@ pub async fn run_event_loop(
                 } else {
                     SelectResult::None
                 }
+            }
+            _ = shutdown_rx.recv() => {
+                info!("Shutdown signal received - disconnecting client");
+                quit_message = Some("Server shutting down".to_string());
+                let error_msg = Message::from(Command::ERROR(
+                    "Closing Link: Server shutting down".to_string(),
+                ));
+                SelectResult::Break { pending_writes: vec![error_msg] }
             }
         };
 

@@ -73,6 +73,7 @@ impl ChannelActor {
                 set_at: ts as i64,
             });
             self.topic_timestamp = Some(incoming_ts);
+            self.dirty = true;
         }
     }
 
@@ -141,7 +142,10 @@ impl ChannelActor {
                             });
                         }
                     } else {
-                        self.bans.retain(|e| e.mask != mask);
+                        if self.bans.iter().any(|e| e.mask == mask) {
+                            self.bans.retain(|e| e.mask != mask);
+                            self.dirty = true;
+                        }
                     }
                 }
             }
@@ -196,6 +200,7 @@ impl ChannelActor {
                                 .retain(|m| !matches!(m, ChannelMode::Limit(_, _)));
                             self.modes.insert(ChannelMode::Limit(l, incoming_ts));
                             self.mode_timestamps.insert('l', incoming_ts);
+                            self.dirty = true;
                         }
                     }
                 } else {
@@ -213,6 +218,7 @@ impl ChannelActor {
                         self.modes
                             .retain(|m| !matches!(m, ChannelMode::Limit(_, _)));
                         self.mode_timestamps.insert('l', incoming_ts);
+                        self.dirty = true;
                     }
                 }
             }
@@ -232,6 +238,7 @@ impl ChannelActor {
                             self.modes.retain(|m| !matches!(m, ChannelMode::Key(_, _)));
                             self.modes.insert(ChannelMode::Key(k, incoming_ts));
                             self.mode_timestamps.insert('k', incoming_ts);
+                            self.dirty = true;
                         }
                     }
                 } else {
@@ -247,6 +254,7 @@ impl ChannelActor {
                     if current_ts.is_none_or(|ts| incoming_ts > ts) {
                         self.modes.retain(|m| !matches!(m, ChannelMode::Key(_, _)));
                         self.mode_timestamps.insert('k', incoming_ts);
+                        self.dirty = true;
                     }
                 }
             }
@@ -363,6 +371,7 @@ impl ChannelActor {
                 self.modes.remove(&mode);
             }
             self.mode_timestamps.insert(mode_char, incoming_ts);
+            self.dirty = true;
         }
     }
 }

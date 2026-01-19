@@ -69,7 +69,7 @@ impl PostRegHandler for KillHandler {
 
         ctx.matrix.disconnect_user(&target_uid, &quit_reason).await;
 
-        tracing::info!(killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
+        tracing::info!(target: "audit", killer = %killer_nick, target = %target_nick, reason = %reason, "KILL command executed");
 
         // Send snomask 'k'
         ctx.matrix
