@@ -1,21 +1,17 @@
 use super::autoreplay::perform_autoreplay;
 use super::context::{ConnectionContext, LifecycleChannels};
-use super::error_handling::{
-    ReadErrorAction, classify_read_error, extract_label_from_raw, handler_error_to_reply_owned,
-};
+use super::error_handling::{ReadErrorAction, classify_read_error, extract_label_from_raw};
 use super::helpers::{
-    batch_end_msg, batch_start_msg, closing_link_error, excess_flood_error, flood_warning_notice,
+    batch_end_msg, batch_start_msg, excess_flood_error, flood_warning_notice,
     input_too_long_response,
 };
-use crate::handlers::{
-    Context, ResponseMiddleware, labeled_ack, process_batch_message, with_label,
-};
+use crate::handlers::{labeled_ack, with_label};
 use crate::state::RegisteredState;
 use slirc_proto::{Command, Message, Prefix, Tag, generate_batch_ref};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
+use super::dispatch::{DispatchResult, ProcessParams, process_message};
 
 const MAX_FLOOD_VIOLATIONS: u8 = 3;
 const PING_CHECK_INTERVAL_SECS: u64 = 15;
@@ -271,133 +267,6 @@ fn check_ping_state(
     }
 }
 
-async fn handle_dispatch(
-    msg: Box<Message>,
-    label: Option<String>,
-    conn: &mut ConnectionContext<'_>,
-    reg_state: &mut RegisteredState,
-    outgoing_tx: &tokio::sync::mpsc::Sender<Arc<Message>>,
-    outgoing_rx: &mut tokio::sync::mpsc::Receiver<Arc<Message>>,
-    quit_message: &mut Option<String>,
-) -> bool {
-    let ConnectionContext {
-        uid,
-        transport,
-        matrix,
-        registry,
-        db,
-        addr,
-        ..
-    } = conn;
-
-    // Update last active timestamp for IDLE tracking
-    matrix.user_manager.update_last_active(uid).await;
-
-    debug!(raw = ?msg, "Received message");
-
-    // Batch processing - need to create a temporary MessageRef for this
-    // since process_batch_message needs a reference
-    let raw_str = msg.to_string();
-    let batch_result =
-        if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
-            process_batch_message(reg_state, &msg_ref, &matrix.server_info.name)
-        } else {
-            Ok(None)
-        };
-
-    match batch_result {
-        Ok(Some(_batch_ref)) => {
-            debug!("Message absorbed into active batch");
-            return true;
-        }
-        Ok(None) => {}
-        Err(fail_msg) => {
-            warn!(error = %fail_msg, "Batch processing error");
-            reg_state.active_batch = None;
-            reg_state.active_batch_ref = None;
-            if let Ok(fail) = fail_msg.parse::<Message>() {
-                let _ = outgoing_tx.send(Arc::new(fail)).await;
-            }
-            return true;
-        }
-    }
-
-    // Select middleware for labeled-response
-    let capture_buffer: Option<Mutex<Vec<Message>>> =
-        label.as_ref().map(|_| Mutex::new(Vec::new()));
-    let sender_middleware = if let Some(buf) = capture_buffer.as_ref() {
-        ResponseMiddleware::Capturing(buf)
-    } else {
-        ResponseMiddleware::Direct(outgoing_tx)
-    };
-    let dispatch_sender = sender_middleware.clone();
-
-    // Dispatch - create a temp MessageRef for the dispatch call
-    let (dispatch_result, suppress_ack) = {
-        let raw_str = msg.to_string();
-        if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
-            let mut ctx = Context {
-                uid,
-                matrix,
-                sender: dispatch_sender,
-                state: reg_state,
-                db,
-                remote_addr: *addr,
-                label: label.clone(),
-                suppress_labeled_ack: false,
-                active_batch_id: None,
-                registry,
-            };
-
-            let result = registry.dispatch_post_reg(&mut ctx, &msg_ref).await;
-            (result, ctx.suppress_labeled_ack)
-        } else {
-            // Should not happen, but handle gracefully
-            (Ok(()), false)
-        }
-    };
-
-    if let Err(e) = dispatch_result {
-        debug!(error = ?e, "Handler error");
-
-        if let crate::handlers::HandlerError::Quit(quit_msg) = e {
-            // Drain pending outgoing messages before quitting
-            while let Ok(msg) = outgoing_rx.try_recv() {
-                let _ = transport.write_message(&msg).await;
-            }
-
-            *quit_message = quit_msg.clone();
-            let error_reply = closing_link_error(addr, quit_msg.as_deref());
-            let _ = transport.write_message(&error_reply).await;
-            return false;
-        } else {
-            // Other errors - use owned message for error reply
-            let nick = &reg_state.nick;
-            if let Some(reply) =
-                handler_error_to_reply_owned(&matrix.server_info.name, nick, &e, &msg)
-            {
-                let _ = transport.write_message(&reply).await;
-            }
-        }
-    }
-
-    // Labeled-response handling (IRCv3 spec compliant)
-    if let Some(label_str) = label
-        && let Some(buf) = capture_buffer
-    {
-        let mut messages = buf.lock().await;
-        send_labeled_response(
-            transport,
-            &matrix.server_info.name,
-            &label_str,
-            &mut messages,
-            suppress_ack,
-        )
-        .await;
-    }
-    true
-}
-
 /// Run Phase 2: Unified event loop (post-registration).
 pub async fn run_event_loop(
     mut conn: ConnectionContext<'_>,
@@ -516,19 +385,21 @@ pub async fn run_event_loop(
             }
 
             SelectResult::ProcessMessage { msg, label } => {
-                let continue_loop = handle_dispatch(
-                    msg,
+                let params = ProcessParams {
+                    msg: &msg,
                     label,
-                    &mut conn,
+                    uid: conn.uid,
+                    addr: conn.addr,
                     reg_state,
-                    channels.tx,
-                    channels.rx,
-                    &mut quit_message,
-                )
-                .await;
+                };
 
-                if !continue_loop {
-                    break;
+                match process_message(&mut conn, params, channels.tx, channels.rx).await {
+                    DispatchResult::Continue => continue,
+                    DispatchResult::Quit(msg) => {
+                        quit_message = msg;
+                        break;
+                    }
+                    DispatchResult::WriteError => break,
                 }
             }
         }
