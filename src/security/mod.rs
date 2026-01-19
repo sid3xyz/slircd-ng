@@ -22,7 +22,6 @@
 
 pub mod ban_cache;
 pub mod cloaking;
-pub mod dnsbl;
 pub mod heuristics;
 pub mod ip_deny;
 pub mod password;
