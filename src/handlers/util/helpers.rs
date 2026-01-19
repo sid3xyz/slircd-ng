@@ -5,7 +5,7 @@
 //! Note: User lookup helpers (`resolve_nick_to_uid`, `get_nick_or_star`, etc.)
 //! remain in `mod.rs` because they depend on `Context` which is defined there.
 
-use super::{Context, HandlerResult};
+use crate::handlers::{Context, HandlerResult};
 
 pub mod fanout;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Response, Tag};
@@ -51,7 +51,7 @@ macro_rules! require_arg_or_reply {
             _ => {
                 let reply = slirc_proto::Response::err_needmoreparams($ctx.nick(), $cmd)
                     .with_prefix($ctx.server_prefix());
-                let reply = $crate::handlers::helpers::with_label(reply, $ctx.label.as_deref());
+                let reply = $crate::handlers::util::helpers::with_label(reply, $ctx.label.as_deref());
                 let _ = $ctx.sender.send(reply).await;
                 $crate::metrics::record_command_error($cmd, "ERR_NEEDMOREPARAMS");
                 None

@@ -1,6 +1,8 @@
 //! REGISTER command handler (draft/account-registration).
 
-use super::{Context, HandlerResult, UniversalHandler};
+use crate::handlers::{
+    Context, HandlerResult, UniversalHandler,
+};
 use crate::state::SessionState;
 use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix};

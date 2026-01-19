@@ -17,7 +17,7 @@
 use super::context::{Context, HandlerResult};
 use super::traits::{DynUniversalHandler, PostRegHandler, PreRegHandler, ServerHandler};
 use crate::handlers::{
-    account::RegisterHandler,
+    services::account::RegisterHandler,
     admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler},
     batch::BatchHandler,
     cap::{AuthenticateHandler, CapHandler},
@@ -28,15 +28,23 @@ use crate::handlers::{
         SceneHandler, TagmsgHandler,
     },
     mode::ModeHandler,
-    monitor::MonitorHandler,
+    user::monitor::MonitorHandler,
     server::{
-        ServerHandshakeHandler, ServerPropagationHandler, capab::CapabHandler, encap::EncapHandler,
-        kick::KickHandler, kill::KillHandler, routing::RoutedMessageHandler, sid::SidHandler,
-        sjoin::SJoinHandler, svinfo::SvinfoHandler, tmode::TModeHandler, topic::TopicHandler,
+        base::{ServerHandshakeHandler, ServerPropagationHandler},
+        capab::CapabHandler,
+        encap::EncapHandler,
+        kick::KickHandler as ServerKickHandler,
+        kill::KillHandler as ServerKillHandler,
+        routing::RoutedMessageHandler,
+        sjoin::SJoinHandler,
+        svinfo::SvinfoHandler,
+        tmode::TModeHandler,
+        topic::TopicHandler as ServerTopicHandler,
         uid::UidHandler,
+        sid::SidHandler,
     },
-    service_aliases::{CsHandler, NsHandler},
-    user_status::{AwayHandler, SetnameHandler, SilenceHandler},
+    services::aliases::{CsHandler, NsHandler},
+    user::status::{AwayHandler, SetnameHandler, SilenceHandler},
 };
 use crate::state::{RegisteredState, ServerState, UnregisteredState};
 use crate::telemetry::CommandTimer;
@@ -116,9 +124,9 @@ impl Registry {
         server_handlers.insert("UID", Box::new(UidHandler));
         server_handlers.insert("SID", Box::new(SidHandler));
         server_handlers.insert("ENCAP", Box::new(EncapHandler));
-        server_handlers.insert("TOPIC", Box::new(TopicHandler));
-        server_handlers.insert("KICK", Box::new(KickHandler));
-        server_handlers.insert("KILL", Box::new(KillHandler));
+        server_handlers.insert("TOPIC", Box::new(ServerTopicHandler));
+        server_handlers.insert("KICK", Box::new(ServerKickHandler));
+        server_handlers.insert("KILL", Box::new(ServerKillHandler));
         server_handlers.insert(
             "BATCH",
             Box::new(crate::handlers::batch::server::ServerBatchHandler),
@@ -143,7 +151,7 @@ impl Registry {
         post_reg_handlers.insert("RELAYMSG", Box::new(RelayMsgHandler));
 
         // User query handlers
-        crate::handlers::user_query::register(&mut post_reg_handlers);
+        crate::handlers::user::query::register(&mut post_reg_handlers);
 
         // Server query handlers
         crate::handlers::server_query::register(&mut post_reg_handlers);

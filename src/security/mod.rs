@@ -25,6 +25,7 @@ pub mod cloaking;
 pub mod dnsbl;
 pub mod heuristics;
 pub mod ip_deny;
+pub mod password;
 pub mod rate_limit;
 pub mod rbl;
 pub mod reputation;

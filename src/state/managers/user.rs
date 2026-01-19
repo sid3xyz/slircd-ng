@@ -11,7 +11,7 @@ use slirc_proto::{Command, Message, Prefix};
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
+
 use std::time::Instant;
 use tokio::sync::{RwLock, mpsc};
 
@@ -76,7 +76,7 @@ impl UserManager {
     ///
     /// This should be called whenever the user sends a command.
     /// Uses Relaxed ordering as strict consistency is not required for idle time.
-    pub fn update_last_active(&self, uid: &str) {
+    pub async fn update_last_active(&self, uid: &str) {
         if let Some(user_arc) = self.users.get(uid) {
             user_arc
                 .read() // Acquire read lock (AtomicI64 has interior mutability)

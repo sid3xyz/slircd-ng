@@ -21,7 +21,6 @@
 //! This eliminates runtime `if !registered` checks by making invalid dispatch
 //! a compile-time error. See [`core::traits`] for details.
 
-mod account;
 mod admin;
 mod bans;
 pub mod batch;
@@ -30,17 +29,15 @@ mod channel;
 pub mod chathistory;
 mod connection;
 mod core;
-mod helpers;
 mod messaging;
 mod mode;
-mod monitor;
 mod oper;
-mod server;
+pub mod server;
 mod server_query;
+pub mod services;
 mod s2s;
-mod service_aliases;
-mod user_query;
-mod user_status;
+pub mod user;
+pub mod util;
 
 // Re-export core types
 pub use core::{
@@ -53,7 +50,8 @@ pub use core::{
 pub use core::{PostRegHandler, PreRegHandler, UniversalHandler};
 
 // Re-export helper functions for use by handlers
-pub use helpers::{
+pub use util::helpers;
+pub use util::helpers::{
     labeled_ack, matches_hostmask, send_no_such_nick, server_notice, server_reply, user_prefix,
     with_label,
 };
@@ -64,7 +62,7 @@ pub use cap::SaslState;
 pub use channel::{TargetUser, force_join_channel, force_part_channel};
 pub use connection::WelcomeBurstWriter;
 pub use mode::{apply_user_modes_typed, format_modes_for_log};
-pub use monitor::{
+pub use user::monitor::{
     cleanup_monitors, notify_extended_monitor_watchers, notify_monitors_offline,
     notify_monitors_online,
 };

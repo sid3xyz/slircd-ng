@@ -3,7 +3,7 @@
 //! Implements presence notification via MONITOR.
 //! Reference: <https://ircv3.net/specs/extensions/monitor>
 
-use super::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
+use crate::handlers::{Context, HandlerResult, PostRegHandler, server_reply, with_label};
 use crate::state::RegisteredState;
 use crate::state::dashmap_ext::DashMapExt;
 use async_trait::async_trait;

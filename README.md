@@ -206,13 +206,16 @@ slircd-ng/
 
 ## Documentation
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into system design
-- **[ROADMAP.md](ROADMAP.md)** - Release timeline and strategic direction
-- **[PROTO_REQUIREMENTS.md](PROTO_REQUIREMENTS.md)** - Protocol blockers and enhancements
-- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment verification
-- **[CHANGELOG.md](CHANGELOG.md)** - Release notes and version history
-
----
+## Documentation
+ 
+ - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Deep dive into system design
+ - **[SECURITY.md](docs/SECURITY.md)** - Security model and practices
+ - **[ROADMAP.md](ROADMAP.md)** - Release timeline and strategic direction
+ - **[PROTO_REQUIREMENTS.md](PROTO_REQUIREMENTS.md)** - Protocol blockers and enhancements
+ - **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment verification
+ - **[CHANGELOG.md](CHANGELOG.md)** - Release notes and version history
+ 
+ ---
 
 ## Performance
 

@@ -17,10 +17,17 @@ pub struct OperBlock {
 }
 
 impl OperBlock {
-    /// Verify the provided password against the stored password (plaintext or bcrypt).
+    /// Verify the provided password against the stored password (plaintext or Argon2).
     pub fn verify_password(&self, password: &str) -> bool {
-        if self.password.starts_with("$2") {
-            bcrypt::verify(password, &self.password).unwrap_or(false)
+        if self.password.starts_with("$argon2") {
+            // Verify using Argon2 via the same mechanism as user passwords
+            match argon2::PasswordHash::new(&self.password) {
+                Ok(parsed_hash) => {
+                    crate::security::password::verify_password(password, &parsed_hash)
+                        .unwrap_or(false)
+                }
+                Err(_) => false,
+            }
         } else {
             // Fallback to plaintext check
             self.password == password

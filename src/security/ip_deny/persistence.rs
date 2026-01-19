@@ -38,11 +38,11 @@ pub(super) fn save(
     };
 
     // Write to temp file first
-    let temp_path = persist_path.with_extension("msgpack.tmp");
+    let temp_path = persist_path.with_extension("json.tmp");
     let file = File::create(&temp_path)?;
     let writer = BufWriter::new(file);
 
-    rmp_serde::encode::write(&mut BufWriter::new(writer), &state).map_err(std::io::Error::other)?;
+    serde_json::to_writer(writer, &state).map_err(|e| std::io::Error::other(e))?;
 
     // Atomic rename
     fs::rename(&temp_path, persist_path)?;
@@ -51,7 +51,7 @@ pub(super) fn save(
     Ok(())
 }
 
-/// Load deny list from MessagePack file.
+/// Load deny list from JSON file.
 #[allow(clippy::type_complexity)]
 pub(super) fn load(
     path: &Path,
@@ -66,7 +66,7 @@ pub(super) fn load(
 > {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let state: PersistentState = rmp_serde::from_read(reader)?;
+    let state: PersistentState = serde_json::from_reader(reader)?;
 
     let mut ipv4_bitmap = RoaringBitmap::new();
     let mut ipv4_cidrs = Vec::new();

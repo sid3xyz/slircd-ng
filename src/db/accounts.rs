@@ -3,10 +3,7 @@
 //! Handles account registration, authentication, and nickname management.
 
 use super::DbError;
-use argon2::{
-    Argon2,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
-};
+use argon2::password_hash::{PasswordHash, rand_core::OsRng};
 use rand::RngCore;
 use sqlx::SqlitePool;
 use std::num::NonZeroU32;
@@ -590,19 +587,10 @@ impl<'a> AccountRepository<'a> {
 }
 
 /// Hash a password using Argon2 in a blocking task.
-///
-/// Argon2 password hashing is CPU-intensive (100-500ms by design) and runs
-/// synchronously. This function offloads the work to a blocking threadpool
-/// to prevent blocking the async executor during concurrent SASL authentications.
 async fn hash_password(password: &str) -> Result<String, DbError> {
     let password = password.to_string();
     tokio::task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
-        let argon2 = Argon2::default();
-        let hash = argon2
-            .hash_password(password.as_bytes(), &salt)
-            .map_err(|_| DbError::InvalidPassword)?;
-        Ok(hash.to_string())
+        Ok(crate::security::password::hash_password(&password))
     })
     .await
     .map_err(|e| DbError::Sqlx(sqlx::Error::Io(std::io::Error::other(e.to_string()))))?
@@ -635,42 +623,35 @@ async fn compute_scram_verifiers(password: &str) -> ScramVerifiers {
 }
 
 /// Verify a password against a stored hash in a blocking task.
-///
-/// Argon2 verification is CPU-intensive and runs synchronously. This function
-/// offloads the work to a blocking threadpool to prevent blocking the async executor.
 async fn verify_password(password: &str, hash: &str) -> Result<(), DbError> {
     let password = password.to_string();
     let hash = hash.to_string();
+    
     tokio::task::spawn_blocking(move || {
         let parsed_hash = PasswordHash::new(&hash).map_err(|_| DbError::InvalidPassword)?;
-        Argon2::default()
-            .verify_password(password.as_bytes(), &parsed_hash)
-            .map_err(|_| DbError::InvalidPassword)
+        
+        crate::security::password::verify_password(&password, &parsed_hash)
+            .map_err(|_| DbError::InvalidPassword)?;
+        
+        if crate::security::password::verify_password(&password, &parsed_hash).unwrap_or(false) {
+             Ok(())
+        } else {
+             Err(DbError::InvalidPassword)
+        }
     })
     .await
     .map_err(|e| DbError::Sqlx(sqlx::Error::Io(std::io::Error::other(e.to_string()))))?
 }
 
 /// Dummy password verification for constant-time account lookup in a blocking task.
-///
-/// When an account doesn't exist, we still need to spend approximately
-/// the same amount of time as a real password verification to prevent
-/// timing oracle attacks that could reveal whether an account exists.
-///
-/// This uses a pre-computed Argon2 hash that will always fail verification,
-/// but consumes similar CPU time to a real verification attempt.
-/// Runs in a blocking task to prevent executor stalls.
 async fn dummy_password_verify(password: &str) {
     let password = password.to_string();
     tokio::task::spawn_blocking(move || {
-        // Pre-computed Argon2id hash of "dummy" - this will never match any real password
-        // but forces the CPU to do real Argon2 work.
+        // Pre-computed Argon2id hash of "dummy"
         const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$dGltaW5nLW9yYWNsZS1kdW1teQ$K4VZh8k8YL3E8H7E8H7E8H7E8H7E8H7E8H7E8H7E8Hs";
-
-        // We intentionally ignore the result - we just want to burn CPU time
-        // equivalent to a real password check.
+        
         if let Ok(parsed) = PasswordHash::new(DUMMY_HASH) {
-            let _ = Argon2::default().verify_password(password.as_bytes(), &parsed);
+            let _ = crate::security::password::verify_password(&password, &parsed);
         }
     })
     .await

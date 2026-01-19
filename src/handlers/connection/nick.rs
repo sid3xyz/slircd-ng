@@ -24,7 +24,7 @@ use super::super::{
     Context, HandlerError, HandlerResult, UniversalHandler, notify_monitors_offline,
     notify_monitors_online,
 };
-use crate::handlers::helpers::fanout::broadcast_to_account;
+use crate::handlers::util::helpers::fanout::broadcast_to_account;
 use crate::state::{SessionState, session::SaslAccess};
 use async_trait::async_trait;
 use dashmap::mapref::entry::Entry;

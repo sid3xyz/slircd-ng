@@ -3,8 +3,8 @@
 //! Handles user status management and IRCv3 profile updates.
 
 use super::monitor::notify_extended_monitor_watchers;
-use super::user_mask_from_state;
-use super::{Context, HandlerError, HandlerResult, PostRegHandler, server_reply};
+use crate::handlers::user_mask_from_state;
+use crate::handlers::{Context, HandlerError, HandlerResult, PostRegHandler, server_reply};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{Command, MessageRef, Response};

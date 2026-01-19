@@ -369,7 +369,7 @@ pub async fn run_event_loop(
 
             SelectResult::ProcessMessage { msg, label } => {
                 // Update last active timestamp for IDLE tracking
-                matrix.user_manager.update_last_active(uid);
+                matrix.user_manager.update_last_active(uid).await;
 
                 debug!(raw = ?msg, "Received message");
 

@@ -2,7 +2,7 @@
 //!
 //! Provides shortcut commands for interacting with IRC services.
 
-use super::{Context, HandlerResult, PostRegHandler};
+use crate::handlers::{Context, HandlerResult, PostRegHandler};
 use crate::services::route_service_message;
 use crate::state::RegisteredState;
 use async_trait::async_trait;

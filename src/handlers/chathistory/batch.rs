@@ -1,7 +1,7 @@
 //! Batch sending logic for CHATHISTORY responses.
 
 use crate::handlers::{Context, HandlerError};
-use crate::history::StoredMessage;
+
 use crate::state::RegisteredState;
 use slirc_proto::{BatchSubCommand, Command, Message, Prefix, Tag};
 use tracing::warn;
@@ -144,7 +144,7 @@ pub async fn send_history_batch(
                     EventKind::Part(reason) => Command::PART(target.to_string(), reason),
                     EventKind::Quit(reason) => Command::QUIT(reason),
                     EventKind::Kick { target: kicked, reason } => Command::KICK(target.to_string(), kicked, reason),
-                    EventKind::Mode { diff } => Command::MODE(target.to_string(), vec![diff]),
+                    EventKind::Mode { diff } => Command::Raw("MODE".to_string(), vec![target.to_string(), diff]),
                     EventKind::Topic { new_topic, .. } => Command::TOPIC(target.to_string(), Some(new_topic)),
                     EventKind::Nick { new_nick } => Command::NICK(new_nick),
                 };

@@ -1,5 +1,5 @@
 use crate::handlers::core::traits::ServerHandler;
-use crate::handlers::helpers::collect_message_args;
+use crate::handlers::util::helpers::collect_message_args;
 use crate::handlers::{Context, HandlerError, HandlerResult};
 use crate::state::ServerState;
 use crate::state::actor::ChannelEvent;

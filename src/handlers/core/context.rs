@@ -83,7 +83,7 @@ impl<'a, S> Context<'a, S> {
         response: slirc_proto::Response,
         params: Vec<String>,
     ) -> Result<(), HandlerError> {
-        use crate::handlers::helpers::{server_reply, with_label};
+        use crate::handlers::util::helpers::{server_reply, with_label};
         let reply = server_reply(&self.matrix.server_info.name, response, params);
         let reply = with_label(reply, self.label.as_deref());
         self.sender.send(reply).await?;
@@ -167,7 +167,7 @@ impl<'a> Context<'a, RegisteredState> {
     /// Wraps `server_notice` and sends it.
     #[inline]
     pub async fn send_notice(&self, text: impl Into<String>) -> Result<(), HandlerError> {
-        let msg = crate::handlers::helpers::server_notice(self.server_name(), self.nick(), text);
+        let msg = crate::handlers::util::helpers::server_notice(self.server_name(), self.nick(), text);
         self.sender.send(msg).await?;
         Ok(())
     }

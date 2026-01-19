@@ -13,7 +13,7 @@ use super::super::{
 };
 use super::routing::route_to_channel_with_snapshot;
 use super::types::{RouteMeta, RouteOptions, SenderSnapshot};
-use crate::handlers::helpers::join_message_args;
+use crate::handlers::util::helpers::join_message_args;
 use crate::history::{MessageEnvelope, StoredMessage};
 use crate::state::RegisteredState;
 use async_trait::async_trait;

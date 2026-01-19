@@ -3,7 +3,7 @@
 //! Implements [`HistoryProvider`] using the redb embedded database for
 //! durable message history with efficient range queries by target and time.
 
-use super::{HistoryError, HistoryProvider, HistoryQuery, StoredMessage, types::{HistoryItem, StoredEvent}};
+use super::{HistoryError, HistoryProvider, HistoryQuery, StoredMessage, types::HistoryItem};
 use async_trait::async_trait;
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use slirc_proto::irc_to_lower;
