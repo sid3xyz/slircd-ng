@@ -13,6 +13,7 @@
 //! - Limits use `history.znc-maxmessages` for the `<channel> <start>` form.
 
 use crate::history::{HistoryQuery, StoredMessage};
+use crate::history::types::HistoryItem;
 use crate::services::{Service, ServiceEffect};
 use crate::state::Matrix;
 use async_trait::async_trait;
@@ -131,17 +132,23 @@ impl Service for Playback {
                 // Collect targets: channels + DMs active since start
                 let mut messages: Vec<StoredMessage> = Vec::new();
 
-                // Channels: query each
+            // Channels: query each
                 for ch in &channels {
                     let q = HistoryQuery {
                         target: ch.clone(),
                         start: start_nanos.map(|s| s + 1_000_000), // exclusive start (ms precision)
                         end: None,
+                        start_id: None,
+                        end_id: None,
                         limit: usize::MAX, // no limit across targets
                         reverse: false,
                     };
-                    if let Ok(mut msgs) = matrix.service_manager.history.query(q).await {
-                        messages.append(&mut msgs);
+                    if let Ok(items) = matrix.service_manager.history.query(q).await {
+                        for item in items {
+                            if let HistoryItem::Message(m) = item {
+                                messages.push(m);
+                            }
+                        }
                     }
                 }
 
@@ -174,11 +181,17 @@ impl Service for Playback {
                                 target: dm_key,
                                 start: Some(start + 1_000_000),
                                 end: None,
+                                start_id: None,
+                                end_id: None,
                                 limit: usize::MAX,
                                 reverse: false,
                             };
-                            if let Ok(mut msgs) = matrix.service_manager.history.query(q).await {
-                                messages.append(&mut msgs);
+                            if let Ok(items) = matrix.service_manager.history.query(q).await {
+                                for item in items {
+                                    if let HistoryItem::Message(m) = item {
+                                        messages.push(m);
+                                    }
+                                }
                             }
                         }
                     }
@@ -204,11 +217,17 @@ impl Service for Playback {
                                 target: dm_key,
                                 start: None,
                                 end: None,
+                                start_id: None,
+                                end_id: None,
                                 limit: usize::MAX,
                                 reverse: false,
                             };
-                            if let Ok(mut msgs) = matrix.service_manager.history.query(q).await {
-                                messages.append(&mut msgs);
+                            if let Ok(items) = matrix.service_manager.history.query(q).await {
+                                for item in items {
+                                    if let HistoryItem::Message(m) = item {
+                                        messages.push(m);
+                                    }
+                                }
                             }
                         }
                     }
@@ -221,16 +240,21 @@ impl Service for Playback {
                 }
             }
 
-            // play <channel>
             (Some(tgt), None, None) if tgt.starts_with('#') || tgt.starts_with('&') => {
                 let q = HistoryQuery {
                     target: tgt.to_string(),
                     start: None,
                     end: None,
+                    start_id: None,
+                    end_id: None,
                     limit: usize::MAX,
                     reverse: false,
                 };
-                if let Ok(mut msgs) = matrix.service_manager.history.query(q).await {
+                if let Ok(items) = matrix.service_manager.history.query(q).await {
+                    let mut msgs: Vec<StoredMessage> = items.into_iter().filter_map(|i| match i {
+                        HistoryItem::Message(m) => Some(m),
+                        _ => None,
+                    }).collect();
                     msgs.sort_by_key(|m| m.nanotime);
                     for m in msgs {
                         effects.push(Self::to_effect(uid, &m, has_server_time));
@@ -241,15 +265,21 @@ impl Service for Playback {
             // play <channel> <start>
             (Some(tgt), Some(start), None) if tgt.starts_with('#') || tgt.starts_with('&') => {
                 if let Some(start_ns) = Self::parse_unix_ts_nanos(start) {
-                    let limit = matrix.config.history.znc_maxmessages.max(1);
+                    let limit = 50; // ZNC playback default limit
                     let q = HistoryQuery {
                         target: tgt.to_string(),
                         start: Some(start_ns + 1_000_000),
                         end: None,
+                        start_id: None,
+                        end_id: None,
                         limit,
                         reverse: true,
                     };
-                    if let Ok(mut msgs) = matrix.service_manager.history.query(q).await {
+                    if let Ok(items) = matrix.service_manager.history.query(q).await {
+                        let mut msgs: Vec<StoredMessage> = items.into_iter().filter_map(|i| match i {
+                            HistoryItem::Message(m) => Some(m),
+                            _ => None,
+                        }).collect();
                         // reverse back to ascending
                         msgs.reverse();
                         for m in msgs {
@@ -267,10 +297,16 @@ impl Service for Playback {
                     target: tgt.to_string(),
                     start: start_ns.map(|s| s + 1_000_000),
                     end: end_ns,
+                    start_id: None,
+                    end_id: None,
                     limit: usize::MAX,
                     reverse: false,
                 };
-                if let Ok(mut msgs) = matrix.service_manager.history.query(q).await {
+                if let Ok(items) = matrix.service_manager.history.query(q).await {
+                    let mut msgs: Vec<StoredMessage> = items.into_iter().filter_map(|i| match i {
+                        HistoryItem::Message(m) => Some(m),
+                        _ => None,
+                    }).collect();
                     msgs.sort_by_key(|m| m.nanotime);
                     for m in msgs {
                         effects.push(Self::to_effect(uid, &m, has_server_time));
@@ -287,10 +323,16 @@ impl Service for Playback {
                         target: dm_key,
                         start: Some(start_ns + 1_000_000),
                         end: None,
+                        start_id: None,
+                        end_id: None,
                         limit: usize::MAX,
                         reverse: false,
                     };
-                    if let Ok(mut msgs) = matrix.service_manager.history.query(q).await {
+                    if let Ok(items) = matrix.service_manager.history.query(q).await {
+                        let mut msgs: Vec<StoredMessage> = items.into_iter().filter_map(|i| match i {
+                            HistoryItem::Message(m) => Some(m),
+                            _ => None,
+                        }).collect();
                         msgs.sort_by_key(|m| m.nanotime);
                         for m in msgs {
                             effects.push(Self::to_effect(uid, &m, has_server_time));
