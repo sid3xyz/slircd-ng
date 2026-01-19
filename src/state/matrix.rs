@@ -189,6 +189,19 @@ pub struct MatrixParams<'a> {
     pub always_on_store: Option<std::sync::Arc<crate::db::AlwaysOnStore>>,
 }
 
+/// Data required to perform a user disconnect.
+struct UserDisconnectInfo {
+    nick: String,
+    user: String,
+    host: String,
+    realname: String,
+    channels: Vec<String>,
+    session_id: SessionId,
+    account: Option<String>,
+    is_invisible: bool,
+    is_oper: bool,
+}
+
 impl Matrix {
     /// Create a new Matrix with the given server configuration.
     pub fn new(params: MatrixParams<'_>) -> (Self, mpsc::Receiver<Arc<Message>>) {
@@ -368,121 +381,149 @@ impl Matrix {
         quit_reason: &str,
         explicit_session_id: Option<SessionId>,
     ) -> Vec<String> {
+        // 1. Fetch User Info
+        let info = match self
+            .fetch_user_disconnect_info(target_uid, explicit_session_id)
+            .await
+        {
+            Some(i) => i,
+            None => return vec![],
+        };
+
+        // 2. Handle Session Detachment (Bouncer/Multiclient)
+        if self.process_session_detachment(target_uid, &info).await {
+            return info.channels;
+        }
+
+        // 3. Cleanup Monitors & Record WHOWAS
+        self.cleanup_monitors_and_whowas(target_uid, &info).await;
+
+        // 4. Leave Channels & Broadcast QUIT
+        self.broadcast_quit_and_leave_channels(target_uid, &info, quit_reason)
+            .await;
+
+        // 5. Final Cleanup (Maps, Timers, Metrics)
+        self.cleanup_user_state(target_uid, &info).await;
+
+        info.channels
+    }
+
+    // --- Helper Methods ---
+
+    async fn fetch_user_disconnect_info(
+        &self,
+        target_uid: &Uid,
+        explicit_session_id: Option<SessionId>,
+    ) -> Option<UserDisconnectInfo> {
+        let user_arc = self.user_manager.users.get(target_uid)?;
+        let user = user_arc.read().await;
+        Some(UserDisconnectInfo {
+            nick: user.nick.clone(),
+            user: user.user.clone(),
+            host: user.host.clone(),
+            realname: user.realname.clone(),
+            channels: user.channels.iter().cloned().collect(),
+            session_id: explicit_session_id.unwrap_or(user.session_id),
+            account: user.account.clone(),
+            is_invisible: user.modes.invisible,
+            is_oper: user.modes.oper,
+        })
+    }
+
+    /// Returns true if session was detached and user should REMAIN connected.
+    async fn process_session_detachment(&self, uid: &Uid, info: &UserDisconnectInfo) -> bool {
         use crate::state::managers::client::DetachResult;
-        use slirc_proto::{Command, Prefix};
 
-        // Get user info before removal
-        let (nick, user, host, realname, user_channels, session_id, account, is_invisible, is_oper) = {
-            let user_arc = self
-                .user_manager
-                .users
-                .get(target_uid)
-                .map(|u| u.value().clone());
-            if let Some(user_arc) = user_arc {
-                let user = user_arc.read().await;
-                (
-                    user.nick.clone(),
-                    user.user.clone(),
-                    user.host.clone(),
-                    user.realname.clone(),
-                    user.channels.iter().cloned().collect::<Vec<_>>(),
-                    // Use explicit session_id if provided, otherwise fall back to user's
-                    explicit_session_id.unwrap_or(user.session_id),
-                    user.account.clone(),
-                    user.modes.invisible,
-                    user.modes.oper,
-                )
-            } else {
-                return vec![];
-            }
-        };
+        if !self.config.multiclient.enabled {
+            return false;
+        }
 
-        // If user has an account and multiclient is enabled, detach the session
-        let detach_result = if self.config.multiclient.enabled {
-            if account.is_some() {
-                self.client_manager.detach_session(session_id).await
-            } else {
-                DetachResult::NotFound
-            }
-        } else {
-            DetachResult::NotFound
-        };
+        if info.account.is_none() {
+            return false;
+        }
 
-        // Log the detachment result
-        match &detach_result {
+        let detach_result = self.client_manager.detach_session(info.session_id).await;
+
+        match detach_result {
             DetachResult::Detached { remaining_sessions } => {
                 tracing::debug!(
-                    uid = %target_uid,
-                    account = ?account,
+                    uid = %uid,
+                    account = ?info.account,
                     remaining = %remaining_sessions,
                     "Session detached, other sessions remain"
                 );
-
                 // CRITICAL: If other sessions remain, the user stays in channels and online.
-                // We only detached this specific session from the ClientManager.
-                // Return the list of channels the user is in (for potential future use).
-                return user_channels;
+                true
             }
             DetachResult::Persisting => {
                 tracing::info!(
-                    uid = %target_uid,
-                    account = ?account,
+                    uid = %uid,
+                    account = ?info.account,
                     "Session detached, client persisting (always-on)"
                 );
 
-                // For always-on clients, set auto-away on the User instead of removing
-                if let Some(client) = self.client_manager.get_client(account.as_ref().unwrap()) {
-                    let client_guard = client.read().await;
-                    if let Some(away_msg) = &client_guard.away {
-                        // Set away status on the user
-                        if let Some(user_arc) = self.user_manager.users.get(target_uid) {
-                            let mut user = user_arc.write().await;
-                            user.away = Some(away_msg.clone());
-                            tracing::debug!(
-                                uid = %target_uid,
-                                away = %away_msg,
-                                "Set auto-away on always-on user"
-                            );
+                // Set auto-away on the User instead of removing
+                if let Some(account) = &info.account {
+                    if let Some(client) = self.client_manager.get_client(account) {
+                        let client_guard = client.read().await;
+                        if let Some(away_msg) = &client_guard.away {
+                            if let Some(user_arc) = self.user_manager.users.get(uid) {
+                                let mut user = user_arc.write().await;
+                                user.away = Some(away_msg.clone());
+                                tracing::debug!(
+                                    uid = %uid,
+                                    away = %away_msg,
+                                    "Set auto-away on always-on user"
+                                );
+                            }
                         }
                     }
                 }
-
-                // For now, we still remove the user since virtual presence
-                // requires more infrastructure. This will be enhanced in future
-                // to keep the user present when always-on.
-                // NOTE: Virtual user persistence for always-on is not implemented yet.
+                false
             }
             DetachResult::Destroyed => {
                 tracing::debug!(
-                    uid = %target_uid,
-                    account = ?account,
+                    uid = %uid,
+                    account = ?info.account,
                     "Session detached, client destroyed"
                 );
+                false
             }
-            DetachResult::NotFound => {
-                // Expected for non-authenticated users
-            }
+            DetachResult::NotFound => false,
         }
+    }
 
-        // Clean up this user's MONITOR entries (session-specific state)
-        cleanup_monitors(self, target_uid.as_str());
+    async fn cleanup_monitors_and_whowas(self: &Arc<Self>, uid: &Uid, info: &UserDisconnectInfo) {
+        // Clean up this user's MONITOR entries
+        cleanup_monitors(self, uid.as_str());
 
-        // Record WHOWAS entry before user is removed
-        self.user_manager
-            .record_whowas(&nick, &user, &host, &realname);
+        // Record WHOWAS entry
+        self.user_manager.record_whowas(
+            &info.nick,
+            &info.user,
+            &info.host,
+            &info.realname,
+        );
 
-        // Notify MONITOR watchers that this nick is going offline
-        notify_monitors_offline(self, &nick).await;
+        // Notify MONITOR watchers
+        notify_monitors_offline(self, &info.nick).await;
+    }
 
-        // Build QUIT message
+    async fn broadcast_quit_and_leave_channels(
+        &self,
+        uid: &Uid,
+        info: &UserDisconnectInfo,
+        reason: &str,
+    ) {
+        use slirc_proto::{Command, Prefix};
+
         let quit_msg = Message {
             tags: None,
-            prefix: Some(Prefix::new(nick.clone(), user, host)),
-            command: Command::QUIT(Some(quit_reason.to_string())),
+            prefix: Some(Prefix::new(info.nick.clone(), info.user.clone(), info.host.clone())),
+            command: Command::QUIT(Some(reason.to_string())),
         };
 
-        // Remove from channels and broadcast QUIT
-        for channel_name in &user_channels {
+        for channel_name in &info.channels {
             let channel_tx = self
                 .channel_manager
                 .channels
@@ -492,7 +533,7 @@ impl Matrix {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 let _ = channel_tx
                     .send(ChannelEvent::Quit {
-                        uid: target_uid.clone(),
+                        uid: uid.clone(),
                         quit_msg: quit_msg.clone(),
                         reply_tx: Some(tx),
                     })
@@ -507,11 +548,13 @@ impl Matrix {
                 }
             }
         }
+    }
 
+    async fn cleanup_user_state(&self, uid: &Uid, info: &UserDisconnectInfo) {
         // Remove from nick mapping
-        let nick_lower = slirc_proto::irc_to_lower(&nick);
+        let nick_lower = slirc_proto::irc_to_lower(&info.nick);
         if let Some(mut vec) = self.user_manager.nicks.get_mut(&nick_lower) {
-            vec.retain(|u| u != target_uid);
+            vec.retain(|u| u != uid);
             if vec.is_empty() {
                 drop(vec);
                 self.user_manager.nicks.remove(&nick_lower);
@@ -519,38 +562,34 @@ impl Matrix {
         }
 
         // Remove user from matrix
-        self.user_manager.users.remove(target_uid);
+        self.user_manager.users.remove(uid);
 
-        // Remove enforcement timer if any
-        self.user_manager.enforce_timers.remove(target_uid);
+        // Remove enforcement timer
+        self.user_manager.enforce_timers.remove(uid);
 
-        // Drop sender - this will cause the connection task to terminate
-        self.user_manager.senders.remove(target_uid);
+        // Drop sender
+        self.user_manager.senders.remove(uid);
 
-        // Clean up rate limiter state
-        self.security_manager.rate_limiter.remove_client(target_uid);
+        // Clean up rate limiter
+        self.security_manager.rate_limiter.remove_client(uid);
 
-        // Update connected user metric
+        // Update metrics
         crate::metrics::CONNECTED_USERS.dec();
 
-        // Update StatsManager counters
-        if target_uid.starts_with(self.server_id.as_str()) {
+        // Update StatsManager
+        if uid.starts_with(self.server_id.as_str()) {
             self.stats_manager.user_disconnected();
-            if is_invisible {
+            if info.is_invisible {
                 self.stats_manager.user_unset_invisible();
             }
-            if is_oper {
+            if info.is_oper {
                 self.stats_manager.user_deopered();
             }
         } else {
             self.stats_manager.remote_user_disconnected();
-            if is_oper {
+            if info.is_oper {
                 self.stats_manager.remote_user_deopered();
             }
-            // Note: invisible users are not tracked globally in the current StatsManager implementation
-            // except via global_users total. If we add a global_invisible counter, update here.
         }
-
-        user_channels
     }
 }

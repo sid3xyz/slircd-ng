@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-19 23:25 | Pre-release | Zero users
-> Last Session: Event loop pipeline refactor, LifecycleManager extraction
+> Updated: 2026-01-19 23:45 | Pre-release | Zero users
+> Last Session: Matrix disconnect refactor, Event loop pipeline, LifecycleManager
 
 ---
 
@@ -43,7 +43,7 @@
 | `actor/` | Channel actors (async message handlers) |
 | `persistence.rs` | Channel state save/restore |
 
-> **MONOLITH**: `matrix.rs::disconnect_user_session()` is 195 lines.
+> **CLEAN**: `matrix.rs` now uses helper methods for user disconnection logic.
 
 ### 2.3 Handlers (`src/handlers/`)
 Organized by domain:
@@ -117,7 +117,7 @@ Dual-engine persistence:
 
 | File | Function | Lines | Plan |
 |------|----------|-------|------|
-| `matrix.rs` | `disconnect_user_session()` | 195 | State machine: PENDING→NOTIFIED→REMOVED |
+| ~~`matrix.rs`~~ | ~~`disconnect_user_session()`~~ | ~~195~~ | ✅ Decomposed into helpers |
 | ~~`event_loop.rs`~~ | ~~`run_event_loop()`~~ | ~~412~~ | ✅ Pipeline Refactor Complete |
 | ~~`main.rs`~~ | ~~Task spawning~~ | ~~300~~ | ✅ Extracted `LifecycleManager` |
 
