@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-19 17:25 | Pre-release | Zero users
-> Last Session: Phase 4 cleanup (dnsbl removed), dispatch.rs extraction
+> Updated: 2026-01-19 23:25 | Pre-release | Zero users
+> Last Session: Event loop pipeline refactor, LifecycleManager extraction
 
 ---
 
@@ -33,13 +33,13 @@
 |-----------|---------|
 | `gateway.rs` | TCP/TLS listener, accepts connections |
 | `connection/` | Per-connection lifecycle (registration + event loop) |
-| `event_loop.rs` | **MONOLITH** - 480 lines, needs pipeline refactor |
+| `event_loop.rs` | Pipeline-based event processing (Read→Decode→Dispatch→Respond) |
 
 ### 2.2 State Layer (`src/state/`)
 | Component | Purpose |
 |-----------|---------|
 | `matrix.rs` | Central DI container + user disconnect logic |
-| `managers/` | User, Channel, Stats, Client managers |
+| `managers/` | User, Channel, Stats, Client, Lifecycle managers |
 | `actor/` | Channel actors (async message handlers) |
 | `persistence.rs` | Channel state save/restore |
 
@@ -117,9 +117,9 @@ Dual-engine persistence:
 
 | File | Function | Lines | Plan |
 |------|----------|-------|------|
-| `event_loop.rs` | `run_event_loop()` | 412 | Pipeline: Read→Decode→Dispatch→Respond |
 | `matrix.rs` | `disconnect_user_session()` | 195 | State machine: PENDING→NOTIFIED→REMOVED |
-| `main.rs` | Task spawning | ~300 | Extract `LifecycleManager` |
+| ~~`event_loop.rs`~~ | ~~`run_event_loop()`~~ | ~~412~~ | ✅ Pipeline Refactor Complete |
+| ~~`main.rs`~~ | ~~Task spawning~~ | ~~300~~ | ✅ Extracted `LifecycleManager` |
 
 ---
 
