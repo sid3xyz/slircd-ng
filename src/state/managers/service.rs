@@ -5,7 +5,7 @@
 
 use crate::db::Database;
 use crate::history::HistoryProvider;
-use crate::services::{Service, chanserv, nickserv};
+use crate::services::{Service, chanserv, nickserv, playback};
 use crate::state::{User, UserModes};
 use slirc_proto::sync::clock::HybridTimestamp;
 use std::collections::{HashMap, HashSet};
@@ -50,11 +50,16 @@ impl ServiceManager {
         let nickserv_uid = format!("{}{}", server_sid, NICKSERV_UID_SUFFIX);
         let chanserv_uid = format!("{}{}", server_sid, CHANSERV_UID_SUFFIX);
 
+        let mut extra_services: HashMap<String, Box<dyn Service>> = HashMap::new();
+        // Register Playback service
+        let playback = playback::Playback::new();
+        extra_services.insert(playback.name().to_string(), Box::new(playback));
+
         Self {
             nickserv: nickserv::NickServ::new(db.clone()),
             chanserv: chanserv::ChanServ::new(db),
             history,
-            extra_services: HashMap::new(),
+            extra_services,
             nickserv_uid,
             chanserv_uid,
         }

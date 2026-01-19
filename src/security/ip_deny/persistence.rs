@@ -42,7 +42,7 @@ pub(super) fn save(
     let file = File::create(&temp_path)?;
     let writer = BufWriter::new(file);
 
-    serde_json::to_writer(writer, &state).map_err(|e| std::io::Error::other(e))?;
+    serde_json::to_writer(writer, &state).map_err(std::io::Error::other)?;
 
     // Atomic rename
     fs::rename(&temp_path, persist_path)?;

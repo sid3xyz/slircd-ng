@@ -172,11 +172,9 @@ pub fn with_label(msg: Message, label: Option<&str>) -> Message {
             // Check if label already exists
             if let Some(tags) = &msg.tags {
                 for tag in tags {
-                    if tag.0 == "label" {
-                        if let Some(ref existing) = tag.1 {
-                            if existing == value {
-                                return msg; // Already labeled correctly
-                            }
+                    if tag.0 == "label" && let Some(ref existing) = tag.1 {
+                        if existing == value {
+                            return msg; // Already labeled correctly
                         }
                     }
                 }

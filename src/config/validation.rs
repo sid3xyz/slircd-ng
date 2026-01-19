@@ -64,10 +64,11 @@ pub fn validate(config: &Config) -> Result<(), Vec<ValidationError>> {
     // Database path validation
     if let Some(ref db) = config.database {
         let db_path = Path::new(&db.path);
-        if let Some(parent) = db_path.parent() {
-            if !parent.as_os_str().is_empty() && !parent.exists() {
-                errors.push(ValidationError::DatabasePathInvalid(db.path.clone()));
-            }
+        if let Some(parent) = db_path.parent()
+            && !parent.as_os_str().is_empty()
+            && !parent.exists()
+        {
+            errors.push(ValidationError::DatabasePathInvalid(db.path.clone()));
         }
     }
 

@@ -15,6 +15,5 @@ pub mod tls;
 mod topology;
 
 // Re-export topology types
-pub use topology::{ServerInfo, TopologyGraph};
 pub use link::LinkState;
 pub use manager::SyncManager;

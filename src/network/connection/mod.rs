@@ -25,7 +25,6 @@
 
 mod autoreplay;
 mod context;
-mod dispatch;
 mod error_handling;
 mod event_loop;
 mod handshake;

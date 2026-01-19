@@ -441,7 +441,7 @@ pub async fn run_event_loop(
 
         let select_result = tokio::select! {
             result = conn.transport.next() => {
-                process_read_result(result, reg_state, &conn.matrix, &mut flood_violations, conn.uid)
+                process_read_result(result, reg_state, conn.matrix, &mut flood_violations, conn.uid)
             }
 
             Some(msg) = channels.rx.recv() => {
@@ -521,8 +521,8 @@ pub async fn run_event_loop(
                     label,
                     &mut conn,
                     reg_state,
-                    &channels.tx,
-                    &mut channels.rx,
+                    channels.tx,
+                    channels.rx,
                     &mut quit_message,
                 )
                 .await;
