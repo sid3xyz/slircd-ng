@@ -99,6 +99,9 @@ pub fn get_member_prefixes(member_modes: &MemberModes, multi_prefix: bool) -> St
 
 /// Simple wildcard matching for WHO masks.
 /// Supports * (match any) and ? (match single char).
+///
+/// This implementation is iterative to avoid stack overflow and excessive allocations.
+#[must_use]
 pub fn matches_mask(value: &str, mask: &str) -> bool {
     if mask == "*" {
         return true;
@@ -107,45 +110,43 @@ pub fn matches_mask(value: &str, mask: &str) -> bool {
         return value == mask;
     }
 
-    // Convert to regex-like matching
-    let mut v_chars = value.chars().peekable();
-    let mut m_chars = mask.chars().peekable();
+    let v_chars: Vec<char> = value.chars().collect();
+    let m_chars: Vec<char> = mask.chars().collect();
 
-    while m_chars.peek().is_some() || v_chars.peek().is_some() {
-        match m_chars.peek() {
-            Some('*') => {
-                m_chars.next();
-                if m_chars.peek().is_none() {
-                    return true; // Trailing * matches everything
-                }
-                // Try to match rest of pattern from each position
-                let rest_mask: String = m_chars.collect();
-                let rest_value: String = v_chars.collect();
-                for i in 0..=rest_value.len() {
-                    if matches_mask(&rest_value[i..], &rest_mask) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-            Some('?') => {
-                m_chars.next();
-                if v_chars.next().is_none() {
-                    return false;
-                }
-            }
-            Some(mc) => {
-                let mc = *mc;
-                m_chars.next();
-                match v_chars.next() {
-                    Some(vc) if vc == mc => {}
-                    _ => return false,
-                }
-            }
-            None => return v_chars.peek().is_none(),
+    let mut v_idx = 0;
+    let mut m_idx = 0;
+
+    let mut star_m_idx = None;
+    let mut match_v_idx = 0;
+
+    while v_idx < v_chars.len() {
+        if m_idx < m_chars.len() && (m_chars[m_idx] == '?' || m_chars[m_idx] == v_chars[v_idx]) {
+            // Case 1: Exact match or '?'
+            v_idx += 1;
+            m_idx += 1;
+        } else if m_idx < m_chars.len() && m_chars[m_idx] == '*' {
+            // Case 2: '*' found, record position and advance mask
+            star_m_idx = Some(m_idx);
+            m_idx += 1;
+            match_v_idx = v_idx;
+        } else if let Some(star_idx) = star_m_idx {
+            // Case 3: Mismatch, but we have a previous '*', backtrack
+            // Try matching '*' against one more character of value
+            m_idx = star_idx + 1;
+            match_v_idx += 1;
+            v_idx = match_v_idx;
+        } else {
+            // Case 4: Mismatch and no '*' to backtrack to
+            return false;
         }
     }
-    true
+
+    // Check for trailing '*' in mask
+    while m_idx < m_chars.len() && m_chars[m_idx] == '*' {
+        m_idx += 1;
+    }
+
+    m_idx == m_chars.len()
 }
 
 #[cfg(test)]
@@ -165,6 +166,17 @@ mod tests {
         assert!(!matches_mask("test", "best"));
         assert!(matches_mask("testing", "test*"));
         assert!(matches_mask("testing", "*ing"));
+        assert!(matches_mask("foo", "*?*"));
+        assert!(matches_mask("f", "*?*"));
+        assert!(matches_mask("", "*"));
+        assert!(!matches_mask("", "?"));
+    }
+
+    #[test]
+    fn test_matches_mask_unicode() {
+        // Test unicode behavior
+        assert!(matches_mask("🔥", "?")); // Should work with chars, fail with bytes
+        assert!(matches_mask("🔥", "*"));
     }
 
     #[test]
@@ -248,5 +260,33 @@ mod tests {
     fn test_get_member_prefixes_none() {
         let modes = MemberModes::default();
         assert_eq!(get_member_prefixes(&modes, false), "");
+    }
+
+    #[test]
+    fn test_matches_mask_dos() {
+        // Create a pathological mask pattern: *a*a*a...
+        let mut mask = String::new();
+        for _ in 0..200 {
+            mask.push_str("*a");
+        }
+        mask.push('*');
+
+        // Create a matching string
+        let mut value = String::new();
+        for _ in 0..200 {
+            value.push_str("ba");
+        }
+
+        assert!(matches_mask(&value, &mask));
+    }
+
+    #[test]
+    fn test_matches_mask_backtracking() {
+        // Test backtracking cases that might be tricky
+        assert!(matches_mask("ab", "*b"));
+        assert!(matches_mask("aaab", "a*b"));
+        assert!(matches_mask("mississippi", "m*issi*ippi"));
+        // This case forces backtracking: * matches "aa", then mismatch at b, so * consumes "aaa"
+        assert!(matches_mask("aaab", "*b"));
     }
 }

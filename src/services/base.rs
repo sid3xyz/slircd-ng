@@ -104,10 +104,10 @@ pub trait ServiceBase {
             {
                 let mut user = user_arc.write().await;
                 // Verify account name hasn't changed while we were looking up
-                if let Some(current_account) = &user.account {
-                    if current_account == &account_name {
-                        user.account_id = Some(account_id);
-                    }
+                if let Some(current_account) = &user.account
+                    && current_account == &account_name
+                {
+                    user.account_id = Some(account_id);
                 }
             }
 
