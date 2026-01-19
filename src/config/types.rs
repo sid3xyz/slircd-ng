@@ -71,11 +71,73 @@ pub struct Config {
 
 impl Config {
     /// Load configuration from a TOML file.
+    ///
+    /// Supports `include "path/to/*.toml"` directive for modular configuration.
+    /// Include paths are relative to the main config file's directory.
+    /// Glob patterns are supported (e.g., `include "conf.d/*.toml"`).
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
+        let path = path.as_ref();
+        let base_dir = path.parent().unwrap_or(Path::new("."));
         let content = std::fs::read_to_string(path)?;
-        let config: Config = toml::from_str(&content)?;
+        
+        // Process includes and merge content
+        let merged_content = Self::process_includes(&content, base_dir)?;
+        
+        let config: Config = toml::from_str(&merged_content)?;
         config.security.warn_deprecated_and_unused();
         Ok(config)
+    }
+    
+    /// Process include directives and merge external config files.
+    ///
+    /// Supports:
+    /// - `include "path/to/file.toml"` - single file
+    /// - `include "conf.d/*.toml"` - glob pattern
+    fn process_includes(content: &str, base_dir: &Path) -> Result<String, ConfigError> {
+        let mut result = String::with_capacity(content.len());
+        
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("include ") {
+                // Extract path from `include "path"` or `include 'path'`
+                let path_part = trimmed.strip_prefix("include ").unwrap().trim();
+                let path_str = path_part
+                    .trim_matches('"')
+                    .trim_matches('\'');
+                
+                let include_path = base_dir.join(path_str);
+                let pattern = include_path.to_string_lossy();
+                
+                // Use glob to expand patterns
+                match glob::glob(&pattern) {
+                    Ok(entries) => {
+                        for entry in entries.flatten() {
+                            match std::fs::read_to_string(&entry) {
+                                Ok(include_content) => {
+                                    result.push_str("\n# Included from: ");
+                                    result.push_str(&entry.display().to_string());
+                                    result.push('\n');
+                                    result.push_str(&include_content);
+                                    result.push('\n');
+                                    tracing::debug!(file = %entry.display(), "Included config file");
+                                }
+                                Err(e) => {
+                                    tracing::warn!(file = %entry.display(), error = %e, "Failed to include config file");
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(pattern = %pattern, error = %e, "Invalid include glob pattern");
+                    }
+                }
+            } else {
+                result.push_str(line);
+                result.push('\n');
+            }
+        }
+        
+        Ok(result)
     }
 }
 
