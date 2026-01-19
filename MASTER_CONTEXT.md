@@ -77,7 +77,6 @@ Server-to-server linking (TS6-compatible):
 - `manager.rs` - Central SyncManager (routing, connections)
 - `handshake.rs` - S2S handshake state machine
 - `topology.rs` - Network graph
-- `routing.rs` - Message routing
 - `crdt.rs` - Conflict-free channel state merging
 
 ### 2.7 Database (`src/db/`)
