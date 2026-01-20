@@ -1,12 +1,13 @@
 //! KICK command handler.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, resolve_nick_or_nosuchnick,
-    user_mask_from_state,
+    Context, HandlerError, HandlerResult, PostRegHandler, user_mask_from_state,
 };
 use super::common::{
     build_kick_pairs, kick_reason_or_default, parse_channel_list, parse_nick_list,
 };
+use crate::require_channel_or_reply;
+use crate::require_nick;
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
@@ -59,87 +60,107 @@ impl PostRegHandler for KickHandler {
         let pairs = build_kick_pairs(&channel_names, &target_nicks);
 
         for (channel_name, target_nick) in pairs {
-            let channel_lower = irc_to_lower(channel_name);
+            let _ = self
+                .kick_single_user(
+                    ctx,
+                    channel_name,
+                    target_nick,
+                    &reason_str,
+                    &nick,
+                    &user,
+                    &host,
+                )
+                .await;
+        }
 
-            // Get channel
-            let channel_tx = match ctx.require_channel_exists(channel_name) {
-                Ok(tx) => tx,
-                Err(e) => {
-                    if let Some(msg) = e.to_irc_reply(ctx.server_name(), &nick, "KICK") {
-                        ctx.sender.send(msg).await?;
-                    }
-                    crate::metrics::record_command_error("KICK", e.error_code());
-                    continue;
+        Ok(())
+    }
+}
+
+impl KickHandler {
+    #[allow(clippy::too_many_arguments)]
+    async fn kick_single_user(
+        &self,
+        ctx: &mut Context<'_, RegisteredState>,
+        channel_name: &str,
+        target_nick: &str,
+        reason: &str,
+        sender_nick: &str,
+        sender_user: &str,
+        sender_host: &str,
+    ) -> HandlerResult {
+        let channel_lower = irc_to_lower(channel_name);
+
+        // Get channel or send error (using macro)
+        let channel_tx = require_channel_or_reply!(ctx, channel_name, "KICK");
+
+        // Find target user or send error (using macro)
+        let target_uid = require_nick!(ctx, target_nick, "KICK");
+
+        // Request KICK capability from authority (Innovation 4)
+        let authority = ctx.authority();
+        let kick_cap = authority.request_kick_cap(ctx.uid, channel_name).await;
+
+        // If capability granted, pass it to actor.
+        // The actor will verify either the capability OR internal op status.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let sender_prefix = slirc_proto::Prefix::new(
+            sender_nick.to_string(),
+            sender_user.to_string(),
+            sender_host.to_string(),
+        );
+
+        let event = ChannelEvent::Kick {
+            params: crate::state::actor::KickParams {
+                sender_uid: ctx.uid.to_string(),
+                sender_prefix,
+                target_uid: target_uid.clone(),
+                target_nick: target_nick.to_string(),
+                reason: reason.to_string(),
+                force: false, // Deprecated in favor of cap, but kept for internal use
+                cap: kick_cap,
+            },
+            reply_tx,
+        };
+
+        if (channel_tx.send(event).await).is_err() {
+            return Ok(());
+        }
+
+        match reply_rx.await {
+            Ok(Ok(())) => {
+                // Success.
+                // We also need to remove channel from target's user struct.
+                let account =
+                    if let Some(user_ref) = ctx.matrix.user_manager.users.get(&target_uid) {
+                        let mut user_data = user_ref.write().await;
+                        user_data.channels.remove(&channel_lower);
+                        user_data.account.clone()
+                    } else {
+                        None
+                    };
+
+                if ctx.matrix.config.multiclient.enabled
+                    && let Some(account) = account
+                {
+                    ctx.matrix
+                        .client_manager
+                        .record_channel_part(&account, &channel_lower)
+                        .await;
                 }
-            };
 
-            // Find target user
-            let Some(target_uid) = resolve_nick_or_nosuchnick(ctx, "KICK", target_nick).await?
-            else {
-                continue;
-            };
-
-            // Request KICK capability from authority (Innovation 4)
-            let authority = ctx.authority();
-            let kick_cap = authority.request_kick_cap(ctx.uid, channel_name).await;
-
-            // If capability granted, pass it to actor.
-            // The actor will verify either the capability OR internal op status.
-            let (reply_tx, reply_rx) = oneshot::channel();
-            let sender_prefix = slirc_proto::Prefix::new(nick.clone(), user.clone(), host.clone());
-
-            let event = ChannelEvent::Kick {
-                params: crate::state::actor::KickParams {
-                    sender_uid: ctx.uid.to_string(),
-                    sender_prefix,
-                    target_uid: target_uid.clone(),
-                    target_nick: target_nick.to_string(),
-                    reason: reason_str.clone(),
-                    force: false, // Deprecated in favor of cap, but kept for internal use
-                    cap: kick_cap,
-                },
-                reply_tx,
-            };
-
-            if (channel_tx.send(event).await).is_err() {
-                continue;
+                info!(
+                    kicker = %sender_nick,
+                    target = %target_nick,
+                    channel = %channel_name,
+                    "User kicked from channel"
+                );
             }
-
-            match reply_rx.await {
-                Ok(Ok(())) => {
-                    // Success.
-                    // We also need to remove channel from target's user struct.
-                    let account =
-                        if let Some(user_ref) = ctx.matrix.user_manager.users.get(&target_uid) {
-                            let mut user_data = user_ref.write().await;
-                            user_data.channels.remove(&channel_lower);
-                            user_data.account.clone()
-                        } else {
-                            None
-                        };
-
-                    if ctx.matrix.config.multiclient.enabled
-                        && let Some(account) = account
-                    {
-                        ctx.matrix
-                            .client_manager
-                            .record_channel_part(&account, &channel_lower)
-                            .await;
-                    }
-
-                    info!(
-                        kicker = %nick,
-                        target = %target_nick,
-                        channel = %channel_name,
-                        "User kicked from channel"
-                    );
-                }
-                Ok(Err(e)) => {
-                    let reply = e.to_irc_reply(ctx.server_name(), &nick, channel_name);
-                    ctx.sender.send(reply).await?;
-                }
-                Err(_) => {}
+            Ok(Err(e)) => {
+                let reply = e.to_irc_reply(ctx.server_name(), sender_nick, channel_name);
+                ctx.sender.send(reply).await?;
             }
+            Err(_) => {}
         }
 
         Ok(())

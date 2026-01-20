@@ -138,6 +138,30 @@ macro_rules! require_oper_cap {
     }};
 }
 
+/// Require a channel to exist, or send error reply and return early.
+///
+/// Wraps `ctx.require_channel_exists()` and handles error reporting.
+///
+/// # Usage
+/// ```ignore
+/// let channel_tx = require_channel_or_reply!(ctx, channel_name, "KICK");
+/// ```
+#[macro_export]
+macro_rules! require_channel_or_reply {
+    ($ctx:expr, $channel_name:expr, $cmd:expr) => {{
+        match $ctx.require_channel_exists($channel_name) {
+            Ok(tx) => tx,
+            Err(e) => {
+                if let Some(msg) = e.to_irc_reply($ctx.server_name(), $ctx.nick(), $cmd) {
+                    $ctx.sender.send(msg).await?;
+                }
+                $crate::metrics::record_command_error($cmd, e.error_code());
+                return Ok(());
+            }
+        }
+    }};
+}
+
 // ============================================================================
 // Common reply helpers
 // ============================================================================

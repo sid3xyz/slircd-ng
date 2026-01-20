@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-20 00:30 | Pre-release | Zero users
-> Last Session: Chathistory cleanup and test coverage
+> Updated: 2026-01-20 00:45 | Pre-release | Zero users
+> Last Session: Kick handler cleanup with macros, Chathistory test coverage
 
 ---
 
@@ -54,6 +54,7 @@ Organized by domain:
 - `server/` - S2S commands, KILL, STATS
 - `op/` - OPER, REHASH, DIE
 - `chathistory/` - IRCv3 `draft/chathistory` implementation (Cleanup complete)
+- `util/helpers.rs` - Shared macros and helpers (`require_arg!`, `require_nick!`, `require_channel_or_reply!`)
 
 ### 2.4 Services (`src/services/`)
 | Service | Purpose |
