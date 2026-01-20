@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-20 00:00 | Pre-release | Zero users
-> Last Session: Matrix disconnect refactor, Event loop pipeline, LifecycleManager, SyncManager extraction
+> Updated: 2026-01-20 00:30 | Pre-release | Zero users
+> Last Session: Chathistory cleanup and test coverage
 
 ---
 
@@ -53,6 +53,7 @@ Organized by domain:
 - `messaging/` - PRIVMSG, NOTICE, NPC, SCENE
 - `server/` - S2S commands, KILL, STATS
 - `op/` - OPER, REHASH, DIE
+- `chathistory/` - IRCv3 `draft/chathistory` implementation (Cleanup complete)
 
 ### 2.4 Services (`src/services/`)
 | Service | Purpose |
@@ -107,7 +108,7 @@ Dual-engine persistence:
 | `setname` | ✅ | |
 | `standard-replies` | ✅ | FAIL/WARN/NOTE |
 | `userhost-in-names` | ✅ | |
-| `draft/chathistory` | ✅ | |
+| `draft/chathistory` | ✅ | Verified & Tested |
 | `draft/event-playback` | ✅ | |
 | `slirc.chat/bouncer` | ✅ | Multi-session support |
 

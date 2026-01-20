@@ -8,6 +8,7 @@
 pub mod batch;
 mod helpers;
 mod queries;
+mod slicing;
 
 use crate::handlers::{Context, HandlerResult, PostRegHandler};
 use crate::state::RegisteredState;

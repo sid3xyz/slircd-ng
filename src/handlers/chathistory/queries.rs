@@ -7,6 +7,7 @@ use slirc_proto::{ChatHistorySubCommand, MessageReference, parse_server_time};
 use tracing::debug;
 
 use super::helpers::{QueryParams, exclusivity_offset, resolve_dm_key, resolve_msgref};
+use super::slicing::slice_around;
 
 /// Implements all CHATHISTORY query operations.
 pub struct QueryExecutor;
@@ -204,18 +205,13 @@ impl QueryExecutor {
             .map(|r| r.timestamp)
             .unwrap_or(0);
 
-        // AROUND semantics: return `limit` messages centered around the target msgid.
-        // Strategy: Query ALL messages for this target (up to a reasonable limit),
-        // find the target msgid in memory, then slice around it.
-        // This guarantees finding the message regardless of timestamp edge cases.
-
         let all_messages_query = HistoryQuery {
             target: query_target.clone(),
-            start: None,  // No time constraints - get everything
+            start: None,
             end: None,
             start_id: None,
             end_id: None,
-            limit: 500, // Reasonable upper bound
+            limit: 500,
             reverse: false,
         };
 
@@ -227,79 +223,13 @@ impl QueryExecutor {
             .await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
 
-        // Debug: log what we got and what we're looking for
-        // Using warn! temporarily to bypass log level filtering in tests
-        tracing::warn!(
-            query_target = %query_target,
-            search_msgref = %msgref_str,
-            center_ts = center_ts,
-            message_count = messages.len(),
-            first_nanotime = ?messages.first().map(|m| m.nanotime()),
-            last_nanotime = ?messages.last().map(|m| m.nanotime()),
-            "AROUND query debug"
-        );
-
-        // Extract bare msgid from the msgref_str (which may be "msgid=xxx" or just "xxx")
-        // Returns None for timestamp references
-        let bare_msgid = if let Ok(MessageReference::MsgId(id)) = MessageReference::parse(msgref_str) {
-            Some(id)
-        } else {
-            None
-        };
-
-        // Find the index of the center message
-        let center_idx = if let Some(ref id) = bare_msgid {
-            // Msgid reference: look up by msgid
-            messages.iter().position(|m| match m {
-                HistoryItem::Message(msg) => msg.msgid == *id,
-                HistoryItem::Event(evt) => evt.id == *id,
-            })
-        } else if !messages.is_empty() {
-            // Timestamp reference OR wildcard: find message closest to center_ts
-            // If center_ts is 0 (e.g., wildcard or unparseable), use middle of range
-            if center_ts > 0 {
-                // Find the index with minimum distance to center_ts
-                let closest = messages
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(_, m)| (m.nanotime() - center_ts).unsigned_abs());
-                closest.map(|(i, _)| i)
-            } else {
-                // Use middle message as fallback
-                Some(messages.len() / 2)
-            }
-        } else {
-            None
-        };
-
-        let result = if let Some(idx) = center_idx {
-            // Calculate slice bounds for centering
-            let half = (limit as usize) / 2;
-            let start_idx = idx.saturating_sub(half);
-            
-            // For limit=1: return just the center
-            // For limit=3: return center-1, center, center+1
-            let end_idx = (start_idx + limit as usize).min(messages.len());
-            
-            messages[start_idx..end_idx].to_vec()
-        } else {
-            // Center not found - return empty
-            vec![]
-        };
-
-        // TEMP: Log result size
-        tracing::warn!(
-            is_msgid = bare_msgid.is_some(),
-            center_idx = ?center_idx,
-            result_len = result.len(),
-            center_ts = center_ts,
-            "AROUND result trace"
-        );
-
-        Ok(result)
+        Ok(slice_around(
+            messages,
+            limit as usize,
+            msgref_str,
+            center_ts,
+        ))
     }
-
-
 
     async fn handle_between(
         ctx: &Context<'_, RegisteredState>,
@@ -426,24 +356,9 @@ impl QueryExecutor {
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
 
         let mut msgs = Vec::with_capacity(limit as usize);
-        let nick_lower = slirc_proto::irc_to_lower(nick);
+        let _nick_lower = slirc_proto::irc_to_lower(nick);
 
         for (target_name, timestamp) in targets {
-            let display_target = if target_name.contains('\0') {
-                let parts: Vec<&str> = target_name.split('\0').collect();
-                if parts.len() == 2 {
-                    if parts[0] == nick_lower {
-                        parts[1].to_string()
-                    } else {
-                        parts[0].to_string()
-                    }
-                } else {
-                    target_name.clone()
-                }
-            } else {
-                target_name.clone()
-            };
-
             let dt = chrono::DateTime::<chrono::Utc>::from(
                 std::time::SystemTime::UNIX_EPOCH
                     + std::time::Duration::from_nanos(timestamp as u64),
@@ -453,7 +368,7 @@ impl QueryExecutor {
             let envelope = MessageEnvelope {
                 command: "TARGET".to_string(),
                 prefix: "".to_string(),
-                target: display_target.clone(),
+                target: target_name.clone(),
                 text: ts_str,
                 tags: None,
             };
@@ -461,7 +376,7 @@ impl QueryExecutor {
             msgs.push(HistoryItem::Message(StoredMessage {
                 msgid: "".to_string(),
                 nanotime: timestamp,
-                target: display_target,
+                target: target_name,
                 sender: "".to_string(),
                 account: None,
                 envelope,
