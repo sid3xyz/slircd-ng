@@ -383,7 +383,7 @@ impl ChannelActor {
                          mode_str.push(if is_plus { '+' } else { '-' });
                          current_group_sign = Some(is_plus);
                      }
-                     mode_str.push(proto_mode_to_char(&mode.mode()));
+                     mode_str.push(proto_mode_to_char(mode.mode()));
                      if let Some(arg) = mode.arg() {
                          args.push(arg.to_string());
                      }
@@ -502,7 +502,7 @@ impl ChannelActor {
                             mode_str.push(if is_plus { '+' } else { '-' });
                             current_group_sign = Some(is_plus);
                         }
-                        mode_str.push(proto_mode_to_char(&mode.mode()));
+                        mode_str.push(proto_mode_to_char(mode.mode()));
                         if let Some(arg) = mode.arg() {
                             args.push(arg.to_string());
                         }

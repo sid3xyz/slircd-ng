@@ -141,11 +141,9 @@ impl ChannelActor {
                                 set_at: incoming_ts.millis / 1000,
                             });
                         }
-                    } else {
-                        if self.bans.iter().any(|e| e.mask == mask) {
-                            self.bans.retain(|e| e.mask != mask);
-                            self.dirty = true;
-                        }
+                    } else if self.bans.iter().any(|e| e.mask == mask) {
+                        self.bans.retain(|e| e.mask != mask);
+                        self.dirty = true;
                     }
                 }
             }

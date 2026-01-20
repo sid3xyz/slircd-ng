@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-20 00:45 | Pre-release | Zero users
-> Last Session: Kick handler cleanup with macros, Chathistory test coverage
+> Updated: 2026-01-20 01:00 | Pre-release | Zero users
+> Last Session: Codebase deep cleanup (dead code, clippy fixes, macros)
 
 ---
 
@@ -62,7 +62,7 @@ Organized by domain:
 | `nickserv.rs` | Account management (REGISTER, IDENTIFY) |
 | `chanserv.rs` | Channel management (OP, AKICK) |
 | `effect.rs` | Unified effect application (state mutations) |
-| `playback.rs` | ZNC-compatible history replay |
+| `playback.rs` | ZNC-compatible history replay (Wired & Active) |
 
 ### 2.5 Security (`src/security/`)
 | Module | Purpose | Status |

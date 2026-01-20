@@ -446,13 +446,13 @@ impl std::str::FromStr for FloodParam {
     }
 }
 
-impl ToString for FloodParam {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for FloodParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let type_char = match self.type_ {
             FloodType::Message => "m",
             FloodType::Join => "j",
         };
-        format!("{}{}:{}", self.count, type_char, self.period)
+        write!(f, "{}:{}:{}", self.count, self.period, type_char)
     }
 }
 

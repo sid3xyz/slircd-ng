@@ -79,10 +79,10 @@ pub async fn process_message<'a>(
             warn!(error = %fail_msg, "Batch processing error");
             reg_state.active_batch = None;
             reg_state.active_batch_ref = None;
-            if let Ok(fail) = fail_msg.parse::<Message>() {
-                if outgoing_tx.send(Arc::new(fail)).await.is_err() {
-                    return DispatchResult::Continue;
-                }
+            if let Ok(fail) = fail_msg.parse::<Message>()
+                && outgoing_tx.send(Arc::new(fail)).await.is_err()
+            {
+                return DispatchResult::Continue;
             }
             return DispatchResult::Continue;
         }
@@ -131,10 +131,9 @@ pub async fn process_message<'a>(
             let nick = &reg_state.nick;
             if let Some(reply) =
                 super::error_handling::handler_error_to_reply_owned(&conn.matrix.server_info.name, nick, &e, msg)
+                && conn.transport.write_message(&reply).await.is_err()
             {
-                if conn.transport.write_message(&reply).await.is_err() {
-                    return DispatchResult::WriteError;
-                }
+                return DispatchResult::WriteError;
             }
         }
     }

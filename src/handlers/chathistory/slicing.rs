@@ -1,4 +1,4 @@
-use crate::history::{StoredMessage, MessageEnvelope, types::HistoryItem};
+use crate::history::types::HistoryItem;
 use slirc_proto::MessageReference;
 
 /// Determine the slice of messages centered around a target message or timestamp.

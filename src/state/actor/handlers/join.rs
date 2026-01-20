@@ -113,49 +113,23 @@ impl ChannelActor {
 
         // 4b. Join Flood (+f)
         // 4b. Join Flood (+f)
-        if let Some(limiter) = &self.flood_join_limiter {
-            if limiter.check().is_err() {
-                // Trigger protection: Set +i if not already set
-                if !self.modes.contains(&ChannelMode::InviteOnly) {
-                    self.set_flag_mode(ChannelMode::InviteOnly, true);
-                    
-                    // Broadcast mode change
-                    let msg = Message {
-                        tags: None,
-                        prefix: Some(slirc_proto::Prefix::new(
-                            self.server_id.to_string(),
-                            "system".to_string(),
-                            self.server_id.to_string(),
-                        )),
-                        command: Command::ChannelMODE(
-                            self.name.clone(),
-                            vec![slirc_proto::mode::Mode::plus(
-                                slirc_proto::mode::ChannelMode::InviteOnly,
-                                None
-                            )]
-                        ),
-                    };
-                    self.handle_broadcast(msg, None).await;
-                    
-                    // Also send a notice explaining why
-                    let notice = Message {
-                        tags: None,
-                        prefix: Some(slirc_proto::Prefix::new(
-                            self.server_id.to_string(),
-                            "system".to_string(),
-                            self.server_id.to_string(),
-                        )),
-                        command: Command::NOTICE(
-                            self.name.clone(),
-                            "Channel join flood detected. Invite-only mode enabled (+i).".to_string()
-                        ),
-                    };
-                    self.handle_broadcast(notice, None).await;
-                }
+        if let Some(limiter) = &self.flood_join_limiter
+            && limiter.check().is_err()
+        {
+            // Trigger protection: Set +i if not already set
+            if !self.modes.contains(&ChannelMode::InviteOnly) {
+                self.modes.insert(ChannelMode::InviteOnly);
+                self.dirty = true;
                 
-                let _ = reply_tx.send(Err(ChannelError::ChannelIsFull));
-                return;
+                // Broadcast mode change
+                let mode_msg = Message {
+                    tags: None,
+                    prefix: Some(slirc_proto::Prefix::ServerName("flood-protection".to_string())),
+                    command: slirc_proto::Command::Raw("MODE".to_string(), vec![self.name.clone(), "+i".to_string()]),
+                };
+                self.handle_broadcast(mode_msg, None).await;
             }
+            return;
         }
 
         // 5. RegisteredOnly (+R) - only users identified to NickServ can join

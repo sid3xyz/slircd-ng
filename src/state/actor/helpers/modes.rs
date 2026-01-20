@@ -239,12 +239,13 @@ pub fn modes_from_string(
     let mut chars = modes_str.chars();
 
     // First char should be + or -
-    if let Some(first) = chars.next() {
-        if first != '+' {
-            // If it's not a prefix, it might be the first flag
-            if let Some(m) = char_to_mode(first) {
-                modes.insert(m);
-            }
+    if let Some(first) = chars.next()
+        && first != '+'
+    {
+        // If it's not a prefix, it might be the first flag
+        if let Some(m) = char_to_mode(first) {
+            // Assume add if no prefix
+            modes.insert(m);
         }
     }
 

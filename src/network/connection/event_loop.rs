@@ -270,7 +270,7 @@ fn check_ping_state(
 /// Run Phase 2: Unified event loop (post-registration).
 pub async fn run_event_loop(
     mut conn: ConnectionContext<'_>,
-    mut channels: LifecycleChannels<'_>,
+    channels: LifecycleChannels<'_>,
     reg_state: &mut RegisteredState,
 ) -> Option<String> {
     let mut flood_violations = 0u8;

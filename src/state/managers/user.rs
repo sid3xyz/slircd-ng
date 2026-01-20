@@ -384,12 +384,10 @@ impl UserManager {
                         } else {
                             stats.remote_user_opered();
                         }
+                    } else if is_local {
+                        stats.user_deopered();
                     } else {
-                        if is_local {
-                            stats.user_deopered();
-                        } else {
-                            stats.remote_user_deopered();
-                        }
+                        stats.remote_user_deopered();
                     }
                 }
 
@@ -431,12 +429,12 @@ impl UserManager {
             self.users.insert(uid.clone(), Arc::new(RwLock::new(user)));
 
             // Update stats for new remote users
-            if let Some(stats) = &self.stats_manager {
-                if is_remote {
-                    stats.remote_user_connected();
-                    if is_oper {
-                        stats.remote_user_opered();
-                    }
+            if let Some(stats) = &self.stats_manager
+                && is_remote
+            {
+                stats.remote_user_connected();
+                if is_oper {
+                    stats.remote_user_opered();
                 }
             }
         }
@@ -454,12 +452,12 @@ impl UserManager {
 
             // Update stats for remote users
             // (Local users are handled by matrix.disconnect_user_session)
-            if let Some(stats) = &self.stats_manager {
-                if source.is_some() {
-                    stats.remote_user_disconnected();
-                    if is_oper {
-                        stats.remote_user_deopered();
-                    }
+            if let Some(stats) = &self.stats_manager
+                && source.is_some()
+            {
+                stats.remote_user_disconnected();
+                if is_oper {
+                    stats.remote_user_deopered();
                 }
             }
 
