@@ -25,87 +25,14 @@ impl PostRegHandler for AwayHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        // Registration check removed - handled by registry typestate dispatch (Innovation 1)
-
         let server_name = ctx.server_name();
         let (nick, user_name, host) = user_mask_from_state(ctx, ctx.uid)
             .await
             .ok_or(HandlerError::NickOrUserMissing)?;
 
-        // AWAY [message]
-        let away_msg = msg.arg(0);
+        let away_msg = msg.arg(0).filter(|s| !s.is_empty());
 
-        if let Some(away_text) = away_msg
-            && !away_text.is_empty()
-        {
-            // Get list of channels before setting away status (for away-notify)
-            let user_arc = ctx
-                .matrix
-                .user_manager
-                .users
-                .get(ctx.uid)
-                .map(|u| u.value().clone());
-            let channels = if let Some(user_arc) = user_arc {
-                let user = user_arc.read().await;
-                user.channels.iter().cloned().collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
-
-            // Set away status
-            let user_arc = ctx
-                .matrix
-                .user_manager
-                .users
-                .get(ctx.uid)
-                .map(|u| u.value().clone());
-            if let Some(user_arc) = user_arc {
-                let mut user = user_arc.write().await;
-                user.away = Some(away_text.to_string());
-            }
-
-            // Notify observer of user update (Innovation 2)
-            ctx.matrix.user_manager.notify_observer(ctx.uid, None).await;
-
-            // Broadcast AWAY to channels - only to clients with away-notify capability (IRCv3)
-            let away_broadcast = slirc_proto::Message {
-                tags: None,
-                prefix: Some(slirc_proto::Prefix::new(&nick, &user_name, &host)),
-                command: Command::AWAY(Some(away_text.to_string())),
-            };
-
-            for channel_name in &channels {
-                ctx.matrix
-                    .channel_manager
-                    .broadcast_to_channel_with_cap(
-                        channel_name,
-                        away_broadcast.clone(),
-                        None,
-                        Some("away-notify"),
-                        None, // No fallback - clients without away-notify get nothing
-                    )
-                    .await;
-            }
-
-            // Extended MONITOR: Notify watchers with extended-monitor + away-notify
-            notify_extended_monitor_watchers(ctx.matrix, &nick, away_broadcast, "away-notify")
-                .await;
-
-            // RPL_NOWAWAY (306)
-            debug!(nick = %nick, away = %away_text, "User marked as away");
-            let reply = server_reply(
-                server_name,
-                Response::RPL_NOWAWAY,
-                vec![
-                    nick.clone(),
-                    "You have been marked as being away".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
-        }
-
-        // Get list of channels before clearing away status (for away-notify)
+        // Get list of channels before updating status (for away-notify)
         let user_arc = ctx
             .matrix
             .user_manager
@@ -119,7 +46,7 @@ impl PostRegHandler for AwayHandler {
             Vec::new()
         };
 
-        // Clear away status
+        // Update away status
         let user_arc = ctx
             .matrix
             .user_manager
@@ -128,46 +55,58 @@ impl PostRegHandler for AwayHandler {
             .map(|u| u.value().clone());
         if let Some(user_arc) = user_arc {
             let mut user = user_arc.write().await;
-            user.away = None;
+            user.away = away_msg.map(ToString::to_string);
         }
 
         // Notify observer of user update (Innovation 2)
         ctx.matrix.user_manager.notify_observer(ctx.uid, None).await;
 
-        // Broadcast AWAY (no message) to channels - only to clients with away-notify capability (IRCv3)
+        // Broadcast AWAY to channels - only to clients with away-notify capability (IRCv3)
         let away_broadcast = slirc_proto::Message {
             tags: None,
             prefix: Some(slirc_proto::Prefix::new(&nick, &user_name, &host)),
-            command: Command::AWAY(None),
+            command: Command::AWAY(away_msg.map(ToString::to_string)),
         };
 
-        for channel_name in &channels {
-            ctx.matrix
-                .channel_manager
-                .broadcast_to_channel_with_cap(
-                    channel_name,
-                    away_broadcast.clone(),
-                    None,
-                    Some("away-notify"),
-                    None, // No fallback - clients without away-notify get nothing
-                )
-                .await;
-        }
+        use crate::handlers::util::helpers::broadcast_user_update;
+        broadcast_user_update(
+            ctx,
+            &away_broadcast,
+            &channels,
+            Some("away-notify"),
+            None, // No exclude - clients might want to see their own away status? (Original code used None)
+        )
+        .await;
 
         // Extended MONITOR: Notify watchers with extended-monitor + away-notify
         notify_extended_monitor_watchers(ctx.matrix, &nick, away_broadcast, "away-notify").await;
 
-        // RPL_UNAWAY (305)
-        debug!(nick = %nick, "User no longer away");
-        let reply = server_reply(
-            server_name,
-            Response::RPL_UNAWAY,
-            vec![
-                nick.clone(),
-                "You are no longer marked as being away".to_string(),
-            ],
-        );
-        ctx.sender.send(reply).await?;
+        // Send reply
+        if let Some(text) = away_msg {
+            // Setting away
+            debug!(nick = %nick, away = %text, "User marked as away");
+            let reply = server_reply(
+                server_name,
+                Response::RPL_NOWAWAY,
+                vec![
+                    nick.clone(),
+                    "You have been marked as being away".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+        } else {
+            // Clearing away
+            debug!(nick = %nick, "User no longer away");
+            let reply = server_reply(
+                server_name,
+                Response::RPL_UNAWAY,
+                vec![
+                    nick.clone(),
+                    "You are no longer marked as being away".to_string(),
+                ],
+            );
+            ctx.sender.send(reply).await?;
+        }
 
         Ok(())
     }
@@ -281,18 +220,15 @@ impl PostRegHandler for SetnameHandler {
         ctx.sender.send(setname_msg.clone()).await?;
 
         // Broadcast to each channel (only to clients with setname capability)
-        for channel_name in &channels {
-            ctx.matrix
-                .channel_manager
-                .broadcast_to_channel_with_cap(
-                    channel_name,
-                    setname_msg.clone(),
-                    Some(ctx.uid),
-                    Some("setname"),
-                    None,
-                )
-                .await;
-        }
+        use crate::handlers::util::helpers::broadcast_user_update;
+        broadcast_user_update(
+            ctx,
+            &setname_msg,
+            &channels,
+            Some("setname"),
+            Some(ctx.uid), // Exclude sender (we already echoed)
+        )
+        .await;
 
         // Extended MONITOR: Notify watchers with extended-monitor + setname
         notify_extended_monitor_watchers(ctx.matrix, &nick, setname_msg, "setname").await;
@@ -372,13 +308,10 @@ impl PostRegHandler for SilenceHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        let (adding, mask) = if let Some(stripped) = mask_str.strip_prefix('+') {
-            (true, stripped)
-        } else if let Some(stripped) = mask_str.strip_prefix('-') {
-            (false, stripped)
-        } else {
-            // No prefix, treat as add
-            (true, mask_str)
+        let (adding, mask) = match mask_str.chars().next() {
+            Some('+') => (true, &mask_str[1..]),
+            Some('-') => (false, &mask_str[1..]),
+            _ => (true, mask_str), // No prefix, treat as add
         };
 
         if mask.is_empty() {

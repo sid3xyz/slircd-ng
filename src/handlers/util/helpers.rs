@@ -270,6 +270,28 @@ pub fn user_prefix(nick: &str, user: &str, host: &str) -> Prefix {
     Prefix::new(nick, user, host)
 }
 
+/// Broadcast a message to a list of channels, optionally filtering by capability and excluding a user.
+pub async fn broadcast_user_update<S: crate::state::SessionState>(
+    ctx: &Context<'_, S>,
+    message: &Message,
+    channels: &[String],
+    required_cap: Option<&str>,
+    exclude_uid: Option<&str>,
+) {
+    for channel_name in channels {
+        ctx.matrix
+            .channel_manager
+            .broadcast_to_channel_with_cap(
+                channel_name,
+                message.clone(),
+                exclude_uid,
+                required_cap,
+                None,
+            )
+            .await;
+    }
+}
+
 // ============================================================================
 // Standard error helpers
 // ============================================================================
