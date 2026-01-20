@@ -43,7 +43,7 @@ pub fn slice_around(
         let half = limit / 2;
         let start_idx = idx.saturating_sub(half);
         let end_idx = (start_idx + limit).min(messages.len());
-        
+
         messages[start_idx..end_idx].to_vec()
     } else {
         vec![]
@@ -53,6 +53,7 @@ pub fn slice_around(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::history::{MessageEnvelope, StoredMessage};
 
     fn make_msg(id: &str, ts: i64) -> HistoryItem {
         HistoryItem::Message(StoredMessage {
@@ -84,9 +85,18 @@ mod tests {
         // Center on "3", limit 3 -> expect 2, 3, 4
         let res = slice_around(msgs.clone(), 3, "msgid=3", 0);
         assert_eq!(res.len(), 3);
-        match &res[0] { HistoryItem::Message(m) => assert_eq!(m.msgid, "2"), _ => panic!() }
-        match &res[1] { HistoryItem::Message(m) => assert_eq!(m.msgid, "3"), _ => panic!() }
-        match &res[2] { HistoryItem::Message(m) => assert_eq!(m.msgid, "4"), _ => panic!() }
+        match &res[0] {
+            HistoryItem::Message(m) => assert_eq!(m.msgid, "2"),
+            _ => panic!(),
+        }
+        match &res[1] {
+            HistoryItem::Message(m) => assert_eq!(m.msgid, "3"),
+            _ => panic!(),
+        }
+        match &res[2] {
+            HistoryItem::Message(m) => assert_eq!(m.msgid, "4"),
+            _ => panic!(),
+        }
     }
 
     #[test]
@@ -102,30 +112,28 @@ mod tests {
         // Center on ts=290, limit 3 -> expect 2, 3, 4
         let res = slice_around(msgs.clone(), 3, "timestamp=2023...", 290);
         assert_eq!(res.len(), 3);
-        match &res[1] { HistoryItem::Message(m) => assert_eq!(m.msgid, "3"), _ => panic!() }
+        match &res[1] {
+            HistoryItem::Message(m) => assert_eq!(m.msgid, "3"),
+            _ => panic!(),
+        }
     }
 
     #[test]
     fn test_slice_around_edge_start() {
-        let msgs = vec![
-            make_msg("1", 100),
-            make_msg("2", 200),
-            make_msg("3", 300),
-        ];
+        let msgs = vec![make_msg("1", 100), make_msg("2", 200), make_msg("3", 300)];
 
         // Center on "1", limit 3 -> expect 1, 2, 3
         let res = slice_around(msgs.clone(), 3, "msgid=1", 0);
         assert_eq!(res.len(), 3);
-        match &res[0] { HistoryItem::Message(m) => assert_eq!(m.msgid, "1"), _ => panic!() }
+        match &res[0] {
+            HistoryItem::Message(m) => assert_eq!(m.msgid, "1"),
+            _ => panic!(),
+        }
     }
 
     #[test]
     fn test_slice_around_edge_end() {
-        let msgs = vec![
-            make_msg("1", 100),
-            make_msg("2", 200),
-            make_msg("3", 300),
-        ];
+        let msgs = vec![make_msg("1", 100), make_msg("2", 200), make_msg("3", 300)];
 
         // Center on "3", limit 3 -> expect 1, 2, 3 (idx 2, half 1 -> start 1 -> 2, 3?)
         // idx=2, half=1. start = 2-1 = 1. end = 1+3 = 4 (min 3) = 3.
@@ -135,10 +143,16 @@ mod tests {
         // Length 2. Limit was 3.
         // This logic shifts the window to start at center-half. It doesn't guarantee filling the limit by looking backwards if close to end.
         // This is standard simple windowing.
-        
+
         let res = slice_around(msgs.clone(), 3, "msgid=3", 0);
         assert_eq!(res.len(), 2);
-        match &res[0] { HistoryItem::Message(m) => assert_eq!(m.msgid, "2"), _ => panic!() }
-        match &res[1] { HistoryItem::Message(m) => assert_eq!(m.msgid, "3"), _ => panic!() }
+        match &res[0] {
+            HistoryItem::Message(m) => assert_eq!(m.msgid, "2"),
+            _ => panic!(),
+        }
+        match &res[1] {
+            HistoryItem::Message(m) => assert_eq!(m.msgid, "3"),
+            _ => panic!(),
+        }
     }
 }

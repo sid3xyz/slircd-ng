@@ -24,8 +24,7 @@
 //! - Uses CapabilityAuthority (Innovation 4) for authorization
 
 use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, is_user_in_channel, server_reply,
-    user_mask_from_state,
+    Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
 };
 use crate::history::{MessageEnvelope, StoredMessage};
 use crate::state::RegisteredState;
@@ -55,7 +54,7 @@ fn extract_params<'a>(msg: &MessageRef<'a>) -> Result<(&'a str, TopicAction<'a>)
     Ok((channel_name, action))
 }
 
-use crate::require_channel_or_reply;
+use crate::{require_channel_or_reply, require_membership_or_reply};
 
 pub struct TopicHandler;
 
@@ -77,12 +76,7 @@ impl PostRegHandler for TopicHandler {
         let channel_tx = require_channel_or_reply!(ctx, channel_name, "TOPIC");
 
         // Check if user is in channel
-        if !is_user_in_channel(ctx, ctx.uid, &channel_lower).await {
-            let reply =
-                Response::err_notonchannel(nick, channel_name).with_prefix(ctx.server_prefix());
-            ctx.send_error("TOPIC", "ERR_NOTONCHANNEL", reply).await?;
-            return Ok(());
-        }
+        require_membership_or_reply!(ctx, &channel_lower, "TOPIC");
 
         match action {
             TopicAction::Query => {

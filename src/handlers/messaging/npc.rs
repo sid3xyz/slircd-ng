@@ -9,8 +9,7 @@
 //! but with a special prefix indicating the actual sender.
 
 use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, channel_has_mode, is_user_in_channel,
-    server_reply,
+    Context, HandlerError, HandlerResult, PostRegHandler, channel_has_mode, server_reply,
 };
 use super::routing::route_to_channel_with_snapshot;
 use super::types::{RouteMeta, RouteOptions, SenderSnapshot};
@@ -22,6 +21,8 @@ use slirc_proto::{ChannelExt, Message, MessageRef, Prefix, Response, irc_to_lowe
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 use uuid::Uuid;
+
+use crate::require_membership_or_reply;
 
 pub struct NpcHandler;
 
@@ -57,19 +58,13 @@ impl PostRegHandler for NpcHandler {
         let channel_lower = irc_to_lower(channel);
 
         // Check if channel exists and user is in it
-        if !is_user_in_channel(ctx, ctx.uid, &channel_lower).await {
-            let reply = server_reply(
-                &ctx.matrix.server_info.name,
-                Response::ERR_CANNOTSENDTOCHAN,
-                vec![
-                    ctx.state.nick.clone(),
-                    channel.to_string(),
-                    "Cannot send to channel (not a member)".to_string(),
-                ],
-            );
-            ctx.sender.send(reply).await?;
-            return Ok(());
-        };
+        require_membership_or_reply!(
+            ctx,
+            channel,
+            "NPC",
+            Response::ERR_CANNOTSENDTOCHAN,
+            "Cannot send to channel (not a member)"
+        );
 
         // Check channel mode +E (roleplay enabled) - required for NPC messages
         if !channel_has_mode(

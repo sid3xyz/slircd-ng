@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-20 01:30 | Pre-release | Zero users
-> Last Session: Refactored channel handlers (KICK, TOPIC, PART, NAMES) with shared macros and helpers.
+> Updated: 2026-01-19 20:00 | Pre-release | Zero users
+> Last Session: Refactored channel handlers (KICK, TOPIC, PART, NAMES) with shared macros and helpers. Added dispatch pipeline.
 
 ---
 
@@ -33,6 +33,7 @@
 |-----------|---------|
 | `gateway.rs` | TCP/TLS listener, accepts connections |
 | `connection/` | Per-connection lifecycle (registration + event loop) |
+| `dispatch.rs` | 6-stage message processing pipeline |
 | `event_loop.rs` | Pipeline-based event processing (Read→Decode→Dispatch→Respond) |
 
 ### 2.2 State Layer (`src/state/`)
@@ -55,7 +56,8 @@ Organized by domain:
 - `messaging/` - PRIVMSG, NOTICE, NPC, SCENE
 - `server/` - S2S commands, KILL, STATS
 - `op/` - OPER, REHASH, DIE
-- `chathistory/` - IRCv3 `draft/chathistory` implementation (Cleanup complete)
+- `chathistory/` - IRCv3 `draft/chathistory` implementation
+  - `slicing.rs` - AROUND command centering logic (tested)
 - `util/helpers.rs` - Shared macros and helpers (`require_arg!`, `require_nick!`, `require_channel_or_reply!`)
 
 ### 2.4 Services (`src/services/`)

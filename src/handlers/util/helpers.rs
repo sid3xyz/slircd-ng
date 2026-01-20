@@ -51,7 +51,8 @@ macro_rules! require_arg_or_reply {
             _ => {
                 let reply = slirc_proto::Response::err_needmoreparams($ctx.nick(), $cmd)
                     .with_prefix($ctx.server_prefix());
-                let reply = $crate::handlers::util::helpers::with_label(reply, $ctx.label.as_deref());
+                let reply =
+                    $crate::handlers::util::helpers::with_label(reply, $ctx.label.as_deref());
                 let _ = $ctx.sender.send(reply).await;
                 $crate::metrics::record_command_error($cmd, "ERR_NEEDMOREPARAMS");
                 None
@@ -162,6 +163,48 @@ macro_rules! require_channel_or_reply {
     }};
 }
 
+/// Require user membership in a channel, or send error reply and return early.
+///
+/// # Usage
+/// ```ignore
+/// require_membership_or_reply!(ctx, &channel_lower, "TOPIC");
+/// require_membership_or_reply!(ctx, channel_name, "NPC", Response::ERR_CANNOTSENDTOCHAN, "Cannot send to channel");
+/// ```
+#[macro_export]
+macro_rules! require_membership_or_reply {
+    // Default: ERR_NOTONCHANNEL (standard for TOPIC, INVITE, etc.)
+    ($ctx:expr, $channel_lower:expr, $cmd:expr) => {{
+        if !$crate::handlers::is_user_in_channel($ctx, $ctx.uid, $channel_lower).await {
+            let reply = slirc_proto::Response::err_notonchannel($ctx.nick(), $channel_lower)
+                .with_prefix($ctx.server_prefix());
+            $ctx.send_error($cmd, "ERR_NOTONCHANNEL", reply).await?;
+            return Ok(());
+        }
+    }};
+    // Custom error (for NPC/SCENE using ERR_CANNOTSENDTOCHAN)
+    ($ctx:expr, $channel:expr, $cmd:expr, $response:expr, $message:expr) => {{
+        if !$crate::handlers::is_user_in_channel(
+            $ctx,
+            $ctx.uid,
+            &::slirc_proto::irc_to_lower($channel),
+        )
+        .await
+        {
+            let reply = $crate::handlers::server_reply(
+                $ctx.server_name(),
+                $response,
+                vec![
+                    $ctx.nick().to_string(),
+                    $channel.to_string(),
+                    $message.to_string(),
+                ],
+            );
+            $ctx.send_error($cmd, stringify!($response), reply).await?;
+            return Ok(());
+        }
+    }};
+}
+
 // ============================================================================
 // Common reply helpers
 // ============================================================================
@@ -196,7 +239,9 @@ pub fn with_label(msg: Message, label: Option<&str>) -> Message {
             // Check if label already exists
             if let Some(tags) = &msg.tags {
                 for tag in tags {
-                    if tag.0 == "label" && let Some(ref existing) = tag.1 {
+                    if tag.0 == "label"
+                        && let Some(ref existing) = tag.1
+                    {
                         if existing == value {
                             return msg; // Already labeled correctly
                         }
