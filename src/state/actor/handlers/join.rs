@@ -6,7 +6,7 @@ use super::super::validation::{create_user_mask, is_banned};
 use super::{
     ActorState, ChannelActor, ChannelError, ChannelMode, JoinParams, JoinSuccessData, MemberModes,
 };
-use slirc_proto::{Command, Message};
+use slirc_proto::Message;
 use tokio::sync::oneshot;
 use tracing::debug;
 
