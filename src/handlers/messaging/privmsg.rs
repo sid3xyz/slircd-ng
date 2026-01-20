@@ -16,11 +16,9 @@
 
 use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_prefix};
 use super::delivery::{send_cannot_send, send_no_such_channel};
-use super::routing::{route_to_channel_with_snapshot, route_to_user_with_snapshot};
-use super::types::{
-    ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult,
-};
 use super::errors::*;
+use super::routing::{route_to_channel_with_snapshot, route_to_user_with_snapshot};
+use super::types::{ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult};
 use super::validation::{ErrorStrategy, validate_message_send};
 use crate::history::types::MessageTag as HistoryTag;
 use crate::history::{MessageEnvelope, StoredMessage};

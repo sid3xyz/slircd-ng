@@ -4,7 +4,9 @@
 //!
 //! Disconnects a server link.
 
-use crate::handlers::{Context, HandlerResult, PostRegHandler, get_oper_info, server_reply, server_notice};
+use crate::handlers::{
+    Context, HandlerResult, PostRegHandler, get_oper_info, server_notice, server_reply,
+};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -19,18 +21,21 @@ impl PostRegHandler for SquitHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-         // Check oper privileges
-         let Some((_, is_oper)) = get_oper_info(ctx).await else {
+        // Check oper privileges
+        let Some((_, is_oper)) = get_oper_info(ctx).await else {
             return Ok(());
         };
 
         if !is_oper {
-            let reply = Response::err_noprivileges(&ctx.state.nick).with_prefix(ctx.server_prefix());
+            let reply =
+                Response::err_noprivileges(&ctx.state.nick).with_prefix(ctx.server_prefix());
             ctx.send_error("SQUIT", "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         }
 
-        let server_mask = msg.arg(0).ok_or(crate::handlers::HandlerError::NeedMoreParams)?;
+        let server_mask = msg
+            .arg(0)
+            .ok_or(crate::handlers::HandlerError::NeedMoreParams)?;
         let comment = msg.arg(1).unwrap_or("Operator requested disconnect");
 
         // 1. Resolve server name to SID using TopologyGraph
@@ -46,7 +51,7 @@ impl PostRegHandler for SquitHandler {
             .map(|entry| entry.key().clone());
 
         let Some(sid) = target_sid else {
-             let reply = server_reply(
+            let reply = server_reply(
                 ctx.server_name(),
                 Response::ERR_NOSUCHSERVER,
                 vec![
@@ -60,7 +65,7 @@ impl PostRegHandler for SquitHandler {
         };
 
         if sid == ctx.matrix.sync_manager.local_id {
-             let reply = server_reply(
+            let reply = server_reply(
                 ctx.server_name(),
                 Response::ERR_NOSUCHSERVER,
                 vec![
@@ -77,8 +82,11 @@ impl PostRegHandler for SquitHandler {
         if let Some(link) = ctx.matrix.sync_manager.get_peer_for_server(&sid) {
             // It's a direct link - send ERROR and disconnect
             let error_msg = slirc_proto::Command::ERROR(format!("Closing link: {}", comment));
-            let _ = link.tx.send(std::sync::Arc::new(slirc_proto::Message::from(error_msg))).await;
-            
+            let _ = link
+                .tx
+                .send(std::sync::Arc::new(slirc_proto::Message::from(error_msg)))
+                .await;
+
             // Allow a brief moment for the message to traverse the channel before forceful close?
             // In async land, the 'remove_peer' might close the channel immediately.
             // But 'tx.send' is async. The receiver loop processes it.
@@ -87,7 +95,7 @@ impl PostRegHandler for SquitHandler {
             // Actually, removing from links map stops heartbeats and new routings.
             // The connection task itself might still be running.
             // For now, simple removal trigger is sufficient as `remove_peer` is all we have exposed.
-            
+
             ctx.matrix.sync_manager.remove_peer(&sid).await;
 
             let reply = server_notice(

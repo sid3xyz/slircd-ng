@@ -40,11 +40,7 @@ pub async fn echo_to_other_sessions(
                 .unwrap_or_default();
 
             let msg_for_session = build_local_recipient_message(
-                msg,
-                &caps,
-                snapshot,
-                msgid,
-                timestamp,
+                msg, &caps, snapshot, msgid, timestamp,
                 None, // Self-echo copies never carry labels logic handled separately or N/A
             );
 

@@ -62,13 +62,14 @@ impl ChannelActor {
             let event_id = uuid::Uuid::new_v4().to_string();
             let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
             let source = prefix.to_string(); // Prefix was consumed above? No, wait. 
-            
-            let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
-                id: event_id,
-                nanotime: now,
-                source,
-                kind: crate::history::types::EventKind::Part(reason.clone()),
-            });
+
+            let event =
+                crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                    id: event_id,
+                    nanotime: now,
+                    source,
+                    kind: crate::history::types::EventKind::Part(reason.clone()),
+                });
 
             let history = matrix.service_manager.history.clone();
             let target = self.name.clone();
@@ -129,7 +130,7 @@ impl ChannelActor {
             if let Some(matrix) = self.matrix.upgrade() {
                 let event_id = uuid::Uuid::new_v4().to_string();
                 let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
-                
+
                 let source = if let Some(p) = &quit_msg.prefix {
                     p.to_string()
                 } else {
@@ -143,12 +144,13 @@ impl ChannelActor {
                     None
                 };
 
-                let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
-                    id: event_id,
-                    nanotime: now,
-                    source,
-                    kind: crate::history::types::EventKind::Quit(reason),
-                });
+                let event =
+                    crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                        id: event_id,
+                        nanotime: now,
+                        source,
+                        kind: crate::history::types::EventKind::Quit(reason),
+                    });
 
                 let history = matrix.service_manager.history.clone();
                 let target = self.name.clone();

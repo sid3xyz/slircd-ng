@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use slirc_proto::{Message, Command, Prefix};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use slirc_proto::{Command, Message, Prefix};
 
 // Simple benchmark to measure message parsing and routing overhead
 // Note: This is an integration benchmark, so it might need some mocking if we want to isolate components.
@@ -10,15 +10,17 @@ fn message_creation_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
 
     group.bench_function("create_privmsg", |b| {
-        b.iter(|| {
-            Message {
-                tags: None,
-                prefix: Some(Prefix::Nickname("sender".to_string(), "user".to_string(), "host".to_string())),
-                command: Command::PRIVMSG("#channel".to_string(), "Hello world".to_string()),
-            }
+        b.iter(|| Message {
+            tags: None,
+            prefix: Some(Prefix::Nickname(
+                "sender".to_string(),
+                "user".to_string(),
+                "host".to_string(),
+            )),
+            command: Command::PRIVMSG("#channel".to_string(), "Hello world".to_string()),
         })
     });
-    
+
     group.finish();
 }
 
@@ -29,12 +31,19 @@ fn message_parsing_benchmark(c: &mut Criterion) {
 
     group.bench_function("parse_privmsg", |b| {
         b.iter(|| {
-            std::str::from_utf8(raw).unwrap().parse::<Message>().unwrap()
+            std::str::from_utf8(raw)
+                .unwrap()
+                .parse::<Message>()
+                .unwrap()
         })
     });
 
     group.finish();
 }
 
-criterion_group!(benches, message_creation_benchmark, message_parsing_benchmark);
+criterion_group!(
+    benches,
+    message_creation_benchmark,
+    message_parsing_benchmark
+);
 criterion_main!(benches);

@@ -1,5 +1,6 @@
 use super::autoreplay::perform_autoreplay;
 use super::context::{ConnectionContext, LifecycleChannels};
+use super::dispatch::{DispatchResult, ProcessParams, process_message};
 use super::error_handling::{ReadErrorAction, classify_read_error, extract_label_from_raw};
 use super::helpers::{
     batch_end_msg, batch_start_msg, excess_flood_error, flood_warning_notice,
@@ -11,7 +12,6 @@ use slirc_proto::{Command, Message, Prefix, Tag, generate_batch_ref};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
-use super::dispatch::{DispatchResult, ProcessParams, process_message};
 
 const MAX_FLOOD_VIOLATIONS: u8 = 3;
 const PING_CHECK_INTERVAL_SECS: u64 = 15;
@@ -118,21 +118,24 @@ fn process_read_result(
             drop(msg_ref);
 
             // Flood protection - check rate limit
-            let flood_result =
-                if matrix.security_manager.rate_limiter.check_message_rate(&uid.to_string()) {
-                    *flood_violations = 0;
-                    FloodCheckResult::Ok
-                } else {
-                    *flood_violations += 1;
-                    crate::metrics::RATE_LIMITED.inc();
-                    warn!(uid = %uid, violations = flood_violations, "Rate limit exceeded");
+            let flood_result = if matrix
+                .security_manager
+                .rate_limiter
+                .check_message_rate(&uid.to_string())
+            {
+                *flood_violations = 0;
+                FloodCheckResult::Ok
+            } else {
+                *flood_violations += 1;
+                crate::metrics::RATE_LIMITED.inc();
+                warn!(uid = %uid, violations = flood_violations, "Rate limit exceeded");
 
-                    if *flood_violations >= MAX_FLOOD_VIOLATIONS {
-                        FloodCheckResult::Disconnect
-                    } else {
-                        FloodCheckResult::RateLimited
-                    }
-                };
+                if *flood_violations >= MAX_FLOOD_VIOLATIONS {
+                    FloodCheckResult::Disconnect
+                } else {
+                    FloodCheckResult::RateLimited
+                }
+            };
 
             match flood_result {
                 FloodCheckResult::Ok => SelectResult::ProcessMessage {

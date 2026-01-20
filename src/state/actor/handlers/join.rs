@@ -120,12 +120,17 @@ impl ChannelActor {
             if !self.modes.contains(&ChannelMode::InviteOnly) {
                 self.modes.insert(ChannelMode::InviteOnly);
                 self.dirty = true;
-                
+
                 // Broadcast mode change
                 let mode_msg = Message {
                     tags: None,
-                    prefix: Some(slirc_proto::Prefix::ServerName("flood-protection".to_string())),
-                    command: slirc_proto::Command::Raw("MODE".to_string(), vec![self.name.clone(), "+i".to_string()]),
+                    prefix: Some(slirc_proto::Prefix::ServerName(
+                        "flood-protection".to_string(),
+                    )),
+                    command: slirc_proto::Command::Raw(
+                        "MODE".to_string(),
+                        vec![self.name.clone(), "+i".to_string()],
+                    ),
                 };
                 self.handle_broadcast(mode_msg, None).await;
             }
@@ -245,14 +250,18 @@ impl ChannelActor {
             if let Some(matrix) = self.matrix.upgrade() {
                 let event_id = uuid::Uuid::new_v4().to_string();
                 let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
-                let source_prefix = format!("{}!{}@{}", nick, user_context.username, user_context.hostname);
+                let source_prefix = format!(
+                    "{}!{}@{}",
+                    nick, user_context.username, user_context.hostname
+                );
 
-                let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
-                    id: event_id,
-                    nanotime: now,
-                    source: source_prefix,
-                    kind: crate::history::types::EventKind::Join,
-                });
+                let event =
+                    crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                        id: event_id,
+                        nanotime: now,
+                        source: source_prefix,
+                        kind: crate::history::types::EventKind::Join,
+                    });
 
                 let history = matrix.service_manager.history.clone();
                 let target = self.name.clone();

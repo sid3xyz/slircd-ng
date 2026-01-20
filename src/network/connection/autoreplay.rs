@@ -186,11 +186,11 @@ async fn replay_channel_history(
                 let msg = match item {
                     crate::history::types::HistoryItem::Message(m) => m,
                     crate::history::types::HistoryItem::Event(_) => {
-                            // TODO: Support event replay in autoreplay
-                            continue;
+                        // TODO: Support event replay in autoreplay
+                        continue;
                     }
                 };
-                
+
                 // Filter based on capabilities (same logic as send_history_batch)
                 let command_type = msg.envelope.command.as_str();
                 match command_type {

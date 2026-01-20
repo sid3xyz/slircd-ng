@@ -17,7 +17,6 @@
 use super::context::{Context, HandlerResult};
 use super::traits::{DynUniversalHandler, PostRegHandler, PreRegHandler, ServerHandler};
 use crate::handlers::{
-    services::account::RegisterHandler,
     admin::{SajoinHandler, SamodeHandler, SanickHandler, SapartHandler},
     batch::BatchHandler,
     cap::{AuthenticateHandler, CapHandler},
@@ -28,7 +27,6 @@ use crate::handlers::{
         SceneHandler, TagmsgHandler,
     },
     mode::ModeHandler,
-    user::monitor::MonitorHandler,
     server::{
         base::{ServerHandshakeHandler, ServerPropagationHandler},
         capab::CapabHandler,
@@ -36,14 +34,16 @@ use crate::handlers::{
         kick::KickHandler as ServerKickHandler,
         kill::KillHandler as ServerKillHandler,
         routing::RoutedMessageHandler,
+        sid::SidHandler,
         sjoin::SJoinHandler,
         svinfo::SvinfoHandler,
         tmode::TModeHandler,
         topic::TopicHandler as ServerTopicHandler,
         uid::UidHandler,
-        sid::SidHandler,
     },
+    services::account::RegisterHandler,
     services::aliases::{CsHandler, NsHandler},
+    user::monitor::MonitorHandler,
     user::status::{AwayHandler, SetnameHandler, SilenceHandler},
 };
 use crate::state::{RegisteredState, ServerState, UnregisteredState};

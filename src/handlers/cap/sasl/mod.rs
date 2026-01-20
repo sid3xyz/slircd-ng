@@ -18,7 +18,7 @@ use tracing::debug;
 use common::send_sasl_fail;
 use external::handle_sasl_external;
 use plain::handle_sasl_plain_data;
-use scram::{handle_scram_client_first, handle_scram_client_final};
+use scram::{handle_scram_client_final, handle_scram_client_first};
 
 /// Handler for AUTHENTICATE command (SASL authentication).
 ///
@@ -106,9 +106,9 @@ async fn handle_sasl_init<S: SessionState + SaslAccess>(
         }
 
         if ctx.state.certfp().is_none() {
-             send_sasl_fail(ctx, nick, "No client certificate provided").await?;
-             ctx.state.set_sasl_state(SaslState::None);
-             return Ok(());
+            send_sasl_fail(ctx, nick, "No client certificate provided").await?;
+            ctx.state.set_sasl_state(SaslState::None);
+            return Ok(());
         }
 
         ctx.state.set_sasl_state(SaslState::WaitingForExternal);

@@ -32,10 +32,10 @@ mod core;
 mod messaging;
 mod mode;
 mod oper;
+mod s2s;
 pub mod server;
 mod server_query;
 pub mod services;
-mod s2s;
 pub mod user;
 pub mod util;
 

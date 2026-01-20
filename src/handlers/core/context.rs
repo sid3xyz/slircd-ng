@@ -167,7 +167,8 @@ impl<'a> Context<'a, RegisteredState> {
     /// Wraps `server_notice` and sends it.
     #[inline]
     pub async fn send_notice(&self, text: impl Into<String>) -> Result<(), HandlerError> {
-        let msg = crate::handlers::util::helpers::server_notice(self.server_name(), self.nick(), text);
+        let msg =
+            crate::handlers::util::helpers::server_notice(self.server_name(), self.nick(), text);
         self.sender.send(msg).await?;
         Ok(())
     }

@@ -1,9 +1,12 @@
+use super::common::{
+    attach_session_to_client, broadcast_account_change, extract_device_id, send_sasl_fail,
+    send_sasl_success,
+};
+use crate::handlers::cap::types::{SaslState, SecureString};
 use crate::handlers::{Context, HandlerResult};
 use crate::state::{SaslAccess, SessionState};
-use crate::handlers::cap::types::{SaslState, SecureString};
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 use zeroize::Zeroize;
-use super::common::{send_sasl_fail, send_sasl_success, broadcast_account_change, attach_session_to_client, extract_device_id};
 
 /// Decode and validate SASL PLAIN credentials.
 fn validate_sasl_plain(data: &str) -> Result<(String, String, SecureString), &'static str> {

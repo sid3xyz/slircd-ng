@@ -149,7 +149,10 @@ impl PostRegHandler for SetnameHandler {
                     command: Command::FAIL(
                         "SETNAME".to_string(),
                         "INVALID_REALNAME".to_string(),
-                        vec![format!("Realname too long (max {} chars)", MAX_REALNAME_LEN)],
+                        vec![format!(
+                            "Realname too long (max {} chars)",
+                            MAX_REALNAME_LEN
+                        )],
                     ),
                 };
                 ctx.sender.send(fail).await?;

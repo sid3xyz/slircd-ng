@@ -108,11 +108,7 @@ impl HistoryProvider for RedbProvider {
             format!("{}\0{:020}\0{}", target_lower, ts, id)
         } else {
             // Loose end: target\0timestamp\0 (end of global)
-            format!(
-                "{}\0{:020}\0",
-                target_lower,
-                filter.end.unwrap_or(i64::MAX)
-            )
+            format!("{}\0{:020}\0", target_lower, filter.end.unwrap_or(i64::MAX))
         };
 
         let range = table
@@ -142,14 +138,19 @@ impl HistoryProvider for RedbProvider {
                     break;
                 }
                 let (_k, v) = item.map_err(|e| HistoryError::Database(e.to_string()))?;
-                
+
                 // Try deserializing as generic HistoryItem first
                 let item: HistoryItem = match serde_json::from_slice(v.value()) {
                     Ok(item) => item,
                     Err(_) => {
                         // Fallback: try legacy StoredMessage and wrap it
-                        let msg: StoredMessage = serde_json::from_slice(v.value())
-                            .map_err(|e| HistoryError::Serialization(format!("Corrupt or unknown history format: {}", e)))?;
+                        let msg: StoredMessage =
+                            serde_json::from_slice(v.value()).map_err(|e| {
+                                HistoryError::Serialization(format!(
+                                    "Corrupt or unknown history format: {}",
+                                    e
+                                ))
+                            })?;
                         HistoryItem::Message(msg)
                     }
                 };
@@ -161,14 +162,19 @@ impl HistoryProvider for RedbProvider {
                     break;
                 }
                 let (_k, v) = item.map_err(|e| HistoryError::Database(e.to_string()))?;
-                
+
                 // Try deserializing as generic HistoryItem first
                 let item: HistoryItem = match serde_json::from_slice(v.value()) {
                     Ok(item) => item,
                     Err(_) => {
                         // Fallback: try legacy StoredMessage and wrap it
-                        let msg: StoredMessage = serde_json::from_slice(v.value())
-                            .map_err(|e| HistoryError::Serialization(format!("Corrupt or unknown history format: {}", e)))?;
+                        let msg: StoredMessage =
+                            serde_json::from_slice(v.value()).map_err(|e| {
+                                HistoryError::Serialization(format!(
+                                    "Corrupt or unknown history format: {}",
+                                    e
+                                ))
+                            })?;
                         HistoryItem::Message(msg)
                     }
                 };

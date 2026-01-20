@@ -68,15 +68,16 @@ impl ChannelActor {
             let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
             let source = sender_prefix.to_string();
 
-            let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
-                id: event_id,
-                nanotime: now,
-                source,
-                kind: crate::history::types::EventKind::Topic { 
-                    old_topic: None, 
-                    new_topic: topic 
-                },
-            });
+            let event =
+                crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                    id: event_id,
+                    nanotime: now,
+                    source,
+                    kind: crate::history::types::EventKind::Topic {
+                        old_topic: None,
+                        new_topic: topic,
+                    },
+                });
 
             let history = matrix.service_manager.history.clone();
             let target = self.name.clone();

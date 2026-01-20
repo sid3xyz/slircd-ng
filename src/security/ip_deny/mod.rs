@@ -758,11 +758,17 @@ mod tests {
 
         for i in 0..iterations {
             let ip = IpAddr::V4(Ipv4Addr::new(10, 0, (i / 256) as u8, (i % 256) as u8));
-            list.add_ban_ip(ip, "Benchmark".to_string(), None, "bench".to_string()).unwrap();
+            list.add_ban_ip(ip, "Benchmark".to_string(), None, "bench".to_string())
+                .unwrap();
         }
 
         let duration = start.elapsed();
-        println!("Add ban benchmark: {:?} for {} iterations ({:?} per op)", duration, iterations, duration / iterations);
+        println!(
+            "Add ban benchmark: {:?} for {} iterations ({:?} per op)",
+            duration,
+            iterations,
+            duration / iterations
+        );
 
         // Cleanup
         let _ = std::fs::remove_file(path);

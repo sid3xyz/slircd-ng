@@ -16,17 +16,17 @@ pub use userip::UseripHandler;
 pub use version::VersionHandler;
 
 mod admin;
+mod disabled;
+mod help;
 mod info;
+mod lusers;
 mod motd;
 mod rules;
+mod service;
+mod stats;
 mod time;
 mod userip;
 mod version;
-mod lusers;
-mod stats;
-mod help;
-mod service;
-mod disabled;
 
 use crate::handlers::{PostRegHandler, s2s};
 use std::collections::HashMap;

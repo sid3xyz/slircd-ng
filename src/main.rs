@@ -245,7 +245,9 @@ async fn main() -> anyhow::Result<()> {
     info!("Matrix initialized");
 
     // Spawn all background tasks
-    matrix.lifecycle_manager.spawn_background_tasks(Arc::clone(&matrix));
+    matrix
+        .lifecycle_manager
+        .spawn_background_tasks(Arc::clone(&matrix));
     info!("Background tasks started");
 
     // Spawn router task for remote messages
@@ -380,7 +382,9 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Start S2S heartbeat
-    matrix.sync_manager.start_heartbeat(matrix.lifecycle_manager.shutdown_tx.subscribe());
+    matrix
+        .sync_manager
+        .start_heartbeat(matrix.lifecycle_manager.shutdown_tx.subscribe());
 
     gateway.run().await?;
 

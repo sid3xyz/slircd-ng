@@ -1,10 +1,9 @@
 use crate::handlers::{Context, HandlerResult, notify_extended_monitor_watchers};
-use crate::state::{SaslAccess, SessionState};
 use crate::state::client::DeviceId;
+use crate::state::dashmap_ext::DashMapExt;
+use crate::state::{SaslAccess, SessionState};
 use slirc_proto::{Command, Message, Prefix, Response};
 use tracing::{debug, warn};
-use crate::state::dashmap_ext::DashMapExt;
-
 
 /// Extract device ID from SASL username.
 ///
@@ -184,12 +183,21 @@ pub(crate) async fn broadcast_account_change<S: SessionState + SaslAccess>(
 ) {
     let nick_lower = slirc_proto::irc_to_lower(nick);
     let (uid, user_info, visible_host, channels) = {
-        let Some(uid) = ctx.matrix.user_manager.get_first_uid(&nick_lower) else { return; };
-        let Some(user_arc_ref) = ctx.matrix.user_manager.users.get(&uid) else { return; };
+        let Some(uid) = ctx.matrix.user_manager.get_first_uid(&nick_lower) else {
+            return;
+        };
+        let Some(user_arc_ref) = ctx.matrix.user_manager.users.get(&uid) else {
+            return;
+        };
         let user_arc = user_arc_ref.clone();
         drop(user_arc_ref);
         let user = user_arc.read().await;
-        (uid, user.user.clone(), user.visible_host.clone(), user.channels.iter().cloned().collect::<Vec<_>>())
+        (
+            uid,
+            user.user.clone(),
+            user.visible_host.clone(),
+            user.channels.iter().cloned().collect::<Vec<_>>(),
+        )
     };
 
     if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(&uid) {
@@ -204,9 +212,16 @@ pub(crate) async fn broadcast_account_change<S: SessionState + SaslAccess>(
     };
 
     for channel_name in &channels {
-        ctx.matrix.channel_manager.broadcast_to_channel_with_cap(
-            channel_name, account_msg.clone(), Some(&uid), Some("account-notify"), None
-        ).await;
+        ctx.matrix
+            .channel_manager
+            .broadcast_to_channel_with_cap(
+                channel_name,
+                account_msg.clone(),
+                Some(&uid),
+                Some("account-notify"),
+                None,
+            )
+            .await;
     }
 
     notify_extended_monitor_watchers(ctx.matrix, nick, account_msg, "account-notify").await;

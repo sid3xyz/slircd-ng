@@ -97,7 +97,7 @@ impl NamesHandler {
             let is_auditorium = channel_info
                 .modes
                 .contains(&crate::state::actor::ChannelMode::Auditorium);
-            
+
             // Check if requester is privileged in this channel
             let requester_privileged = if let Some(modes) = members.get(ctx.uid) {
                 modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
@@ -222,7 +222,7 @@ impl PostRegHandler for NamesHandler {
                 // We rely on process_single_channel_names to do the heavy lifting
                 // including secret channel filtering.
                 // We assume channel_lower is the display name here (it's lowercase but that's fine for bulk list)
-                
+
                 // Note: using channel_lower as display name might be a slight UX regression if we wanted original case,
                 // but since we are iterating the map keys, we only have lowercase.
                 // ChannelManager doesn't index by original case (it stores them in actor, but map key is lower).
@@ -232,8 +232,9 @@ impl PostRegHandler for NamesHandler {
                 // If we pass `channel_lower`, the reply will be lowercase.
                 // We can improve this later if needed by returning original name from GetInfo.
                 // For now, lowercase is acceptable for bulk list.
-                
-                self.process_single_channel_names(ctx, &channel_lower, nick, multi_prefix, false).await?;
+
+                self.process_single_channel_names(ctx, &channel_lower, nick, multi_prefix, false)
+                    .await?;
                 result_count += 1;
             }
 
@@ -265,12 +266,13 @@ impl PostRegHandler for NamesHandler {
         }
 
         if let Some(channel_name) = target_channel {
-             let channels: Vec<&str> = channel_name.split(',').collect();
-             for chan in channels {
-                 // For specific channels, we ALWAYS send RPL_ENDOFNAMES per channel
-                 self.process_single_channel_names(ctx, chan, nick, multi_prefix, true).await?;
-             }
-             return Ok(());
+            let channels: Vec<&str> = channel_name.split(',').collect();
+            for chan in channels {
+                // For specific channels, we ALWAYS send RPL_ENDOFNAMES per channel
+                self.process_single_channel_names(ctx, chan, nick, multi_prefix, true)
+                    .await?;
+            }
+            return Ok(());
         }
 
         Ok(())

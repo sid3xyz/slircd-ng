@@ -79,15 +79,15 @@ impl Config {
         let path = path.as_ref();
         let base_dir = path.parent().unwrap_or(Path::new("."));
         let content = std::fs::read_to_string(path)?;
-        
+
         // Process includes and merge content
         let merged_content = Self::process_includes(&content, base_dir)?;
-        
+
         let config: Config = toml::from_str(&merged_content)?;
         config.security.warn_deprecated_and_unused();
         Ok(config)
     }
-    
+
     /// Process include directives and merge external config files.
     ///
     /// Supports:
@@ -95,19 +95,17 @@ impl Config {
     /// - `include "conf.d/*.toml"` - glob pattern
     fn process_includes(content: &str, base_dir: &Path) -> Result<String, ConfigError> {
         let mut result = String::with_capacity(content.len());
-        
+
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.starts_with("include ") {
                 // Extract path from `include "path"` or `include 'path'`
                 let path_part = trimmed.strip_prefix("include ").unwrap().trim();
-                let path_str = path_part
-                    .trim_matches('"')
-                    .trim_matches('\'');
-                
+                let path_str = path_part.trim_matches('"').trim_matches('\'');
+
                 let include_path = base_dir.join(path_str);
                 let pattern = include_path.to_string_lossy();
-                
+
                 // Use glob to expand patterns
                 match glob::glob(&pattern) {
                     Ok(entries) => {
@@ -136,7 +134,7 @@ impl Config {
                 result.push('\n');
             }
         }
-        
+
         Ok(result)
     }
 }

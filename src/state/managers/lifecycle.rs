@@ -35,8 +35,10 @@ impl LifecycleManager {
             let shutdown_tx = self.shutdown_tx.clone();
             tokio::spawn(async move {
                 use tokio::signal::unix::{SignalKind, signal};
-                let mut sigint = signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
-                let mut sigterm = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+                let mut sigint =
+                    signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
+                let mut sigterm =
+                    signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
 
                 tokio::select! {
                     _ = sigint.recv() => tracing::info!("Received SIGINT - initiating graceful shutdown"),
@@ -47,7 +49,7 @@ impl LifecycleManager {
                 let _ = shutdown_tx.send(());
             });
         }
-        
+
         // Spawn channel persistence restoration
         {
             let matrix = Arc::clone(&matrix);
@@ -108,7 +110,7 @@ impl LifecycleManager {
                 }
             });
         }
-        
+
         // Nick enforcement task
         crate::services::enforce::spawn_enforcement_task(Arc::clone(&matrix));
 
@@ -159,7 +161,7 @@ impl LifecycleManager {
                 }
             });
         }
-        
+
         // Always-on expiration task
         {
             let matrix = Arc::clone(&matrix);
@@ -201,7 +203,7 @@ impl LifecycleManager {
                 }
             });
         }
-        
+
         // Ban cache and rate limiter pruning task
         {
             let matrix = Arc::clone(&matrix);
@@ -237,7 +239,7 @@ impl LifecycleManager {
             tokio::spawn(async move {
                 let retention = std::time::Duration::from_secs(30 * 86400);
                 let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
-                
+
                 // Run immediately at startup
                 match matrix.service_manager.history.prune(retention).await {
                     Ok(removed) if removed > 0 => {

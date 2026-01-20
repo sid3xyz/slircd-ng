@@ -201,11 +201,7 @@ async fn remove_user_from_channels(matrix: &Matrix, uid: &str) {
 /// Broadcast a batch of netsplit QUITs to all local users.
 ///
 /// Uses IRCv3 BATCH capability if supported by the client.
-async fn broadcast_netsplit_batch(
-    matrix: &Matrix,
-    remote_server: &str,
-    quit_msgs: Vec<Message>,
-) {
+async fn broadcast_netsplit_batch(matrix: &Matrix, remote_server: &str, quit_msgs: Vec<Message>) {
     if quit_msgs.is_empty() {
         return;
     }
@@ -234,11 +230,14 @@ async fn broadcast_netsplit_batch(
     let end_arc = Arc::new(batch_end);
 
     // Pre-calculate tagged messages for batch-capable clients
-    let tagged_msgs: Vec<Arc<Message>> = quit_msgs.iter().map(|msg| {
-        let mut m = msg.clone();
-        m.tags = Some(vec![Tag::new("batch", Some(batch_ref.clone()))]);
-        Arc::new(m)
-    }).collect();
+    let tagged_msgs: Vec<Arc<Message>> = quit_msgs
+        .iter()
+        .map(|msg| {
+            let mut m = msg.clone();
+            m.tags = Some(vec![Tag::new("batch", Some(batch_ref.clone()))]);
+            Arc::new(m)
+        })
+        .collect();
 
     // Pre-calculate legacy messages
     let legacy_msgs: Vec<Arc<Message>> = quit_msgs.into_iter().map(Arc::new).collect();
@@ -253,7 +252,10 @@ async fn broadcast_netsplit_batch(
     }
 
     for (tx, session_id) in sessions {
-        let caps = matrix.user_manager.get_session_caps(session_id).unwrap_or_default();
+        let caps = matrix
+            .user_manager
+            .get_session_caps(session_id)
+            .unwrap_or_default();
 
         if caps.contains("batch") {
             // Send batch

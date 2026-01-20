@@ -6,11 +6,11 @@
 use super::context::ConnectionContext;
 use crate::handlers::{Context, HandlerResult, ResponseMiddleware, process_batch_message};
 use crate::state::RegisteredState;
-use slirc_proto::message::MessageRef;
 use slirc_proto::Message;
+use slirc_proto::message::MessageRef;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, warn};
 
 /// Result of processing a single message through the pipeline.
@@ -129,9 +129,12 @@ pub async fn process_message<'a>(
         } else {
             // Other errors - send error reply
             let nick = &reg_state.nick;
-            if let Some(reply) =
-                super::error_handling::handler_error_to_reply_owned(&conn.matrix.server_info.name, nick, &e, msg)
-                && conn.transport.write_message(&reply).await.is_err()
+            if let Some(reply) = super::error_handling::handler_error_to_reply_owned(
+                &conn.matrix.server_info.name,
+                nick,
+                &e,
+                msg,
+            ) && conn.transport.write_message(&reply).await.is_err()
             {
                 return DispatchResult::WriteError;
             }

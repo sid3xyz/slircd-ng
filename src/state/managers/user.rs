@@ -82,7 +82,10 @@ impl UserManager {
                 .read() // Acquire read lock (AtomicI64 has interior mutability)
                 .await
                 .last_active
-                .store(chrono::Utc::now().timestamp_millis(), std::sync::atomic::Ordering::Relaxed);
+                .store(
+                    chrono::Utc::now().timestamp_millis(),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
         }
     }
 
@@ -231,8 +234,6 @@ impl UserManager {
         }
     }
 
-
-
     /// Add a local user to the state.
     pub async fn add_local_user(&self, user: User) {
         let uid = user.uid.clone();
@@ -315,7 +316,8 @@ impl UserManager {
                 // Incoming is newer (Loser).
                 // Merge then kill so we have the record
                 self.perform_merge(crdt, source.clone()).await;
-                self.kill_user(&uid, "Nick collision (newer loses)", source).await;
+                self.kill_user(&uid, "Nick collision (newer loses)", source)
+                    .await;
                 crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL
                     .with_label_values(&["nick", "kill_incoming"])
                     .inc();
@@ -338,7 +340,8 @@ impl UserManager {
                 return;
             } else {
                 // Tie. Kill both.
-                self.kill_user(&existing_uid, "Nick collision (tie)", source.clone()).await;
+                self.kill_user(&existing_uid, "Nick collision (tie)", source.clone())
+                    .await;
                 self.perform_merge(crdt, source.clone()).await;
                 self.kill_user(&uid, "Nick collision (tie)", source).await;
                 crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL

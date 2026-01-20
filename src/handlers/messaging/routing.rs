@@ -6,12 +6,10 @@
 //! - Automatic multiclient fan-out
 //! - Remote user routing (S2S)
 
-use super::delivery::{build_local_recipient_message};
+use super::delivery::build_local_recipient_message;
 // use super::delivery::{send_cannot_send};
 use super::multiclient::echo_to_other_sessions;
-use super::types::{
-    ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult,
-};
+use super::types::{ChannelRouteResult, RouteMeta, RouteOptions, SenderSnapshot, UserRouteResult};
 use crate::handlers::core::Context;
 use crate::handlers::server_reply;
 use slirc_proto::ctcp::{Ctcp, CtcpKind};
@@ -101,7 +99,7 @@ pub async fn route_to_channel_with_snapshot(
     if result == ChannelRouteResult::Sent {
         // Self-echo to other sessions (bouncer support)
         if let (Some(ts), Some(mid)) = (&timestamp_clone, &msgid_clone) {
-             echo_to_other_sessions(ctx, &msg, snapshot, ts, mid).await;
+            echo_to_other_sessions(ctx, &msg, snapshot, ts, mid).await;
         }
     }
 
@@ -456,7 +454,7 @@ pub async fn route_to_user_with_snapshot(
     if sent_count > 0 {
         // Self-echo to other sessions (bouncer support)
         if let (Some(ts), Some(mid)) = (&timestamp, &msgid) {
-             echo_to_other_sessions(ctx, &msg, snapshot, ts, mid).await;
+            echo_to_other_sessions(ctx, &msg, snapshot, ts, mid).await;
         }
         UserRouteResult::Sent
     } else if blocked_by_regged_only {

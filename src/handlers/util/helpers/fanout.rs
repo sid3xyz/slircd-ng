@@ -22,9 +22,7 @@ where
     let session_id = ctx.state.session_id();
     let account = ctx.state.account().map(String::from);
 
-    async move {
-        broadcast_to_account_inner(matrix, session_id, account, message, skip_self).await
-    }
+    async move { broadcast_to_account_inner(matrix, session_id, account, message, skip_self).await }
 }
 
 async fn broadcast_to_account_inner(

@@ -1,8 +1,11 @@
+use super::common::{
+    attach_session_to_client, broadcast_account_change, extract_device_id, send_sasl_fail,
+    send_sasl_success,
+};
+use crate::handlers::cap::types::SaslState;
 use crate::handlers::{Context, HandlerResult};
 use crate::state::{SaslAccess, SessionState};
-use crate::handlers::cap::types::SaslState;
 use tracing::{info, warn};
-use super::common::{send_sasl_fail, send_sasl_success, broadcast_account_change, attach_session_to_client, extract_device_id};
 
 /// Handle SASL EXTERNAL response (client confirms).
 pub(crate) async fn handle_sasl_external<S: SessionState + SaslAccess>(

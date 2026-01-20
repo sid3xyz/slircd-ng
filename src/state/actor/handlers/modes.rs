@@ -87,8 +87,12 @@ impl ChannelActor {
                 ProtoChannelMode::FreeInvite => self.set_flag_mode(ChannelMode::FreeInvite, adding),
                 ProtoChannelMode::TlsOnly => self.set_flag_mode(ChannelMode::TlsOnly, adding),
                 ProtoChannelMode::Roleplay => self.set_flag_mode(ChannelMode::Roleplay, adding),
-                ProtoChannelMode::DelayedJoin => self.set_flag_mode(ChannelMode::DelayedJoin, adding),
-                ProtoChannelMode::StripColors => self.set_flag_mode(ChannelMode::StripColors, adding),
+                ProtoChannelMode::DelayedJoin => {
+                    self.set_flag_mode(ChannelMode::DelayedJoin, adding)
+                }
+                ProtoChannelMode::StripColors => {
+                    self.set_flag_mode(ChannelMode::StripColors, adding)
+                }
                 ProtoChannelMode::AntiCaps => self.set_flag_mode(ChannelMode::AntiCaps, adding),
                 ProtoChannelMode::Censor => self.set_flag_mode(ChannelMode::Censor, adding),
                 ProtoChannelMode::Ban => {
@@ -169,7 +173,10 @@ impl ChannelActor {
                             )
                         })
                     } else {
-                        self.replace_param_mode(|mode| matches!(mode, ChannelMode::Limit(_, _)), None)
+                        self.replace_param_mode(
+                            |mode| matches!(mode, ChannelMode::Limit(_, _)),
+                            None,
+                        )
                     }
                 }
                 ProtoChannelMode::JoinForward => {
@@ -193,9 +200,9 @@ impl ChannelActor {
                     }
                 }
                 ProtoChannelMode::Flood => {
-                    use std::str::FromStr;
                     use governor::{Quota, RateLimiter};
                     use std::num::NonZeroU32;
+                    use std::str::FromStr;
 
                     if adding {
                         if let Some(param_str) = arg {
@@ -220,26 +227,33 @@ impl ChannelActor {
 
                                     match param.type_ {
                                         super::FloodType::Message => {
-                                             // Message limiters are created per-user on demand in message handler
-                                             // We just cleared the map, so they will be recreated with new policy.
+                                            // Message limiters are created per-user on demand in message handler
+                                            // We just cleared the map, so they will be recreated with new policy.
                                         }
                                         super::FloodType::Join => {
-                                             // Calculate period per join allowed
-                                             // period (secs) / count (joins)
-                                             let period_per_action = std::time::Duration::from_secs_f64(
-                                                 param.period as f64 / param.count as f64
-                                             );
-                                             
-                                             if let Some(quota) = Quota::with_period(period_per_action) {
-                                                 let quota = quota.allow_burst(NonZeroU32::new(param.count).unwrap());
-                                                 self.flood_join_limiter = Some(RateLimiter::direct(quota));
-                                             }
+                                            // Calculate period per join allowed
+                                            // period (secs) / count (joins)
+                                            let period_per_action =
+                                                std::time::Duration::from_secs_f64(
+                                                    param.period as f64 / param.count as f64,
+                                                );
+
+                                            if let Some(quota) =
+                                                Quota::with_period(period_per_action)
+                                            {
+                                                let quota = quota.allow_burst(
+                                                    NonZeroU32::new(param.count).unwrap(),
+                                                );
+                                                self.flood_join_limiter =
+                                                    Some(RateLimiter::direct(quota));
+                                            }
                                         }
                                     }
                                 }
 
                                 // Reconstruct canonical string
-                                let mut parts: Vec<String> = self.flood_config.values().map(|p| p.to_string()).collect();
+                                let mut parts: Vec<String> =
+                                    self.flood_config.values().map(|p| p.to_string()).collect();
                                 parts.sort(); // Deterministic order
                                 let canonical = parts.join(",");
 
@@ -376,34 +390,35 @@ impl ChannelActor {
                 let mut mode_str = String::new();
                 let mut args = Vec::new();
                 let mut current_group_sign = None;
-                 
+
                 for mode in &applied_modes {
-                     let is_plus = mode.is_plus();
-                     if current_group_sign != Some(is_plus) {
-                         mode_str.push(if is_plus { '+' } else { '-' });
-                         current_group_sign = Some(is_plus);
-                     }
-                     mode_str.push(proto_mode_to_char(mode.mode()));
-                     if let Some(arg) = mode.arg() {
-                         args.push(arg.to_string());
-                     }
+                    let is_plus = mode.is_plus();
+                    if current_group_sign != Some(is_plus) {
+                        mode_str.push(if is_plus { '+' } else { '-' });
+                        current_group_sign = Some(is_plus);
+                    }
+                    mode_str.push(proto_mode_to_char(mode.mode()));
+                    if let Some(arg) = mode.arg() {
+                        args.push(arg.to_string());
+                    }
                 }
-                 
+
                 if !args.is_empty() {
-                     mode_str.push(' ');
-                     mode_str.push_str(&args.join(" "));
+                    mode_str.push(' ');
+                    mode_str.push_str(&args.join(" "));
                 }
 
                 let event_id = uuid::Uuid::new_v4().to_string();
                 let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
                 let source = sender_prefix.to_string();
 
-                let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
-                    id: event_id,
-                    nanotime: now,
-                    source,
-                    kind: crate::history::types::EventKind::Mode { diff: mode_str },
-                });
+                let event =
+                    crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
+                        id: event_id,
+                        nanotime: now,
+                        source,
+                        kind: crate::history::types::EventKind::Mode { diff: mode_str },
+                    });
 
                 let history = matrix.service_manager.history.clone();
                 let target = self.name.clone();
@@ -495,7 +510,7 @@ impl ChannelActor {
                     let mut mode_str = String::new();
                     let mut args = Vec::new();
                     let mut current_group_sign = None;
-                    
+
                     for mode in chunk {
                         let is_plus = mode.is_plus();
                         if current_group_sign != Some(is_plus) {
@@ -507,7 +522,7 @@ impl ChannelActor {
                             args.push(arg.to_string());
                         }
                     }
-                    
+
                     if !args.is_empty() {
                         mode_str.push(' ');
                         mode_str.push_str(&args.join(" "));
@@ -517,12 +532,14 @@ impl ChannelActor {
                     let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
                     let source = sender_prefix.to_string();
 
-                    let event = crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
-                        id: event_id,
-                        nanotime: now,
-                        source,
-                        kind: crate::history::types::EventKind::Mode { diff: mode_str },
-                    });
+                    let event = crate::history::types::HistoryItem::Event(
+                        crate::history::types::StoredEvent {
+                            id: event_id,
+                            nanotime: now,
+                            source,
+                            kind: crate::history::types::EventKind::Mode { diff: mode_str },
+                        },
+                    );
 
                     let history = matrix.service_manager.history.clone();
                     let target = self.name.clone();

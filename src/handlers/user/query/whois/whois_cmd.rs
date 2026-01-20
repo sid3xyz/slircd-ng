@@ -131,9 +131,10 @@ impl PostRegHandler for WhoisHandler {
                         target_user.account.clone(),
                         target_user.away.clone(),
                         target_user.uid.clone(),
-
                         target_user.certfp.clone(),
-                        target_user.last_active.load(std::sync::atomic::Ordering::Relaxed),
+                        target_user
+                            .last_active
+                            .load(std::sync::atomic::Ordering::Relaxed),
                         target_user.created_at,
                     )
                 }; // Lock dropped here
@@ -154,8 +155,13 @@ impl PostRegHandler for WhoisHandler {
 
                 // RPL_WHOISSERVER (312): <nick> <server> :<server info>
                 // Resolve server name correctly for remote users
-                let (real_server_name, real_server_info) = if target_uid_owned.starts_with(ctx.matrix.server_id.as_str()) {
-                    (server_name.to_string(), ctx.matrix.server_info.description.clone())
+                let (real_server_name, real_server_info) = if target_uid_owned
+                    .starts_with(ctx.matrix.server_id.as_str())
+                {
+                    (
+                        server_name.to_string(),
+                        ctx.matrix.server_info.description.clone(),
+                    )
                 } else {
                     // Remote user - look up server in topology
                     let sid = &target_uid_owned[0..3];

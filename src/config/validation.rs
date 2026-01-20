@@ -117,7 +117,11 @@ address = "127.0.0.1:6667"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         let errors = validate(&config).unwrap_err();
-        assert!(errors.iter().any(|e| matches!(e, ValidationError::MissingServerName)));
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, ValidationError::MissingServerName))
+        );
     }
 
     #[test]
@@ -134,7 +138,11 @@ address = "127.0.0.1:6667"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         let errors = validate(&config).unwrap_err();
-        assert!(errors.iter().any(|e| matches!(e, ValidationError::InvalidSid(_))));
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, ValidationError::InvalidSid(_)))
+        );
     }
 
     #[test]
@@ -156,6 +164,10 @@ key_path = "/nonexistent/key.pem"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         let errors = validate(&config).unwrap_err();
-        assert!(errors.iter().any(|e| matches!(e, ValidationError::TlsCertNotFound(_))));
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, ValidationError::TlsCertNotFound(_)))
+        );
     }
 }

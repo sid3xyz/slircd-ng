@@ -500,8 +500,7 @@ impl<'a> ChannelRepository<'a> {
 
             if let Some(p_char) = p_char_opt {
                 if p_char == '?'
-                    || (p_char != '*'
-                        && p_char.eq_ignore_ascii_case(&h_char_opt.unwrap()))
+                    || (p_char != '*' && p_char.eq_ignore_ascii_case(&h_char_opt.unwrap()))
                 {
                     // Match or '?'.
                     p_iter.next();

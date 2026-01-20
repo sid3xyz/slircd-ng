@@ -88,6 +88,41 @@ pub async fn apply_effects(
     }
 }
 
+/// Helper: Resolve nick from UID.
+async fn resolve_user_nick(matrix: &Arc<Matrix>, uid: &str) -> Option<String> {
+    if let Some(user_arc) = matrix.user_manager.users.get_cloned(uid) {
+        let user = user_arc.read().await;
+        Some(user.nick.clone())
+    } else {
+        None
+    }
+}
+
+/// Helper: Route message to user (local or remote).
+async fn route_to_user(
+    matrix: &Arc<Matrix>,
+    target_uid: &str,
+    target_nick: &str,
+    mut msg: Message,
+) {
+    // try local sender first
+    if let Some(target_tx) = matrix.user_manager.get_first_sender(target_uid) {
+        if let Command::NOTICE(_, text) = msg.command {
+            msg.command = Command::NOTICE(target_nick.to_string(), text);
+        }
+        let _ = target_tx.send(Arc::new(msg)).await;
+    } else {
+        // Remote user - route via S2S
+        if let Command::NOTICE(_, text) = msg.command {
+            msg.command = Command::NOTICE(target_nick.to_string(), text);
+        }
+        let _ = matrix
+            .sync_manager
+            .route_to_remote_user(target_uid, Arc::new(msg))
+            .await;
+    }
+}
+
 /// Apply a list of service effects without a ResponseMiddleware.
 ///
 /// Used for handling remote service requests via S2S where we don't
@@ -103,158 +138,37 @@ pub async fn apply_effects_no_sender(
 }
 
 /// Apply a single service effect without a ResponseMiddleware.
-///
-/// Handles effects for remote users where replies must be routed
-/// via S2S rather than a local sender channel.
-pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, _nick: &str, effect: ServiceEffect) {
-    match effect {
-        ServiceEffect::Reply {
-            target_uid,
-            mut msg,
-        } => {
-            // Resolve the target nickname for the NOTICE command
-            let user_arc = match matrix.user_manager.users.get_cloned(&target_uid) {
-                Some(user_arc) => user_arc,
-                None => return, // User not found (disconnected?)
-            };
-            let target_nick = user_arc.read().await.nick.clone();
+pub async fn apply_effect_no_sender(matrix: &Arc<Matrix>, nick: &str, effect: ServiceEffect) {
+    // Delegate to the main apply_effect - logic is now unified or handles missing sender gracefully
+    // Pass a dummy sender for now, or better: Refactor apply_effect to take Option<&ResponseMiddleware>
+    // Since we can't easily change the signature of apply_effect without breaking callers,
+    // we will just inline the unified logic here or call a shared private helper.
 
-            // Try local sender first (for local users)
-            if let Some(target_tx) = matrix.user_manager.get_first_sender(&target_uid) {
-                if let Command::NOTICE(_, text) = msg.command {
-                    msg.command = Command::NOTICE(target_nick, text);
-                }
-                let _ = target_tx.send(Arc::new(msg)).await;
-            } else {
-                // Remote user - route via S2S
-                if let Command::NOTICE(_, text) = msg.command {
-                    msg.command = Command::NOTICE(target_nick, text);
-                }
-                let _ = matrix
-                    .sync_manager
-                    .route_to_remote_user(&target_uid, Arc::new(msg))
-                    .await;
-            }
-        }
-
-        // For other effects, delegate to apply_effect but we need to handle them inline
-        // since we don't have a sender. Most effects don't need the sender anyway.
-        ServiceEffect::AccountIdentify {
-            target_uid,
-            account,
-            account_id,
-        } => {
-            let nick = {
-                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-                if let Some(user_arc) = user_arc {
-                    let user = user_arc.read().await;
-                    user.nick.clone()
-                } else {
-                    return;
-                }
-            };
-
-            info!(uid = %target_uid, account = %account, "Remote user identified to account");
-
-            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-            if let Some(user_arc) = user_arc {
-                let mut user = user_arc.write().await;
-                user.modes.registered = true;
-                user.account = Some(account.clone());
-                user.account_id = account_id;
-            }
-
-            // Broadcast MODE +r to local users watching this user
-            let mode_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
-                command: Command::UserMODE(nick, vec![Mode::plus(UserMode::Registered, None)]),
-            };
-
-            // Collect user Arc + UID pairs to release DashMap lock before awaiting
-            let user_data = matrix.user_manager.users.iter_cloned();
-
-            for (uid, user_arc) in user_data {
-                let user = user_arc.read().await;
-                if user.caps.contains("account-notify") {
-                    matrix
-                        .user_manager
-                        .send_to_uid(&uid, Arc::new(mode_msg.clone()))
-                        .await;
-                }
-            }
-        }
-
-        ServiceEffect::AccountClear { target_uid } => {
-            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-            if let Some(user_arc) = user_arc {
-                let mut user = user_arc.write().await;
-                user.modes.registered = false;
-                user.account = None;
-                user.account_id = None;
-            }
-        }
-
-        ServiceEffect::ClearEnforceTimer { target_uid } => {
-            matrix.user_manager.enforce_timers.remove(&target_uid);
-        }
-
-        ServiceEffect::Kill {
-            target_uid,
-            killer,
-            reason,
-        } => {
-            let _ = matrix
-                .disconnect_user(&target_uid, &format!("{}: {}", killer, reason))
-                .await;
-        }
-
-        _ => {
-            // Other effects (Kick, JoinChannel, etc.) can be added as needed
-            warn!("Unhandled service effect in no_sender context");
-        }
-    }
+    // Actually, let's call the shared private implementation
+    apply_effect_impl(matrix, nick, None, effect).await;
 }
 
 /// Apply a single service effect to Matrix state.
-///
-/// This is the centralized effect application logic. All services return effects,
-/// and callers use this function to apply them consistently.
 pub async fn apply_effect(
     matrix: &Arc<Matrix>,
+    nick: &str,
+    sender: &ResponseMiddleware<'_>,
+    effect: ServiceEffect,
+) {
+    apply_effect_impl(matrix, nick, Some(sender), effect).await;
+}
+
+/// Shared implementation for effect application.
+async fn apply_effect_impl(
+    matrix: &Arc<Matrix>,
     _nick: &str,
-    _sender: &ResponseMiddleware<'_>,
+    _sender: Option<&ResponseMiddleware<'_>>,
     effect: ServiceEffect,
 ) {
     match effect {
-        ServiceEffect::Reply {
-            target_uid,
-            mut msg,
-        } => {
-            // 1. Resolve the target nickname for the NOTICE command
-            let user_arc = match matrix.user_manager.users.get_cloned(&target_uid) {
-                Some(user_arc) => user_arc,
-                None => return, // User not found (disconnected?)
-            };
-            let target_nick = user_arc.read().await.nick.clone();
-
-            // 2. Route the message to the target's sender channel
-            if let Some(target_tx) = matrix.user_manager.get_first_sender(&target_uid) {
-                // Update the NOTICE command with the correct target nick
-                // Move text out of old command to avoid clone
-                if let Command::NOTICE(_, text) = msg.command {
-                    msg.command = Command::NOTICE(target_nick, text);
-                }
-                let _ = target_tx.send(Arc::new(msg)).await;
-            } else {
-                // Remote user - route via S2S
-                if let Command::NOTICE(_, text) = msg.command {
-                    msg.command = Command::NOTICE(target_nick, text);
-                }
-                let _ = matrix
-                    .sync_manager
-                    .route_to_remote_user(&target_uid, Arc::new(msg))
-                    .await;
+        ServiceEffect::Reply { target_uid, msg } => {
+            if let Some(nick) = resolve_user_nick(matrix, &target_uid).await {
+                route_to_user(matrix, &target_uid, &nick, msg).await;
             }
         }
 
@@ -263,100 +177,78 @@ pub async fn apply_effect(
             account,
             account_id,
         } => {
-            // Get user info for MODE broadcast before we modify the user
-            let nick = {
-                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-                if let Some(user_arc) = user_arc {
-                    let user = user_arc.read().await;
-                    user.nick.clone()
-                } else {
-                    return;
+            if let Some(nick) = resolve_user_nick(matrix, &target_uid).await {
+                info!(uid = %target_uid, account = %account, "User identified to account");
+
+                // Update user state
+                if let Some(user_arc) = matrix.user_manager.users.get_cloned(&target_uid) {
+                    let mut user = user_arc.write().await;
+                    user.modes.registered = true;
+                    user.account = Some(account.clone());
+                    user.account_id = account_id;
                 }
-            };
 
-            info!(uid = %target_uid, account = %account, "User identified to account");
+                // Broadcast to S2S
+                matrix
+                    .sync_manager
+                    .on_account_change(&target_uid, Some(&account), None);
 
-            // Set +r mode and account on user
-            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-            if let Some(user_arc) = user_arc {
-                let mut user = user_arc.write().await;
-                user.modes.registered = true;
-                user.account = Some(account.clone());
-                user.account_id = account_id;
+                // Clear enforce timer
+                matrix.user_manager.enforce_timers.remove(&target_uid);
+
+                // Send MODE +r to user
+                let mode_msg = Message {
+                    tags: None,
+                    prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
+                    command: Command::UserMODE(
+                        nick,
+                        vec![slirc_proto::Mode::Plus(
+                            slirc_proto::UserMode::Registered,
+                            None,
+                        )],
+                    ),
+                };
+                matrix
+                    .user_manager
+                    .send_to_uid(&target_uid, Arc::new(mode_msg))
+                    .await;
             }
-
-            // Broadcast to peers via S2S (Innovation 2)
-            matrix
-                .sync_manager
-                .on_account_change(&target_uid, Some(&account), None);
-
-            // Clear any nick enforcement timer
-            matrix.user_manager.enforce_timers.remove(&target_uid);
-
-            // Send MODE +r directly to the user (user modes are not broadcast)
-            let mode_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
-                command: Command::UserMODE(
-                    nick.clone(),
-                    vec![slirc_proto::Mode::Plus(
-                        slirc_proto::UserMode::Registered,
-                        None,
-                    )],
-                ),
-            };
-
-            matrix
-                .user_manager
-                .send_to_uid(&target_uid, Arc::new(mode_msg))
-                .await;
         }
 
         ServiceEffect::AccountClear { target_uid } => {
-            // Get user info for MODE broadcast
-            let nick = {
-                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-                if let Some(user_arc) = user_arc {
-                    let user = user_arc.read().await;
-                    user.nick.clone()
-                } else {
-                    return;
+            if let Some(nick) = resolve_user_nick(matrix, &target_uid).await {
+                // Update user state
+                if let Some(user_arc) = matrix.user_manager.users.get_cloned(&target_uid) {
+                    let mut user = user_arc.write().await;
+                    user.modes.registered = false;
+                    user.account = None;
+                    user.account_id = None;
                 }
-            };
 
-            // Clear +r mode and account on user
-            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-            if let Some(user_arc) = user_arc {
-                let mut user = user_arc.write().await;
-                user.modes.registered = false;
-                user.account = None;
-                user.account_id = None;
+                // Broadcast to S2S
+                matrix
+                    .sync_manager
+                    .on_account_change(&target_uid, None, None);
+
+                // Send MODE -r to user
+                let mode_msg = Message {
+                    tags: None,
+                    prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
+                    command: Command::UserMODE(
+                        nick,
+                        vec![slirc_proto::Mode::Minus(
+                            slirc_proto::UserMode::Registered,
+                            None,
+                        )],
+                    ),
+                };
+                matrix
+                    .user_manager
+                    .send_to_uid(&target_uid, Arc::new(mode_msg))
+                    .await;
+
+                info!(uid = %target_uid, "User account cleared");
             }
-
-            // Broadcast to peers via S2S (Innovation 2)
-            matrix
-                .sync_manager
-                .on_account_change(&target_uid, None, None);
-
-            // Send MODE -r directly to the user (user modes are not broadcast)
-            let mode_msg = Message {
-                tags: None,
-                prefix: Some(Prefix::ServerName(matrix.server_info.name.clone())),
-                command: Command::UserMODE(
-                    nick.clone(),
-                    vec![slirc_proto::Mode::Minus(
-                        slirc_proto::UserMode::Registered,
-                        None,
-                    )],
-                ),
-            };
-
-            matrix
-                .user_manager
-                .send_to_uid(&target_uid, Arc::new(mode_msg))
-                .await;
-
-            info!(uid = %target_uid, "User account cleared");
         }
 
         ServiceEffect::ClearEnforceTimer { target_uid } => {
@@ -369,10 +261,8 @@ pub async fn apply_effect(
             killer,
             reason,
         } => {
-            // Disconnect the user
             let quit_reason = format!("Killed by {}: {}", killer, reason);
             matrix.disconnect_user(&target_uid, &quit_reason).await;
-
             info!(uid = %target_uid, killer = %killer, reason = %reason, "User killed by service");
         }
 
@@ -382,59 +272,49 @@ pub async fn apply_effect(
             mode_char,
             adding,
         } => {
-            // Get target nick for MODE message
-            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-            let target_nick = if let Some(user_arc) = user_arc {
-                user_arc.read().await.nick.clone()
-            } else {
-                return;
-            };
-
-            let channel_lower = irc_to_lower(&channel);
-            let channel_sender =
+            if let Some(target_nick) = resolve_user_nick(matrix, &target_uid).await {
+                let channel_lower = irc_to_lower(&channel);
                 if let Some(c) = matrix.channel_manager.channels.get(&channel_lower) {
-                    c.value().clone()
-                } else {
-                    return;
-                };
+                    let channel_sender = c.value().clone();
 
-            // Build typed MODE message from ChanServ
-            let channel_mode = match mode_char {
-                'o' => ChannelMode::Oper,
-                'v' => ChannelMode::Voice,
-                'h' => ChannelMode::Halfop,
-                c => ChannelMode::Unknown(c),
-            };
+                    let channel_mode = match mode_char {
+                        'o' => ChannelMode::Oper,
+                        'v' => ChannelMode::Voice,
+                        'h' => ChannelMode::Halfop,
+                        c => ChannelMode::Unknown(c),
+                    };
 
-            let mode_obj = if adding {
-                Mode::plus(channel_mode, Some(&target_nick))
-            } else {
-                Mode::minus(channel_mode, Some(&target_nick))
-            };
+                    let mode_obj = if adding {
+                        Mode::plus(channel_mode, Some(&target_nick))
+                    } else {
+                        Mode::minus(channel_mode, Some(&target_nick))
+                    };
 
-            let mut target_uids = std::collections::HashMap::with_capacity(1);
-            target_uids.insert(target_nick.clone(), target_uid.clone());
+                    let mut target_uids = std::collections::HashMap::with_capacity(1);
+                    target_uids.insert(target_nick.clone(), target_uid.clone());
 
-            let sender_prefix = Prefix::new(
-                "ChanServ".to_string(),
-                "ChanServ".to_string(),
-                "services.".to_string(),
-            );
+                    let sender_prefix = Prefix::new(
+                        "ChanServ".to_string(),
+                        "ChanServ".to_string(),
+                        "services.".to_string(),
+                    );
 
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let event = crate::state::actor::ChannelEvent::ApplyModes {
-                params: crate::state::actor::ModeParams {
-                    sender_uid: "ChanServ".to_string(),
-                    sender_prefix,
-                    modes: vec![mode_obj],
-                    target_uids,
-                    force: true,
-                },
-                reply_tx: tx,
-            };
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let event = crate::state::actor::ChannelEvent::ApplyModes {
+                        params: crate::state::actor::ModeParams {
+                            sender_uid: "ChanServ".to_string(),
+                            sender_prefix,
+                            modes: vec![mode_obj],
+                            target_uids,
+                            force: true,
+                        },
+                        reply_tx: tx,
+                    };
 
-            let _ = channel_sender.send(event).await;
-            let _ = rx.await;
+                    let _ = channel_sender.send(event).await;
+                    let _ = rx.await;
+                }
+            }
         }
 
         ServiceEffect::Kick {
@@ -443,52 +323,41 @@ pub async fn apply_effect(
             kicker,
             reason,
         } => {
-            // Get target nick for KICK message
-            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-            let target_nick = if let Some(user_arc) = user_arc {
-                user_arc.read().await.nick.clone()
-            } else {
-                return;
-            };
-
-            let channel_lower = irc_to_lower(&channel);
-            let channel_sender =
+            if let Some(target_nick) = resolve_user_nick(matrix, &target_uid).await {
+                let channel_lower = irc_to_lower(&channel);
                 if let Some(c) = matrix.channel_manager.channels.get(&channel_lower) {
-                    c.value().clone()
-                } else {
-                    return;
-                };
+                    let channel_sender = c.value().clone();
 
-            let sender_prefix =
-                Prefix::new(kicker.clone(), kicker.clone(), "services.".to_string());
+                    let sender_prefix =
+                        Prefix::new(kicker.clone(), kicker.clone(), "services.".to_string());
 
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let event = crate::state::actor::ChannelEvent::Kick {
-                params: crate::state::actor::KickParams {
-                    sender_uid: kicker.clone(),
-                    sender_prefix,
-                    target_uid: target_uid.clone(),
-                    target_nick: target_nick.clone(),
-                    reason: reason.clone(),
-                    force: true,
-                    cap: None,
-                },
-                reply_tx: tx,
-            };
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let event = crate::state::actor::ChannelEvent::Kick {
+                        params: crate::state::actor::KickParams {
+                            sender_uid: kicker.clone(),
+                            sender_prefix,
+                            target_uid: target_uid.clone(),
+                            target_nick: target_nick.clone(),
+                            reason: reason.clone(),
+                            force: true,
+                            cap: None,
+                        },
+                        reply_tx: tx,
+                    };
 
-            if let Ok(_) = channel_sender.send(event).await
-                && let Ok(Ok(())) = rx.await
-            {
-                // Success
-                // Remove channel from user's channel list
-                let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-                if let Some(user_arc) = user_arc {
-                    let mut user_guard = user_arc.write().await;
-                    user_guard.channels.remove(&channel_lower);
+                    if let Ok(_) = channel_sender.send(event).await
+                        && let Ok(Ok(())) = rx.await
+                    {
+                        // Success - update user state
+                        if let Some(user_arc) = matrix.user_manager.users.get_cloned(&target_uid) {
+                            let mut user = user_arc.write().await;
+                            user.channels.remove(&channel_lower);
+                        }
+                    }
+
+                    info!(channel = %channel, target = %target_nick, kicker = %kicker, reason = %reason, "User kicked by service");
                 }
             }
-
-            info!(channel = %channel, target = %target_nick, kicker = %kicker, reason = %reason, "User kicked by service");
         }
 
         ServiceEffect::ForceNick {
@@ -496,7 +365,7 @@ pub async fn apply_effect(
             old_nick,
             new_nick,
         } => {
-            // Get user info for NICK message before we modify
+            // Get user info
             let (username, hostname, channels) = {
                 let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
@@ -515,7 +384,6 @@ pub async fn apply_effect(
             let old_nick_lower = irc_to_lower(&old_nick);
             let new_nick_lower = irc_to_lower(&new_nick);
 
-            // Remove only this UID from the old nick vector; keep others if present
             if let Some(mut vec) = matrix.user_manager.nicks.get_mut(&old_nick_lower) {
                 vec.retain(|u| u != &target_uid);
                 if vec.is_empty() {
@@ -531,8 +399,7 @@ pub async fn apply_effect(
                 .or_insert_with(Vec::new)
                 .push(target_uid.clone());
 
-            let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
-            if let Some(user_arc) = user_arc {
+            if let Some(user_arc) = matrix.user_manager.users.get_cloned(&target_uid) {
                 let mut user = user_arc.write().await;
                 user.nick = new_nick.clone();
             }
@@ -544,7 +411,7 @@ pub async fn apply_effect(
                 command: Command::NICK(new_nick.clone()),
             };
 
-            // Broadcast NICK change to all shared channels
+            // Broadcast
             for channel_name in &channels {
                 matrix
                     .channel_manager
@@ -552,12 +419,10 @@ pub async fn apply_effect(
                     .await;
             }
 
-            // Also send to the user themselves
             matrix
                 .user_manager
                 .send_to_uid(&target_uid, Arc::new(nick_msg))
                 .await;
-
             info!(uid = %target_uid, old = %old_nick, new = %new_nick, "Forced nick change");
         }
 
@@ -565,7 +430,6 @@ pub async fn apply_effect(
             target_uid,
             new_account,
         } => {
-            // Get user info for ACCOUNT broadcast
             let (nick, user_str, host, channels) = {
                 let user_arc = matrix.user_manager.users.get_cloned(&target_uid);
                 if let Some(user_arc) = user_arc {
@@ -581,14 +445,12 @@ pub async fn apply_effect(
                 }
             };
 
-            // Build ACCOUNT message: :nick!user@host ACCOUNT accountname
             let account_msg = Message {
                 tags: None,
                 prefix: Some(Prefix::new(&nick, &user_str, &host)),
                 command: Command::ACCOUNT(new_account.clone()),
             };
 
-            // Broadcast to all shared channels (only to clients with account-notify)
             for channel_name in &channels {
                 matrix
                     .channel_manager
@@ -597,21 +459,17 @@ pub async fn apply_effect(
                         account_msg.clone(),
                         None,
                         Some("account-notify"),
-                        None, // No fallback - clients without cap get nothing
+                        None,
                     )
                     .await;
             }
 
-            // Also send to the user themselves
             matrix
                 .user_manager
                 .send_to_uid(&target_uid, Arc::new(account_msg.clone()))
                 .await;
-
-            // Extended MONITOR: Notify watchers with extended-monitor + account-notify
             notify_extended_monitor_watchers(matrix, &nick, account_msg, "account-notify").await;
 
-            // Broadcast to peers via S2S (Innovation 2)
             let account_opt = if new_account == "*" {
                 None
             } else {

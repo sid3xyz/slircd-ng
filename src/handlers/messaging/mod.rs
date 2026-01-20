@@ -32,10 +32,6 @@ pub use privmsg::PrivmsgHandler;
 pub use relaymsg::RelayMsgHandler;
 pub use scene::SceneHandler;
 
-
-
-
-
 // ============================================================================
 // TAGMSG Handler
 // ============================================================================

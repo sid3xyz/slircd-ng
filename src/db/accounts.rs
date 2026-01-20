@@ -589,11 +589,9 @@ impl<'a> AccountRepository<'a> {
 /// Hash a password using Argon2 in a blocking task.
 async fn hash_password(password: &str) -> Result<String, DbError> {
     let password = password.to_string();
-    tokio::task::spawn_blocking(move || {
-        Ok(crate::security::password::hash_password(&password))
-    })
-    .await
-    .map_err(|e| DbError::Sqlx(sqlx::Error::Io(std::io::Error::other(e.to_string()))))?
+    tokio::task::spawn_blocking(move || Ok(crate::security::password::hash_password(&password)))
+        .await
+        .map_err(|e| DbError::Sqlx(sqlx::Error::Io(std::io::Error::other(e.to_string()))))?
 }
 
 /// Compute SCRAM-SHA-256 verifiers for a password in a blocking task.
@@ -626,17 +624,17 @@ async fn compute_scram_verifiers(password: &str) -> ScramVerifiers {
 async fn verify_password(password: &str, hash: &str) -> Result<(), DbError> {
     let password = password.to_string();
     let hash = hash.to_string();
-    
+
     tokio::task::spawn_blocking(move || {
         let parsed_hash = PasswordHash::new(&hash).map_err(|_| DbError::InvalidPassword)?;
-        
+
         crate::security::password::verify_password(&password, &parsed_hash)
             .map_err(|_| DbError::InvalidPassword)?;
-        
+
         if crate::security::password::verify_password(&password, &parsed_hash).unwrap_or(false) {
-             Ok(())
+            Ok(())
         } else {
-             Err(DbError::InvalidPassword)
+            Err(DbError::InvalidPassword)
         }
     })
     .await
@@ -649,7 +647,7 @@ async fn dummy_password_verify(password: &str) {
     tokio::task::spawn_blocking(move || {
         // Pre-computed Argon2id hash of "dummy"
         const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$dGltaW5nLW9yYWNsZS1kdW1teQ$K4VZh8k8YL3E8H7E8H7E8H7E8H7E8H7E8H7E8H7E8Hs";
-        
+
         if let Ok(parsed) = PasswordHash::new(DUMMY_HASH) {
             let _ = crate::security::password::verify_password(&password, &parsed);
         }

@@ -10,7 +10,7 @@ pub mod nickserv;
 pub mod playback;
 pub mod traits;
 
-pub use effect::{ServiceEffect, apply_effects, apply_effect, apply_effects_no_sender};
+pub use effect::{ServiceEffect, apply_effect, apply_effects, apply_effects_no_sender};
 pub use traits::Service;
 
 use crate::{handlers::ResponseMiddleware, state::Matrix};

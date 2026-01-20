@@ -1,8 +1,6 @@
 //! KICK command handler.
 
-use super::super::{
-    Context, HandlerError, HandlerResult, PostRegHandler, user_mask_from_state,
-};
+use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_mask_from_state};
 use super::common::{
     build_kick_pairs, kick_reason_or_default, parse_channel_list, parse_nick_list,
 };
@@ -131,14 +129,14 @@ impl KickHandler {
             Ok(Ok(())) => {
                 // Success.
                 // We also need to remove channel from target's user struct.
-                let account =
-                    if let Some(user_ref) = ctx.matrix.user_manager.users.get(&target_uid) {
-                        let mut user_data = user_ref.write().await;
-                        user_data.channels.remove(&channel_lower);
-                        user_data.account.clone()
-                    } else {
-                        None
-                    };
+                let account = if let Some(user_ref) = ctx.matrix.user_manager.users.get(&target_uid)
+                {
+                    let mut user_data = user_ref.write().await;
+                    user_data.channels.remove(&channel_lower);
+                    user_data.account.clone()
+                } else {
+                    None
+                };
 
                 if ctx.matrix.config.multiclient.enabled
                     && let Some(account) = account

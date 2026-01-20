@@ -67,9 +67,9 @@ impl ChannelManager {
         states: Vec<crate::state::persistence::ChannelState>,
         matrix: std::sync::Weak<crate::state::Matrix>,
     ) {
+        use crate::state::Topic;
         use crate::state::actor::ChannelActor;
         use crate::state::actor::modes_from_string;
-        use crate::state::Topic;
 
         for state in states {
             let name = state.name.clone();
@@ -237,7 +237,7 @@ impl ChannelManager {
                 let requester_uid = requester_uid.clone();
                 async move {
                     let (reply_tx, reply_rx) = oneshot::channel();
-                    
+
                     // Send GetInfo event to channel actor
                     if channel_tx
                         .send(ChannelEvent::GetInfo {

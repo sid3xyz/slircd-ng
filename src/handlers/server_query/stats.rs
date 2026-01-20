@@ -6,7 +6,6 @@ use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
 
-
 /// Handler for STATS command.
 ///
 /// `STATS [query [target]]`

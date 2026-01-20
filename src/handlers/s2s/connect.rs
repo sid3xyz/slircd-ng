@@ -4,7 +4,9 @@
 //!
 //! Instructs the server to attempt an outbound connection to another server.
 
-use crate::handlers::{Context, HandlerResult, PostRegHandler, get_oper_info, server_reply, server_notice};
+use crate::handlers::{
+    Context, HandlerResult, PostRegHandler, get_oper_info, server_notice, server_reply,
+};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -25,12 +27,15 @@ impl PostRegHandler for ConnectHandler {
         };
 
         if !is_oper {
-            let reply = Response::err_noprivileges(&ctx.state.nick).with_prefix(ctx.server_prefix());
+            let reply =
+                Response::err_noprivileges(&ctx.state.nick).with_prefix(ctx.server_prefix());
             ctx.send_error("CONNECT", "ERR_NOPRIVILEGES", reply).await?;
             return Ok(());
         }
 
-        let target_server = msg.arg(0).ok_or(crate::handlers::HandlerError::NeedMoreParams)?;
+        let target_server = msg
+            .arg(0)
+            .ok_or(crate::handlers::HandlerError::NeedMoreParams)?;
         // Optional params for ad-hoc connection: CONNECT <target> <port> [remote_server]
         let port_str = msg.arg(1);
         let _remote_server = msg.arg(2); // In standard IRC this might proxy the CONNECT, but we'll focus on direct for now
@@ -75,12 +80,12 @@ impl PostRegHandler for ConnectHandler {
         }
 
         let config = link_config.unwrap();
-        
+
         ctx.matrix.sync_manager.connect_to_peer(
-            ctx.matrix.clone(), 
-            ctx.registry.clone(), 
-            ctx.db.clone(), 
-            config
+            ctx.matrix.clone(),
+            ctx.registry.clone(),
+            ctx.db.clone(),
+            config,
         );
 
         let reply = server_notice(

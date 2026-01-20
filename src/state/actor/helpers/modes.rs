@@ -38,7 +38,11 @@ impl ChannelActor {
             ChannelMode::StripColors => Some('S'),
             ChannelMode::AntiCaps => Some('B'),
             ChannelMode::Censor => Some('G'),
-            ChannelMode::Key(_, _) | ChannelMode::Limit(_, _) | ChannelMode::JoinForward(_, _) | ChannelMode::Flood(_, _) | ChannelMode::Redirect(_, _) => None, // Parametric modes use separate timestamp fields
+            ChannelMode::Key(_, _)
+            | ChannelMode::Limit(_, _)
+            | ChannelMode::JoinForward(_, _)
+            | ChannelMode::Flood(_, _)
+            | ChannelMode::Redirect(_, _) => None, // Parametric modes use separate timestamp fields
         }
     }
 

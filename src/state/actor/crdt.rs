@@ -124,7 +124,10 @@ impl ChannelActor {
             new_modes.insert(ChannelMode::Limit(*limit as usize, crdt.limit.timestamp()));
         }
         if let Some(redirect) = crdt.modes.redirect.value() {
-            new_modes.insert(ChannelMode::Redirect(redirect.clone(), crdt.modes.redirect.timestamp()));
+            new_modes.insert(ChannelMode::Redirect(
+                redirect.clone(),
+                crdt.modes.redirect.timestamp(),
+            ));
         }
         self.modes = new_modes;
     }

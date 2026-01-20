@@ -67,7 +67,10 @@ impl PostRegHandler for KillHandler {
                 let error_msg = Message {
                     tags: None,
                     prefix: None,
-                    command: Command::ERROR(format!("Closing Link: {} ({})", target_nick, quit_reason)),
+                    command: Command::ERROR(format!(
+                        "Closing Link: {} ({})",
+                        target_nick, quit_reason
+                    )),
                 };
                 let _ = target_sender.send(Arc::new(error_msg)).await;
             }
@@ -79,14 +82,19 @@ impl PostRegHandler for KillHandler {
         } else {
             // Remote User: Route KILL to the owning server
             tracing::info!(target: "audit", killer = %killer_nick, target = %target_nick, uid = %target_uid, reason = %reason, "Routing KILL to remote server");
-            
+
             let kill_msg = Message {
                 tags: None,
-                prefix: Some(Prefix::new(killer_nick.clone(), killer_user.clone(), killer_host.clone())),
+                prefix: Some(Prefix::new(
+                    killer_nick.clone(),
+                    killer_user.clone(),
+                    killer_host.clone(),
+                )),
                 command: Command::KILL(target_nick.to_string(), quit_reason.clone()),
             };
 
-            let routed = ctx.matrix
+            let routed = ctx
+                .matrix
                 .sync_manager
                 .route_to_remote_user(&target_uid, Arc::new(kill_msg))
                 .await;
@@ -95,10 +103,13 @@ impl PostRegHandler for KillHandler {
                 // If routing failed (no path), send error to operator
                 // In a split network, we might want to forcefully remove them locally?
                 // But generally we just inform the oper.
-                let _ = ctx.sender.send(Message::from(Command::NOTICE(
-                    killer_nick.clone(),
-                    format!("*** Could not route KILL to remote user {}", target_nick),
-                ))).await;
+                let _ = ctx
+                    .sender
+                    .send(Message::from(Command::NOTICE(
+                        killer_nick.clone(),
+                        format!("*** Could not route KILL to remote user {}", target_nick),
+                    )))
+                    .await;
             }
         }
 

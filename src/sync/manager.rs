@@ -1,7 +1,7 @@
 use crate::config::LinkBlock;
 use crate::state::Matrix;
-use slirc_proto::sync::ServerId;
 use dashmap::DashMap;
+use slirc_proto::sync::ServerId;
 use slirc_proto::{Command, Message};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

@@ -1,13 +1,16 @@
-use crate::handlers::{Context, HandlerResult};
-use crate::state::{SaslAccess, SessionState};
-use crate::state::client::DeviceId;
+use super::common::{
+    attach_session_to_client, broadcast_account_change, encode_base64, extract_device_id,
+    send_sasl_fail, send_sasl_success,
+};
 use crate::handlers::cap::types::SaslState;
-use slirc_proto::{Command, Message};
-use tracing::{info, warn, debug};
+use crate::handlers::{Context, HandlerResult};
+use crate::state::client::DeviceId;
+use crate::state::{SaslAccess, SessionState};
 use rand::RngCore;
 use ring::hmac::{self, HMAC_SHA256};
+use slirc_proto::{Command, Message};
 use subtle::ConstantTimeEq;
-use super::common::{send_sasl_fail, send_sasl_success, broadcast_account_change, attach_session_to_client, extract_device_id, encode_base64};
+use tracing::{debug, info, warn};
 
 /// Server nonce length in bytes.
 const SCRAM_NONCE_LEN: usize = 24;

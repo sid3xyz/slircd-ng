@@ -1,28 +1,28 @@
 //! Operator command handlers split into submodules.
 
-mod lifecycle;
 mod auth;
 mod chghost;
 mod chgident;
+mod clearchan;
 mod globops;
 mod kill;
+mod lifecycle;
 mod spamconf;
 mod trace;
 mod vhost;
 mod wallops;
-mod clearchan;
 
-pub use lifecycle::{DieHandler, RehashHandler, RestartHandler};
 pub use auth::OperHandler;
 pub use chghost::ChghostHandler;
 pub use chgident::ChgIdentHandler;
+pub use clearchan::ClearchanHandler;
 pub use globops::GlobOpsHandler;
 pub use kill::KillHandler;
+pub use lifecycle::{DieHandler, RehashHandler, RestartHandler};
 pub use spamconf::SpamConfHandler;
 pub use trace::TraceHandler;
 pub use vhost::VhostHandler;
 pub use wallops::WallopsHandler;
-pub use clearchan::ClearchanHandler;
 
 use crate::handlers::PostRegHandler;
 use std::collections::HashMap;

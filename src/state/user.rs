@@ -65,10 +65,10 @@ pub struct UserModes {
     /// +s - Server notices with granular snomasks (c, r, k, o, etc.)
     /// Empty set means no server notices
     pub snomasks: HashSet<char>,
-    pub hide_channels: bool,   // +p
-    pub deaf: bool,            // +d
-    pub caller_id: bool,       // +g
-    pub net_admin: bool,       // +N
+    pub hide_channels: bool, // +p
+    pub deaf: bool,          // +d
+    pub caller_id: bool,     // +g
+    pub net_admin: bool,     // +N
     /// Operator type (e.g., "admin", "oper") for privilege differentiation.
     /// None means not an operator, Some("oper") for regular opers,
     /// Some("admin") for server admins.
@@ -321,7 +321,7 @@ impl User {
 
         let new_account = merged.account.value().clone();
         if self.account != new_account {
-             self.account_id = None;
+            self.account_id = None;
         }
         self.account = new_account;
 

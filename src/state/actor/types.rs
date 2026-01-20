@@ -419,7 +419,7 @@ impl std::str::FromStr for FloodParam {
         // E.g. "5m:10", "10j:60", "3:5" (defaults to m)
 
         let (rest, period_str) = s.rsplit_once(':').ok_or("Missing period separator ':'")?;
-        
+
         let period = period_str.parse::<u32>().map_err(|_| "Invalid period")?;
         if period == 0 {
             return Err("Period must be positive");
@@ -427,10 +427,12 @@ impl std::str::FromStr for FloodParam {
 
         // Parse rest: "<count>[<type>]"
         // Find split point between digits and type char
-        let split_idx = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-        
+        let split_idx = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
+
         let (count_str, type_str) = rest.split_at(split_idx);
-        
+
         let count = count_str.parse::<u32>().map_err(|_| "Invalid count")?;
         if count == 0 {
             return Err("Count must be positive");
@@ -442,7 +444,11 @@ impl std::str::FromStr for FloodParam {
             _ => return Err("Unknown flood type (supported: m, j)"),
         };
 
-        Ok(FloodParam { count, period, type_ })
+        Ok(FloodParam {
+            count,
+            period,
+            type_,
+        })
     }
 }
 

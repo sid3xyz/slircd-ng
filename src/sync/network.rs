@@ -2,9 +2,17 @@ use crate::config::LinkBlock;
 use crate::metrics::{S2S_BYTES_RECEIVED, S2S_BYTES_SENT, S2S_COMMANDS, S2S_RATE_LIMITED};
 use crate::security::rate_limit::S2SRateLimitResult;
 use crate::state::Matrix;
-use slirc_proto::sync::ServerId;
-use crate::sync::{LinkState, SyncManager, burst, handshake::{HandshakeMachine, HandshakeState}, split, stream::S2SStream, tls::DangerousNoVerifier};
+use crate::sync::{
+    LinkState, SyncManager, burst,
+    handshake::{HandshakeMachine, HandshakeState},
+    split,
+    stream::S2SStream,
+    tls::DangerousNoVerifier,
+};
 use futures_util::{SinkExt, StreamExt};
+use rustls_pemfile::{certs, pkcs8_private_keys};
+use sha2::{Digest, Sha256};
+use slirc_proto::sync::ServerId;
 use slirc_proto::{Command, Message};
 use std::io::Cursor;
 use std::sync::Arc;
@@ -12,13 +20,11 @@ use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
-use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 use tokio_rustls::rustls::server::WebPkiClientVerifier;
+use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 use tokio_util::codec::{Framed, LinesCodec};
 use tracing::info;
-use sha2::{Digest, Sha256};
-use rustls_pemfile::{certs, pkcs8_private_keys};
 
 /// Upgrades a TCP stream to TLS for outbound connections.
 pub async fn upgrade_to_tls(
@@ -119,9 +125,7 @@ pub fn start_inbound_listener(
         let db = db.clone();
 
         tokio::spawn(async move {
-            if let Err(e) =
-                run_s2s_tls_listener(manager, matrix, registry, db, tls_config).await
-            {
+            if let Err(e) = run_s2s_tls_listener(manager, matrix, registry, db, tls_config).await {
                 tracing::error!(error = %e, "S2S TLS listener failed");
             }
         });
@@ -135,9 +139,7 @@ pub fn start_inbound_listener(
         let db = db.clone();
 
         tokio::spawn(async move {
-            if let Err(e) =
-                run_s2s_plaintext_listener(manager, matrix, registry, db, addr).await
-            {
+            if let Err(e) = run_s2s_plaintext_listener(manager, matrix, registry, db, addr).await {
                 tracing::error!(error = %e, "S2S plaintext listener failed");
             }
         });
@@ -218,7 +220,7 @@ async fn run_s2s_tls_listener(
     let acceptor = TlsAcceptor::from(Arc::new(tls_config));
     let listener = tokio::net::TcpListener::bind(config.address).await?;
     info!(address = %config.address, "S2S TLS listener started");
-    
+
     let mut shutdown_rx = matrix.lifecycle_manager.shutdown_tx.subscribe();
 
     loop {
@@ -373,12 +375,9 @@ async fn handle_inbound_connection(
                 tracing::error!(peer = %remote_addr, "Loop detected: {} ({})", name, sid);
                 let _ = framed
                     .send(
-                        Message::from(Command::ERROR(format!(
-                            "Loop detected: {} ({})",
-                            name, sid
-                        )))
-                        .to_string()
-                        .trim_end(),
+                        Message::from(Command::ERROR(format!("Loop detected: {} ({})", name, sid)))
+                            .to_string()
+                            .trim_end(),
                     )
                     .await;
                 return;
@@ -407,8 +406,7 @@ async fn handle_inbound_connection(
                     // Generate and send burst
                     let burst = burst::generate_burst(&matrix, manager.local_id.as_str()).await;
                     for cmd in burst {
-                        if let Err(e) =
-                            framed.send(Message::from(cmd).to_string().trim_end()).await
+                        if let Err(e) = framed.send(Message::from(cmd).to_string().trim_end()).await
                         {
                             tracing::error!(peer = %remote_addr, error = %e, "Failed to send burst");
                             return;
@@ -622,23 +620,19 @@ pub fn connect_to_peer(
             info!(hostname = %config.hostname, port = config.port, tls = config.tls, "Connecting to peer");
 
             // Establish TCP connection
-            let tcp_stream = match TcpStream::connect(format!(
-                "{}:{}",
-                config.hostname, config.port
-            ))
-            .await
-            {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to connect to {}: {}. Retrying in 5s...",
-                        config.hostname,
-                        e
-                    );
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    continue;
-                }
-            };
+            let tcp_stream =
+                match TcpStream::connect(format!("{}:{}", config.hostname, config.port)).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to connect to {}: {}. Retrying in 5s...",
+                            config.hostname,
+                            e
+                        );
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                };
 
             // Upgrade to TLS if configured
             let stream: S2SStream = if config.tls {
@@ -700,15 +694,15 @@ pub fn connect_to_peer(
                 manager.local_id.as_str().to_string(),
                 manager.local_desc.clone(),
             );
-            let now_secs =
-                match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-                    Ok(d) => d.as_secs(),
-                    Err(e) => {
-                        tracing::error!("System clock before UNIX_EPOCH: {}", e);
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        continue;
-                    }
-                };
+            let now_secs = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            {
+                Ok(d) => d.as_secs(),
+                Err(e) => {
+                    tracing::error!("System clock before UNIX_EPOCH: {}", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
             let svinfo_cmd = Command::SVINFO(6, 6, 0, now_secs);
 
             if let Err(e) = framed

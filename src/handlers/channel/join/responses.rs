@@ -203,7 +203,10 @@ pub(super) async fn send_channel_topic(
             topic_reply = topic_reply.with_tag("batch", Some(batch_id));
         }
 
-        sender.send(topic_reply).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send TOPIC".into()))?;
+        sender
+            .send(topic_reply)
+            .await
+            .map_err(|_| crate::error::HandlerError::Internal("Failed to send TOPIC".into()))?;
 
         let topic_who_reply = server_reply(
             server_name,
@@ -215,7 +218,9 @@ pub(super) async fn send_channel_topic(
                 topic.set_at.to_string(),
             ],
         );
-        sender.send(topic_who_reply).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send TOPICWHOTIME".into()))?;
+        sender.send(topic_who_reply).await.map_err(|_| {
+            crate::error::HandlerError::Internal("Failed to send TOPICWHOTIME".into())
+        })?;
     }
     Ok(())
 }
@@ -271,7 +276,10 @@ pub(super) async fn send_names_list(
             names_reply = names_reply.with_tag("batch", Some(batch_id));
         }
 
-        sender.send(names_reply).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send NAMREPLY".into()))?;
+        sender
+            .send(names_reply)
+            .await
+            .map_err(|_| crate::error::HandlerError::Internal("Failed to send NAMREPLY".into()))?;
     }
 
     let mut end_names = with_label(
@@ -292,7 +300,10 @@ pub(super) async fn send_names_list(
         end_names = end_names.with_tag("batch", Some(batch_id));
     }
 
-    sender.send(end_names).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send ENDOFNAMES".into()))?;
+    sender
+        .send(end_names)
+        .await
+        .map_err(|_| crate::error::HandlerError::Internal("Failed to send ENDOFNAMES".into()))?;
 
     Ok(())
 }
@@ -306,6 +317,9 @@ pub(super) async fn send_join_error(
     error: ChannelError,
 ) -> HandlerResult {
     let reply = error.to_irc_reply(server_name, nick, channel_name);
-    sender.send(reply).await.map_err(|_| crate::error::HandlerError::Internal("Failed to send error".into()))?;
+    sender
+        .send(reply)
+        .await
+        .map_err(|_| crate::error::HandlerError::Internal("Failed to send error".into()))?;
     Ok(())
 }

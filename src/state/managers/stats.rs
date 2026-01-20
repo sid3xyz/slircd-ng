@@ -96,7 +96,9 @@ impl StatsManager {
     /// Decrement local user count. Returns new global count.
     pub fn user_disconnected(&self) -> usize {
         self.local_users.fetch_sub(1, Ordering::Relaxed);
-        self.global_users.fetch_sub(1, Ordering::Relaxed).saturating_sub(1)
+        self.global_users
+            .fetch_sub(1, Ordering::Relaxed)
+            .saturating_sub(1)
     }
 
     /// Increment a remote user count (global only).
@@ -157,12 +159,14 @@ impl StatsManager {
 
     /// Increment unregistered connection count.
     pub fn increment_unregistered(&self) {
-        self.unregistered_connections.fetch_add(1, Ordering::Relaxed);
+        self.unregistered_connections
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Decrement unregistered connection count.
     pub fn decrement_unregistered(&self) {
-        self.unregistered_connections.fetch_sub(1, Ordering::Relaxed);
+        self.unregistered_connections
+            .fetch_sub(1, Ordering::Relaxed);
     }
 
     // === Channel Counters ===

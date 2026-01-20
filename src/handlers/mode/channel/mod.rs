@@ -225,10 +225,7 @@ async fn validate_flood_mode(
 
     // Check format: lines:seconds
     let parts: Vec<&str> = param.split(':').collect();
-    if parts.len() != 2
-        || parts[0].parse::<u32>().is_err()
-        || parts[1].parse::<u32>().is_err()
-    {
+    if parts.len() != 2 || parts[0].parse::<u32>().is_err() || parts[1].parse::<u32>().is_err() {
         let reply = server_reply(
             ctx.server_name(),
             Response::ERR_INVALIDMODEPARAM,

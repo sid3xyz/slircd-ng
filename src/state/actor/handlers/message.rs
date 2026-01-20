@@ -4,15 +4,15 @@
 
 use super::super::validation::{create_user_mask, is_banned};
 use super::{ChannelActor, ChannelMessageParams, ChannelMode, ChannelRouteResult};
+use governor::{Quota, RateLimiter as GovRateLimiter};
 use slirc_proto::message::Tag;
 use slirc_proto::{Command, Message};
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::sync::Arc;
-use tokio::sync::oneshot;
-use governor::{Quota, RateLimiter as GovRateLimiter};
 use std::num::NonZeroU32;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::oneshot;
 
 /// Build tags for echo-message response based on sender capabilities.
 fn build_echo_tags(
@@ -166,7 +166,9 @@ impl ChannelActor {
         // Check +G (Censor)
         if modes.contains(&ChannelMode::Censor) && !is_tagmsg {
             let matrix = self.matrix.upgrade();
-            let censored_words = matrix.as_ref().map(|m| &m.config.security.spam.censored_words);
+            let censored_words = matrix
+                .as_ref()
+                .map(|m| &m.config.security.spam.censored_words);
 
             if let Some(words) = censored_words {
                 let text_lower = text.to_lowercase();
@@ -190,15 +192,20 @@ impl ChannelActor {
             }
 
             // Check +f (Flood protection)
-            let is_flooding = if let Some(param) = self.flood_config.get(&super::FloodType::Message) {
-                let limiter = self.flood_message_limiters.entry(sender_uid.clone()).or_insert_with(|| {
-                    let period_per_token = Duration::from_secs_f64(param.period as f64 / param.count as f64);
-                    let quota = Quota::with_period(period_per_token)
-                        .expect("Invalid flood period")
-                        .allow_burst(NonZeroU32::new(param.count).expect("Count must be > 0"));
-                    GovRateLimiter::direct(quota)
-                });
-                
+            let is_flooding = if let Some(param) = self.flood_config.get(&super::FloodType::Message)
+            {
+                let limiter = self
+                    .flood_message_limiters
+                    .entry(sender_uid.clone())
+                    .or_insert_with(|| {
+                        let period_per_token =
+                            Duration::from_secs_f64(param.period as f64 / param.count as f64);
+                        let quota = Quota::with_period(period_per_token)
+                            .expect("Invalid flood period")
+                            .allow_burst(NonZeroU32::new(param.count).expect("Count must be > 0"));
+                        GovRateLimiter::direct(quota)
+                    });
+
                 limiter.check().is_err()
             } else {
                 false
@@ -219,17 +226,17 @@ impl ChannelActor {
                         Some("Channel flood triggered (+f)".to_string()),
                     ),
                 };
-                
+
                 // Remove user state
                 self.members.remove(&sender_uid);
                 self.senders.remove(&sender_uid);
                 self.user_nicks.remove(&sender_uid);
                 self.user_caps.remove(&sender_uid);
                 self.flood_message_limiters.remove(&sender_uid);
-                
+
                 self.handle_broadcast(kick_msg, None).await;
                 self.cleanup_if_empty();
-                
+
                 let _ = reply_tx.send(ChannelRouteResult::NoSuchChannel);
                 return;
             }
@@ -281,7 +288,10 @@ impl ChannelActor {
         }
 
         // Strip colors/formatting if +c or +S mode is set
-        let text = if (modes.contains(&ChannelMode::NoColors) || modes.contains(&ChannelMode::StripColors)) && !is_tagmsg {
+        let text = if (modes.contains(&ChannelMode::NoColors)
+            || modes.contains(&ChannelMode::StripColors))
+            && !is_tagmsg
+        {
             use slirc_proto::colors::FormattedStringExt;
             text.strip_formatting().into_owned()
         } else {
@@ -315,8 +325,8 @@ impl ChannelActor {
             )),
             command: match (is_tagmsg, is_notice) {
                 (true, _) => Command::TAGMSG(target),
-                (false, true) => Command::NOTICE(target, text),
-                (false, false) => Command::PRIVMSG(target, text),
+                (false, true) => Command::NOTICE(target, text.clone()),
+                (false, false) => Command::PRIVMSG(target, text.clone()),
             },
         };
 
@@ -615,7 +625,58 @@ impl ChannelActor {
                 )),
                 command: Command::JOIN(self.name.clone(), None, None),
             };
-            self.handle_broadcast(join_msg, Some(sender_uid.clone())).await;
+            self.handle_broadcast(join_msg, Some(sender_uid.clone()))
+                .await;
+        }
+
+        // Store message in history (Issue 5)
+        if let Some(matrix) = self.matrix.upgrade() {
+            let history = matrix.service_manager.history.clone();
+            let target_name = self.name.clone();
+            let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+
+            let command = match (is_tagmsg, is_notice) {
+                (true, _) => "TAGMSG".to_string(),
+                (false, true) => "NOTICE".to_string(),
+                (false, false) => "PRIVMSG".to_string(),
+            };
+
+            let prefix = format!(
+                "{}!{}@{}",
+                user_context.nickname, user_context.username, user_context.hostname
+            );
+
+            let history_tags = tags.clone().map(|t| {
+                t.into_iter()
+                    .map(|msg_tag| crate::history::types::MessageTag {
+                        key: msg_tag.0.to_string(),
+                        value: msg_tag.1.map(|v| v.to_string()),
+                    })
+                    .collect()
+            });
+
+            let envelope = crate::history::types::MessageEnvelope {
+                command,
+                prefix,
+                target: target_name.clone(),
+                text: text.clone(),
+                tags: history_tags,
+            };
+
+            let stored_msg = crate::history::types::StoredMessage {
+                msgid: msgid.clone(),
+                target: slirc_proto::irc_to_lower(&target_name),
+                sender: user_context.nickname.clone(),
+                envelope,
+                nanotime: now,
+                account: user_context.account.clone(),
+            };
+
+            let item = crate::history::types::HistoryItem::Message(stored_msg);
+
+            tokio::spawn(async move {
+                let _ = history.store_item(&target_name, item).await;
+            });
         }
 
         let _ = reply_tx.send(ChannelRouteResult::Sent);

@@ -12,8 +12,8 @@
 //! - Timestamps are Unix seconds (float allowed). Start is exclusive; end is exclusive.
 //! - Limits use `history.znc-maxmessages` for the `<channel> <start>` form.
 
-use crate::history::{HistoryQuery, StoredMessage};
 use crate::history::types::HistoryItem;
+use crate::history::{HistoryQuery, StoredMessage};
 use crate::services::{Service, ServiceEffect};
 use crate::state::Matrix;
 use async_trait::async_trait;
@@ -132,7 +132,7 @@ impl Service for Playback {
                 // Collect targets: channels + DMs active since start
                 let mut messages: Vec<StoredMessage> = Vec::new();
 
-            // Channels: query each
+                // Channels: query each
                 for ch in &channels {
                     let q = HistoryQuery {
                         target: ch.clone(),
@@ -251,10 +251,13 @@ impl Service for Playback {
                     reverse: false,
                 };
                 if let Ok(items) = matrix.service_manager.history.query(q).await {
-                    let mut msgs: Vec<StoredMessage> = items.into_iter().filter_map(|i| match i {
-                        HistoryItem::Message(m) => Some(m),
-                        _ => None,
-                    }).collect();
+                    let mut msgs: Vec<StoredMessage> = items
+                        .into_iter()
+                        .filter_map(|i| match i {
+                            HistoryItem::Message(m) => Some(m),
+                            _ => None,
+                        })
+                        .collect();
                     msgs.sort_by_key(|m| m.nanotime);
                     for m in msgs {
                         effects.push(Self::to_effect(uid, &m, has_server_time));
@@ -276,10 +279,13 @@ impl Service for Playback {
                         reverse: true,
                     };
                     if let Ok(items) = matrix.service_manager.history.query(q).await {
-                        let mut msgs: Vec<StoredMessage> = items.into_iter().filter_map(|i| match i {
-                            HistoryItem::Message(m) => Some(m),
-                            _ => None,
-                        }).collect();
+                        let mut msgs: Vec<StoredMessage> = items
+                            .into_iter()
+                            .filter_map(|i| match i {
+                                HistoryItem::Message(m) => Some(m),
+                                _ => None,
+                            })
+                            .collect();
                         // reverse back to ascending
                         msgs.reverse();
                         for m in msgs {
@@ -303,10 +309,13 @@ impl Service for Playback {
                     reverse: false,
                 };
                 if let Ok(items) = matrix.service_manager.history.query(q).await {
-                    let mut msgs: Vec<StoredMessage> = items.into_iter().filter_map(|i| match i {
-                        HistoryItem::Message(m) => Some(m),
-                        _ => None,
-                    }).collect();
+                    let mut msgs: Vec<StoredMessage> = items
+                        .into_iter()
+                        .filter_map(|i| match i {
+                            HistoryItem::Message(m) => Some(m),
+                            _ => None,
+                        })
+                        .collect();
                     msgs.sort_by_key(|m| m.nanotime);
                     for m in msgs {
                         effects.push(Self::to_effect(uid, &m, has_server_time));
@@ -329,10 +338,13 @@ impl Service for Playback {
                         reverse: false,
                     };
                     if let Ok(items) = matrix.service_manager.history.query(q).await {
-                        let mut msgs: Vec<StoredMessage> = items.into_iter().filter_map(|i| match i {
-                            HistoryItem::Message(m) => Some(m),
-                            _ => None,
-                        }).collect();
+                        let mut msgs: Vec<StoredMessage> = items
+                            .into_iter()
+                            .filter_map(|i| match i {
+                                HistoryItem::Message(m) => Some(m),
+                                _ => None,
+                            })
+                            .collect();
                         msgs.sort_by_key(|m| m.nanotime);
                         for m in msgs {
                             effects.push(Self::to_effect(uid, &m, has_server_time));

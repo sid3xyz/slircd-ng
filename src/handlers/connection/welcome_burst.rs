@@ -619,15 +619,13 @@ impl<'a> WelcomeBurstWriter<'a> {
 
         // Update StatsManager counters
         self.matrix.stats_manager.user_connected();
-        
+
         if is_starting_invisible {
             self.matrix.stats_manager.user_set_invisible();
         }
         if is_starting_oper {
             self.matrix.stats_manager.user_opered();
         }
-
-
 
         info!(nick = %nick, user = %user, uid = %self.uid, account = ?self.state.account, "Client registered");
 
@@ -688,7 +686,7 @@ impl<'a> WelcomeBurstWriter<'a> {
         let chanmodes = ChanModesBuilder::new()
             .list_modes("beIq")
             .param_always("k")
-            .param_set("fl")  // l = limit, f = flood protection (takes param on set)
+            .param_set("fl") // l = limit, f = flood protection (takes param on set)
             .no_param("imnrstMU");
 
         let targmax = TargMaxBuilder::new()

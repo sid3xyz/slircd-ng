@@ -7,7 +7,7 @@ use crate::state::RegisteredState;
 use crate::state::actor::{ChannelEvent, ClearTarget};
 use crate::{require_arg_or_reply, require_oper_cap};
 use async_trait::async_trait;
-use slirc_proto::{MessageRef, Response, Prefix};
+use slirc_proto::{MessageRef, Prefix, Response};
 use tokio::sync::oneshot;
 
 /// Handler for CLEARCHAN command.
@@ -46,7 +46,10 @@ impl PostRegHandler for ClearchanHandler {
                     vec![
                         ctx.nick().to_string(),
                         channel_name.to_string(),
-                        format!("Invalid clear target: {}. Use MODES, BANS, OPS, or VOICES.", target_type),
+                        format!(
+                            "Invalid clear target: {}. Use MODES, BANS, OPS, or VOICES.",
+                            target_type
+                        ),
                     ],
                 )
                 .await?;
@@ -54,23 +57,32 @@ impl PostRegHandler for ClearchanHandler {
             }
         };
 
-        let channel_sender = if let Some(sender) = ctx.matrix.channel_manager.channels.get(channel_name) {
-            sender.value().clone()
-        } else {
-            ctx.send_reply(
-                Response::ERR_NOSUCHCHANNEL,
-                vec![ctx.nick().to_string(), channel_name.to_string(), "No such channel".to_string()],
-            )
-            .await?;
-            return Ok(());
-        };
+        let channel_sender =
+            if let Some(sender) = ctx.matrix.channel_manager.channels.get(channel_name) {
+                sender.value().clone()
+            } else {
+                ctx.send_reply(
+                    Response::ERR_NOSUCHCHANNEL,
+                    vec![
+                        ctx.nick().to_string(),
+                        channel_name.to_string(),
+                        "No such channel".to_string(),
+                    ],
+                )
+                .await?;
+                return Ok(());
+            };
 
         let (nick, user, host) = match crate::handlers::user_mask_from_state(ctx, ctx.uid).await {
             Some(mask) => mask,
             None => {
                 ctx.send_reply(
                     Response::ERR_UNKNOWNERROR,
-                    vec![ctx.nick().to_string(), channel_name.to_string(), "User vanished".to_string()],
+                    vec![
+                        ctx.nick().to_string(),
+                        channel_name.to_string(),
+                        "User vanished".to_string(),
+                    ],
                 )
                 .await?;
                 return Ok(());
@@ -88,7 +100,11 @@ impl PostRegHandler for ClearchanHandler {
         if channel_sender.send(event).await.is_err() {
             ctx.send_reply(
                 Response::ERR_UNKNOWNERROR,
-                vec![ctx.nick().to_string(), channel_name.to_string(), "Channel actor is dead".to_string()],
+                vec![
+                    ctx.nick().to_string(),
+                    channel_name.to_string(),
+                    "Channel actor is dead".to_string(),
+                ],
             )
             .await?;
             return Ok(());
@@ -107,7 +123,11 @@ impl PostRegHandler for ClearchanHandler {
             Err(_) => {
                 ctx.send_reply(
                     Response::ERR_UNKNOWNERROR,
-                    vec![ctx.nick().to_string(), channel_name.to_string(), "Channel actor timeout".to_string()],
+                    vec![
+                        ctx.nick().to_string(),
+                        channel_name.to_string(),
+                        "Channel actor timeout".to_string(),
+                    ],
                 )
                 .await?;
                 Ok(())

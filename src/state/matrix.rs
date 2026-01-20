@@ -247,8 +247,10 @@ impl Matrix {
         let stats_manager = Arc::new(crate::state::managers::stats::StatsManager::new());
         user_manager.set_stats_manager(stats_manager.clone());
 
-        let mut channel_manager =
-            ChannelManager::with_registered_channels(registered_channel_names, stats_manager.clone());
+        let mut channel_manager = ChannelManager::with_registered_channels(
+            registered_channel_names,
+            stats_manager.clone(),
+        );
         channel_manager.set_observer(sync_manager_arc.clone());
 
         // Create ServiceManager with server SID for service UIDs
@@ -498,12 +500,8 @@ impl Matrix {
         cleanup_monitors(self, uid.as_str());
 
         // Record WHOWAS entry
-        self.user_manager.record_whowas(
-            &info.nick,
-            &info.user,
-            &info.host,
-            &info.realname,
-        );
+        self.user_manager
+            .record_whowas(&info.nick, &info.user, &info.host, &info.realname);
 
         // Notify MONITOR watchers
         notify_monitors_offline(self, &info.nick).await;
@@ -519,7 +517,11 @@ impl Matrix {
 
         let quit_msg = Message {
             tags: None,
-            prefix: Some(Prefix::new(info.nick.clone(), info.user.clone(), info.host.clone())),
+            prefix: Some(Prefix::new(
+                info.nick.clone(),
+                info.user.clone(),
+                info.host.clone(),
+            )),
             command: Command::QUIT(Some(reason.to_string())),
         };
 

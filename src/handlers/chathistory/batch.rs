@@ -73,7 +73,7 @@ pub async fn send_history_batch(
             }
         }
 
-        use crate::history::types::{HistoryItem, EventKind};
+        use crate::history::types::{EventKind, HistoryItem};
 
         // Determine if we should skip this item based on capabilities
         match &item {
@@ -98,13 +98,13 @@ pub async fn send_history_batch(
 
         // Timestamp ISO string
         let time_iso = {
-             let secs = nanotime / 1_000_000_000;
-             let nanos = (nanotime % 1_000_000_000) as u32;
-             if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nanos) {
-                 dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-             } else {
-                 "1970-01-01T00:00:00.000Z".to_string()
-             }
+            let secs = nanotime / 1_000_000_000;
+            let nanos = (nanotime % 1_000_000_000) as u32;
+            if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nanos) {
+                dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+            } else {
+                "1970-01-01T00:00:00.000Z".to_string()
+            }
         };
 
         let mut tags = vec![
@@ -130,9 +130,15 @@ pub async fn send_history_batch(
                 }
 
                 let cmd = match msg.envelope.command.as_str() {
-                    "PRIVMSG" => Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone()),
-                    "NOTICE" => Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone()),
-                    "TOPIC" => Command::TOPIC(msg.envelope.target.clone(), Some(msg.envelope.text.clone())),
+                    "PRIVMSG" => {
+                        Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone())
+                    }
+                    "NOTICE" => {
+                        Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone())
+                    }
+                    "TOPIC" => {
+                        Command::TOPIC(msg.envelope.target.clone(), Some(msg.envelope.text.clone()))
+                    }
                     "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
                     _ => continue,
                 };
@@ -143,9 +149,16 @@ pub async fn send_history_batch(
                     EventKind::Join => Command::JOIN(target.to_string(), None, None),
                     EventKind::Part(reason) => Command::PART(target.to_string(), reason),
                     EventKind::Quit(reason) => Command::QUIT(reason),
-                    EventKind::Kick { target: kicked, reason } => Command::KICK(target.to_string(), kicked, reason),
-                    EventKind::Mode { diff } => Command::Raw("MODE".to_string(), vec![target.to_string(), diff]),
-                    EventKind::Topic { new_topic, .. } => Command::TOPIC(target.to_string(), Some(new_topic)),
+                    EventKind::Kick {
+                        target: kicked,
+                        reason,
+                    } => Command::KICK(target.to_string(), kicked, reason),
+                    EventKind::Mode { diff } => {
+                        Command::Raw("MODE".to_string(), vec![target.to_string(), diff])
+                    }
+                    EventKind::Topic { new_topic, .. } => {
+                        Command::TOPIC(target.to_string(), Some(new_topic))
+                    }
                     EventKind::Nick { new_nick } => Command::NICK(new_nick),
                 };
                 (Some(Prefix::new_from_str(&evt.source)), cmd)
