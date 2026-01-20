@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-20 01:00 | Pre-release | Zero users
-> Last Session: Codebase deep cleanup (dead code, clippy fixes, macros)
+> Updated: 2026-01-20 01:30 | Pre-release | Zero users
+> Last Session: Refactored channel handlers (KICK, TOPIC, PART, NAMES) with shared macros and helpers.
 
 ---
 
@@ -48,7 +48,9 @@
 ### 2.3 Handlers (`src/handlers/`)
 Organized by domain:
 - `cap/` - IRCv3 capability negotiation (SASL, etc.)
-- `channel/` - JOIN, PART, MODE, KICK, TOPIC
+- `channel/` - JOIN, PART, MODE, KICK, TOPIC, NAMES
+  - Refactored to use `require_channel_or_reply!` macro.
+  - `names.rs` extracted `process_single_channel_names`.
 - `user/` - NICK, USER, WHOIS, MODE
 - `messaging/` - PRIVMSG, NOTICE, NPC, SCENE
 - `server/` - S2S commands, KILL, STATS

@@ -29,6 +29,152 @@ fn get_member_prefix(member_modes: &crate::state::MemberModes, multi_prefix: boo
     }
 }
 
+impl NamesHandler {
+    async fn process_single_channel_names(
+        &self,
+        ctx: &Context<'_, RegisteredState>,
+        channel_name: &str, // Display name (mixed case)
+        nick: &str,
+        multi_prefix: bool,
+        send_end_reply: bool,
+    ) -> HandlerResult {
+        let channel_lower = irc_to_lower(channel_name);
+
+        let channel_sender = ctx
+            .matrix
+            .channel_manager
+            .channels
+            .get(&channel_lower)
+            .map(|c| c.value().clone());
+
+        if let Some(channel_sender) = channel_sender {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = channel_sender
+                .send(crate::state::actor::ChannelEvent::GetInfo {
+                    requester_uid: Some(ctx.uid.to_string()),
+                    reply_tx: tx,
+                })
+                .await;
+
+            let channel_info = match rx.await {
+                Ok(info) => info,
+                Err(_) => return Ok(()),
+            };
+
+            // If channel is secret and user is not a member, treat as if it doesn't exist
+            // (Only for specific queries; LIST handles this differently)
+            if channel_info
+                .modes
+                .contains(&crate::state::actor::ChannelMode::Secret)
+                && !channel_info.is_member
+            {
+                if send_end_reply {
+                    let end_names = server_reply(
+                        ctx.server_name(),
+                        Response::RPL_ENDOFNAMES,
+                        vec![
+                            nick.to_string(),
+                            channel_name.to_string(),
+                            "End of /NAMES list".to_string(),
+                        ],
+                    );
+                    ctx.sender.send(end_names).await?;
+                }
+                return Ok(());
+            }
+
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = channel_sender
+                .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
+                .await;
+            let members = match rx.await {
+                Ok(m) => m,
+                Err(_) => return Ok(()),
+            };
+
+            let mut names_list = Vec::with_capacity(members.len());
+
+            let is_auditorium = channel_info
+                .modes
+                .contains(&crate::state::actor::ChannelMode::Auditorium);
+            
+            // Check if requester is privileged in this channel
+            let requester_privileged = if let Some(modes) = members.get(ctx.uid) {
+                modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
+            } else {
+                false
+            };
+
+            for (uid, member_modes) in &members {
+                // Auditorium filtering: if +u and requester is not privileged,
+                // they only see privileged users.
+                if is_auditorium && !requester_privileged {
+                    let is_target_privileged = member_modes.voice
+                        || member_modes.halfop
+                        || member_modes.op
+                        || member_modes.admin
+                        || member_modes.owner;
+
+                    if !is_target_privileged {
+                        continue;
+                    }
+                }
+
+                if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
+                    let user = user.read().await;
+                    let prefix = get_member_prefix(member_modes, multi_prefix);
+                    names_list.push((user.nick.clone(), format!("{}{}", prefix, user.nick)));
+                }
+            }
+            // Sort alphabetically by nick (case-insensitive) for deterministic output
+            names_list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+            let names_list: Vec<String> =
+                names_list.into_iter().map(|(_, display)| display).collect();
+
+            // Channel symbol per RFC 2812:
+            // @ = secret (+s)
+            // * = private (not used, some IRCds treat +p this way)
+            // = = public (default)
+            let channel_symbol = if channel_info
+                .modes
+                .contains(&crate::state::actor::ChannelMode::Secret)
+            {
+                "@"
+            } else {
+                "="
+            };
+
+            let names_reply = server_reply(
+                ctx.server_name(),
+                Response::RPL_NAMREPLY,
+                vec![
+                    nick.to_string(),
+                    channel_symbol.to_string(),
+                    channel_info.name.clone(),
+                    names_list.join(" "),
+                ],
+            );
+            ctx.sender.send(names_reply).await?;
+        }
+
+        if send_end_reply {
+            // Always send End of NAMES
+            let end_names = server_reply(
+                ctx.server_name(),
+                Response::RPL_ENDOFNAMES,
+                vec![
+                    nick.to_string(),
+                    channel_name.to_string(),
+                    "End of /NAMES list".to_string(),
+                ],
+            );
+            ctx.sender.send(end_names).await?;
+        }
+
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl PostRegHandler for NamesHandler {
     async fn handle(
@@ -51,12 +197,6 @@ impl PostRegHandler for NamesHandler {
 
         if target_channel.is_none() {
             // NAMES without channel - list all visible channels
-            // Per RFC 2812, list:
-            // - Public channels the user is in
-            // - Public channels (if user is not in them but they're visible)
-            // Secret channels (+s) are not shown unless user is in them
-
-            // Collect and sort channels alphabetically for deterministic output
             let mut channel_names: Vec<_> = ctx
                 .matrix
                 .channel_manager
@@ -77,103 +217,23 @@ impl PostRegHandler for NamesHandler {
                     truncated = true;
                     break;
                 }
-                let Some(sender) = ctx
-                    .matrix
-                    .channel_manager
-                    .channels
-                    .get(&channel_lower)
-                    .map(|c| c.value().clone())
-                else {
-                    continue;
-                };
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = sender
-                    .send(crate::state::actor::ChannelEvent::GetInfo {
-                        requester_uid: Some(ctx.uid.to_string()),
-                        reply_tx: tx,
-                    })
-                    .await;
 
-                let channel_info = match rx.await {
-                    Ok(info) => info,
-                    Err(_) => continue,
-                };
-
-                // Skip secret channels unless user is a member
-                if channel_info
-                    .modes
-                    .contains(&crate::state::actor::ChannelMode::Secret)
-                    && !channel_info.is_member
-                {
-                    continue;
-                }
-
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = sender
-                    .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
-                    .await;
-                let members = match rx.await {
-                    Ok(m) => m,
-                    Err(_) => continue,
-                };
-
-                let mut names_list = Vec::with_capacity(members.len());
-
-                let is_auditorium = channel_info
-                    .modes
-                    .contains(&crate::state::actor::ChannelMode::Auditorium);
-                let requester_privileged = if let Some(modes) = members.get(&ctx.uid.to_string()) {
-                    modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
-                } else {
-                    false
-                };
-
-                for (uid, member_modes) in &members {
-                    // Auditorium filtering: if +u and requester is not privileged,
-                    // they only see privileged users.
-                    if is_auditorium && !requester_privileged {
-                        let is_target_privileged = member_modes.voice
-                            || member_modes.halfop
-                            || member_modes.op
-                            || member_modes.admin
-                            || member_modes.owner;
-
-                        if !is_target_privileged {
-                            continue;
-                        }
-                    }
-
-                    if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
-                        let user = user.read().await;
-                        let prefix = get_member_prefix(member_modes, multi_prefix);
-                        names_list.push((user.nick.clone(), format!("{}{}", prefix, user.nick)));
-                    }
-                }
-                // Sort alphabetically by nick (case-insensitive) for deterministic output
-                names_list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-                let names_list: Vec<String> =
-                    names_list.into_iter().map(|(_, display)| display).collect();
-
-                let channel_symbol = if channel_info
-                    .modes
-                    .contains(&crate::state::actor::ChannelMode::Secret)
-                {
-                    "@"
-                } else {
-                    "="
-                };
-
-                let names_reply = server_reply(
-                    ctx.server_name(),
-                    Response::RPL_NAMREPLY,
-                    vec![
-                        nick.to_string(),
-                        channel_symbol.to_string(),
-                        channel_info.name.clone(),
-                        names_list.join(" "),
-                    ],
-                );
-                ctx.sender.send(names_reply).await?;
+                // In bulk list, we don't send RPL_ENDOFNAMES for each channel
+                // We rely on process_single_channel_names to do the heavy lifting
+                // including secret channel filtering.
+                // We assume channel_lower is the display name here (it's lowercase but that's fine for bulk list)
+                
+                // Note: using channel_lower as display name might be a slight UX regression if we wanted original case,
+                // but since we are iterating the map keys, we only have lowercase.
+                // ChannelManager doesn't index by original case (it stores them in actor, but map key is lower).
+                // Getting the original case would require querying the actor, which process_single_channel_names does.
+                // Wait, process_single_channel_names takes `channel_name` and converts to lower.
+                // But it sends `channel_name` in replies.
+                // If we pass `channel_lower`, the reply will be lowercase.
+                // We can improve this later if needed by returning original name from GetInfo.
+                // For now, lowercase is acceptable for bulk list.
+                
+                self.process_single_channel_names(ctx, &channel_lower, nick, multi_prefix, false).await?;
                 result_count += 1;
             }
 
@@ -204,157 +264,14 @@ impl PostRegHandler for NamesHandler {
             return Ok(());
         }
 
-        // target_channel is Some() at this point - use if-let for safe unwrap
-        let Some(channel_name) = target_channel else {
-            // Unreachable: we just checked is_none() above
-            return Ok(());
-        };
-        // Handle multiple channels (comma-separated): NAMES #chan1,#chan2
-        let channels: Vec<&str> = channel_name.split(',').collect();
-
-        for (idx, chan) in channels.iter().enumerate() {
-            let channel_lower = irc_to_lower(chan);
-
-            let channel_sender = ctx
-                .matrix
-                .channel_manager
-                .channels
-                .get(&channel_lower)
-                .map(|c| c.value().clone());
-
-            if let Some(channel_sender) = channel_sender {
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = channel_sender
-                    .send(crate::state::actor::ChannelEvent::GetInfo {
-                        requester_uid: Some(ctx.uid.to_string()),
-                        reply_tx: tx,
-                    })
-                    .await;
-
-                let channel_info = match rx.await {
-                    Ok(info) => info,
-                    Err(_) => return Ok(()),
-                };
-
-                // If channel is secret and user is not a member, treat as if it doesn't exist
-                if channel_info
-                    .modes
-                    .contains(&crate::state::actor::ChannelMode::Secret)
-                    && !channel_info.is_member
-                {
-                    let end_names = server_reply(
-                        ctx.server_name(),
-                        Response::RPL_ENDOFNAMES,
-                        vec![
-                            nick.to_string(),
-                            channel_name.to_string(),
-                            "End of /NAMES list".to_string(),
-                        ],
-                    );
-                    ctx.sender.send(end_names).await?;
-                    return Ok(());
-                }
-
-                let (tx, rx) = tokio::sync::oneshot::channel();
-                let _ = channel_sender
-                    .send(crate::state::actor::ChannelEvent::GetMembers { reply_tx: tx })
-                    .await;
-                let members = match rx.await {
-                    Ok(m) => m,
-                    Err(_) => return Ok(()),
-                };
-
-                let mut names_list = Vec::with_capacity(members.len());
-
-                let is_auditorium = channel_info
-                    .modes
-                    .contains(&crate::state::actor::ChannelMode::Auditorium);
-                let requester_privileged = if let Some(modes) = members.get(&ctx.uid.to_string()) {
-                    modes.voice || modes.halfop || modes.op || modes.admin || modes.owner
-                } else {
-                    false
-                };
-
-                for (uid, member_modes) in &members {
-                    // Auditorium filtering: if +u and requester is not privileged,
-                    // they only see privileged users.
-                    if is_auditorium && !requester_privileged {
-                        let is_target_privileged = member_modes.voice
-                            || member_modes.halfop
-                            || member_modes.op
-                            || member_modes.admin
-                            || member_modes.owner;
-
-                        if !is_target_privileged {
-                            continue;
-                        }
-                    }
-
-                    if let Some(user) = ctx.matrix.user_manager.users.get(uid) {
-                        let user = user.read().await;
-                        let prefix = get_member_prefix(member_modes, multi_prefix);
-                        names_list.push((user.nick.clone(), format!("{}{}", prefix, user.nick)));
-                    }
-                }
-                // Sort alphabetically by nick (case-insensitive) for deterministic output
-                names_list.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-                let names_list: Vec<String> =
-                    names_list.into_iter().map(|(_, display)| display).collect();
-
-                // Channel symbol per RFC 2812:
-                // @ = secret (+s)
-                // * = private (not used, some IRCds treat +p this way)
-                // = = public (default)
-                let channel_symbol = if channel_info
-                    .modes
-                    .contains(&crate::state::actor::ChannelMode::Secret)
-                {
-                    "@"
-                } else {
-                    "="
-                };
-
-                let names_reply = server_reply(
-                    ctx.server_name(),
-                    Response::RPL_NAMREPLY,
-                    vec![
-                        nick.to_string(),
-                        channel_symbol.to_string(),
-                        channel_info.name.clone(),
-                        names_list.join(" "),
-                    ],
-                );
-                ctx.sender.send(names_reply).await?;
-
-                // Only send RPL_ENDOFNAMES after the last channel
-                if idx == channels.len() - 1 {
-                    let end_names = server_reply(
-                        ctx.server_name(),
-                        Response::RPL_ENDOFNAMES,
-                        vec![
-                            nick.to_string(),
-                            channel_name.to_string(), // Original comma-separated list
-                            "End of /NAMES list".to_string(),
-                        ],
-                    );
-                    ctx.sender.send(end_names).await?;
-                }
-            } else {
-                // Channel doesn't exist - only send RPL_ENDOFNAMES if it's the last channel
-                if idx == channels.len() - 1 {
-                    let end_names = server_reply(
-                        ctx.server_name(),
-                        Response::RPL_ENDOFNAMES,
-                        vec![
-                            nick.to_string(),
-                            channel_name.to_string(), // Original comma-separated list
-                            "End of /NAMES list".to_string(),
-                        ],
-                    );
-                    ctx.sender.send(end_names).await?;
-                }
-            }
-        } // end for loop
+        if let Some(channel_name) = target_channel {
+             let channels: Vec<&str> = channel_name.split(',').collect();
+             for chan in channels {
+                 // For specific channels, we ALWAYS send RPL_ENDOFNAMES per channel
+                 self.process_single_channel_names(ctx, chan, nick, multi_prefix, true).await?;
+             }
+             return Ok(());
+        }
 
         Ok(())
     }

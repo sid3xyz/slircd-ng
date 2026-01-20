@@ -55,6 +55,8 @@ fn extract_params<'a>(msg: &MessageRef<'a>) -> Result<(&'a str, TopicAction<'a>)
     Ok((channel_name, action))
 }
 
+use crate::require_channel_or_reply;
+
 pub struct TopicHandler;
 
 #[async_trait]
@@ -71,16 +73,8 @@ impl PostRegHandler for TopicHandler {
 
         let channel_lower = irc_to_lower(channel_name);
 
-        // Get channel
-        let channel_tx = match ctx.matrix.channel_manager.channels.get(&channel_lower) {
-            Some(c) => c.value().clone(),
-            None => {
-                let reply = Response::err_nosuchchannel(nick, channel_name)
-                    .with_prefix(ctx.server_prefix());
-                ctx.send_error("TOPIC", "ERR_NOSUCHCHANNEL", reply).await?;
-                return Ok(());
-            }
-        };
+        // Get channel (using macro)
+        let channel_tx = require_channel_or_reply!(ctx, channel_name, "TOPIC");
 
         // Check if user is in channel
         if !is_user_in_channel(ctx, ctx.uid, &channel_lower).await {

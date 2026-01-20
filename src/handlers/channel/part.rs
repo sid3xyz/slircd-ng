@@ -73,25 +73,21 @@ impl PostRegHandler for PartHandler {
     }
 }
 
+use crate::require_channel_or_reply;
+
 /// Internal function to leave a channel.
-pub(super) async fn leave_channel_internal<S>(
-    ctx: &mut Context<'_, S>,
+pub(super) async fn leave_channel_internal(
+    ctx: &mut Context<'_, RegisteredState>,
     channel_lower: &str,
     nick: &str,
     user_name: &str,
     host: &str,
     reason: Option<&str>,
 ) -> HandlerResult {
-    // Check if channel exists
-    let channel_sender = match ctx.matrix.channel_manager.channels.get(channel_lower) {
-        Some(c) => c.value().clone(),
-        None => {
-            let reply =
-                Response::err_nosuchchannel(nick, channel_lower).with_prefix(ctx.server_prefix());
-            ctx.send_error("PART", "ERR_NOSUCHCHANNEL", reply).await?;
-            return Ok(());
-        }
-    };
+    // Check if channel exists (using macro)
+    let channel_sender = require_channel_or_reply!(ctx, channel_lower, "PART");
+
+    let _prefix = Prefix::new(nick.to_string(), user_name.to_string(), host.to_string());
 
     let prefix = Prefix::new(nick.to_string(), user_name.to_string(), host.to_string());
 
