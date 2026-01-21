@@ -142,6 +142,9 @@ Dual-engine persistence:
 | 3 | Data Safety | ✅ Complete |
 | 4 | Configuration Mastery | ✅ Complete |
 | 5 | Ecosystem (S2S, External Auth) | 🔄 In Progress |
+    - [ ] S2S Stats Sync (Server counts, Netsplit hardening)
+    - [ ] Global Network Topology (MAP/LINKS)
+    - [ ] Services Integration (NickServ/ChanServ)
 | 6 | Advanced Protection (Flood + DoS Hardening) | ✅ Complete |
 | 7 | Next-Gen Architecture | 📋 Planned |
 
