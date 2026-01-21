@@ -81,6 +81,7 @@ impl PostRegHandler for NoticeHandler {
         let dt = DateTime::<Utc>::from_timestamp(millis / 1000, (millis % 1000) as u32 * 1_000_000)
             .unwrap_or_default();
         let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let nanotime = dt.timestamp_nanos_opt().unwrap_or(0);
         let msgid = Uuid::new_v4().to_string();
 
         // Prepare tags for history
@@ -138,6 +139,7 @@ impl PostRegHandler for NoticeHandler {
                         prefix_char,
                         timestamp: Some(timestamp_iso.clone()),
                         msgid: Some(msgid.clone()),
+                        nanotime: Some(nanotime),
                         snapshot: &snapshot,
                     },
                 )
@@ -155,6 +157,7 @@ impl PostRegHandler for NoticeHandler {
                 RouteMeta {
                     timestamp: Some(timestamp_iso.clone()),
                     msgid: Some(msgid.clone()),
+                    nanotime: Some(nanotime),
                     override_nick: None,
                     relaymsg_sender_nick: None,
                 },
@@ -166,36 +169,6 @@ impl PostRegHandler for NoticeHandler {
                 // Suppress ACK for echo-message with labels (echo IS the response)
                 if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                     ctx.suppress_labeled_ack = true;
-                }
-
-                // Store message in history
-                let prefix = format!(
-                    "{}!{}@{}",
-                    snapshot.nick, snapshot.user, snapshot.visible_host
-                );
-                let envelope = MessageEnvelope {
-                    command: "NOTICE".to_string(),
-                    prefix: prefix.clone(),
-                    target: target.to_string(),
-                    text: text.to_string(),
-                    tags: history_tags.clone(),
-                };
-                let stored_msg = StoredMessage {
-                    msgid: msgid.clone(),
-                    target: irc_to_lower(target),
-                    sender: snapshot.nick.clone(),
-                    envelope,
-                    nanotime,
-                    account: ctx.state.account.clone(),
-                };
-                if let Err(e) = ctx
-                    .matrix
-                    .service_manager
-                    .history
-                    .store(target, stored_msg)
-                    .await
-                {
-                    debug!(error = %e, "Failed to store NOTICE in history");
                 }
             }
             // All errors silently ignored for NOTICE

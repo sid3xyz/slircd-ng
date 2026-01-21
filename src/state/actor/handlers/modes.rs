@@ -33,6 +33,7 @@ impl ChannelActor {
             modes,
             target_uids,
             force,
+            nanotime,
         } = params;
 
         let mut applied_modes = Vec::with_capacity(modes.len());
@@ -409,13 +410,12 @@ impl ChannelActor {
                 }
 
                 let event_id = uuid::Uuid::new_v4().to_string();
-                let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
                 let source = sender_prefix.to_string();
 
                 let event =
                     crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
                         id: event_id,
-                        nanotime: now,
+                        nanotime,
                         source,
                         kind: crate::history::types::EventKind::Mode { diff: mode_str },
                     });
@@ -436,6 +436,7 @@ impl ChannelActor {
         _sender_uid: Uid,
         sender_prefix: Prefix,
         target: ClearTarget,
+        nanotime: i64,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     ) {
         let mut changes = Vec::with_capacity(8);
@@ -529,13 +530,12 @@ impl ChannelActor {
                     }
 
                     let event_id = uuid::Uuid::new_v4().to_string();
-                    let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
                     let source = sender_prefix.to_string();
 
                     let event = crate::history::types::HistoryItem::Event(
                         crate::history::types::StoredEvent {
                             id: event_id,
-                            nanotime: now,
+                            nanotime,
                             source,
                             kind: crate::history::types::EventKind::Mode { diff: mode_str },
                         },

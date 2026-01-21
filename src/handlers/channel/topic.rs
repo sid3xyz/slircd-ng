@@ -161,6 +161,7 @@ impl PostRegHandler for TopicHandler {
                         timestamp,
                         force: false, // Deprecated in favor of cap
                         cap: topic_cap,
+                        nanotime,
                     },
                     reply_tx,
                 };
@@ -173,35 +174,7 @@ impl PostRegHandler for TopicHandler {
                     Ok(Ok(())) => {
                         info!(nick = %nick, channel = %channel_name, "Topic changed");
 
-                        // Store TOPIC event in history for event-playback (Innovation 5)
-                        if ctx.matrix.config.history.should_store_event("TOPIC") {
-                            let envelope = MessageEnvelope {
-                                command: "TOPIC".to_string(),
-                                prefix: set_by_string.clone(),
-                                target: channel_name.to_string(),
-                                text: topic_text.to_string(),
-                                tags: None,
-                            };
-
-                            let stored_msg = StoredMessage {
-                                msgid,
-                                target: channel_lower.clone(),
-                                sender: nick.clone(),
-                                envelope,
-                                nanotime,
-                                account: ctx.state.account.clone(),
-                            };
-
-                            if let Err(e) = ctx
-                                .matrix
-                                .service_manager
-                                .history
-                                .store(channel_name, stored_msg)
-                                .await
-                            {
-                                debug!(error = %e, "Failed to store TOPIC in history");
-                            }
-                        }
+                        info!(nick = %nick, channel = %channel_name, "Topic changed");
 
                         // Persist topic to database for registered channels with keeptopic
                         if let Some(channel_record) = ctx

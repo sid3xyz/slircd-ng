@@ -93,6 +93,7 @@ impl ChannelActor {
             msgid,
             override_nick,
             relaymsg_sender_nick,
+            nanotime,
         } = params;
 
         let is_member = self.members.contains_key(&sender_uid);
@@ -633,7 +634,7 @@ impl ChannelActor {
         if let Some(matrix) = self.matrix.upgrade() {
             let history = matrix.service_manager.history.clone();
             let target_name = self.name.clone();
-            let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+            let now = nanotime;
 
             let command = match (is_tagmsg, is_notice) {
                 (true, _) => "TAGMSG".to_string(),

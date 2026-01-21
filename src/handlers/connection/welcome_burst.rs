@@ -717,6 +717,8 @@ impl<'a> WelcomeBurstWriter<'a> {
             .custom("MONITOR", Some("100"))
             .excepts(Some('e'))
             .invex(Some('I'))
+            .custom("CHATHISTORY", Some(&crate::handlers::chathistory::MAX_HISTORY_LIMIT_CONST.to_string()))
+            .custom("MSGREFTYPES", Some("timestamp,msgid"))
             .custom("EXTBAN", Some(",m"))
             .custom("ELIST", Some("MNU"))
             .status_msg("~&@%+")

@@ -41,6 +41,7 @@ pub async fn send_history_batch(
         ),
     };
     ctx.sender.send(batch_start).await?;
+    println!("DEBUG_BATCH: sent start batch");
 
     let expected_target_lower = slirc_proto::irc_to_lower(target);
 
@@ -52,7 +53,7 @@ pub async fn send_history_batch(
                 let timestamp = msg.envelope.text.clone();
                 let history_msg = Message {
                     tags: Some(vec![Tag::new("batch", Some(batch_id.clone()))]),
-                    prefix: None,
+                    prefix: Some(ctx.server_prefix()),
                     command: Command::ChatHistoryTargets {
                         target: msg.target.clone(),
                         timestamp,
@@ -110,7 +111,7 @@ pub async fn send_history_batch(
         let mut tags = vec![
             Tag::new("batch", Some(batch_id.clone())),
             Tag::new("time", Some(time_iso)),
-            Tag::new("msgid", Some(msgid)),
+            Tag::new("msgid", Some(msgid.clone())),
         ];
 
         // Construct command
@@ -135,9 +136,6 @@ pub async fn send_history_batch(
                     }
                     "NOTICE" => {
                         Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone())
-                    }
-                    "TOPIC" => {
-                        Command::TOPIC(msg.envelope.target.clone(), Some(msg.envelope.text.clone()))
                     }
                     "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
                     _ => continue,
@@ -171,7 +169,10 @@ pub async fn send_history_batch(
             command,
         };
         ctx.sender.send(history_msg).await?;
+        println!("DEBUG_BATCH: sent item {}/{}", nanotime, msgid);
     }
+
+    println!("DEBUG_BATCH: loop finished, sending end");
 
     // End BATCH
     let batch_end = Message {

@@ -26,6 +26,7 @@ impl ChannelActor {
             timestamp,
             force,
             cap,
+            nanotime,
         } = params;
 
         let authorized = force || cap.is_some();
@@ -65,13 +66,12 @@ impl ChannelActor {
         if let Some(matrix) = self.matrix.upgrade() {
             // Use provided msgid or new one
             let event_id = msgid.clone();
-            let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
             let source = sender_prefix.to_string();
 
             let event =
                 crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
                     id: event_id,
-                    nanotime: now,
+                    nanotime,
                     source,
                     kind: crate::history::types::EventKind::Topic {
                         old_topic: None,

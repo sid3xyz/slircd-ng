@@ -96,6 +96,7 @@ pub(super) async fn leave_channel_internal(
         uid: ctx.uid.to_string(),
         reason: reason.map(|s| s.to_string()),
         prefix,
+        nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
         reply_tx,
     };
 

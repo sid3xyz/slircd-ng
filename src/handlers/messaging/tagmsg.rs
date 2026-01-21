@@ -62,6 +62,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
 
         // Generate msgid for history storage and echo-message (with dashes for IRCv3 compatibility)
         let msgid = Uuid::new_v4().to_string();
+        let nanotime = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
 
         // Collect only client-only tags (those starting with '+') AND the label tag
         // Server should not relay arbitrary tags from clients
@@ -129,6 +130,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                 RouteMeta {
                     timestamp: None,
                     msgid: Some(msgid.clone()),
+                    nanotime: Some(nanotime),
                     override_nick: None,
                     relaymsg_sender_nick: None,
                 },
@@ -141,59 +143,6 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                     // Suppress ACK for echo-message with labels (echo IS the response)
                     if ctx.label.is_some() && ctx.state.capabilities.contains("echo-message") {
                         ctx.suppress_labeled_ack = true;
-                    }
-
-                    // Store TAGMSG in history if +draft/persist tag is present (Innovation 5)
-                    if has_persist_tag && ctx.matrix.config.history.should_store_event("TAGMSG") {
-                        let prefix = format!(
-                            "{}!{}@{}",
-                            snapshot.nick, snapshot.user, snapshot.visible_host
-                        );
-                        let nanotime = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_nanos() as i64;
-
-                        let history_tags: Option<Vec<HistoryTag>> = if !persist_tags.is_empty() {
-                            Some(
-                                persist_tags
-                                    .iter()
-                                    .map(|t| HistoryTag {
-                                        key: t.0.to_string(),
-                                        value: t.1.clone(),
-                                    })
-                                    .collect(),
-                            )
-                        } else {
-                            None
-                        };
-
-                        let envelope = MessageEnvelope {
-                            command: "TAGMSG".to_string(),
-                            prefix: prefix.clone(),
-                            target: target.to_string(),
-                            text: String::new(), // TAGMSG has no text
-                            tags: history_tags,
-                        };
-
-                        let stored_msg = StoredMessage {
-                            msgid: msgid.clone(),
-                            target: channel_lower.clone(),
-                            sender: snapshot.nick.clone(),
-                            envelope,
-                            nanotime,
-                            account: ctx.state.account.clone(),
-                        };
-
-                        if let Err(e) = ctx
-                            .matrix
-                            .service_manager
-                            .history
-                            .store(target, stored_msg)
-                            .await
-                        {
-                            debug!(error = %e, "Failed to store TAGMSG in history");
-                        }
                     }
                 }
                 ChannelRouteResult::NoSuchChannel => {

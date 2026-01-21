@@ -270,6 +270,7 @@ async fn route_to_channel_target(
                 prefix_char,
                 timestamp: Some(prepared.timestamp_iso.clone()),
                 msgid: Some(prepared.msgid.clone()),
+                nanotime: Some(prepared.nanotime),
                 snapshot,
             },
         )
@@ -291,6 +292,7 @@ async fn route_to_channel_target(
             RouteMeta {
                 timestamp: Some(prepared.timestamp_iso.clone()),
                 msgid: Some(prepared.msgid.clone()),
+                nanotime: Some(prepared.nanotime),
                 override_nick: None,
                 relaymsg_sender_nick: None,
             },
@@ -301,19 +303,6 @@ async fn route_to_channel_target(
             ChannelRouteResult::Sent => {
                 debug!(from = %snapshot.nick, to = %target, "PRIVMSG to channel");
                 suppress_labeled_ack_if_echo(ctx);
-
-                // Store message in history for CHATHISTORY support
-                let stored_msg =
-                    create_stored_message(prepared, target, text, snapshot, &ctx.state.account);
-                if let Err(e) = ctx
-                    .matrix
-                    .service_manager
-                    .history
-                    .store(target, stored_msg)
-                    .await
-                {
-                    debug!(error = %e, "Failed to store message in history");
-                }
             }
             ChannelRouteResult::NoSuchChannel => {
                 send_no_such_channel(ctx, &snapshot.nick, target).await?;
@@ -504,6 +493,7 @@ pub(super) struct StatusMsgParams<'a> {
     pub prefix_char: char,
     pub timestamp: Option<String>,
     pub msgid: Option<String>,
+    pub nanotime: Option<i64>,
     pub snapshot: &'a SenderSnapshot,
 }
 
@@ -522,6 +512,7 @@ pub(super) async fn route_statusmsg(
         prefix_char,
         timestamp,
         msgid,
+        nanotime,
         snapshot,
     } = params;
 
@@ -538,6 +529,7 @@ pub(super) async fn route_statusmsg(
         RouteMeta {
             timestamp,
             msgid,
+            nanotime,
             override_nick: None,
             relaymsg_sender_nick: None,
         },

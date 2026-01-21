@@ -144,6 +144,7 @@ pub async fn force_join_channel<S>(
             join_msg_extended,
             join_msg_standard,
             session_id,
+            nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
         }),
         reply_tx,
     };
@@ -293,6 +294,7 @@ pub async fn force_part_channel<S>(
         uid: target.uid.to_string(),
         reason: reason.map(|s| s.to_string()),
         prefix,
+        nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
         reply_tx,
     };
 

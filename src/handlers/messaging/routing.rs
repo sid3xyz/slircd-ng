@@ -33,6 +33,7 @@ pub async fn route_to_channel_with_snapshot(
     let RouteMeta {
         timestamp,
         msgid,
+        nanotime,
         override_nick,
         relaymsg_sender_nick,
     } = meta;
@@ -81,6 +82,7 @@ pub async fn route_to_channel_with_snapshot(
             status_prefix: opts.status_prefix,
             timestamp,
             msgid,
+            nanotime: nanotime.unwrap_or_else(|| chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)),
             override_nick,
             relaymsg_sender_nick,
         }),

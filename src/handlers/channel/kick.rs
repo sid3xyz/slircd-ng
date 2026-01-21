@@ -117,6 +117,7 @@ impl KickHandler {
                 reason: reason.to_string(),
                 force: false, // Deprecated in favor of cap, but kept for internal use
                 cap: kick_cap,
+                nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
             },
             reply_tx,
         };

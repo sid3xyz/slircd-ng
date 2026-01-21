@@ -124,6 +124,7 @@ impl PostRegHandler for NpcHandler {
         )
         .unwrap_or_default();
         let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let nanotime = dt.timestamp_nanos_opt().unwrap_or(0);
         let msgid = Uuid::new_v4().to_string();
 
         let route_result = route_to_channel_with_snapshot(
@@ -134,6 +135,7 @@ impl PostRegHandler for NpcHandler {
             RouteMeta {
                 timestamp: Some(timestamp_iso),
                 msgid: Some(msgid.clone()),
+                nanotime: Some(nanotime),
                 override_nick: Some(wrapped_npc_nick.clone()),
                 relaymsg_sender_nick: None,
             },

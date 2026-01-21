@@ -127,6 +127,7 @@ pub struct RouteOptions {
 pub struct RouteMeta {
     pub timestamp: Option<String>,
     pub msgid: Option<String>,
+    pub nanotime: Option<i64>,
     pub override_nick: Option<String>,
     /// For RELAYMSG: the nick of the user who issued the RELAYMSG command.
     /// If Some, adds `draft/relaymsg=<nick>` tag for recipients with that cap.

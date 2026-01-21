@@ -94,6 +94,7 @@ impl PostRegHandler for ClearchanHandler {
             sender_uid: ctx.uid.to_string(),
             sender_prefix: Prefix::new(nick, user, host),
             target: clear_target,
+            nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
             reply_tx: tx,
         };
 

@@ -173,6 +173,7 @@ impl PostRegHandler for RelayMsgHandler {
                 RouteMeta {
                     timestamp: Some(timestamp_iso.clone()),
                     msgid: Some(msgid.clone()),
+                    nanotime: Some(nanotime),
                     override_nick: Some(relay_from.to_string()),
                     relaymsg_sender_nick: Some(snapshot.nick.clone()),
                 },

@@ -418,6 +418,7 @@ impl PostRegHandler for SamodeHandler {
                     modes: typed_modes,
                     target_uids,
                     force: true,
+                    nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
                 },
                 reply_tx,
             })

@@ -307,6 +307,7 @@ async fn apply_effect_impl(
                             modes: vec![mode_obj],
                             target_uids,
                             force: true,
+                            nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
                         },
                         reply_tx: tx,
                     };
@@ -341,6 +342,7 @@ async fn apply_effect_impl(
                             reason: reason.clone(),
                             force: true,
                             cap: None,
+                            nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
                         },
                         reply_tx: tx,
                     };

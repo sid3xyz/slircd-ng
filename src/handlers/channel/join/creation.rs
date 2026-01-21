@@ -178,6 +178,12 @@ pub(crate) async fn join_channel_internal(
 
     // Build JOIN messages
     let account_name = account.as_deref().unwrap_or("*");
+    let join_msgid = generate_msgid();
+    let join_timestamp = format_server_time();
+    let join_nanotime = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as i64;
     let make_extended_join_msg = || {
         Message {
             tags: None,
@@ -188,8 +194,8 @@ pub(crate) async fn join_channel_internal(
                 Some(realname.clone()),
             ),
         }
-        .with_tag("msgid", Some(generate_msgid()))
-        .with_tag("time", Some(format_server_time()))
+        .with_tag("msgid", Some(join_msgid.clone()))
+        .with_tag("time", Some(join_timestamp.clone()))
     };
 
     let make_standard_join_msg = || {
@@ -198,8 +204,8 @@ pub(crate) async fn join_channel_internal(
             prefix: Some(user_prefix(&nick, &user_name, &visible_host)),
             command: Command::JOIN(channel_name.to_string(), None, None),
         }
-        .with_tag("msgid", Some(generate_msgid()))
-        .with_tag("time", Some(format_server_time()))
+        .with_tag("msgid", Some(join_msgid.clone()))
+        .with_tag("time", Some(join_timestamp.clone()))
     };
 
     let mut attempt = 0;
@@ -269,6 +275,7 @@ pub(crate) async fn join_channel_internal(
                     join_msg_extended: extended_join_msg.clone(),
                     join_msg_standard: standard_join_msg.clone(),
                     session_id,
+                    nanotime: join_nanotime,
                 }),
                 reply_tx,
             })

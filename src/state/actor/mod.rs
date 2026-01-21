@@ -169,9 +169,11 @@ impl ChannelActor {
                 uid,
                 reason,
                 prefix,
+                nanotime,
                 reply_tx,
             } => {
-                self.handle_part(uid, reason, prefix, reply_tx).await;
+                self.handle_part(uid, reason, prefix, nanotime, reply_tx)
+                    .await;
             }
             ChannelEvent::Quit {
                 uid,
@@ -285,9 +287,10 @@ impl ChannelActor {
                 sender_uid,
                 sender_prefix,
                 target,
+                nanotime,
                 reply_tx,
             } => {
-                self.handle_clear(sender_uid, sender_prefix, target, reply_tx)
+                self.handle_clear(sender_uid, sender_prefix, target, nanotime, reply_tx)
                     .await;
             }
             ChannelEvent::RemoteMode {

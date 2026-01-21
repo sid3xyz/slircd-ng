@@ -447,6 +447,7 @@ pub async fn handle_channel_mode(
                         modes: mlock_filtered_modes,
                         target_uids,
                         force: false,
+                        nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
                     },
                     reply_tx,
                 })

@@ -22,6 +22,9 @@ use helpers::{
 };
 use queries::QueryExecutor;
 
+// Re-export for use in ISUPPORT
+pub use helpers::MAX_HISTORY_LIMIT as MAX_HISTORY_LIMIT_CONST;
+
 /// Handler for CHATHISTORY command.
 pub struct ChatHistoryHandler;
 
@@ -140,6 +143,8 @@ impl PostRegHandler for ChatHistoryHandler {
             },
         )
         .await;
+        
+        println!("DEBUG_QUERY: executed. result is_ok={}", messages.is_ok());
 
         match messages {
             Ok(msgs) => {

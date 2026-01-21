@@ -12,6 +12,7 @@ impl ChannelActor {
         uid: Uid,
         reason: Option<String>,
         prefix: Prefix,
+        nanotime: i64,
         reply_tx: oneshot::Sender<Result<usize, ChannelError>>,
     ) {
         if !self.members.contains_key(&uid) {
@@ -60,13 +61,12 @@ impl ChannelActor {
         // Store PART event in history (EventPlayback)
         if let Some(matrix) = self.matrix.upgrade() {
             let event_id = uuid::Uuid::new_v4().to_string();
-            let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
             let source = prefix.to_string(); // Prefix was consumed above? No, wait. 
 
             let event =
                 crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
                     id: event_id,
-                    nanotime: now,
+                    nanotime,
                     source,
                     kind: crate::history::types::EventKind::Part(reason.clone()),
                 });

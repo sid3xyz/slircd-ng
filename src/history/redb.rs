@@ -47,6 +47,8 @@ impl HistoryProvider for RedbProvider {
             HistoryItem::Event(e) => (e.nanotime, &e.id),
         };
 
+        println!("DEBUG_HISTORY: target={} nanotime={} id={}", target, nanotime, id);
+
         let key = Self::make_key(target, nanotime, id);
         let value =
             serde_json::to_vec(&item).map_err(|e| HistoryError::Serialization(e.to_string()))?;

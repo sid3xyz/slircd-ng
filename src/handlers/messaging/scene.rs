@@ -120,7 +120,6 @@ impl PostRegHandler for SceneHandler {
         let now = SystemTime::now();
         let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
         let millis = duration.as_millis() as i64;
-        let nanotime = millis * 1_000_000;
 
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(
             millis / 1000,
@@ -128,6 +127,7 @@ impl PostRegHandler for SceneHandler {
         )
         .unwrap_or_default();
         let timestamp_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let nanotime = dt.timestamp_nanos_opt().unwrap_or(0);
         let msgid = Uuid::new_v4().to_string();
 
         // Reuse route_to_channel_with_snapshot logic
@@ -140,6 +140,7 @@ impl PostRegHandler for SceneHandler {
             RouteMeta {
                 timestamp: Some(timestamp_iso),
                 msgid: Some(msgid.clone()),
+                nanotime: Some(nanotime),
                 override_nick: Some(wrapped_npc_nick.clone()),
                 relaymsg_sender_nick: None,
             },

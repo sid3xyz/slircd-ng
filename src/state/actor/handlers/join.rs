@@ -27,6 +27,7 @@ impl ChannelActor {
             join_msg_extended,
             join_msg_standard,
             session_id,
+            nanotime,
         } = params;
 
         if self.state == ActorState::Draining {
@@ -248,8 +249,10 @@ impl ChannelActor {
 
             // Store JOIN event in history (EventPlayback)
             if let Some(matrix) = self.matrix.upgrade() {
-                let event_id = uuid::Uuid::new_v4().to_string();
-                let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+                let event_id = join_msg_extended
+                    .tag_value("msgid")
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                 let source_prefix = format!(
                     "{}!{}@{}",
                     nick, user_context.username, user_context.hostname
@@ -258,7 +261,7 @@ impl ChannelActor {
                 let event =
                     crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
                         id: event_id,
-                        nanotime: now,
+                        nanotime,
                         source: source_prefix,
                         kind: crate::history::types::EventKind::Join,
                     });

@@ -22,6 +22,7 @@ impl ChannelActor {
             reason,
             force,
             cap,
+            nanotime,
         } = params;
 
         // Authorization check:
@@ -58,13 +59,12 @@ impl ChannelActor {
         // Store KICK event in history (EventPlayback)
         if let Some(matrix) = self.matrix.upgrade() {
             let event_id = uuid::Uuid::new_v4().to_string();
-            let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
             let source = sender_prefix.to_string();
 
             let event =
                 crate::history::types::HistoryItem::Event(crate::history::types::StoredEvent {
                     id: event_id,
-                    nanotime: now,
+                    nanotime,
                     source,
                     kind: crate::history::types::EventKind::Kick {
                         target: target_nick,

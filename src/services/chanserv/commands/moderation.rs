@@ -169,6 +169,7 @@ impl ChanServ {
                     sender_uid: "ChanServ".to_string(),
                     sender_prefix,
                     target: crate::state::actor::ClearTarget::Modes,
+                    nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
                     reply_tx: tx,
                 };
                 let _ = channel_sender.send(event).await;
@@ -181,6 +182,7 @@ impl ChanServ {
                     sender_uid: "ChanServ".to_string(),
                     sender_prefix,
                     target: crate::state::actor::ClearTarget::Bans,
+                    nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
                     reply_tx: tx,
                 };
                 let _ = channel_sender.send(event).await;
@@ -193,6 +195,7 @@ impl ChanServ {
                     sender_uid: "ChanServ".to_string(),
                     sender_prefix,
                     target: crate::state::actor::ClearTarget::Ops,
+                    nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
                     reply_tx: tx,
                 };
                 let _ = channel_sender.send(event).await;
@@ -205,6 +208,7 @@ impl ChanServ {
                     sender_uid: "ChanServ".to_string(),
                     sender_prefix,
                     target: crate::state::actor::ClearTarget::Voices,
+                    nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
                     reply_tx: tx,
                 };
                 let _ = channel_sender.send(event).await;

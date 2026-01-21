@@ -43,6 +43,7 @@ pub struct JoinParams {
     pub join_msg_extended: Message,
     pub join_msg_standard: Message,
     pub session_id: Uuid,
+    pub nanotime: i64,
 }
 
 /// Parameters for KICK event handling.
@@ -55,6 +56,7 @@ pub struct KickParams {
     pub reason: String,
     pub force: bool,
     pub cap: Option<Cap<KickCap>>,
+    pub nanotime: i64,
 }
 
 /// Parameters for TOPIC event handling.
@@ -67,6 +69,7 @@ pub struct TopicParams {
     pub timestamp: String,
     pub force: bool,
     pub cap: Option<Cap<TopicCap>>,
+    pub nanotime: i64,
 }
 
 /// Parameters for INVITE event handling.
@@ -88,6 +91,7 @@ pub struct ModeParams {
     pub modes: Vec<slirc_proto::mode::Mode<slirc_proto::mode::ChannelMode>>,
     pub target_uids: HashMap<String, Uid>,
     pub force: bool,
+    pub nanotime: i64,
 }
 
 /// Parameters for channel MESSAGE event handling.
@@ -111,6 +115,7 @@ pub struct ChannelMessageParams {
     /// For RELAYMSG: the nick of the user who issued the RELAYMSG command.
     /// If Some, adds `draft/relaymsg=<nick>` tag for recipients with that cap.
     pub relaymsg_sender_nick: Option<String>,
+    pub nanotime: i64,
 }
 
 /// Events that can be sent to a Channel Actor.
@@ -126,6 +131,7 @@ pub enum ChannelEvent {
         uid: Uid,
         reason: Option<String>,
         prefix: Prefix,
+        nanotime: i64,
         reply_tx: oneshot::Sender<Result<usize, ChannelError>>,
     },
     /// User quitting the server.
@@ -227,6 +233,7 @@ pub enum ChannelEvent {
         sender_uid: Uid,
         sender_prefix: Prefix,
         target: ClearTarget,
+        nanotime: i64,
         reply_tx: oneshot::Sender<Result<(), ChannelError>>,
     },
     /// Incoming TMODE from a peer server.
