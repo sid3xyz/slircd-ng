@@ -2,9 +2,9 @@ use crate::handlers::{ResponseMiddleware, notify_extended_monitor_watchers};
 use crate::state::Matrix;
 use crate::state::dashmap_ext::DashMapExt;
 use crate::state::observer::StateObserver;
-use slirc_proto::{ChannelMode, Command, Message, Mode, Prefix, UserMode, irc_to_lower};
+use slirc_proto::{ChannelMode, Command, Message, Mode, Prefix, irc_to_lower};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
 
 /// Unified effect type returned by all service commands.
 ///

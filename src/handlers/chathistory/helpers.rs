@@ -189,7 +189,7 @@ pub fn history_item_to_message(
             if let Some(account) = &msg.account {
                 tags.push(Tag::new("account", Some(account.clone())));
             }
-            if let Some(status) = msg.status_prefix {
+            if let Some(_status) = msg.status_prefix {
                 // Not standard IRCv3 tag yet, but useful for internal or custom clients
                 // For now, we don't send it as a tag unless specified by spec
             }

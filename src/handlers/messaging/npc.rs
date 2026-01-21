@@ -116,7 +116,6 @@ impl PostRegHandler for NpcHandler {
         let now = SystemTime::now();
         let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
         let millis = duration.as_millis() as i64;
-        let nanotime = millis * 1_000_000;
 
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(
             millis / 1000,

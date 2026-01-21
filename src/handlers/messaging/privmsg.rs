@@ -253,7 +253,7 @@ impl PostRegHandler for PrivmsgHandler {
 async fn route_to_channel_target(
     ctx: &mut Context<'_, RegisteredState>,
     target: &str,
-    text: &str,
+    _text: &str,
     snapshot: &SenderSnapshot,
     prepared: &PreparedMessage,
     status_prefix: Option<char>,

@@ -6,7 +6,7 @@
 //! - IRCv3 chathistory: <https://ircv3.net/specs/extensions/chathistory>
 
 pub mod batch;
-mod helpers;
+pub mod helpers;
 mod queries;
 mod slicing;
 
@@ -144,8 +144,6 @@ impl PostRegHandler for ChatHistoryHandler {
         )
         .await;
         
-        println!("DEBUG_QUERY: executed. result is_ok={}", messages.is_ok());
-
         match messages {
             Ok(msgs) => {
                 let batch_type = if subcommand == ChatHistorySubCommand::TARGETS {

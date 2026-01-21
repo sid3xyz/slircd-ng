@@ -10,7 +10,7 @@ use crate::network::connection::context::ConnectionContext;
 use crate::state::actor::ChannelEvent;
 use crate::state::{ReattachInfo, RegisteredState};
 use chrono::{DateTime, Utc};
-use slirc_proto::{Command, Message, Prefix, Response, Tag, irc_to_lower};
+use slirc_proto::{Command, Message, Prefix, Response, irc_to_lower};
 use tokio::sync::oneshot;
 use tracing::{debug, warn};
 

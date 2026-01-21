@@ -26,14 +26,13 @@
 use super::super::{
     Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_mask_from_state,
 };
-use crate::history::{MessageEnvelope, StoredMessage};
 use crate::state::RegisteredState;
 use crate::state::actor::ChannelEvent;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response, irc_to_lower};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq)]

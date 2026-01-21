@@ -76,7 +76,6 @@ impl PostRegHandler for NoticeHandler {
         let now = SystemTime::now();
         let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
         let millis = duration.as_millis() as i64;
-        let nanotime = millis * 1_000_000;
 
         let dt = DateTime::<Utc>::from_timestamp(millis / 1000, (millis % 1000) as u32 * 1_000_000)
             .unwrap_or_default();

@@ -3,7 +3,7 @@
 use crate::handlers::{Context, HandlerError};
 
 use crate::state::RegisteredState;
-use slirc_proto::{BatchSubCommand, Command, Message, Prefix, Tag};
+use slirc_proto::{BatchSubCommand, Command, Message, Tag};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -41,7 +41,6 @@ pub async fn send_history_batch(
         ),
     };
     ctx.sender.send(batch_start).await?;
-    println!("DEBUG_BATCH: sent start batch");
 
     let expected_target_lower = slirc_proto::irc_to_lower(target);
 
@@ -85,8 +84,6 @@ pub async fn send_history_batch(
             // println!("DEBUG_BATCH: sent item...");
         }
     }
-
-    println!("DEBUG_BATCH: loop finished, sending end");
 
     // End BATCH
     let batch_end = Message {

@@ -17,6 +17,7 @@ pub trait DashMapExt<K, V> {
         V: Clone;
 
     /// Collect all `(key, value)` pairs by cloning them (dropping guards immediately).
+    #[allow(dead_code)]
     fn iter_cloned(&self) -> Vec<(K, V)>
     where
         K: Clone,
