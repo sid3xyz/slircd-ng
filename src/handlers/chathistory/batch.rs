@@ -74,102 +74,16 @@ pub async fn send_history_batch(
             }
         }
 
-        use crate::history::types::{EventKind, HistoryItem};
-
-        // Determine if we should skip this item based on capabilities
-        match &item {
-            HistoryItem::Message(msg) => {
-                let cmd = msg.envelope.command.as_str();
-                if (cmd == "TOPIC" || cmd == "TAGMSG") && !has_event_playback {
-                    continue;
-                }
-            }
-            HistoryItem::Event(_) => {
-                if !has_event_playback {
-                    continue;
-                }
-            }
+        if let Some(history_msg) = super::helpers::history_item_to_message(
+            &item,
+            &batch_id,
+            target,
+            has_event_playback,
+        ) {
+            ctx.sender.send(history_msg).await?;
+            // Logging can be reduced or kept
+            // println!("DEBUG_BATCH: sent item...");
         }
-
-        // Common tags
-        let (nanotime, msgid) = match &item {
-            HistoryItem::Message(m) => (m.nanotime, m.msgid.clone()),
-            HistoryItem::Event(e) => (e.nanotime, e.id.clone()),
-        };
-
-        // Timestamp ISO string
-        let time_iso = {
-            let secs = nanotime / 1_000_000_000;
-            let nanos = (nanotime % 1_000_000_000) as u32;
-            if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nanos) {
-                dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-            } else {
-                "1970-01-01T00:00:00.000Z".to_string()
-            }
-        };
-
-        let mut tags = vec![
-            Tag::new("batch", Some(batch_id.clone())),
-            Tag::new("time", Some(time_iso)),
-            Tag::new("msgid", Some(msgid.clone())),
-        ];
-
-        // Construct command
-        let (prefix, command) = match item {
-            HistoryItem::Message(msg) => {
-                if let Some(account) = &msg.account {
-                    tags.push(Tag::new("account", Some(account.clone())));
-                }
-
-                // Add preserved client-only tags for TAGMSG
-                if let Some(env_tags) = &msg.envelope.tags {
-                    for env_tag in env_tags {
-                        if env_tag.key.starts_with('+') {
-                            tags.push(Tag::new(&env_tag.key, env_tag.value.clone()));
-                        }
-                    }
-                }
-
-                let cmd = match msg.envelope.command.as_str() {
-                    "PRIVMSG" => {
-                        Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone())
-                    }
-                    "NOTICE" => {
-                        Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone())
-                    }
-                    "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
-                    _ => continue,
-                };
-                (Some(Prefix::new_from_str(&msg.envelope.prefix)), cmd)
-            }
-            HistoryItem::Event(evt) => {
-                let cmd = match evt.kind {
-                    EventKind::Join => Command::JOIN(target.to_string(), None, None),
-                    EventKind::Part(reason) => Command::PART(target.to_string(), reason),
-                    EventKind::Quit(reason) => Command::QUIT(reason),
-                    EventKind::Kick {
-                        target: kicked,
-                        reason,
-                    } => Command::KICK(target.to_string(), kicked, reason),
-                    EventKind::Mode { diff } => {
-                        Command::Raw("MODE".to_string(), vec![target.to_string(), diff])
-                    }
-                    EventKind::Topic { new_topic, .. } => {
-                        Command::TOPIC(target.to_string(), Some(new_topic))
-                    }
-                    EventKind::Nick { new_nick } => Command::NICK(new_nick),
-                };
-                (Some(Prefix::new_from_str(&evt.source)), cmd)
-            }
-        };
-
-        let history_msg = Message {
-            tags: Some(tags),
-            prefix,
-            command,
-        };
-        ctx.sender.send(history_msg).await?;
-        println!("DEBUG_BATCH: sent item {}/{}", nanotime, msgid);
     }
 
     println!("DEBUG_BATCH: loop finished, sending end");

@@ -183,90 +183,14 @@ async fn replay_channel_history(
             // Send each message with batch tag
             // Send each message with batch tag
             for item in messages {
-                let msg = match item {
-                    crate::history::types::HistoryItem::Message(m) => m,
-                    crate::history::types::HistoryItem::Event(_) => {
-                        // TODO: Support event replay in autoreplay
-                        continue;
-                    }
-                };
-
-                // Filter based on capabilities (same logic as send_history_batch)
-                let command_type = msg.envelope.command.as_str();
-                match command_type {
-                    "PRIVMSG" | "NOTICE" => {
-                        // Always include messages
-                    }
-                    "TOPIC" | "TAGMSG" => {
-                        if !has_event_playback {
-                            continue;
-                        }
-                    }
-                    _ => {
-                        if !has_event_playback {
-                            continue;
-                        }
-                    }
+                if let Some(history_msg) = crate::handlers::chathistory::helpers::history_item_to_message(
+                    &item,
+                    &batch_id,
+                    target,
+                    has_event_playback,
+                ) {
+                    let _ = ctx.transport.write_message(&history_msg).await;
                 }
-
-                // Parse and reconstruct the message with batch tag
-                // Build a slirc_proto::Message from the envelope
-                let mut tags_vec = vec![Tag::new("batch", Some(batch_id.clone()))];
-
-                // Add stored tags (server-time, msgid, etc.)
-                if let Some(envelope_tags) = &msg.envelope.tags {
-                    for tag in envelope_tags {
-                        tags_vec.push(Tag::new(&tag.key, tag.value.clone()));
-                    }
-                }
-
-                // Parse command from envelope
-                let command = match msg.envelope.command.as_str() {
-                    "PRIVMSG" => {
-                        Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone())
-                    }
-                    "NOTICE" => {
-                        Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone())
-                    }
-                    "TOPIC" => {
-                        // TOPIC command with channel and topic params
-                        Command::TOPIC(msg.envelope.target.clone(), Some(msg.envelope.text.clone()))
-                    }
-                    "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
-                    _ => {
-                        // Fallback: unknown command type, skip it
-                        warn!("Unknown command type in history: {}", msg.envelope.command);
-                        continue;
-                    }
-                };
-
-                // Parse prefix
-                let prefix = if !msg.envelope.prefix.is_empty() {
-                    // Parse nick!user@host format
-                    if let Some(exclaim_pos) = msg.envelope.prefix.find('!') {
-                        let nick = msg.envelope.prefix[..exclaim_pos].to_string();
-                        if let Some(at_pos) = msg.envelope.prefix[exclaim_pos..].find('@') {
-                            let user = msg.envelope.prefix[exclaim_pos + 1..exclaim_pos + at_pos]
-                                .to_string();
-                            let host = msg.envelope.prefix[exclaim_pos + at_pos + 1..].to_string();
-                            Some(Prefix::Nickname(nick, user, host))
-                        } else {
-                            Some(Prefix::Nickname(nick, String::new(), String::new()))
-                        }
-                    } else {
-                        Some(Prefix::ServerName(msg.envelope.prefix.clone()))
-                    }
-                } else {
-                    None
-                };
-
-                let history_msg = Message {
-                    tags: Some(tags_vec),
-                    prefix,
-                    command,
-                };
-
-                let _ = ctx.transport.write_message(&history_msg).await;
             }
 
             // End BATCH

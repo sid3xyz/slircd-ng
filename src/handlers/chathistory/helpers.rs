@@ -5,8 +5,8 @@
 use crate::handlers::{Context, HandlerError};
 use crate::state::RegisteredState;
 use crate::state::dashmap_ext::DashMapExt;
-use slirc_proto::{MessageReference, parse_server_time};
-
+use crate::history::types::{EventKind, HistoryItem};
+use slirc_proto::{Command, Message, MessageReference, Prefix, Tag, parse_server_time};
 /// Maximum messages per CHATHISTORY request.
 pub const MAX_HISTORY_LIMIT: u32 = 100;
 
@@ -132,6 +132,119 @@ pub async fn resolve_dm_key(
     let mut users = [sender_key_part, target_key_part];
     users.sort();
     format!("dm:{}:{}", users[0], users[1])
+}
+
+
+/// Convert a HistoryItem to a protocol Message with appropriate tags.
+///
+/// Handles filtering based on `event-playback` capability.
+/// Returns `None` if the item should be filtered out.
+pub fn history_item_to_message(
+    item: &HistoryItem,
+    batch_id: &str,
+    target: &str,
+    has_event_playback: bool,
+) -> Option<Message> {
+    // Determine if we should skip this item based on capabilities
+    match item {
+        HistoryItem::Message(msg) => {
+            let cmd = msg.envelope.command.as_str();
+            if (cmd == "TOPIC" || cmd == "TAGMSG") && !has_event_playback {
+                return None;
+            }
+        }
+        HistoryItem::Event(_) => {
+            if !has_event_playback {
+                return None;
+            }
+        }
+    }
+
+    // Common tags
+    let (nanotime, msgid) = match item {
+        HistoryItem::Message(m) => (m.nanotime, m.msgid.clone()),
+        HistoryItem::Event(e) => (e.nanotime, e.id.clone()),
+    };
+
+    // Timestamp ISO string
+    let time_iso = {
+        let secs = nanotime / 1_000_000_000;
+        let nanos = (nanotime % 1_000_000_000) as u32;
+        if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nanos) {
+            dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+        } else {
+            "1970-01-01T00:00:00.000Z".to_string()
+        }
+    };
+
+    let mut tags = vec![
+        Tag::new("batch", Some(batch_id.to_string())),
+        Tag::new("time", Some(time_iso)),
+        Tag::new("msgid", Some(msgid.clone())),
+    ];
+
+    // Construct command
+    let (prefix, command) = match item {
+        HistoryItem::Message(msg) => {
+            if let Some(account) = &msg.account {
+                tags.push(Tag::new("account", Some(account.clone())));
+            }
+            if let Some(status) = msg.status_prefix {
+                // Not standard IRCv3 tag yet, but useful for internal or custom clients
+                // For now, we don't send it as a tag unless specified by spec
+            }
+
+            // Add preserved client-only tags for TAGMSG
+            if let Some(env_tags) = &msg.envelope.tags {
+                for env_tag in env_tags {
+                    if env_tag.key.starts_with('+') {
+                        tags.push(Tag::new(&env_tag.key, env_tag.value.clone()));
+                    }
+                }
+            }
+
+            let cmd = match msg.envelope.command.as_str() {
+                "PRIVMSG" => {
+                    Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone())
+                }
+                "NOTICE" => {
+                    Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone())
+                }
+                "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
+                "TOPIC" => Command::TOPIC(
+                    msg.envelope.target.clone(),
+                    Some(msg.envelope.text.clone()),
+                ),
+                _ => return None,
+            };
+            (Some(Prefix::new_from_str(&msg.envelope.prefix)), cmd)
+        }
+        HistoryItem::Event(evt) => {
+            let cmd = match &evt.kind {
+                EventKind::Join => Command::JOIN(target.to_string(), None, None),
+                EventKind::Part(reason) => Command::PART(target.to_string(), reason.clone()),
+                EventKind::Quit(reason) => Command::QUIT(reason.clone()),
+                EventKind::Kick {
+                    target: kicked,
+                    reason,
+                } => Command::KICK(target.to_string(), kicked.clone(), reason.clone()),
+                EventKind::Mode { diff } => {
+                    Command::Raw("MODE".to_string(), vec![target.to_string(), diff.clone()])
+                }
+                EventKind::Topic { new_topic, .. } => {
+                    Command::TOPIC(target.to_string(), Some(new_topic.clone()))
+                }
+                EventKind::Nick { new_nick } => Command::NICK(new_nick.clone()),
+            };
+            (Some(Prefix::new_from_str(&evt.source)), cmd)
+        }
+    };
+
+    Some(Message {
+        tags: Some(tags),
+        prefix,
+        command,
+    })
 }
 
 #[cfg(test)]

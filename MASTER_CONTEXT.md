@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-21 05:25 | Pre-release | Zero users
-> Last Session: Fixed history duplicates (nanotime propagation), merged flood protection PRs (#41/#42), added STATUSMSG prefix storage.
+> Updated: 2026-01-21 05:30 | Pre-release | Zero users
+> Last Session: Fixed history duplication, hardened flood protection (DoS fix), STATUSMSG prefix fix. Integrated ZNC playback & enabled Autoreplay event playback.
 
 ---
 
@@ -74,7 +74,7 @@ Organized by domain:
 | `rbl.rs` | HTTP-based blocklists | ✅ Active |
 | `spam.rs` | Multi-layer spam detection | ✅ Active |
 | `cloaking.rs` | HMAC-SHA256 hostname cloaking | ✅ Active |
-| `rate_limit.rs` | Governor-based flood protection | ✅ Active |
+| `rate_limit.rs` | Governor-based flood protection (Hardened against DoS) | ✅ Active |
 | `password.rs` | Argon2 hashing | ✅ Active |
 | ~~`dnsbl.rs`~~ | ~~DNS blocklists~~ | ❌ DELETED |
 
@@ -88,14 +88,11 @@ Server-to-server linking (TS6-compatible):
 ### 2.7 Database (`src/db/`)
 Dual-engine persistence:
 - **SQLx** (SQLite): Accounts, channel registrations, bans
-- **Redb**: High-speed history storage
-
 ### 2.8 History (`src/history/`)
-| Component | Purpose |
-|-----------|---------|
-| `redb.rs` | Redb-backed message/event storage (idempotent via nanotime) |
-| `types.rs` | `StoredMessage`, `StoredEvent`, `HistoryItem` (includes `status_prefix`) |
-| Deduplication | Uses `target\0nanotime\0msgid` keys to prevent duplicates |
+- **Redb**: Embedded KV store for high-speed message history.
+- **Idempotency**: `nanotime` generated once at gateway, propagated to all actors/DB to prevent duplicates.
+- **Unified Items**: Stores `Message` and `Event` types polymorphically.
+- **ZNC Support**: `*playback` pseudo-module for legacy clients.
 
 ---
 
@@ -145,7 +142,7 @@ Dual-engine persistence:
 | 3 | Data Safety | ✅ Complete |
 | 4 | Configuration Mastery | ✅ Complete |
 | 5 | Ecosystem (S2S, External Auth) | 🔄 In Progress |
-| 6 | Advanced Protection (Flood +f) | ✅ Complete |
+| 6 | Advanced Protection (Flood + DoS Hardening) | ✅ Complete |
 | 7 | Next-Gen Architecture | 📋 Planned |
 
 ---
