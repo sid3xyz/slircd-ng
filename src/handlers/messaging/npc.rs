@@ -162,6 +162,7 @@ impl PostRegHandler for NpcHandler {
                 envelope,
                 nanotime,
                 account: snapshot.account.clone(),
+                status_prefix: None,
             };
 
             if let Err(e) = ctx

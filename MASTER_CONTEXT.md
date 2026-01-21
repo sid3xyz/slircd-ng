@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
-> Updated: 2026-01-19 20:00 | Pre-release | Zero users
-> Last Session: Refactored channel handlers (KICK, TOPIC, PART, NAMES) with shared macros and helpers. Added dispatch pipeline.
+> Updated: 2026-01-21 05:25 | Pre-release | Zero users
+> Last Session: Fixed history duplicates (nanotime propagation), merged flood protection PRs (#41/#42), added STATUSMSG prefix storage.
 
 ---
 
@@ -90,6 +90,13 @@ Dual-engine persistence:
 - **SQLx** (SQLite): Accounts, channel registrations, bans
 - **Redb**: High-speed history storage
 
+### 2.8 History (`src/history/`)
+| Component | Purpose |
+|-----------|---------|
+| `redb.rs` | Redb-backed message/event storage (idempotent via nanotime) |
+| `types.rs` | `StoredMessage`, `StoredEvent`, `HistoryItem` (includes `status_prefix`) |
+| Deduplication | Uses `target\0nanotime\0msgid` keys to prevent duplicates |
+
 ---
 
 ## 3. IRCv3 Capabilities
@@ -138,7 +145,7 @@ Dual-engine persistence:
 | 3 | Data Safety | ✅ Complete |
 | 4 | Configuration Mastery | ✅ Complete |
 | 5 | Ecosystem (S2S, External Auth) | 🔄 In Progress |
-| 6 | Advanced Protection | ✅ Complete |
+| 6 | Advanced Protection (Flood +f) | ✅ Complete |
 | 7 | Next-Gen Architecture | 📋 Planned |
 
 ---

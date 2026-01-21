@@ -196,6 +196,7 @@ impl PostRegHandler for RelayMsgHandler {
                 },
                 nanotime,
                 account: None, // Relayed messages don't have an account
+                status_prefix: None,
             };
             if let Err(e) = ctx
                 .matrix

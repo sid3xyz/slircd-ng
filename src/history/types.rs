@@ -40,6 +40,8 @@ pub struct StoredMessage {
     pub envelope: MessageEnvelope,
     pub nanotime: i64,
     pub account: Option<String>,
+    #[serde(default)]
+    pub status_prefix: Option<char>,
 }
 
 impl StoredMessage {
@@ -75,6 +77,7 @@ mod tests {
             },
             nanotime,
             account: None,
+            status_prefix: None,
         }
     }
 

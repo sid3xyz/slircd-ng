@@ -62,6 +62,7 @@ mod tests {
             target: "#test".to_string(),
             sender: "nick".to_string(),
             account: None,
+            status_prefix: None,
             envelope: MessageEnvelope {
                 command: "PRIVMSG".to_string(),
                 prefix: "nick!user@host".to_string(),

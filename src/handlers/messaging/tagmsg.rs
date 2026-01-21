@@ -239,6 +239,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                         envelope,
                         nanotime,
                         account: ctx.state.account.clone(),
+                        status_prefix: None,
                     };
 
                     // Build DM key (same pattern as PRIVMSG)

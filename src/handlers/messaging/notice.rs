@@ -207,6 +207,7 @@ impl PostRegHandler for NoticeHandler {
                     envelope,
                     nanotime,
                     account: ctx.state.account.clone(),
+                    status_prefix: None,
                 };
 
                 // Store for recipient

@@ -493,14 +493,14 @@ impl<'a> ChannelRepository<'a> {
             let p_char_opt = p_iter.clone().next();
             let h_char_opt = h_iter.clone().next();
 
-            if h_char_opt.is_none() {
+            let Some(h_char) = h_char_opt else {
                 // End of hostmask.
                 break;
-            }
+            };
 
             if let Some(p_char) = p_char_opt {
                 if p_char == '?'
-                    || (p_char != '*' && p_char.eq_ignore_ascii_case(&h_char_opt.unwrap()))
+                    || (p_char != '*' && p_char.eq_ignore_ascii_case(&h_char))
                 {
                     // Match or '?'.
                     p_iter.next();

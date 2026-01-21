@@ -380,6 +380,7 @@ impl QueryExecutor {
                 sender: "".to_string(),
                 account: None,
                 envelope,
+                status_prefix: None,
             }));
         }
 

@@ -209,8 +209,8 @@ impl ChannelActor {
                         }
 
                         let quota = Quota::with_period(period_per_token)
-                            .expect("Invalid flood period")
-                            .allow_burst(NonZeroU32::new(param.count).expect("Count must be > 0"));
+                            .unwrap_or_else(|| Quota::with_period(Duration::from_nanos(1)).unwrap())
+                            .allow_burst(NonZeroU32::new(param.count).unwrap_or(NonZeroU32::MIN));
                         GovRateLimiter::direct(quota)
                     });
 
@@ -678,6 +678,7 @@ impl ChannelActor {
                 envelope,
                 nanotime: now,
                 account: user_context.account.clone(),
+                status_prefix: params.status_prefix,
             };
 
             let item = crate::history::types::HistoryItem::Message(stored_msg);

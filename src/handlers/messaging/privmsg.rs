@@ -157,6 +157,7 @@ fn create_stored_message(
         },
         nanotime: prepared.nanotime,
         account: account.clone(),
+        status_prefix: None,
     }
 }
 
