@@ -4,6 +4,7 @@ mod auth;
 mod chghost;
 mod chgident;
 mod clearchan;
+mod connect;
 mod globops;
 mod kill;
 mod lifecycle;
@@ -16,6 +17,7 @@ pub use auth::OperHandler;
 pub use chghost::ChghostHandler;
 pub use chgident::ChgIdentHandler;
 pub use clearchan::ClearchanHandler;
+pub use connect::ConnectHandler;
 pub use globops::GlobOpsHandler;
 pub use kill::KillHandler;
 pub use lifecycle::{DieHandler, RehashHandler, RestartHandler};
@@ -42,6 +44,7 @@ pub fn register(map: &mut HashMap<&'static str, Box<dyn PostRegHandler>>) {
     map.insert("TRACE", Box::new(TraceHandler));
     map.insert("SPAMCONF", Box::new(SpamConfHandler));
     map.insert("CLEARCHAN", Box::new(ClearchanHandler));
+    map.insert("CONNECT", Box::new(ConnectHandler));
 }
 
 /// Validate hostname per RFC 952/1123 rules.

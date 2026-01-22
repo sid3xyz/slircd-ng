@@ -307,6 +307,12 @@ impl CapabilityAuthority {
 
         /// Request capability to clear channel state (CLEARCHAN).
         request_clearchan_cap -> ClearChanCap,
+
+        /// Request capability to CONNECT to a remote server.
+        request_connect_cap -> ConnectCap,
+
+        /// Request capability to SQUIT a server.
+        request_squit_cap -> SquitCap,
     }
 
     /// Request capability to bypass mode restrictions on a channel.

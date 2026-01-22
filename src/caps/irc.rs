@@ -134,6 +134,12 @@ define_capability!(oper GlobOpsCap, "oper:globops",
 define_capability!(oper ClearChanCap, "oper:clearchan",
     "Capability to clear channel state (CLEARCHAN). Required: IRC operator with clearchan privilege.");
 
+define_capability!(oper ConnectCap, "oper:connect",
+    "Capability to CONNECT to a remote server (initiate S2S link). Required: IRC operator.");
+
+define_capability!(oper SquitCap, "oper:squit",
+    "Capability to SQUIT a server (terminate S2S link). Required: IRC operator.");
+
 // ============================================================================
 // Special Capabilities
 // ============================================================================
