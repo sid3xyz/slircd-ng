@@ -48,8 +48,7 @@ impl PostRegHandler for LinksHandler {
         // Sort by name for consistent output
         servers.sort_by(|a, b| a.name.cmp(&b.name));
 
-        let local_sid =
-            slirc_proto::sync::clock::ServerId::new(ctx.matrix.server_info.sid.as_str());
+        let local_sid = ctx.matrix.server_id.clone();
 
         for server in servers {
             // Skip if it's us
