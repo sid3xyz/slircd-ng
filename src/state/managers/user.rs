@@ -447,20 +447,34 @@ impl UserManager {
     }
 
     /// Kill a user (remove from state and notify observer).
-    pub async fn kill_user(&self, uid: &str, reason: &str, source: Option<ServerId>) {
+    ///
+    /// Automatically detects local vs. remote users by UID prefix and updates
+    /// StatsManager accordingly.
+    pub async fn kill_user(&self, uid: &str, reason: &str, _source: Option<ServerId>) {
         if let Some((_, user_arc)) = self.users.remove(uid) {
             let user = user_arc.read().await;
             let nick_lower = slirc_proto::irc_to_lower(&user.nick);
             let is_oper = user.modes.oper;
+            let is_invisible = user.modes.invisible;
+            
+            // Auto-detect local vs remote by UID prefix (first 3 chars = SID)
+            let is_local = uid.starts_with(&self.server_sid);
 
-            // Update stats for remote users
-            // (Local users are handled by matrix.disconnect_user_session)
-            if let Some(stats) = &self.stats_manager
-                && source.is_some()
-            {
-                stats.remote_user_disconnected();
-                if is_oper {
-                    stats.remote_user_deopered();
+            // Update stats based on user locality
+            if let Some(stats) = &self.stats_manager {
+                if is_local {
+                    stats.user_disconnected();
+                    if is_invisible {
+                        stats.user_unset_invisible();
+                    }
+                    if is_oper {
+                        stats.user_deopered();
+                    }
+                } else {
+                    stats.remote_user_disconnected();
+                    if is_oper {
+                        stats.remote_user_deopered();
+                    }
                 }
             }
 
@@ -708,5 +722,43 @@ mod tests {
             "User B should be killed"
         );
         assert!(!manager.nicks.contains_key("alice"));
+    }
+
+    #[tokio::test]
+    async fn test_kill_user_updates_stats() {
+        use crate::state::managers::stats::StatsManager;
+        
+        let stats = Arc::new(StatsManager::new());
+        let mut manager = UserManager::new("001".to_string(), "test.server".to_string());
+        manager.set_stats_manager(stats.clone());
+        
+        // Simulate initial state with 1 local user already connected
+        stats.user_connected(); // Local user
+        assert_eq!(stats.local_users(), 1);
+        assert_eq!(stats.global_users(), 1);
+        
+        // Create and kill local user (UID starts with "001")
+        let sid_local = ServerId::new("001");
+        let t1 = HybridTimestamp::new(100, 0, &sid_local);
+        let local_user = create_user("001AAAA01", "LocalUser", t1);
+        manager.merge_user_crdt(local_user, None).await;
+        
+        manager.kill_user("001AAAA01", "Test disconnect", None).await;
+        assert_eq!(stats.local_users(), 0, "Local user count should decrease");
+        assert_eq!(stats.global_users(), 0, "Global user count should decrease");
+        
+        // Create and kill remote user (UID starts with "00A")
+        // Note: merge_user_crdt for remote users increments stats internally
+        let sid_remote = ServerId::new("00A");
+        let t2 = HybridTimestamp::new(100, 0, &sid_remote);
+        let remote_user = create_user("00AAAAA01", "RemoteUser", t2);
+        manager.merge_user_crdt(remote_user, Some(sid_remote.clone())).await;
+        
+        // After merge, global should be 1 (remote user)
+        assert_eq!(stats.global_users(), 1, "Remote user added via merge");
+        
+        manager.kill_user("00AAAAA01", "Netsplit", Some(sid_remote)).await;
+        assert_eq!(stats.local_users(), 0, "Local count should remain 0");
+        assert_eq!(stats.global_users(), 0, "Global user count should be 0 after remote kill");
     }
 }

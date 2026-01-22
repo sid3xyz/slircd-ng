@@ -57,8 +57,8 @@ impl PostRegHandler for LusersHandler {
         let visible_users = total_users.saturating_sub(invisible_count);
         let channel_count = stats.channels();
 
-        // Server counts: topology servers + 1 (us)
-        let total_servers = ctx.matrix.sync_manager.topology.servers.len() + 1;
+        // Server counts from StatsManager (integrated with topology)
+        let total_servers = stats.servers(&ctx.matrix.sync_manager.topology);
 
         // Direct links: servers where via is None (and not us)
         let local_sid_str = ctx.matrix.server_info.sid.as_str();

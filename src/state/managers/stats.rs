@@ -240,10 +240,12 @@ impl StatsManager {
         self.started_at.elapsed().as_secs()
     }
 
-    /// Get number of servers (1 for standalone, more with S2S).
-    #[allow(dead_code)]
-    pub fn servers(&self) -> usize {
-        1 // TODO: integrate with SyncManager for linked servers
+    /// Get number of servers in the network.
+    ///
+    /// Returns the total count of servers in the topology graph plus 1 for
+    /// the local server.
+    pub fn servers(&self, topology: &crate::sync::TopologyGraph) -> usize {
+        topology.servers.len() + 1
     }
 }
 

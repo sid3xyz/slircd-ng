@@ -84,58 +84,30 @@ pub async fn handle_netsplit(
     // Collection of QUIT messages for batch broadcast
     let mut quit_msgs = Vec::with_capacity(affected_users.len());
 
-    // 3. Process each affected user
+    // 3. Build QUIT messages and kill users (kill_user handles stats + cleanup)
     for uid in &affected_users {
-        // Clone Arc to release DashMap lock before awaiting
-        let user_arc = matrix
-            .user_manager
-            .users
-            .get(uid)
-            .map(|r| r.value().clone());
-
-        if let Some(user_arc) = user_arc {
+        // Build QUIT message (before killing user)
+        if let Some(user_arc) = matrix.user_manager.users.get(uid) {
             let user = user_arc.read().await;
-            let nick = user.nick.clone();
-            let user_str = user.user.clone();
-            let host = user.visible_host.clone();
-
-            // Build QUIT message
-            let msg = Message {
+            quit_msgs.push(Message {
                 tags: None,
-                prefix: Some(Prefix::Nickname(nick.clone(), user_str, host)),
+                prefix: Some(Prefix::Nickname(
+                    user.nick.clone(),
+                    user.user.clone(),
+                    user.visible_host.clone(),
+                )),
                 command: Command::QUIT(Some(quit_reason.clone())),
-            };
-            quit_msgs.push(msg);
+            });
         }
 
-        // Remove user from channels first
+        // Remove from channels
         remove_user_from_channels(matrix, uid).await;
 
-        // Remove user from user manager
-        if let Some((_, _)) = matrix.user_manager.users.remove(uid) {
-            // Clean up nicks map
-            // We need to find the nick to remove
-            let nick_to_remove: Option<String> = matrix
-                .user_manager
-                .nicks
-                .iter()
-                .find(|e| e.value().contains(uid))
-                .map(|e| e.key().clone());
-
-            if let Some(nick) = nick_to_remove {
-                // Remove this UID from the vector
-                if let Some(mut vec) = matrix.user_manager.nicks.get_mut(&nick) {
-                    vec.retain(|u| u != uid);
-                    if vec.is_empty() {
-                        drop(vec);
-                        matrix.user_manager.nicks.remove(&nick);
-                    }
-                }
-            }
-
-            // Remove sender if present
-            matrix.user_manager.senders.remove(uid);
-        }
+        // Kill user (handles stats, whowas, nicks, senders, observer)
+        matrix
+            .user_manager
+            .kill_user(uid, &quit_reason, Some(dead_link_sid.clone()))
+            .await;
     }
 
     // Broadcast QUITs to local users (using batch if possible)
