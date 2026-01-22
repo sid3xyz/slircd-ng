@@ -14,6 +14,9 @@ pub mod stream;
 pub mod tls;
 mod topology;
 
+#[cfg(test)]
+mod tests;
+
 // Re-export topology types
 pub use link::LinkState;
 pub use manager::SyncManager;

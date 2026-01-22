@@ -141,6 +141,10 @@ pub enum Command {
     TMODE(u64, String, String, Vec<String>),
     /// `ENCAP target subcommand [params...]` - Encapsulated server-to-server command
     ENCAP(String, String, Vec<String>),
+    /// `EOB` - End of Burst
+    EOB,
+    /// `TB channel ts [nick] :topic` - Topic Burst
+    TB(String, u64, Option<String>, String),
 
     // === Service Queries (RFC 2812 Section 3.5) ===
     /// `SERVLIST [mask] [type]`
@@ -487,6 +491,8 @@ impl Command {
             Command::ENCAP(..) => "ENCAP",
             Command::CAPAB(..) => "CAPAB",
             Command::SVINFO(..) => "SVINFO",
+            Command::EOB => "EOB",
+            Command::TB(..) => "TB",
 
             // Services Commands
             Command::SAJOIN(..) => "SAJOIN",

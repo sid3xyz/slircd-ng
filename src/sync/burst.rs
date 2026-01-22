@@ -167,12 +167,41 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
 
         commands.push(Command::SJOIN(
             info.created as u64,
-            info.name,
+            info.name.clone(),
             mode_str,
             mode_args,
             user_list,
         ));
+
+        // 2.a Burst Topic (TB) if it exists
+        if let Some(topic) = &info.topic {
+            commands.push(Command::TB(
+                info.name.clone(),
+                topic.set_at as u64,
+                Some(topic.set_by.clone()),
+                topic.text.clone(),
+            ));
+        }
     }
+
+    // 3. Burst Other Servers (Network Topology)
+    // Send SID for all known servers in the topology except ourselves and the target server
+    for entry in state.sync_manager.topology.servers.iter() {
+        let info = entry.value();
+        if info.sid.as_str() != _local_sid {
+            // :<uplink_sid> SID <name> <hopcount> <sid> :<description>
+            // For now, satisfy the enum Command::SID(name, hopcount, sid, description)
+            commands.push(Command::SID(
+                info.name.clone(),
+                info.hopcount.to_string(),
+                info.sid.as_str().to_string(),
+                info.info.clone(),
+            ));
+        }
+    }
+
+    // 4. End of Burst
+    commands.push(Command::EOB);
 
     commands
 }

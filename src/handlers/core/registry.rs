@@ -125,6 +125,7 @@ impl Registry {
         server_handlers.insert("SID", Box::new(SidHandler));
         server_handlers.insert("ENCAP", Box::new(EncapHandler));
         server_handlers.insert("TOPIC", Box::new(ServerTopicHandler));
+        server_handlers.insert("TB", Box::new(crate::handlers::server::tb::TbHandler));
         server_handlers.insert("KICK", Box::new(ServerKickHandler));
         server_handlers.insert("KILL", Box::new(ServerKillHandler));
         server_handlers.insert(

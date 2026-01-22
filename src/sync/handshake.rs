@@ -63,6 +63,12 @@ pub struct HandshakeMachine {
     pub local_desc: String,
 }
 
+/// Capabilities supported by slircd-ng for S2S.
+pub const SUPPORTED_CAPABS: &[&str] = &[
+    "QS", "ENCAP", "EX", "IE", "UNKLN", "KLN", "GLN", "HOPS", "CHW", "EOB", "KNOCK", "TB",
+    "SERVICES",
+];
+
 impl HandshakeMachine {
     pub fn new(local_sid: ServerId, local_name: String, local_desc: String) -> Self {
         Self {
@@ -262,16 +268,7 @@ impl HandshakeMachine {
                     password: link.password.clone(),
                     sid: self.local_sid.as_str().to_string(),
                 },
-                Command::CAPAB(vec![
-                    "QS".to_string(),
-                    "ENCAP".to_string(),
-                    "EX".to_string(),
-                    "IE".to_string(),
-                    "UNKLN".to_string(),
-                    "KLN".to_string(),
-                    "GLN".to_string(),
-                    "HOPS".to_string(),
-                ]),
+                Command::CAPAB(SUPPORTED_CAPABS.iter().map(|s| s.to_string()).collect()),
                 Command::SERVER(
                     self.local_name.clone(),
                     1,

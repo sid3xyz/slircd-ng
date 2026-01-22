@@ -53,7 +53,7 @@ impl Command {
             "MOTD" | "LUSERS" | "VERSION" | "STATS" | "LINKS" | "TIME" | "CONNECT" | "TRACE"
             | "ADMIN" | "INFO" | "MAP" | "RULES" | "USERIP" | "HELP" | "METADATA" | "SERVLIST"
             | "SQUERY" | "SERVER" | "SID" | "UID" | "SJOIN" | "TMODE" | "ENCAP" | "CAPAB"
-            | "SVINFO" => server::parse(cmd_str, args),
+            | "SVINFO" | "EOB" | "TB" => server::parse(cmd_str, args),
 
             "WHO" | "WHOIS" | "WHOWAS" => user::parse(cmd_str, args),
 

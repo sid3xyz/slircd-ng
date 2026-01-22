@@ -678,16 +678,12 @@ pub fn connect_to_peer(
                 password: config.password.clone(),
                 sid: manager.local_id.as_str().to_string(),
             };
-            let capab_cmd = Command::CAPAB(vec![
-                "QS".to_string(),
-                "ENCAP".to_string(),
-                "EX".to_string(),
-                "IE".to_string(),
-                "UNKLN".to_string(),
-                "KLN".to_string(),
-                "GLN".to_string(),
-                "HOPS".to_string(),
-            ]);
+            let capab_cmd = Command::CAPAB(
+                crate::sync::handshake::SUPPORTED_CAPABS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+            );
             let server_cmd = Command::SERVER(
                 manager.local_name.clone(),
                 1,

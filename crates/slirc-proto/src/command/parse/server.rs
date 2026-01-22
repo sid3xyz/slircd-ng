@@ -272,6 +272,21 @@ pub(super) fn parse(cmd: &str, args: Vec<&str>) -> Result<Command, MessageParseE
                 Command::SVINFO(v, m, z, t)
             }
         }
+        "EOB" => Command::EOB,
+        "TB" => {
+            // TB channel ts [nick] :topic
+            if args.len() < 3 {
+                raw(cmd, args)
+            } else {
+                let channel = args[0].to_owned();
+                let ts = args[1].parse().unwrap_or(0);
+                if args.len() == 3 {
+                    Command::TB(channel, ts, None, args[2].to_owned())
+                } else {
+                    Command::TB(channel, ts, Some(args[2].to_owned()), args[3].to_owned())
+                }
+            }
+        }
         _ => unreachable!("server::parse called with non-server command: {}", cmd),
     };
 

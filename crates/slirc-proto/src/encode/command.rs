@@ -163,6 +163,13 @@ impl IrcEncode for Command {
             }
             Command::MAP => w.write_str("MAP"),
             Command::RULES => w.write_str("RULES"),
+            Command::EOB => w.write_str("EOB"),
+            Command::TB(channel, ts, Some(nick), topic) => {
+                write_cmd_freeform(w, "TB", &[channel, &ts.to_string(), nick, topic])
+            }
+            Command::TB(channel, ts, None, topic) => {
+                write_cmd_freeform(w, "TB", &[channel, &ts.to_string(), topic])
+            }
             Command::USERIP(u) => {
                 let mut written = w.write_str("USERIP")?;
                 written += write_service_args(w, u)?;

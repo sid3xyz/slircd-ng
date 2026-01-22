@@ -147,6 +147,13 @@ impl fmt::Display for Command {
             }
             Command::MAP => write_cmd(f, "MAP", &[]).map(|_| ()),
             Command::RULES => write_cmd(f, "RULES", &[]).map(|_| ()),
+            Command::EOB => write_cmd(f, "EOB", &[]).map(|_| ()),
+            Command::TB(channel, ts, Some(nick), topic) => {
+                write_cmd_freeform(f, "TB", &[channel, &ts.to_string(), nick, topic]).map(|_| ())
+            }
+            Command::TB(channel, ts, None, topic) => {
+                write_cmd_freeform(f, "TB", &[channel, &ts.to_string(), topic]).map(|_| ())
+            }
             Command::USERIP(u) => {
                 f.write_str("USERIP")?;
                 for nick in u {

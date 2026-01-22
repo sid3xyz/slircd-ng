@@ -60,6 +60,16 @@ impl ServerHandler for EncapHandler {
                         debug!(uid = %uid, new_host = %new_host, "Applied CHGHOST");
                     }
                 }
+                "CHGIDENT" => {
+                    // ENCAP * CHGIDENT <uid> <new_ident>
+                    if let (Some(uid), Some(new_ident)) = (msg.arg(2), msg.arg(3))
+                        && let Some(user_arc) = ctx.matrix.user_manager.users.get(uid)
+                    {
+                        let mut user = user_arc.write().await;
+                        user.user = new_ident.to_string();
+                        debug!(uid = %uid, new_ident = %new_ident, "Applied CHGIDENT");
+                    }
+                }
                 "REALHOST" => {
                     // ENCAP * REALHOST <uid> <real_host>
                     if let (Some(uid), Some(real_host)) = (msg.arg(2), msg.arg(3))
