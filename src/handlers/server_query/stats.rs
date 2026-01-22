@@ -15,6 +15,7 @@ use slirc_proto::{MessageRef, Response};
 /// Supported queries:
 /// - `u` - Server uptime
 /// - `o` - Online operators
+/// - `l` - Link statistics (S2S connections)
 /// - `k` - K-lines (local bans)
 /// - `g` - G-lines (global bans)
 /// - `z` - Z-lines (IP bans)
@@ -435,6 +436,7 @@ impl PostRegHandler for StatsHandler {
                     "*** Available STATS queries:",
                     "*** u - Server uptime",
                     "*** o - Online operators",
+                    "*** l - Link statistics (S2S connections)",
                     "*** k - K-lines (local bans)",
                     "*** g - G-lines (global bans)",
                     "*** z - Z-lines (IP bans)",
