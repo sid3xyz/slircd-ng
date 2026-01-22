@@ -1,7 +1,7 @@
 # MASTER_CONTEXT.md
 > **Single Source of Truth** for slircd-ng architecture, systems, and current state.
 > Updated: 2026-01-21 05:30 | Pre-release | Zero users
-> Last Session: Fixed history duplication, hardened flood protection (DoS fix), STATUSMSG prefix fix. Integrated ZNC playback & enabled Autoreplay event playback.
+> Last Session: Implemented S2S federation: Operator CONNECT/SQUIT commands, STATS L monitoring, and full integration tests. S2S is now Production Ready.
 
 ---
 
@@ -82,8 +82,9 @@ Organized by domain:
 Server-to-server linking (TS6-compatible):
 - `manager.rs` - Central SyncManager (routing, connections)
 - `handshake.rs` - S2S handshake state machine
-- `topology.rs` - Network graph
+- `topology.rs` - Network graph (MAP, LINKS support)
 - `crdt.rs` - Conflict-free channel state merging
+- **Oper Commands**: `CONNECT`, `SQUIT`, `STATS L` (monitoring)
 
 ### 2.7 Database (`src/db/`)
 Dual-engine persistence:
@@ -141,10 +142,11 @@ Dual-engine persistence:
 | 2 | IRCv3.3 Compliance | ✅ Complete |
 | 3 | Data Safety | ✅ Complete |
 | 4 | Configuration Mastery | ✅ Complete |
-| 5 | Ecosystem (S2S, External Auth) | 🔄 In Progress |
-    - [ ] S2S Stats Sync (Server counts, Netsplit hardening)
-    - [ ] Global Network Topology (MAP/LINKS)
+| 5 | Ecosystem (S2S, External Auth) | ✅ S2S Complete |
+    - [x] S2S Stats Sync (Server counts, Netsplit hardening)
+    - [x] Global Network Topology (MAP/LINKS/CONNECT/SQUIT)
     - [ ] Services Integration (NickServ/ChanServ)
+    - [ ] External Authentication (Future)
 | 6 | Advanced Protection (Flood + DoS Hardening) | ✅ Complete |
 | 7 | Next-Gen Architecture | 📋 Planned |
 

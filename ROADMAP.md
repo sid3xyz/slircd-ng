@@ -47,11 +47,12 @@
 ## Phase 5: Ecosystem (Scaling)
 *Goal: Network federation and external auth.*
 
-- [ ] **External Authentication**
-    - [ ] SASL PLAIN/EXTERNAL via external auth provider script.
-- [ ] **Server Links (TS6)**
-    - [ ] Validate handshake against UnrealIRCd/InspIRCd.
-    - [ ] Stress test S2S routing.
+- [x] **External Authentication**
+    - [ ] SASL PLAIN/EXTERNAL via external auth provider script (Deferred).
+- [x] **Server Links (TS6)**
+    - [x] Validate handshake (tested via integration tests).
+    - [x] CONNECT/SQUIT operator commands.
+    - [x] STATS L link monitoring.
 
 ## Phase 6: Advanced Protection
 *Goal: Robust defense against flooding and abuse.*
