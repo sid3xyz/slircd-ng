@@ -487,7 +487,6 @@ impl<'a> ChannelRepository<'a> {
         // h_star_iter is the point in hostmask to backtrack to.
         // It's initialized to an empty iterator and updated when a star is found.
         let mut h_star_iter: std::str::Chars = "".chars();
-        let mut h_star_was_set = false;
 
         loop {
             let p_char_opt = p_iter.clone().next();
@@ -510,13 +509,13 @@ impl<'a> ChannelRepository<'a> {
                     p_iter.next(); // consume '*'
                     p_star = Some(p_iter.clone());
                     h_star_iter = h_iter.clone();
-                    h_star_was_set = true;
                 } else {
                     // Mismatch.
-                    if h_star_was_set {
-                        h_star_iter.next();
-                        // Safe to unwrap: p_star is Some if h_star_was_set is true
-                        p_iter = p_star.clone().unwrap();
+                    if let Some(p_retry) = p_star.clone() {
+                        if h_star_iter.next().is_none() {
+                            return false;
+                        }
+                        p_iter = p_retry;
                         h_iter = h_star_iter.clone();
                     } else {
                         return false;
@@ -524,9 +523,11 @@ impl<'a> ChannelRepository<'a> {
                 }
             } else {
                 // End of pattern, but not hostmask. Backtrack.
-                if h_star_was_set {
-                    h_star_iter.next();
-                    p_iter = p_star.clone().unwrap(); // Should be safe
+                if let Some(p_retry) = p_star.clone() {
+                    if h_star_iter.next().is_none() {
+                        return false;
+                    }
+                    p_iter = p_retry;
                     h_iter = h_star_iter.clone();
                 } else {
                     return false;
@@ -541,5 +542,39 @@ impl<'a> ChannelRepository<'a> {
 
         // If pattern is also exhausted, we have a match.
         p_iter.next().is_none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mask_matches() {
+        assert!(ChannelRepository::mask_matches("*", "anything"));
+        assert!(ChannelRepository::mask_matches("a*b", "ab"));
+        assert!(ChannelRepository::mask_matches("a*b", "acb"));
+        assert!(ChannelRepository::mask_matches("a*b", "acccb"));
+        assert!(!ChannelRepository::mask_matches("a*b", "acbc"));
+        assert!(ChannelRepository::mask_matches("?test", "atest"));
+        assert!(!ChannelRepository::mask_matches("?test", "test"));
+        assert!(ChannelRepository::mask_matches("test?", "testa"));
+        assert!(ChannelRepository::mask_matches("*!*@*", "nick!user@host"));
+        assert!(ChannelRepository::mask_matches("n*!*@h*", "nick!user@host"));
+
+        // Complex backtracking cases
+        assert!(ChannelRepository::mask_matches("*a*b", "zazb"));
+        assert!(ChannelRepository::mask_matches("*a*b", "zaazb"));
+        assert!(!ChannelRepository::mask_matches("*a*b", "zazc"));
+
+        // Potential crash case?
+        // Pattern ending in *
+        assert!(ChannelRepository::mask_matches("test*", "test"));
+        assert!(ChannelRepository::mask_matches("test*", "testing"));
+
+        // Empty strings
+        assert!(ChannelRepository::mask_matches("", ""));
+        assert!(ChannelRepository::mask_matches("*", ""));
+        assert!(!ChannelRepository::mask_matches("", "a"));
     }
 }
