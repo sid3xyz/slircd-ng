@@ -9,6 +9,7 @@ mod globops;
 mod kill;
 mod lifecycle;
 mod spamconf;
+mod squit;
 mod trace;
 mod vhost;
 mod wallops;
@@ -22,6 +23,7 @@ pub use globops::GlobOpsHandler;
 pub use kill::KillHandler;
 pub use lifecycle::{DieHandler, RehashHandler, RestartHandler};
 pub use spamconf::SpamConfHandler;
+pub use squit::SquitHandler;
 pub use trace::TraceHandler;
 pub use vhost::VhostHandler;
 pub use wallops::WallopsHandler;
@@ -45,6 +47,7 @@ pub fn register(map: &mut HashMap<&'static str, Box<dyn PostRegHandler>>) {
     map.insert("SPAMCONF", Box::new(SpamConfHandler));
     map.insert("CLEARCHAN", Box::new(ClearchanHandler));
     map.insert("CONNECT", Box::new(ConnectHandler));
+    map.insert("SQUIT", Box::new(SquitHandler));
 }
 
 /// Validate hostname per RFC 952/1123 rules.
