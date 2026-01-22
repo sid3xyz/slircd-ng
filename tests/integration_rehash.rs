@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use std::fs;
-use std::path::PathBuf;
 use tokio::time::{Duration, sleep};
 
 mod common;
@@ -80,7 +79,9 @@ lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
 "#;
 
     // Use unique temp config file for this test
-    let config_path = PathBuf::from("/tmp/rehash_test_no_disconnect.toml");
+    let test_dir = std::env::temp_dir().join("rehash_test_no_disconnect");
+    fs::create_dir_all(&test_dir)?;
+    let config_path = test_dir.join("config.toml");
     fs::write(&config_path, initial_config)?;
 
     // Start test server
@@ -166,8 +167,9 @@ lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
     }
     assert!(found_new_motd, "Should see new MOTD after REHASH");
 
-    // Cleanup
-    fs::remove_file(&config_path).ok();
+    // Cleanup - TestServer Drop handles dir removal if it owns the parent,
+    // but here we constructed it. TestServer::spawn_with_config sets data_dir to parent.
+    // So TestServer will remove test_dir.
     Ok(())
 }
 
@@ -201,7 +203,9 @@ enabled = false
 cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a"
 "#;
 
-    let config_path = PathBuf::from("/tmp/rehash_fail_test_config.toml");
+    let test_dir = std::env::temp_dir().join("rehash_fail_test");
+    fs::create_dir_all(&test_dir)?;
+    let config_path = test_dir.join("config.toml");
     fs::write(&config_path, initial_config)?;
 
     let server = common::TestServer::spawn_with_config(6670, config_path.clone()).await?;
@@ -243,8 +247,6 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
     }
     assert!(got_error, "Should get error message about failed REHASH");
 
-    // Cleanup
-    fs::remove_file(&config_path).ok();
     Ok(())
 }
 
@@ -305,7 +307,9 @@ enabled = false
 cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a"
 "#;
 
-    let config_path = PathBuf::from("/tmp/rehash_oper_test_config.toml");
+    let test_dir = std::env::temp_dir().join("rehash_oper_test");
+    fs::create_dir_all(&test_dir)?;
+    let config_path = test_dir.join("config.toml");
     fs::write(&config_path, initial_config)?;
 
     let server = common::TestServer::spawn_with_config(6671, config_path.clone()).await?;
@@ -348,7 +352,5 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
     // can successfully authenticate. For now, we just verify the config loaded.
     // A production test would try: "OPER newop newoppass" and expect success.
 
-    // Cleanup
-    fs::remove_file(&config_path).ok();
     Ok(())
 }
