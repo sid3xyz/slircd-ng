@@ -33,14 +33,19 @@ Create `config.toml`:
 name = "irc.example.com"
 sid = "001"
 description = "slircd-ng IRC Server"
-port = 6667
-tls_port = 6697
 password = "your-secret-key"  # Random 32 chars
+admin_info1 = "Admin Name"
+admin_info2 = "Admin Location"
+admin_email = "admin@example.com"
 
-[server.admin]
-line1 = "Admin Name"
-line2 = "Admin Email"
-line3 = "Admin URL"
+[listen]
+address = "0.0.0.0:6667"
+
+# Optional: TLS configuration
+# [tls]
+# address = "0.0.0.0:6697"
+# cert_path = "path/to/cert.pem"
+# key_path = "path/to/key.pem"
 
 [database]
 path = "data/irc.db"
@@ -71,7 +76,7 @@ Connect with your IRC client:
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| **Rust Tests** | 664 passing | ✅ |
+| **Rust Tests** | 740+ passing | ✅ |
 | **irctest Compliance** | 357/387 (92.2%) | ✅ |
 | **Code Quality** | Clippy 0 warnings | ✅ |
 | **Format** | 100% compliant | ✅ |
@@ -169,6 +174,8 @@ cargo build --release
 cargo test
 
 # Run irctest suite
+# Note: You may need to clone irctest first if not present
+# git clone https://github.com/progval/irctest.git slirc-irctest
 cd slirc-irctest
 SLIRCD_BIN=../target/release/slircd pytest --controller=irctest.controllers.slircd irctest/server_tests/
 ```
@@ -206,8 +213,6 @@ slircd-ng/
 
 ## Documentation
 
-## Documentation
- 
  - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Deep dive into system design
  - **[SECURITY.md](docs/SECURITY.md)** - Security model and practices
  - **[ROADMAP.md](ROADMAP.md)** - Release timeline and strategic direction
@@ -247,7 +252,7 @@ Load tested with up to 1000 concurrent users.
 
 - ✅ `cargo fmt`: 100% formatting compliance
 - ✅ `cargo clippy -- -D warnings`: 0 warnings (19 documented exceptions)
-- ✅ `cargo test`: 664 tests passing
+- ✅ `cargo test`: 740+ tests passing
 - ✅ Zero unsafe code in library code
 - ✅ Zero TODO/FIXME markers
 
@@ -306,4 +311,3 @@ Released to the public domain under **[The Unlicense](LICENSE)**. Use freely for
 - [IRCv3 Specifications](https://ircv3.net)
 - [RFC 1459 - Internet Relay Chat Protocol](https://tools.ietf.org/html/rfc1459)
 - [RFC 2812 - Internet Relay Chat: Client Protocol](https://tools.ietf.org/html/rfc2812)
-
