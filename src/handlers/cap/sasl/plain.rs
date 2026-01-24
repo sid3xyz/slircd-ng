@@ -44,7 +44,17 @@ pub(crate) async fn handle_sasl_plain_data<S: SessionState + SaslAccess>(
         return Ok(());
     }
 
+    // Maximum size for accumulated SASL buffer (16KB)
+    // Prevents memory exhaustion attacks
+    const MAX_SASL_BUFFER: usize = 16384;
+
     if data != "+" {
+        if ctx.state.sasl_buffer().len() + data.len() > MAX_SASL_BUFFER {
+            ctx.state.sasl_buffer_mut().clear();
+            send_sasl_fail(ctx, nick, "SASL payload too large").await?;
+            ctx.state.set_sasl_state(SaslState::None);
+            return Ok(());
+        }
         ctx.state.sasl_buffer_mut().push_str(data);
     }
 
