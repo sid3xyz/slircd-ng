@@ -469,16 +469,16 @@ impl Matrix {
                     && let Some(client) = self.client_manager.get_client(account)
                 {
                     let client_guard = client.read().await;
-                    if let Some(away_msg) = &client_guard.away {
-                        if let Some(user_arc) = self.user_manager.users.get(uid) {
-                            let mut user = user_arc.write().await;
-                            user.away = Some(away_msg.clone());
-                            tracing::debug!(
-                                uid = %uid,
-                                away = %away_msg,
-                                "Set auto-away on always-on user"
-                            );
-                        }
+                    if let Some(away_msg) = &client_guard.away
+                        && let Some(user_arc) = self.user_manager.users.get(uid)
+                    {
+                        let mut user = user_arc.write().await;
+                        user.away = Some(away_msg.clone());
+                        tracing::debug!(
+                            uid = %uid,
+                            away = %away_msg,
+                            "Set auto-away on always-on user"
+                        );
                     }
                 }
                 false
