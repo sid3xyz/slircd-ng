@@ -68,8 +68,20 @@ fn test_handshake_flow() {
     assert_eq!(res.len(), 4); // Should send PASS, CAPAB, SERVER, SVINFO back
 
     // Verify CAPS were stored in machine 2
-    assert!(machine2.remote_capab.as_ref().unwrap().contains(&"QS".to_string()));
-    assert!(machine2.remote_capab.as_ref().unwrap().contains(&"ENCAP".to_string()));
+    assert!(
+        machine2
+            .remote_capab
+            .as_ref()
+            .unwrap()
+            .contains(&"QS".to_string())
+    );
+    assert!(
+        machine2
+            .remote_capab
+            .as_ref()
+            .unwrap()
+            .contains(&"ENCAP".to_string())
+    );
 
     let pass2 = res[0].clone();
     let capab2 = res[1].clone();
@@ -84,8 +96,20 @@ fn test_handshake_flow() {
     let res = machine1.step(capab2, &[link1.clone()]).unwrap();
     assert!(res.is_empty());
     // Verify CAPAB exchange (2 should have sent all SUPPORTED_CAPABS)
-    assert!(machine1.remote_capab.as_ref().unwrap().contains(&"ENCAP".to_string()));
-    assert!(machine1.remote_capab.as_ref().unwrap().contains(&"SERVICES".to_string()));
+    assert!(
+        machine1
+            .remote_capab
+            .as_ref()
+            .unwrap()
+            .contains(&"ENCAP".to_string())
+    );
+    assert!(
+        machine1
+            .remote_capab
+            .as_ref()
+            .unwrap()
+            .contains(&"SERVICES".to_string())
+    );
 
     // 1 processes SERVER from 2
     let res = machine1.step(server2, &[link1.clone()]).unwrap();
@@ -105,12 +129,30 @@ fn test_handshake_mismatched_sid() {
     machine.transition(HandshakeState::InboundReceived);
 
     // PASS says 002
-    machine.step(Command::PassTs6 { password: "secret".to_string(), sid: "002".to_string() }, &[link.clone()]).unwrap();
-    
+    machine
+        .step(
+            Command::PassTs6 {
+                password: "secret".to_string(),
+                sid: "002".to_string(),
+            },
+            &[link.clone()],
+        )
+        .unwrap();
+
     // SERVER says 003
-    let res = machine.step(Command::SERVER("remote".to_string(), 1, "003".to_string(), "desc".to_string()), &[link]);
-    
-    assert!(matches!(res, Err(crate::sync::handshake::HandshakeError::ProtocolError(msg)) if msg.contains("SID mismatch")));
+    let res = machine.step(
+        Command::SERVER(
+            "remote".to_string(),
+            1,
+            "003".to_string(),
+            "desc".to_string(),
+        ),
+        &[link],
+    );
+
+    assert!(
+        matches!(res, Err(crate::sync::handshake::HandshakeError::ProtocolError(msg)) if msg.contains("SID mismatch"))
+    );
 }
 
 #[test]
@@ -121,13 +163,36 @@ fn test_handshake_authentication_failure() {
     machine.transition(HandshakeState::InboundReceived);
 
     // Wrong password in PASS
-    machine.step(Command::PassTs6 { password: "wrong".to_string(), sid: "002".to_string() }, &[link.clone()]).unwrap();
-    machine.step(Command::CAPAB(vec![]), &[link.clone()]).unwrap();
-    machine.step(Command::SERVER("remote".to_string(), 1, "002".to_string(), "desc".to_string()), &[link.clone()]).unwrap();
-    
+    machine
+        .step(
+            Command::PassTs6 {
+                password: "wrong".to_string(),
+                sid: "002".to_string(),
+            },
+            &[link.clone()],
+        )
+        .unwrap();
+    machine
+        .step(Command::CAPAB(vec![]), &[link.clone()])
+        .unwrap();
+    machine
+        .step(
+            Command::SERVER(
+                "remote".to_string(),
+                1,
+                "002".to_string(),
+                "desc".to_string(),
+            ),
+            &[link.clone()],
+        )
+        .unwrap();
+
     // SVINFO triggers verification
     let res = machine.step(Command::SVINFO(6, 6, 0, 0), &[link]);
-    assert!(matches!(res, Err(crate::sync::handshake::HandshakeError::AuthenticationFailed)));
+    assert!(matches!(
+        res,
+        Err(crate::sync::handshake::HandshakeError::AuthenticationFailed)
+    ));
 }
 
 #[tokio::test]

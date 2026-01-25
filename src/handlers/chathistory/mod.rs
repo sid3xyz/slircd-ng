@@ -143,7 +143,7 @@ impl PostRegHandler for ChatHistoryHandler {
             },
         )
         .await;
-        
+
         match messages {
             Ok(msgs) => {
                 let batch_type = if subcommand == ChatHistorySubCommand::TARGETS {

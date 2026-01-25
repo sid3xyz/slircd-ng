@@ -8,7 +8,7 @@ pub mod sid;
 pub mod sjoin;
 pub mod source;
 pub mod svinfo;
-pub mod tmode;
 pub mod tb;
+pub mod tmode;
 pub mod topic;
 pub mod uid;

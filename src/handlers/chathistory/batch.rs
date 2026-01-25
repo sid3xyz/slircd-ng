@@ -73,12 +73,9 @@ pub async fn send_history_batch(
             }
         }
 
-        if let Some(history_msg) = super::helpers::history_item_to_message(
-            &item,
-            &batch_id,
-            target,
-            has_event_playback,
-        ) {
+        if let Some(history_msg) =
+            super::helpers::history_item_to_message(&item, &batch_id, target, has_event_playback)
+        {
             ctx.sender.send(history_msg).await?;
             // Logging can be reduced or kept
             // println!("DEBUG_BATCH: sent item...");
