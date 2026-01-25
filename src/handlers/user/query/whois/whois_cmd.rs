@@ -73,6 +73,16 @@ impl PostRegHandler for WhoisHandler {
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
 
+        // Extract target from MessageRef BEFORE any .await operations (zero-copy pattern)
+        // WHOIS [server] <nick>
+        // If two args, first is server, second is nick
+        // If one arg, it's the nick
+        let target = if msg.args().len() >= 2 {
+            msg.arg(1).unwrap_or("").to_string()
+        } else {
+            msg.arg(0).unwrap_or("").to_string()
+        };
+
         if !ctx
             .matrix
             .security_manager
@@ -88,15 +98,6 @@ impl PostRegHandler for WhoisHandler {
             return Ok(());
         }
 
-        // WHOIS [server] <nick>
-        // If two args, first is server, second is nick
-        // If one arg, it's the nick
-        let target = if msg.args().len() >= 2 {
-            msg.arg(1).unwrap_or("")
-        } else {
-            msg.arg(0).unwrap_or("")
-        };
-
         if target.is_empty() {
             ctx.send_reply(
                 Response::ERR_NONICKNAMEGIVEN,
@@ -108,7 +109,7 @@ impl PostRegHandler for WhoisHandler {
 
         let server_name = ctx.server_name();
         let nick = &ctx.state.nick; // Guaranteed present in RegisteredState
-        let target_lower = irc_to_lower(target);
+        let target_lower = irc_to_lower(&target);
 
         // Look up target user
         let target_uid = ctx.matrix.user_manager.get_first_uid(&target_lower);
@@ -384,10 +385,10 @@ impl PostRegHandler for WhoisHandler {
 
                 debug!(requester = %nick, target = %target_nick, "WHOIS completed");
             } else {
-                send_no_such_nick(ctx, target).await?;
+                send_no_such_nick(ctx, &target).await?;
             }
         } else {
-            send_no_such_nick(ctx, target).await?;
+            send_no_such_nick(ctx, &target).await?;
         }
 
         Ok(())
