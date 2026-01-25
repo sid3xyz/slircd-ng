@@ -31,6 +31,7 @@ Create `config.toml`:
 ```toml
 [server]
 name = "irc.example.com"
+network = "ExampleNet"
 sid = "001"
 description = "slircd-ng IRC Server"
 password = "your-secret-key"  # Random 32 chars
