@@ -6,9 +6,7 @@
 //! Looks up the target server in the configured `[[link]]` blocks and initiates
 //! an outbound connection using `SyncManager::connect_to_peer()`.
 
-use super::super::{
-    Context, HandlerResult, PostRegHandler, get_nick_or_star, server_notice,
-};
+use super::super::{Context, HandlerResult, PostRegHandler, get_nick_or_star, server_notice};
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -56,12 +54,7 @@ impl PostRegHandler for ConnectHandler {
         let _port_override: Option<u16> = msg.arg(1).and_then(|p| p.parse().ok());
 
         // Look up target in configured link blocks from MatrixConfig
-        let link_block = ctx
-            .matrix
-            .config
-            .links
-            .iter()
-            .find(|l| l.name == target);
+        let link_block = ctx.matrix.config.links.iter().find(|l| l.name == target);
 
         let link = match link_block {
             Some(l) => l.clone(),

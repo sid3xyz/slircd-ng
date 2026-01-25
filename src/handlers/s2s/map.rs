@@ -25,10 +25,7 @@ impl PostRegHandler for MapHandler {
 
         // Helper to collect children of a given server SID
         // Returns owned ServerInfo to avoid keeping DashMap locks (entry guards) alive
-        fn collect_children(
-            topology: &TopologyGraph,
-            parent_sid: &ServerId,
-        ) -> Vec<ServerInfo> {
+        fn collect_children(topology: &TopologyGraph, parent_sid: &ServerId) -> Vec<ServerInfo> {
             let mut children: Vec<ServerInfo> = topology
                 .servers
                 .iter()
@@ -67,7 +64,7 @@ impl PostRegHandler for MapHandler {
                 } else {
                     format!("{}|-", prefix)
                 };
-                
+
                 // TODO: Include user count if available/synced
                 lines.push(format!("{} {}", connector, info.name));
 
@@ -98,7 +95,7 @@ impl PostRegHandler for MapHandler {
         let mut map_lines: Vec<String> = Vec::new();
         // Use server_id (ServerId) instead of server_info.sid (String)
         let local_sid = &ctx.matrix.server_id;
-        
+
         traverse(
             &ctx.matrix.sync_manager.topology,
             local_sid,
@@ -109,7 +106,8 @@ impl PostRegHandler for MapHandler {
 
         // Send each line as a separate RPL_MAP reply
         for line in map_lines {
-            ctx.send_reply(Response::RPL_MAP, vec![nick.clone(), line]).await?;
+            ctx.send_reply(Response::RPL_MAP, vec![nick.clone(), line])
+                .await?;
         }
 
         // End of MAP

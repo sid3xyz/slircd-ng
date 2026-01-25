@@ -498,9 +498,7 @@ impl<'a> ChannelRepository<'a> {
             };
 
             if let Some(p_char) = p_char_opt {
-                if p_char == '?'
-                    || (p_char != '*' && p_char.eq_ignore_ascii_case(&h_char))
-                {
+                if p_char == '?' || (p_char != '*' && p_char.eq_ignore_ascii_case(&h_char)) {
                     // Match or '?'.
                     p_iter.next();
                     h_iter.next();

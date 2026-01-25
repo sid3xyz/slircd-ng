@@ -20,5 +20,5 @@ mod tests;
 // Re-export topology types
 pub use link::LinkState;
 pub use manager::SyncManager;
-pub use topology::TopologyGraph;
 pub use topology::ServerInfo;
+pub use topology::TopologyGraph;
