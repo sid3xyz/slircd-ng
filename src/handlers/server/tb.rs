@@ -7,9 +7,9 @@ use slirc_proto::MessageRef;
 use tracing::{debug, warn};
 
 /// Handler for the TB (Topic Burst) command.
-/// 
+///
 /// Format: `:<sid> TB <channel> <ts> [setter] :<topic>`
-/// 
+///
 /// TB is used during burst to synchronize channel topics.
 pub struct TbHandler;
 
@@ -23,9 +23,12 @@ impl ServerHandler for TbHandler {
         // Args: channel, ts, [setter], topic
         let channel = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
         let ts_str = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
-        
+
         let (setter, topic) = if msg.args().len() >= 4 {
-            (msg.arg(2).unwrap().to_string(), msg.arg(3).unwrap().to_string())
+            (
+                msg.arg(2).unwrap().to_string(),
+                msg.arg(3).unwrap().to_string(),
+            )
         } else {
             let t = msg.arg(2).ok_or(HandlerError::NeedMoreParams)?;
             (ctx.state.name.clone(), t.to_string())
@@ -46,11 +49,7 @@ impl ServerHandler for TbHandler {
             .map(|s| s.value().clone());
 
         if let Some(channel_tx) = channel_tx {
-            let event = ChannelEvent::RemoteTopic {
-                ts,
-                setter,
-                topic,
-            };
+            let event = ChannelEvent::RemoteTopic { ts, setter, topic };
             if let Err(e) = channel_tx.send(event).await {
                 warn!(channel = %channel, error = %e, "Failed to send TB to channel actor");
             }

@@ -183,12 +183,14 @@ async fn replay_channel_history(
             // Send each message with batch tag
             // Send each message with batch tag
             for item in messages {
-                if let Some(history_msg) = crate::handlers::chathistory::helpers::history_item_to_message(
-                    &item,
-                    &batch_id,
-                    target,
-                    has_event_playback,
-                ) {
+                if let Some(history_msg) =
+                    crate::handlers::chathistory::helpers::history_item_to_message(
+                        &item,
+                        &batch_id,
+                        target,
+                        has_event_playback,
+                    )
+                {
                     let _ = ctx.transport.write_message(&history_msg).await;
                 }
             }

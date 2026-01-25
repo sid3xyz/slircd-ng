@@ -3,9 +3,9 @@
 //! Includes timestamp resolution and query parameter handling.
 
 use crate::handlers::{Context, HandlerError};
+use crate::history::types::{EventKind, HistoryItem};
 use crate::state::RegisteredState;
 use crate::state::dashmap_ext::DashMapExt;
-use crate::history::types::{EventKind, HistoryItem};
 use slirc_proto::{Command, Message, MessageReference, Prefix, Tag, parse_server_time};
 /// Maximum messages per CHATHISTORY request.
 pub const MAX_HISTORY_LIMIT: u32 = 100;
@@ -134,7 +134,6 @@ pub async fn resolve_dm_key(
     format!("dm:{}:{}", users[0], users[1])
 }
 
-
 /// Convert a HistoryItem to a protocol Message with appropriate tags.
 ///
 /// Handles filtering based on `event-playback` capability.
@@ -207,14 +206,11 @@ pub fn history_item_to_message(
                 "PRIVMSG" => {
                     Command::PRIVMSG(msg.envelope.target.clone(), msg.envelope.text.clone())
                 }
-                "NOTICE" => {
-                    Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone())
-                }
+                "NOTICE" => Command::NOTICE(msg.envelope.target.clone(), msg.envelope.text.clone()),
                 "TAGMSG" => Command::TAGMSG(msg.envelope.target.clone()),
-                "TOPIC" => Command::TOPIC(
-                    msg.envelope.target.clone(),
-                    Some(msg.envelope.text.clone()),
-                ),
+                "TOPIC" => {
+                    Command::TOPIC(msg.envelope.target.clone(), Some(msg.envelope.text.clone()))
+                }
                 _ => return None,
             };
             (Some(Prefix::new_from_str(&msg.envelope.prefix)), cmd)
