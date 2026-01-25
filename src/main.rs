@@ -378,7 +378,7 @@ async fn main() -> anyhow::Result<()> {
         registry.clone(),
         db.clone(),
         config.s2s_tls.clone(),
-        config.s2s_listen,
+        config.s2s.map(|c| c.address),
     );
 
     // Start S2S heartbeat

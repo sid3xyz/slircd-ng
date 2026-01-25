@@ -60,13 +60,22 @@ pub struct Config {
     pub limits: LimitsConfig,
     /// Link blocks for server peering.
     #[serde(default)]
+    #[serde(rename = "link")]
     pub links: Vec<LinkBlock>,
     /// Optional S2S TLS listener configuration.
     /// When configured, servers can connect with `tls = true` in their link block.
     pub s2s_tls: Option<S2STlsConfig>,
-    /// Optional plaintext S2S listener address.
+    /// Optional plaintext S2S listener configuration.
     /// For non-TLS server links (NOT RECOMMENDED for production).
-    pub s2s_listen: Option<std::net::SocketAddr>,
+    #[serde(default)]
+    pub s2s: Option<S2sConfig>,
+}
+
+/// S2S listener configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct S2sConfig {
+    /// Address to bind to for S2S (e.g., "0.0.0.0:6668").
+    pub address: std::net::SocketAddr,
 }
 
 impl Config {
