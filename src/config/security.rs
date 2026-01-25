@@ -267,6 +267,12 @@ pub struct RateLimitConfig {
     /// Maximum concurrent connections allowed per IP (default: 10).
     #[serde(default = "default_max_connections")]
     pub max_connections_per_ip: u32,
+    /// WHOIS queries allowed per client per second (default: 1).
+    #[serde(default = "default_whois_rate")]
+    pub whois_rate_per_second: u32,
+    /// WHOIS burst allowed per client (default: 3).
+    #[serde(default = "default_whois_burst")]
+    pub whois_burst_per_client: u32,
     /// IP addresses exempt from all rate limiting and connection limits.
     /// These IPs get unlimited connections and no flood protection.
     /// Use sparingly - only for trusted operators/bots.
@@ -297,12 +303,22 @@ impl Default for RateLimitConfig {
             ctcp_rate_per_second: default_ctcp_rate(),
             ctcp_burst_per_client: default_ctcp_burst(),
             max_connections_per_ip: default_max_connections(),
+            whois_rate_per_second: default_whois_rate(),
+            whois_burst_per_client: default_whois_burst(),
             exempt_ips: Vec::new(),
             s2s_command_rate_per_second: default_s2s_command_rate(),
             s2s_burst_per_peer: default_s2s_burst(),
             s2s_disconnect_threshold: default_s2s_disconnect_threshold(),
         }
     }
+}
+
+fn default_whois_rate() -> u32 {
+    1
+}
+
+fn default_whois_burst() -> u32 {
+    3
 }
 
 fn default_message_rate() -> u32 {
@@ -487,6 +503,13 @@ mod tests {
     fn rate_limit_config_default_exempt_ips_empty() {
         let config = RateLimitConfig::default();
         assert!(config.exempt_ips.is_empty());
+    }
+
+    #[test]
+    fn rate_limit_config_default_whois_values() {
+        let config = RateLimitConfig::default();
+        assert_eq!(config.whois_rate_per_second, 1);
+        assert_eq!(config.whois_burst_per_client, 3);
     }
 
     // === SecurityConfig Default Tests ===

@@ -106,6 +106,8 @@ pub struct RateLimitManager {
     join_limiters: DashMap<Uid, TimedLimiter>,
     /// Per-client CTCP rate limiters.
     ctcp_limiters: DashMap<Uid, TimedLimiter>,
+    /// Per-client WHOIS rate limiters.
+    whois_limiters: DashMap<Uid, TimedLimiter>,
     /// Active connection counters per IP.
     active_connections: DashMap<IpAddr, u32>,
     /// Configuration values.
@@ -120,6 +122,7 @@ impl RateLimitManager {
             connection_limiters: DashMap::new(),
             join_limiters: DashMap::new(),
             ctcp_limiters: DashMap::new(),
+            whois_limiters: DashMap::new(),
             active_connections: DashMap::new(),
             config: Arc::new(config),
         }
@@ -213,6 +216,25 @@ impl RateLimitManager {
         allowed
     }
 
+    /// Check if a client can send a WHOIS query.
+    pub fn check_whois_rate(&self, uid: &Uid) -> bool {
+        let entry = self.whois_limiters.entry(uid.clone()).or_insert_with(|| {
+            let burst = NonZeroU32::new(self.config.whois_burst_per_client).unwrap_or(NZ_3);
+            TimedLimiter::new(GovRateLimiter::direct(
+                Quota::per_second(
+                    NonZeroU32::new(self.config.whois_rate_per_second).unwrap_or(NZ_1),
+                )
+                .allow_burst(burst),
+            ))
+        });
+
+        let allowed = entry.check();
+        if !allowed {
+            debug!(uid = %uid, "whois rate limit exceeded");
+        }
+        allowed
+    }
+
     /// Record that a connection has started for an IP.
     /// Returns `true` if allowed, `false` if max connections per IP exceeded.
     /// Exempt IPs always return `true` and are not tracked.
@@ -273,6 +295,7 @@ impl RateLimitManager {
         self.message_limiters.remove(uid);
         self.join_limiters.remove(uid);
         self.ctcp_limiters.remove(uid);
+        self.whois_limiters.remove(uid);
     }
 
     /// Cleanup old entries to prevent memory growth using LRU eviction.
@@ -286,6 +309,7 @@ impl RateLimitManager {
         self.evict_lru_ip_entries(&self.connection_limiters, "connection");
         self.evict_lru_uid_entries(&self.join_limiters, "join");
         self.evict_lru_uid_entries(&self.ctcp_limiters, "ctcp");
+        self.evict_lru_uid_entries(&self.whois_limiters, "whois");
 
         // Active connections use simple count, not limiters - just log if large
         if self.active_connections.len() > MAX_ENTRIES {
@@ -534,6 +558,8 @@ mod tests {
             ctcp_rate_per_second: 1,
             ctcp_burst_per_client: 2,
             max_connections_per_ip: 3,
+            whois_rate_per_second: 1,
+            whois_burst_per_client: 3,
             exempt_ips: Vec::new(),
             s2s_command_rate_per_second: 100,
             s2s_burst_per_peer: 500,
@@ -612,6 +638,20 @@ mod tests {
 
         // Sixth should be rate limited
         assert!(!manager.check_join_rate(&uid));
+    }
+
+    #[test]
+    fn test_whois_rate_limiting() {
+        let manager = RateLimitManager::new(test_config());
+        let uid = "000AAAAAB".to_string();
+
+        // First 3 whois should be allowed (burst of 3)
+        for _ in 0..3 {
+            assert!(manager.check_whois_rate(&uid));
+        }
+
+        // Fourth should be rate limited
+        assert!(!manager.check_whois_rate(&uid));
     }
 
     #[test]

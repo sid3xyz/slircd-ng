@@ -1,6 +1,6 @@
 //! WHOIS handler for detailed user information queries.
 
-use crate::handlers::{Context, HandlerResult, PostRegHandler};
+use crate::handlers::{Context, HandlerResult, PostRegHandler, server_notice};
 use crate::state::RegisteredState;
 use crate::state::actor::{ChannelEvent, ChannelInfo};
 use async_trait::async_trait;
@@ -72,6 +72,21 @@ impl PostRegHandler for WhoisHandler {
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
         // Registration check removed - handled by registry typestate dispatch (Innovation 1)
+
+        if !ctx
+            .matrix
+            .security_manager
+            .rate_limiter
+            .check_whois_rate(&ctx.uid.to_string())
+        {
+            let reply = server_notice(
+                ctx.server_name(),
+                &ctx.state.nick,
+                "WHOIS rate limit exceeded. Please wait.",
+            );
+            ctx.sender.send(reply).await?;
+            return Ok(());
+        }
 
         // WHOIS [server] <nick>
         // If two args, first is server, second is nick
