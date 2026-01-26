@@ -42,7 +42,7 @@ impl<'a> ChannelStateRepository<'a> {
         .bind(&state.modes)
         .bind(&state.topic)
         .bind(&state.topic_set_by)
-        .bind(&state.topic_set_at)
+        .bind(state.topic_set_at)
         .bind(state.created_at)
         .bind(&state.key)
         .bind(state.user_limit)
