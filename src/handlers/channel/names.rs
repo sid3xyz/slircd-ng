@@ -208,10 +208,9 @@ impl PostRegHandler for NamesHandler {
 
             // Result limiting to prevent flooding
             let max_channels = ctx.matrix.config.limits.max_names_channels;
-            let mut result_count = 0;
             let mut truncated = false;
 
-            for channel_lower in channel_names {
+            for (result_count, channel_lower) in channel_names.into_iter().enumerate() {
                 // Check result limit
                 if result_count >= max_channels {
                     truncated = true;
@@ -235,7 +234,6 @@ impl PostRegHandler for NamesHandler {
 
                 self.process_single_channel_names(ctx, &channel_lower, nick, multi_prefix, false)
                     .await?;
-                result_count += 1;
             }
 
             // Notify if results were truncated

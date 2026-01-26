@@ -31,10 +31,8 @@ impl PostRegHandler for MapHandler {
                 .iter()
                 .filter_map(|entry| {
                     let info = entry.value();
-                    if let Some(via) = &info.via {
-                        if via == parent_sid {
-                            return Some(info.clone());
-                        }
+                    if let Some(via) = &info.via && via == parent_sid {
+                        return Some(info.clone());
                     }
                     None
                 })
