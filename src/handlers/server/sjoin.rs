@@ -71,6 +71,8 @@ impl ServerHandler for SJoinHandler {
             users.push((prefix, uid));
         }
 
+        tracing::info!(channel = %channel_name, users = ?users, "Received SJOIN command");
+
         // Get or create channel actor
         let tx = ctx
             .matrix

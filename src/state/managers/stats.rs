@@ -122,7 +122,22 @@ impl StatsManager {
 
     /// Decrement a remote user count (global only).
     pub fn remote_user_disconnected(&self) {
-        self.global_users.fetch_sub(1, Ordering::Relaxed);
+        // Safe decrement (CAS loop to prevent underflow)
+        let mut prev = self.global_users.load(Ordering::Relaxed);
+        loop {
+            if prev == 0 {
+                return;
+            }
+            match self.global_users.compare_exchange_weak(
+                prev,
+                prev - 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return,
+                Err(curr) => prev = curr,
+            }
+        }
     }
 
     /// Increment invisible user count.

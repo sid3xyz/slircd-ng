@@ -622,7 +622,82 @@ impl ChannelActor {
             crate::metrics::record_fanout(recipients_sent);
         }
 
-        // Delayed Join (+D) reveal: if sender was silent, broadcast join now
+        // S2S Routing: Fan out to remote servers
+        // We optimize by resolving the next-hop for each remote member and deduplicating
+        // so we only send one copy per outbound link (Hop Collapsing).
+        if let Some(matrix) = self.matrix.upgrade() {
+            let sender_sid = if sender_uid.len() >= 3 {
+                &sender_uid[0..3]
+            } else {
+                // Should not happen for valid UIDs
+                self.server_id.as_str()
+            };
+
+            let mut target_peers = std::collections::HashSet::new();
+            let my_sid = self.server_id.as_str();
+
+            for uid in &member_uids {
+                // Skip local users
+                if uid.starts_with(my_sid) {
+                    continue;
+                }
+
+                // Split Horizon: Do not echo back to the sender's origin server
+                if uid.starts_with(sender_sid) {
+                    continue;
+                }
+
+                // Resolve next hop for this remote member
+                let target_sid_str = &uid[0..3];
+                let target_sid = slirc_proto::sync::ServerId::new(target_sid_str.to_string());
+                
+                // Walk topology to find the direct peer (next hop)
+                let mut current = target_sid.clone();
+                for _ in 0..20 { // Max depth protection
+                    if matrix.sync_manager.links.contains_key(&current) {
+                        target_peers.insert(current);
+                        break;
+                    }
+                    if let Some(parent) = matrix.sync_manager.topology.get_route(&current) {
+                        current = parent;
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            if !target_peers.is_empty() {
+                 // Construct Canonical S2S Message
+                 let mut s2s_msg = base_msg.clone();
+                 s2s_msg.prefix = Some(slirc_proto::Prefix::new_from_str(&sender_uid)); // Use UID as source
+                 
+                 // Standard S2S Tags
+                 let mut s2s_tags = vec![
+                      Tag(Cow::Borrowed("time"), Some(timestamp.clone())),
+                      Tag(Cow::Borrowed("msgid"), Some(msgid.clone())),
+                 ];
+                 if let Some(ref account) = user_context.account {
+                      s2s_tags.push(Tag(Cow::Borrowed("account"), Some(account.clone())));
+                 }
+                 // Preserve original tags
+                 if let Some(ref orig_tags) = tags {
+                     for tag in orig_tags {
+                         if !tag.0.starts_with("x-") { // Filter internal tags if any
+                             s2s_tags.push(tag.clone());
+                         }
+                     }
+                 }
+                 s2s_msg.tags = Some(s2s_tags);
+                 
+                 let s2s_msg = Arc::new(s2s_msg);
+                 
+                 for peer_sid in target_peers {
+                     if let Some(link) = matrix.sync_manager.get_peer_for_server(&peer_sid) {
+                         let _ = link.tx.try_send(s2s_msg.clone());
+                     }
+                 }
+            }
+        }
         if self.silent_members.remove(&sender_uid) {
             let join_msg = Message {
                 tags: None,

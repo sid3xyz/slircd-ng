@@ -551,23 +551,33 @@ async fn handle_inbound_connection(
 
                         // Dispatch to registry
                         let raw_str = msg.to_string();
-                        if let Ok(msg_ref) = slirc_proto::message::MessageRef::parse(&raw_str) {
-                            let mut ctx = crate::handlers::Context {
-                                uid: "server",
-                                matrix: &matrix,
-                                sender: crate::handlers::ResponseMiddleware::Direct(&reply_tx),
-                                state: &mut server_state,
-                                db: &db,
-                                remote_addr,
-                                label: None,
-                                suppress_labeled_ack: false,
-                                active_batch_id: None,
-                                registry: &registry,
-                            };
+                        // Dispatch to registry
+                        let raw_str = msg.to_string();
+                        // DEBUG LOGGING
+                        tracing::info!(raw = %raw_str, "Dispatching message to registry");
+                        
+                        match slirc_proto::message::MessageRef::parse(&raw_str) {
+                            Ok(msg_ref) => {
+                                let mut ctx = crate::handlers::Context {
+                                    uid: "server",
+                                    matrix: &matrix,
+                                    sender: crate::handlers::ResponseMiddleware::Direct(&reply_tx),
+                                    state: &mut server_state,
+                                    db: &db,
+                                    remote_addr,
+                                    label: None,
+                                    suppress_labeled_ack: false,
+                                    active_batch_id: None,
+                                    registry: &registry,
+                                };
 
-                            if let Err(e) = registry.dispatch_server(&mut ctx, &msg_ref).await {
-                                tracing::error!(peer = %remote_addr, error = ?e, "Protocol error");
-                                break;
+                                if let Err(e) = registry.dispatch_server(&mut ctx, &msg_ref).await {
+                                    tracing::error!(peer = %remote_addr, error = ?e, "Protocol error");
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(peer = %remote_addr, raw = %raw_str, error = ?e, "MessageRef parse failed");
                             }
                         }
                     }

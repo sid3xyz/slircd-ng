@@ -22,8 +22,8 @@ use tracing::error;
 /// # Arguments
 ///
 /// * `state` - The global server state (Matrix).
-/// * `local_sid` - The local server ID (used for hopcounts).
-pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
+/// * `local_sid` - The local server ID (used for filtering local users and hopcounts).
+pub async fn generate_burst(state: &Matrix, local_sid: &str) -> Vec<Command> {
     let mut commands = Vec::new();
 
     // 0. Burst Global Bans (before users/channels to prevent race conditions)
@@ -51,13 +51,9 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
         error!("ip_deny_list lock poisoned, skipping Z-line burst");
     }
 
-    // 1. Burst Users (UID)
-    // Iterate over all users. We only burst local users or users that we are responsible for?
-    // Typically in a mesh, we burst all users we know about.
-    // But for now, let's assume we burst all users in our user_manager.
-    // Wait, if we have users from other servers, we should burst them too if we are acting as a hub.
-    // But for the first hop, we definitely burst our local users.
-    // Let's burst ALL users in the user_manager.
+    // 1. Burst Users (UID) - LOCAL USERS ONLY
+    // Only burst users whose UID starts with local_sid to prevent bouncing
+    // users back to their origin server (which causes nick collisions).
 
     // Collect user Arcs to release DashMap lock before awaiting
     let user_arcs: Vec<_> = state
@@ -69,6 +65,11 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
 
     for user_arc in user_arcs {
         let user = user_arc.read().await;
+
+        // Only burst LOCAL users (UID prefix = local SID)
+        if !user.uid.starts_with(local_sid) {
+            continue;
+        }
 
         // UID nick hopcount timestamp username hostname uid modes realname
         // For local users, hopcount is 1. For remote users, increment on relay.
@@ -92,6 +93,7 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
     for entry in state.channel_manager.channels.iter() {
         let channel_name = entry.key();
         let tx = entry.value();
+        tracing::info!(channel = %channel_name, "Generating SJOIN for channel burst");
 
         // Get Channel Info (Modes, Topic, TS)
         let (info_tx, info_rx) = oneshot::channel();
@@ -188,12 +190,12 @@ pub async fn generate_burst(state: &Matrix, _local_sid: &str) -> Vec<Command> {
     // Send SID for all known servers in the topology except ourselves and the target server
     for entry in state.sync_manager.topology.servers.iter() {
         let info = entry.value();
-        if info.sid.as_str() != _local_sid {
+        if info.sid.as_str() != local_sid {
             // :<uplink_sid> SID <name> <hopcount> <sid> :<description>
             // For now, satisfy the enum Command::SID(name, hopcount, sid, description)
             commands.push(Command::SID(
                 info.name.clone(),
-                info.hopcount.to_string(),
+                (info.hopcount + 1).to_string(), // Increment hopcount
                 info.sid.as_str().to_string(),
                 info.info.clone(),
             ));

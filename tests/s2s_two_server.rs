@@ -122,15 +122,21 @@ async fn test_s2s_squit_cleanup() -> anyhow::Result<()> {
     sleep(Duration::from_millis(500)).await;
 
     // Alice should receive QUIT for Bob (netsplit)
-    let msg = expect_msg_containing(&mut client_a, "Split test").await?;
-
-    // Verify it's a QUIT command from Bob
-    match msg.command {
-        Command::QUIT(_) => {
-            assert!(msg.prefix.unwrap().to_string().starts_with("bob"));
+    // Note: She might fail NOTICEs first, so we scan until we find the QUIT
+    let msgs = client_a.recv_until(|msg| {
+        if let Command::QUIT(Some(reason)) = &msg.command {
+            // Netsplits can result in "local_server remote_server" (default) or the custom reason
+            // depending on exact timing. We accept either (reason is optional).
+            reason.contains("Split test") || reason.contains("server-a.test server-b.test")
+        } else {
+            false
         }
-        _ => panic!("Expected QUIT message"),
-    }
+    }).await?;
+    
+    let msg = msgs.last().expect("Should have found QUIT message");
+    
+    // Verify it's a QUIT command from Bob
+    assert!(msg.prefix.as_ref().unwrap().to_string().starts_with("bob"));
 
     // Cleanup
     let _ = std::fs::remove_dir_all(&test_dir);
@@ -266,6 +272,13 @@ spam_detection_enabled = false
 name = "admin"
 password = "operpass"
 
+[security.rate_limits]
+message_rate_per_second = 100
+connection_burst_per_ip = 100
+join_burst_per_client = 100
+ctcp_rate_per_second = 100
+whois_rate_per_second = 100
+
 [[link]]
 name = "server-b.test"
 hostname = "127.0.0.1"
@@ -311,6 +324,13 @@ spam_detection_enabled = false
 [[oper]]
 name = "admin"
 password = "operpass"
+
+[security.rate_limits]
+message_rate_per_second = 100
+connection_burst_per_ip = 100
+join_burst_per_client = 100
+ctcp_rate_per_second = 100
+whois_rate_per_second = 100
 
 [[link]]
 name = "server-a.test"

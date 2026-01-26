@@ -60,6 +60,160 @@ impl ServerHandler for RoutedMessageHandler {
         tracing::info!(from = %source_uid, to = %target_uid, "Received routed message");
         debug!(from = %source_uid, to = %target_uid, "Routing message");
 
+        // 0. Is the target a channel?
+        use slirc_proto::ChannelExt;
+        if target_uid.is_channel_name() {
+            if let Some(tx) = ctx.matrix.channel_manager.channels.get(target_uid).map(|v| v.value().clone()) {
+                // Route to ChannelActor for local fanout
+                crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
+                    .with_label_values(&[source_sid, "local", "channel"])
+                    .inc();
+
+                // Reconstruct message
+                // For channel messages, we preserve the original sender
+                // channel actor will handle fanout to local members
+                
+                // Parse tags
+                let tags = if let Some(tags_str) = msg.tags {
+                    let mut parsed_tags = Vec::new();
+                    for tag_part in tags_str.split(';') {
+                        if tag_part.is_empty() {
+                            continue;
+                        }
+                        let (key, value) = if let Some((k, v)) = tag_part.split_once('=') {
+                            (k, Some(v.to_string()))
+                        } else {
+                            (tag_part, None)
+                        };
+                        parsed_tags.push(Tag::new(key, value));
+                    }
+                    Some(parsed_tags)
+                } else {
+                    None
+                };
+
+                // Source Prefix (must be resolved to full mask/server for history/clients)
+                // If it's a user UID, resolve it.
+                let source_prefix = if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(source_uid) {
+                    let user = user_arc.read().await;
+                    Prefix::Nickname(
+                        user.nick.clone(),
+                        user.user.clone(),
+                        user.visible_host.clone(),
+                    )
+                } else if source_uid.len() == 3 {
+                     // Server SID?
+                     Prefix::ServerName(source_uid.to_string())
+                } else {
+                     Prefix::new_from_str(source_uid)
+                };
+
+                let cmd = match msg.command_name() {
+                    "PRIVMSG" => Command::PRIVMSG(target_uid.to_string(), text.to_string()),
+                    "NOTICE" => Command::NOTICE(target_uid.to_string(), text.to_string()),
+                    _ => return Ok(()),
+                };
+
+                let out_msg = Message {
+                    tags,
+                    prefix: Some(source_prefix),
+                    command: cmd,
+                };
+
+                // Helper to send to channel
+                use crate::state::actor::ChannelEvent;
+                use crate::state::actor::ChannelMessageParams;
+                use crate::security::UserContext;
+                use slirc_proto::ChannelExt; // For is_channel_name
+                
+                // Construct UserContext
+                // If source is a user we know, pull their info.
+                // Otherwise default to minimal rights (remote user context)
+                let user_context = if let Some(user_arc) = ctx.matrix.user_manager.users.get_cloned(source_uid) {
+                    let user = user_arc.read().await;
+                    UserContext {
+                        nickname: user.nick.clone(),
+                        username: user.user.clone(),
+                        realname: user.realname.clone(),
+                        hostname: user.visible_host.clone(),
+                        account: user.account.clone(),
+                        server: ctx.state.name.clone(), // Or their actual server?
+                        channels: user.channels.iter().cloned().collect(),
+                        is_oper: user.modes.oper, 
+                        oper_type: user.modes.oper_type.clone(),
+                        certificate_fp: user.certfp.clone(),
+                        sasl_mechanism: None, 
+                        is_registered: user.modes.registered,
+                        is_tls: user.modes.secure,
+                    }
+                } else {
+                    // Fallback for unknown remote user or server sender
+                    UserContext {
+                        nickname: source_uid.to_string(),
+                        username: "remote".to_string(),
+                        realname: "Remote User".to_string(),
+                        hostname: "remote".to_string(),
+                        account: None,
+                        server: "remote".to_string(),
+                        channels: Vec::new(),
+                        is_oper: false,
+                        oper_type: None,
+                        certificate_fp: None,
+                        sasl_mechanism: None,
+                        is_registered: true,
+                        is_tls: false,
+                    }
+                };
+
+                let params = Box::new(ChannelMessageParams {
+                    sender_uid: source_uid.to_string(),
+                    text: text.to_string(),
+                    tags: out_msg.tags.clone(),
+                    is_notice: match msg.command_name() {
+                        "NOTICE" => true,
+                        _ => false,
+                    },
+                    is_tagmsg: match msg.command_name() {
+                        "TAGMSG" => true,
+                        _ => false,
+                    },
+                    user_context,
+                    is_registered: true, 
+                    is_tls: false, 
+                    is_bot: false,
+                    status_prefix: None, 
+                    timestamp: None, 
+                    msgid: None, 
+                    override_nick: None,
+                    relaymsg_sender_nick: None,
+                    nanotime: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
+                });
+
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                
+                if let Err(e) = tx.send(ChannelEvent::Message { params, reply_tx }).await {
+                    debug!("Failed to send routed message to channel {}", target_uid);
+                } else {
+                    // Wait for routing result (optional, but good for metrics/debugging)
+                    match reply_rx.await {
+                        Ok(result) => {
+                            debug!("Routing result for channel {}: {:?}", target_uid, result);
+                        }
+                        Err(_) => {
+                            debug!("Channel actor dropped reply for routed message");
+                        }
+                    }
+                }
+            } else {
+                debug!("Received message for unknown channel {}", target_uid);
+                // Cannot route to non-existent channel
+                crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
+                    .with_label_values(&[source_sid, "local", "channel_not_found"])
+                    .inc();
+            }
+            return Ok(());
+        }
+
         // 1. Is the target local?
         if let Some(sender) = ctx.matrix.user_manager.get_first_sender(target_uid) {
             // Local delivery!
