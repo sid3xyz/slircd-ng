@@ -37,10 +37,9 @@ port = 6667
 tls_port = 6697
 password = "your-secret-key"  # Random 32 chars
 
-[server.admin]
-line1 = "Admin Name"
-line2 = "Admin Email"
-line3 = "Admin URL"
+admin_info1 = "Admin Name"
+admin_info2 = "Admin Location"
+admin_email = "admin@example.com"
 
 [database]
 path = "data/irc.db"
@@ -71,7 +70,7 @@ Connect with your IRC client:
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| **Rust Tests** | 743 passing | ✅ |
+| **Rust Tests** | 1200+ passing | ✅ |
 | **irctest Compliance** | 357/387 (92.2%) | ✅ |
 | **Code Quality** | Clippy 0 warnings | ✅ |
 | **Format** | 100% compliant | ✅ |
@@ -80,7 +79,7 @@ Connect with your IRC client:
 
 ### What's Included
 
-- ✅ **81 IRC Handlers**: PRIVMSG, JOIN, MODE, WHO, WHOIS, and more
+- ✅ **100+ IRC Handlers**: PRIVMSG, JOIN, MODE, WHO, WHOIS, and more
 - ✅ **26 IRCv3 Capabilities**: Modern protocol features (SASL, account tracking, etc.)
 - ✅ **Server Linking**: CRDT-based distributed state synchronization
 - ✅ **Session Management**: Bouncer architecture for connection resumption
@@ -119,7 +118,7 @@ Connect with your IRC client:
 
 ### 📡 Protocol Support
 
-**81 IRC Commands**:
+**100+ IRC Commands**:
 - **Channels**: JOIN, PART, MODE, TOPIC, KICK, INVITE, LIST, CYCLE, KNOCK
 - **Messaging**: PRIVMSG, NOTICE, TAGMSG, BATCH
 - **Queries**: WHO, WHOIS, WHOWAS, USERHOST, ISON, USERS
@@ -192,7 +191,7 @@ cargo doc --no-deps --open
 ```
 slircd-ng/
 ├── src/                           # Main daemon code
-│   ├── handlers/                  # 60+ IRC command handlers
+│   ├── handlers/                  # 100+ IRC command handlers
 │   ├── state/                     # User/channel state management
 │   ├── sync/                      # Server-to-server synchronization
 │   ├── security/                  # TLS, SASL, bans
@@ -248,7 +247,7 @@ Load tested with up to 1000 concurrent users.
 
 - ✅ `cargo fmt`: 100% formatting compliance
 - ✅ `cargo clippy -- -D warnings`: 0 warnings (19 documented exceptions)
-- ✅ `cargo test`: 743 tests passing
+- ✅ `cargo test`: 1200+ tests passing
 - ✅ Zero unsafe code in library code
 - ✅ Zero TODO/FIXME markers
 
