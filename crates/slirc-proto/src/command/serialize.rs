@@ -51,6 +51,7 @@ impl fmt::Display for Command {
                     write_collapsed_mode_flags(f, modes)?;
                     let mode_args: Vec<_> = modes.iter().filter_map(|m| m.arg()).collect();
                     for (i, arg) in mode_args.iter().enumerate() {
+                        super::util::validate_param(f, arg)?;
                         f.write_char(' ')?;
                         // Last argument needs colon prefix if it contains space, is empty, or starts with ':'
                         let is_last = i == mode_args.len() - 1;

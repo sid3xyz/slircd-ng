@@ -10,6 +10,7 @@ pub trait IrcSink {
     fn write_str(&mut self, s: &str) -> Result<usize, Self::Error>;
     fn write_char(&mut self, c: char) -> Result<usize, Self::Error>;
     fn write_fmt(&mut self, args: fmt::Arguments<'_>) -> Result<usize, Self::Error>;
+    fn return_error(&self, msg: &str) -> Self::Error;
 }
 
 impl<'a> IrcSink for fmt::Formatter<'a> {
@@ -25,6 +26,10 @@ impl<'a> IrcSink for fmt::Formatter<'a> {
 
     fn write_fmt(&mut self, args: fmt::Arguments<'_>) -> Result<usize, Self::Error> {
         fmt::Write::write_fmt(self, args).map(|_| 0)
+    }
+
+    fn return_error(&self, _msg: &str) -> Self::Error {
+        fmt::Error
     }
 }
 
@@ -51,11 +56,27 @@ impl<'a, W: io::Write + ?Sized> IrcSink for IoWriteSink<'a, W> {
         let s = fmt::format(args);
         self.0.write_all(s.as_bytes()).map(|_| s.len())
     }
+
+    fn return_error(&self, msg: &str) -> Self::Error {
+        io::Error::new(io::ErrorKind::InvalidInput, msg)
+    }
 }
 
 /// Check if a string needs colon-prefixing as a trailing IRC argument.
 pub fn needs_colon_prefix(s: &str) -> bool {
     s.is_empty() || s.contains(' ') || s.starts_with(':')
+}
+
+/// Validate a parameter for IRC injection safety.
+pub fn validate_param<S: IrcSink + ?Sized>(sink: &S, param: &str) -> Result<(), S::Error> {
+    if param
+        .as_bytes()
+        .iter()
+        .any(|&b| b == b'\r' || b == b'\n' || b == 0)
+    {
+        return Err(sink.return_error("Parameter contains invalid control characters"));
+    }
+    Ok(())
 }
 
 /// Write mode flags with collapsed signs (e.g., +ovh instead of +o+v+h).
@@ -112,6 +133,7 @@ pub fn write_standard_reply<S: IrcSink>(
     count += sink.write_char(' ')?;
     count += sink.write_str(code)?;
     for (i, arg) in context.iter().enumerate() {
+        validate_param(sink, arg)?;
         count += sink.write_char(' ')?;
         // Last argument gets colon prefix (freeform)
         if i == context.len() - 1 {
@@ -136,10 +158,12 @@ pub fn write_cmd<S: IrcSink>(sink: &mut S, cmd: &str, args: &[&str]) -> Result<u
     count += sink.write_str(cmd)?;
 
     for param in middle_params {
+        validate_param(sink, param)?;
         count += sink.write_char(' ')?;
         count += sink.write_str(param)?;
     }
 
+    validate_param(sink, trailing)?;
     count += sink.write_char(' ')?;
 
     // Add colon prefix if trailing is empty, contains a space, or starts with ':'
@@ -162,9 +186,11 @@ pub fn write_cmd_freeform<S: IrcSink>(
         Some((suffix, middle)) => {
             count += sink.write_str(cmd)?;
             for arg in middle {
+                validate_param(sink, arg)?;
                 count += sink.write_char(' ')?;
                 count += sink.write_str(arg)?;
             }
+            validate_param(sink, suffix)?;
             count += sink.write_str(" :")?;
             count += sink.write_str(suffix)?;
             Ok(count)
@@ -178,6 +204,7 @@ pub fn write_service_args<S: IrcSink>(sink: &mut S, args: &[String]) -> Result<u
     let mut count = 0;
     let len = args.len();
     for (i, arg) in args.iter().enumerate() {
+        validate_param(sink, arg)?;
         count += sink.write_char(' ')?;
         if i == len - 1 && needs_colon_prefix(arg) {
             count += sink.write_char(':')?;
@@ -196,6 +223,7 @@ where
     let mut count = 0;
     let len = args.len();
     for (i, arg) in args.enumerate() {
+        validate_param(sink, arg)?;
         count += sink.write_char(' ')?;
         if i == len - 1 && needs_colon_prefix(arg) {
             count += sink.write_char(':')?;
@@ -258,6 +286,10 @@ mod tests {
             let before = self.0.len();
             write!(self.0, "{}", args)?;
             Ok(self.0.len() - before)
+        }
+
+        fn return_error(&self, _msg: &str) -> Self::Error {
+            fmt::Error
         }
     }
 
@@ -444,5 +476,12 @@ mod tests {
         ];
         write_collapsed_mode_flags(&mut sink, &modes).unwrap();
         assert_eq!(sink.0, "+o-v+h");
+    }
+
+    #[test]
+    fn test_write_cmd_injection_vulnerability() {
+        let mut sink = StringSink(String::new());
+        let result = write_cmd(&mut sink, "PRIVMSG", &["#channel", "Hello\r\nQUIT"]);
+        assert!(result.is_err());
     }
 }
