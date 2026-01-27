@@ -14,6 +14,7 @@ use tokio::time::timeout;
 pub struct TestClient {
     reader: BufReader<OwnedReadHalf>,
     writer: BufWriter<OwnedWriteHalf>,
+    #[allow(dead_code)]
     nick: String,
 }
 
@@ -68,6 +69,7 @@ impl TestClient {
     }
 
     /// Receive multiple messages until the given predicate returns true.
+    #[allow(dead_code)]
     pub async fn recv_until<F>(&mut self, mut predicate: F) -> anyhow::Result<Vec<Message>>
     where
         F: FnMut(&Message) -> bool,
@@ -85,6 +87,7 @@ impl TestClient {
     }
 
     /// Register with the server (NICK + USER).
+    #[allow(dead_code)]
     pub async fn register(&mut self) -> anyhow::Result<()> {
         self.send(Command::NICK(self.nick.clone())).await?;
         self.send(Command::USER(
