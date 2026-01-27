@@ -61,12 +61,18 @@ lines = ["Test Server"]
 [multiclient]
 enabled = true
 
+[history]
+enabled = true
+backend = "redb"
+path = "{}/history.db"
+
 [[oper]]
 name = "testop"
 password = "testpass"
 host = "*@*"
 "#,
             port,
+            data_dir.display(),
             data_dir.display()
         );
 

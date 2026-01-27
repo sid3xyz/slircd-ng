@@ -32,8 +32,8 @@
     - [x] Wire `src/state/persistence.rs` into `ChannelManager`.
     - [x] Load channels/modes/topics at startup.
     - [x] Save state on mode changes/shutdown.
-- [ ] **History Completeness**
-    - [ ] Verify `chathistory` v2 compliance.
+- [x] **History Completeness**
+    - [x] Verify `chathistory` v2 compliance.
 
 ## Phase 4: Configuration Mastery (Exceeds)
 *Goal: Best-in-class configuration experience.*

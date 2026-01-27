@@ -761,7 +761,9 @@ impl ChannelActor {
             let item = crate::history::types::HistoryItem::Message(stored_msg);
 
             tokio::spawn(async move {
-                let _ = history.store_item(&target_name, item).await;
+                if let Err(e) = history.store_item(&target_name, item).await {
+                    tracing::error!("Failed to store history channel={}: {}", target_name, e);
+                }
             });
         }
 
