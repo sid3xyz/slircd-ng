@@ -50,6 +50,7 @@ impl PostRegHandler for MapHandler {
             prefix: String,
             is_last: bool,
             lines: &mut Vec<String>,
+            server_user_counts: &std::collections::HashMap<String, usize>,
         ) {
             // Find current server info in topology
             // If it's the local server, it should be in the topology.
@@ -65,8 +66,13 @@ impl PostRegHandler for MapHandler {
                     format!("{}|-", prefix)
                 };
 
-                // TODO: Include user count if available/synced
-                lines.push(format!("{} {}", connector, info.name));
+                let count_str = if let Some(count) = server_user_counts.get(current_sid.as_str()) {
+                    format!(" [{} users]", count)
+                } else {
+                    "".to_string()
+                };
+
+                lines.push(format!("{} {}{}", connector, info.name, count_str));
 
                 // Prepare prefix for children
                 let child_prefix = if prefix.is_empty() {
@@ -87,6 +93,7 @@ impl PostRegHandler for MapHandler {
                         child_prefix.clone(),
                         child_is_last,
                         lines,
+                        server_user_counts,
                     );
                 }
             }
@@ -96,12 +103,26 @@ impl PostRegHandler for MapHandler {
         // Use server_id (ServerId) instead of server_info.sid (String)
         let local_sid = &ctx.matrix.server_id;
 
+        // Calculate user counts per SID
+        // We do this once to avoid iterating users for every node
+        let mut server_user_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for user_entry in ctx.matrix.user_manager.users.iter() {
+            let uid = user_entry.key();
+            // TS6 UIDs are 9 chars, first 3 are SID.
+            // Even if not strictly TS6, we assume prefix-based routing.
+            if uid.len() >= 3 {
+                let sid = &uid[0..3];
+                *server_user_counts.entry(sid.to_string()).or_insert(0) += 1;
+            }
+        }
+
         traverse(
             &ctx.matrix.sync_manager.topology,
             local_sid,
             String::new(),
             true,
             &mut map_lines,
+            &server_user_counts,
         );
 
         // Send each line as a separate RPL_MAP reply
