@@ -551,11 +551,9 @@ async fn handle_inbound_connection(
 
                         // Dispatch to registry
                         let raw_str = msg.to_string();
-                        // Dispatch to registry
-                        let raw_str = msg.to_string();
                         // DEBUG LOGGING
                         tracing::info!(raw = %raw_str, "Dispatching message to registry");
-                        
+
                         match slirc_proto::message::MessageRef::parse(&raw_str) {
                             Ok(msg_ref) => {
                                 let mut ctx = crate::handlers::Context {

@@ -123,18 +123,20 @@ async fn test_s2s_squit_cleanup() -> anyhow::Result<()> {
 
     // Alice should receive QUIT for Bob (netsplit)
     // Note: She might fail NOTICEs first, so we scan until we find the QUIT
-    let msgs = client_a.recv_until(|msg| {
-        if let Command::QUIT(Some(reason)) = &msg.command {
-            // Netsplits can result in "local_server remote_server" (default) or the custom reason
-            // depending on exact timing. We accept either (reason is optional).
-            reason.contains("Split test") || reason.contains("server-a.test server-b.test")
-        } else {
-            false
-        }
-    }).await?;
-    
+    let msgs = client_a
+        .recv_until(|msg| {
+            if let Command::QUIT(Some(reason)) = &msg.command {
+                // Netsplits can result in "local_server remote_server" (default) or the custom reason
+                // depending on exact timing. We accept either (reason is optional).
+                reason.contains("Split test") || reason.contains("server-a.test server-b.test")
+            } else {
+                false
+            }
+        })
+        .await?;
+
     let msg = msgs.last().expect("Should have found QUIT message");
-    
+
     // Verify it's a QUIT command from Bob
     assert!(msg.prefix.as_ref().unwrap().to_string().starts_with("bob"));
 

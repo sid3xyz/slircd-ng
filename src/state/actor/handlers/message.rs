@@ -650,10 +650,11 @@ impl ChannelActor {
                 // Resolve next hop for this remote member
                 let target_sid_str = &uid[0..3];
                 let target_sid = slirc_proto::sync::ServerId::new(target_sid_str.to_string());
-                
+
                 // Walk topology to find the direct peer (next hop)
                 let mut current = target_sid.clone();
-                for _ in 0..20 { // Max depth protection
+                for _ in 0..20 {
+                    // Max depth protection
                     if matrix.sync_manager.links.contains_key(&current) {
                         target_peers.insert(current);
                         break;
@@ -667,35 +668,36 @@ impl ChannelActor {
             }
 
             if !target_peers.is_empty() {
-                 // Construct Canonical S2S Message
-                 let mut s2s_msg = base_msg.clone();
-                 s2s_msg.prefix = Some(slirc_proto::Prefix::new_from_str(&sender_uid)); // Use UID as source
-                 
-                 // Standard S2S Tags
-                 let mut s2s_tags = vec![
-                      Tag(Cow::Borrowed("time"), Some(timestamp.clone())),
-                      Tag(Cow::Borrowed("msgid"), Some(msgid.clone())),
-                 ];
-                 if let Some(ref account) = user_context.account {
-                      s2s_tags.push(Tag(Cow::Borrowed("account"), Some(account.clone())));
-                 }
-                 // Preserve original tags
-                 if let Some(ref orig_tags) = tags {
-                     for tag in orig_tags {
-                         if !tag.0.starts_with("x-") { // Filter internal tags if any
-                             s2s_tags.push(tag.clone());
-                         }
-                     }
-                 }
-                 s2s_msg.tags = Some(s2s_tags);
-                 
-                 let s2s_msg = Arc::new(s2s_msg);
-                 
-                 for peer_sid in target_peers {
-                     if let Some(link) = matrix.sync_manager.get_peer_for_server(&peer_sid) {
-                         let _ = link.tx.try_send(s2s_msg.clone());
-                     }
-                 }
+                // Construct Canonical S2S Message
+                let mut s2s_msg = base_msg.clone();
+                s2s_msg.prefix = Some(slirc_proto::Prefix::new_from_str(&sender_uid)); // Use UID as source
+
+                // Standard S2S Tags
+                let mut s2s_tags = vec![
+                    Tag(Cow::Borrowed("time"), Some(timestamp.clone())),
+                    Tag(Cow::Borrowed("msgid"), Some(msgid.clone())),
+                ];
+                if let Some(ref account) = user_context.account {
+                    s2s_tags.push(Tag(Cow::Borrowed("account"), Some(account.clone())));
+                }
+                // Preserve original tags
+                if let Some(ref orig_tags) = tags {
+                    for tag in orig_tags {
+                        if !tag.0.starts_with("x-") {
+                            // Filter internal tags if any
+                            s2s_tags.push(tag.clone());
+                        }
+                    }
+                }
+                s2s_msg.tags = Some(s2s_tags);
+
+                let s2s_msg = Arc::new(s2s_msg);
+
+                for peer_sid in target_peers {
+                    if let Some(link) = matrix.sync_manager.get_peer_for_server(&peer_sid) {
+                        let _ = link.tx.try_send(s2s_msg.clone());
+                    }
+                }
             }
         }
         if self.silent_members.remove(&sender_uid) {
