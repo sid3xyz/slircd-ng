@@ -199,8 +199,11 @@ impl ChannelActor {
                     .flood_message_limiters
                     .entry(sender_uid.clone())
                     .or_insert_with(|| {
-                        let mut period_per_token =
-                            Duration::from_secs_f64(param.period as f64 / param.count as f64);
+                        let mut period_per_token = if param.count == 0 {
+                            Duration::from_secs(param.period as u64) // Fallback if count is 0 (should not happen)
+                        } else {
+                            Duration::from_secs_f64(param.period as f64 / param.count as f64)
+                        };
 
                         // Fix: Clamp to 1 nanosecond to prevent panic in Quota::with_period
                         // if period is small and count is very large (DoS protection).

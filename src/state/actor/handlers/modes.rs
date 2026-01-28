@@ -232,6 +232,10 @@ impl ChannelActor {
                                             // We just cleared the map, so they will be recreated with new policy.
                                         }
                                         super::FloodType::Join => {
+                                            if param.count == 0 {
+                                                continue;
+                                            }
+
                                             // Calculate period per join allowed
                                             // period (secs) / count (joins)
                                             let period_per_action =
@@ -243,7 +247,8 @@ impl ChannelActor {
                                                 Quota::with_period(period_per_action)
                                             {
                                                 let quota = quota.allow_burst(
-                                                    NonZeroU32::new(param.count).unwrap(),
+                                                    NonZeroU32::new(param.count)
+                                                        .unwrap_or(NonZeroU32::MIN),
                                                 );
                                                 self.flood_join_limiter =
                                                     Some(RateLimiter::direct(quota));
