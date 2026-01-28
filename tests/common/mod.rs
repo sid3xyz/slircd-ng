@@ -6,5 +6,6 @@
 pub mod client;
 pub mod server;
 
+#[allow(unused_imports)]
 pub use client::TestClient;
 pub use server::TestServer;

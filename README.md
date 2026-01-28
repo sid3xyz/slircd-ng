@@ -70,7 +70,7 @@ Connect with your IRC client:
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| **Rust Tests** | 1200+ passing | ✅ |
+| **Rust Tests** | 750+ passing | ✅ |
 | **irctest Compliance** | 357/387 (92.2%) | ✅ |
 | **Code Quality** | Clippy 0 warnings | ✅ |
 | **Format** | 100% compliant | ✅ |
@@ -247,7 +247,7 @@ Load tested with up to 1000 concurrent users.
 
 - ✅ `cargo fmt`: 100% formatting compliance
 - ✅ `cargo clippy -- -D warnings`: 0 warnings (19 documented exceptions)
-- ✅ `cargo test`: 1200+ tests passing
+- ✅ `cargo test`: 750+ tests passing
 - ✅ Zero unsafe code in library code
 - ✅ Zero TODO/FIXME markers
 
