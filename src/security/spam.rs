@@ -23,6 +23,7 @@ use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use regex::RegexSet;
 use tracing::{debug, warn};
 
 use crate::config::SecurityConfig;
@@ -47,6 +48,8 @@ pub struct SpamDetectionService {
     keyword_matcher: AhoCorasick,
     /// Raw keywords for management/rebuilding
     raw_keywords: HashSet<String>,
+    /// Compiled RegexSet for pattern matching
+    regex_matcher: Option<RegexSet>,
     /// Suspicious URL shortener domains
     url_shorteners: HashSet<String>,
     /// Entropy threshold for gibberish detection (0.0-8.0, typical spam <3.5)
@@ -107,9 +110,23 @@ impl SpamDetectionService {
             None
         };
 
+        // Initialize RegexSet
+        let regex_matcher = if !config.spam.regex_patterns.is_empty() {
+            match RegexSet::new(&config.spam.regex_patterns) {
+                Ok(set) => Some(set),
+                Err(err) => {
+                    warn!(error = ?err, "Failed to compile spam regex patterns; regex checking disabled");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Self {
             keyword_matcher: matcher,
             raw_keywords: keywords.into_iter().collect(),
+            regex_matcher,
             url_shorteners: Self::default_url_shorteners(),
             // Entropy threshold of 2.5 catches spam more effectively
             // Research suggests <2.5 for spam detection, >4.5 for normal text
@@ -377,6 +394,21 @@ impl SpamDetectionService {
             };
         }
 
+        // LAYER 6: Regex Analysis
+        if let Some(set) = &self.regex_matcher {
+            if set.is_match(text) {
+                 // Get the first matching pattern index
+                let matches: Vec<_> = set.matches(text).into_iter().collect();
+                if let Some(idx) = matches.first() {
+                     debug!("Regex spam pattern match at index {}", idx);
+                     return SpamVerdict::Spam {
+                        pattern: format!("regex:{}", idx), // We'd ideally want the pattern string but RegexSet doesn't store it accessibly by default without keeping a copy. Index is sufficient for now.
+                        confidence: 1.0, // Regex matches are usually definitive
+                     };
+                }
+            }
+        }
+
         SpamVerdict::Clean
     }
 
@@ -634,5 +666,42 @@ mod tests {
             service.check_message_repetition(uid, "Different"),
             SpamVerdict::Clean
         );
+    }
+
+    #[test]
+    fn test_regex_matching() {
+        let mut config = SecurityConfig::default();
+        config.spam.regex_patterns = vec![r"^!foo.*bar$".to_string(), r"\d{3}-\d{2}-\d{4}".to_string()];
+        
+        // Custom construction for test since we need to inject config
+        let service = SpamDetectionService::new(None, config);
+
+        // Test matching pattern
+        let verdict = service.check_content("!foooooobar");
+        assert!(matches!(verdict, SpamVerdict::Spam { .. }));
+        if let SpamVerdict::Spam { pattern, .. } = verdict {
+            assert_eq!(pattern, "regex:0");
+        }
+
+        // Test matching second pattern
+        let verdict = service.check_content("123-45-6789");
+         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
+
+        // Test non-matching
+        let verdict = service.check_content("clean message");
+        assert_eq!(verdict, SpamVerdict::Clean);
+    }
+
+    #[test]
+    fn test_invalid_regex_graceful_failure() {
+        let mut config = SecurityConfig::default();
+        // Invalid regex (unclosed parenthesis)
+        config.spam.regex_patterns = vec![r"(unclosed".to_string()];
+        
+        // Should not panic, but log specific warning and disable regex
+        let service = SpamDetectionService::new(None, config);
+        
+        let verdict = service.check_content("(unclosed");
+        assert_eq!(verdict, SpamVerdict::Clean);
     }
 }

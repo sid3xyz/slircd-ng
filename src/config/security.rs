@@ -109,6 +109,10 @@ pub struct SpamConfig {
     /// List of censored words for channel mode +G.
     #[serde(default)]
     pub censored_words: Vec<String>,
+    /// List of regex patterns for spam detection.
+    /// Uses Rust's regex crate (ReDoS safe).
+    #[serde(default)]
+    pub regex_patterns: Vec<String>,
 }
 
 impl Default for SpamConfig {
@@ -119,6 +123,7 @@ impl Default for SpamConfig {
             heuristics: HeuristicsConfig::default(),
             rbl: RblConfig::default(),
             censored_words: Vec::new(),
+            regex_patterns: Vec::new(),
         }
     }
 }
