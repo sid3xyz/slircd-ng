@@ -104,6 +104,9 @@ impl QueryExecutor {
             .await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
         msgs.reverse();
+        if !ctx.state.capabilities.contains("draft/event-playback") {
+            msgs.retain(|item| matches!(item, HistoryItem::Message(_)));
+        }
         Ok(msgs)
     }
 
@@ -144,6 +147,9 @@ impl QueryExecutor {
             .await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
         msgs.reverse();
+        if !ctx.state.capabilities.contains("draft/event-playback") {
+            msgs.retain(|item| matches!(item, HistoryItem::Message(_)));
+        }
         Ok(msgs)
     }
 
@@ -176,13 +182,17 @@ impl QueryExecutor {
             reverse: false,
         };
 
-        let msgs = ctx
+        let mut msgs = ctx
             .matrix
             .service_manager
             .history
             .query(query)
             .await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
+
+        if !ctx.state.capabilities.contains("draft/event-playback") {
+            msgs.retain(|item| matches!(item, HistoryItem::Message(_)));
+        }
         Ok(msgs)
     }
 
@@ -223,12 +233,21 @@ impl QueryExecutor {
             .await
             .map_err(|e| HandlerError::Internal(e.to_string()))?;
 
-        Ok(slice_around(
+        // Filter BEFORE slicing to ensure we don't slice around events the client can't see?
+        // Or slice first then filter?
+        // Slicing relies on "center" timestamp.
+        // It's safer to query, slice, then filter output.
+        let mut sliced = slice_around(
             messages,
             limit as usize,
             msgref_str,
             center_ts,
-        ))
+        );
+
+        if !ctx.state.capabilities.contains("draft/event-playback") {
+            sliced.retain(|item| matches!(item, HistoryItem::Message(_)));
+        }
+        Ok(sliced)
     }
 
     async fn handle_between(
@@ -296,6 +315,9 @@ impl QueryExecutor {
             msgs.reverse();
         }
 
+        if !ctx.state.capabilities.contains("draft/event-playback") {
+            msgs.retain(|item| matches!(item, HistoryItem::Message(_)));
+        }
         Ok(msgs)
     }
 

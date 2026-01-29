@@ -44,6 +44,13 @@ impl PostRegHandler for RelayMsgHandler {
             return Err(HandlerError::NeedMoreParams);
         }
 
+        // Enforce draft/relaymsg capability (Audit Fix)
+        if !ctx.state.capabilities.contains("draft/relaymsg") {
+             // If client hasn't enabled the CAP, we treat it as unknown command
+             // to avoid leaking existence/functionality.
+             return Err(HandlerError::UnknownCommand("RELAYMSG".to_string()));
+        }
+
         // Validate relay_from nick format FIRST (before oper check)
         // Valid format: "nick/service" (e.g., "smt/discord")
         // Invalid: contains '!' or missing '/' designator
