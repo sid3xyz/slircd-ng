@@ -105,7 +105,8 @@ impl PostRegHandler for MapHandler {
 
         // Calculate user counts per SID
         // We do this once to avoid iterating users for every node
-        let mut server_user_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut server_user_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         for user_entry in ctx.matrix.user_manager.users.iter() {
             let uid = user_entry.key();
             // TS6 UIDs are 9 chars, first 3 are SID.

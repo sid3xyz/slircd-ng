@@ -154,11 +154,7 @@ impl PostRegHandler for RehashHandler {
             Err(e) => {
                 let error_msg = format!("REHASH failed: {:?}", e).replace('\n', " ");
                 ctx.sender
-                    .send(server_notice(
-                        server_name,
-                        &nick,
-                        error_msg,
-                    ))
+                    .send(server_notice(server_name, &nick, error_msg))
                     .await?;
                 tracing::warn!(oper = %nick, error = ?e, "REHASH failed - original config preserved");
             }

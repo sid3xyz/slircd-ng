@@ -151,6 +151,10 @@ pub struct ServerState {
     pub active_batch_ref: Option<String>,
     /// Routing decision for the active batch.
     pub batch_routing: Option<BatchRouting>,
+    /// SASL authentication state (safe-guard against panics).
+    pub sasl_state: SaslState,
+    /// SASL buffer (safe-guard against panics).
+    pub sasl_buffer: String,
 }
 
 /// Routing decision for a server batch.
@@ -214,25 +218,22 @@ impl SessionState for ServerState {
     }
 }
 
-/// ServerState doesn't do SASL - these are no-ops with panic paths that should never execute.
+/// ServerState implements SaslAccess to prevent panics in shared handlers.
 impl SaslAccess for ServerState {
     fn sasl_state(&self) -> &SaslState {
-        // Servers don't authenticate via SASL - this should never be called
-        static NONE: SaslState = SaslState::None;
-        &NONE
+        &self.sasl_state
     }
 
-    fn set_sasl_state(&mut self, _state: SaslState) {
-        // No-op for servers
+    fn set_sasl_state(&mut self, state: SaslState) {
+        self.sasl_state = state;
     }
 
     fn sasl_buffer(&self) -> &str {
-        ""
+        &self.sasl_buffer
     }
 
     fn sasl_buffer_mut(&mut self) -> &mut String {
-        // This should never be called for servers
-        panic!("ServerState does not support SASL buffer access")
+        &mut self.sasl_buffer
     }
 
     fn account(&self) -> Option<&str> {
@@ -472,6 +473,8 @@ impl UnregisteredState {
                     active_batch: None,
                     active_batch_ref: None,
                     batch_routing: None,
+                    sasl_state: SaslState::default(),
+                    sasl_buffer: String::new(),
                 })
             }
             _ => Err(self),
@@ -760,5 +763,33 @@ mod tests {
 
         assert!(state.has_cap("echo-message"));
         assert!(!state.has_cap("server-time"));
+    }
+}
+
+#[test]
+fn test_server_state_sasl_no_panic() {
+    let mut state = ServerState {
+        name: "test.server".to_string(),
+        sid: "001".to_string(),
+        info: "Test Server".to_string(),
+        hopcount: 1,
+        capabilities: std::collections::HashSet::new(),
+        is_tls: false,
+        active_batch: None,
+        active_batch_ref: None,
+        batch_routing: None,
+        sasl_state: SaslState::default(),
+        sasl_buffer: String::new(),
+    };
+
+    // Should not panic
+    state.sasl_buffer_mut().push_str("test");
+    assert_eq!(state.sasl_buffer(), "test");
+
+    state.set_sasl_state(SaslState::WaitingForData);
+    if let SaslState::WaitingForData = state.sasl_state() {
+        // OK
+    } else {
+        panic!("SASL state not set");
     }
 }
