@@ -123,13 +123,11 @@ pub async fn perform_autoreplay(
 
     // 2. Replay history
     for (channel_name, _membership) in &info.channels {
-        // Determine start bound per-target: Use device last_seen from reattach info
-        // NOTE: When a read-marker manager exists, use it for per-target replay bounds.
+        // Determine start bound per-target: Use device last_seen from reattach info, 
+        // effectively falling back to the global reattach time if we haven't implemented finer grained logic yet.
         let start_dt_opt = info.replay_since;
-
         if let Some(start_dt) = start_dt_opt {
             replay_channel_history(ctx, channel_name, start_dt, reg_state).await?;
-            // NOTE: When a read-marker manager exists, update it after replay.
         }
     }
 
@@ -198,13 +196,39 @@ async fn replay_channel_history(
             // End BATCH
             let batch_end = Message {
                 tags: None,
-                prefix: Some(Prefix::ServerName(server_name)),
+                prefix: Some(Prefix::ServerName(server_name.clone())),
                 command: Command::BATCH(format!("-{}", batch_id), None, None),
             };
             let _ = ctx.transport.write_message(&batch_end).await;
 
-            // NOTE: When a read-marker manager exists, update it after replay.
-            return Ok(());
+            // Send read marker if client supports it (Unified Read State)
+            if reg_state.capabilities.contains("draft/read-marker")
+                && let Some(account) = &reg_state.account
+                && let Some(marker_ts) = ctx.matrix.read_marker_manager.get_marker(account, target)
+            {
+                if let Some(dt) = DateTime::from_timestamp(
+                    marker_ts / 1_000_000_000,
+                    (marker_ts % 1_000_000_000) as u32,
+                ) {
+                    let ts_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                    let marker_msg = Message {
+                        tags: Some(vec![
+                            slirc_proto::Tag(
+                                std::borrow::Cow::Borrowed("+draft/read-marker"),
+                                Some(ts_iso),
+                            ),
+                            slirc_proto::Tag(
+                                std::borrow::Cow::Borrowed("time"),
+                                Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
+                            ),
+                        ]),
+                        prefix: Some(Prefix::ServerName(server_name.clone())),
+                        command: Command::TAGMSG(target.to_string()),
+                    };
+                    let _ = ctx.transport.write_message(&marker_msg).await;
+                    debug!(target = %target, "Sent read marker sync");
+                }
+            }
         }
         Ok(_) => {
             // No messages delivered

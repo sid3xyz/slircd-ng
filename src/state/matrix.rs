@@ -79,6 +79,9 @@ pub struct Matrix {
     /// Runtime statistics (user/channel counts, uptime).
     pub stats_manager: Arc<crate::state::managers::stats::StatsManager>,
 
+    /// Read marker management state (Unified Read State).
+    pub read_marker_manager: Arc<crate::state::managers::read_markers::ReadMarkersManager>,
+
     /// This server's identity.
     pub server_info: ServerInfo,
 
@@ -247,11 +250,17 @@ impl Matrix {
         let stats_manager = Arc::new(crate::state::managers::stats::StatsManager::new());
         user_manager.set_stats_manager(stats_manager.clone());
 
+
         let mut channel_manager = ChannelManager::with_registered_channels(
             registered_channel_names,
             stats_manager.clone(),
         );
         channel_manager.set_observer(sync_manager_arc.clone());
+
+        // Create ReadMarkersManager (Unified Read State)
+        let read_marker_manager = Arc::new(crate::state::managers::read_markers::ReadMarkersManager::new(
+            always_on_store.clone(),
+        ));
 
         // Create ServiceManager with server SID for service UIDs
         let service_manager = ServiceManager::new(db.clone(), history, &config.server.sid);
@@ -293,6 +302,7 @@ impl Matrix {
                 sync_manager: Arc::try_unwrap(sync_manager_arc)
                     .unwrap_or_else(|arc| (*arc).clone()),
                 stats_manager,
+                read_marker_manager,
                 server_info: ServerInfo {
                     name: config.server.name.clone(),
                     network: config.server.network.clone(),
