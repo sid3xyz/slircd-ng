@@ -474,6 +474,8 @@ async fn handle_inbound_connection(
         active_batch: None,
         active_batch_ref: None,
         batch_routing: None,
+        sasl_state: crate::handlers::SaslState::default(),
+        sasl_buffer: String::new(),
     };
 
     // Reply channel for handler responses
@@ -883,6 +885,8 @@ pub fn connect_to_peer(
                 active_batch: None,
                 active_batch_ref: None,
                 batch_routing: None,
+                sasl_state: crate::handlers::SaslState::default(),
+                sasl_buffer: String::new(),
             };
 
             // Reply channel for handler responses
