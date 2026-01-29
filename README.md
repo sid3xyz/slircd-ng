@@ -70,7 +70,7 @@ Connect with your IRC client:
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| **Rust Tests** | 750+ passing | ✅ |
+| **Rust Tests** | 760+ passing | ✅ |
 | **irctest Compliance** | 357/387 (92.2%) | ✅ |
 | **Code Quality** | Clippy 0 warnings | ✅ |
 | **Format** | 100% compliant | ✅ |
@@ -80,7 +80,7 @@ Connect with your IRC client:
 ### What's Included
 
 - ✅ **100+ IRC Handlers**: PRIVMSG, JOIN, MODE, WHO, WHOIS, and more
-- ✅ **26 IRCv3 Capabilities**: Modern protocol features (SASL, account tracking, etc.)
+- ✅ **27 IRCv3 Capabilities**: Modern protocol features (SASL, account tracking, etc.)
 - ✅ **Server Linking**: CRDT-based distributed state synchronization
 - ✅ **Session Management**: Bouncer architecture for connection resumption
 - ✅ **Message History**: CHATHISTORY with Redb persistence
@@ -128,7 +128,7 @@ Connect with your IRC client:
 - **History**: CHATHISTORY (LATEST, BEFORE, AFTER, BETWEEN, TARGETS)
 - **Roleplay**: NPC command, MODE +E support
 
-**IRCv3 Capabilities** (26 total):
+**IRCv3 Capabilities** (27 total):
 - Core: `multi-prefix`, `userhost-in-names`, `server-time`, `echo-message`, `extended-join`, `cap-notify`
 - Batching: `batch`, `message-tags`, `labeled-response`, `standard-replies`
 - Presence: `away-notify`, `account-notify`, `monitor`, `extended-monitor`, `chghost`, `setname`, `invite-notify`
@@ -247,7 +247,7 @@ Load tested with up to 1000 concurrent users.
 
 - ✅ `cargo fmt`: 100% formatting compliance
 - ✅ `cargo clippy -- -D warnings`: 0 warnings (19 documented exceptions)
-- ✅ `cargo test`: 750+ tests passing
+- ✅ `cargo test`: 760+ tests passing
 - ✅ Zero unsafe code in library code
 - ✅ Zero TODO/FIXME markers
 
