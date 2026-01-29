@@ -205,12 +205,12 @@ async fn replay_channel_history(
             if reg_state.capabilities.contains("draft/read-marker")
                 && let Some(account) = &reg_state.account
                 && let Some(marker_ts) = ctx.matrix.read_marker_manager.get_marker(account, target)
-            {
-                if let Some(dt) = DateTime::from_timestamp(
+                && let Some(dt) = DateTime::from_timestamp(
                     marker_ts / 1_000_000_000,
                     (marker_ts % 1_000_000_000) as u32,
-                ) {
-                    let ts_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                )
+            {
+                let ts_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
                     let marker_msg = Message {
                         tags: Some(vec![
                             slirc_proto::Tag(
@@ -227,7 +227,6 @@ async fn replay_channel_history(
                     };
                     let _ = ctx.transport.write_message(&marker_msg).await;
                     debug!(target = %target, "Sent read marker sync");
-                }
             }
         }
         Ok(_) => {

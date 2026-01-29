@@ -30,7 +30,6 @@ impl<'a> ChannelStateRepository<'a> {
     }
 
     /// Save channel state to database.
-    #[must_use]
     pub async fn save(&self, state: &ChannelState) -> Result<(), DbError> {
         sqlx::query(
             r#"
@@ -53,7 +52,6 @@ impl<'a> ChannelStateRepository<'a> {
     }
 
     /// Delete channel state from database.
-    #[must_use]
     pub async fn delete(&self, name: &str) -> Result<bool, DbError> {
         let result = sqlx::query("DELETE FROM channel_state WHERE name = ?")
             .bind(name)

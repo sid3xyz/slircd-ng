@@ -302,10 +302,10 @@ impl AlwaysOnStore {
             let keys: Vec<String> = table
                 .iter()?
                 .filter_map(|r| {
-                    if let Ok((k, _)) = r {
-                        if k.value().starts_with(&prefix) {
-                            return Some(k.value().to_string());
-                        }
+                    if let Ok((k, _)) = r 
+                        && k.value().starts_with(&prefix) 
+                    {
+                        return Some(k.value().to_string());
                     }
                     None
                 })

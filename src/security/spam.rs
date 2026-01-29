@@ -395,17 +395,17 @@ impl SpamDetectionService {
         }
 
         // LAYER 6: Regex Analysis
-        if let Some(set) = &self.regex_matcher {
-            if set.is_match(text) {
-                 // Get the first matching pattern index
-                let matches: Vec<_> = set.matches(text).into_iter().collect();
-                if let Some(idx) = matches.first() {
-                     debug!("Regex spam pattern match at index {}", idx);
-                     return SpamVerdict::Spam {
-                        pattern: format!("regex:{}", idx), // We'd ideally want the pattern string but RegexSet doesn't store it accessibly by default without keeping a copy. Index is sufficient for now.
-                        confidence: 1.0, // Regex matches are usually definitive
-                     };
-                }
+        if let Some(set) = &self.regex_matcher 
+            && set.is_match(text) 
+        {
+             // Get the first matching pattern index
+            let matches: Vec<_> = set.matches(text).into_iter().collect();
+            if let Some(idx) = matches.first() {
+                 debug!("Regex spam pattern match at index {}", idx);
+                 return SpamVerdict::Spam {
+                    pattern: format!("regex:{}", idx), // We'd ideally want the pattern string but RegexSet doesn't store it accessibly by default without keeping a copy. Index is sufficient for now.
+                    confidence: 1.0, // Regex matches are usually definitive
+                 };
             }
         }
 
