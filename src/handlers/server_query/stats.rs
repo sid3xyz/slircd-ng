@@ -189,11 +189,11 @@ impl PostRegHandler for StatsHandler {
                 for entry in ctx.matrix.sync_manager.links.iter() {
                     let sid = entry.key();
                     let link = entry.value();
-                    let sent_bytes = S2S_BYTES_SENT.with_label_values(&[sid.as_str()]).get();
-                    let recv_bytes = S2S_BYTES_RECEIVED.with_label_values(&[sid.as_str()]).get();
-                    let _sent_msgs = S2S_COMMANDS
-                        .with_label_values(&[sid.as_str(), "TOTAL"])
-                        .get(); // We need to sum commands or just use 0 if not aggregated
+                    let sent_bytes = S2S_BYTES_SENT.get().map(|m| m.with_label_values(&[sid.as_str()]).get()).unwrap_or(0);
+                    let recv_bytes = S2S_BYTES_RECEIVED.get().map(|m| m.with_label_values(&[sid.as_str()]).get()).unwrap_or(0);
+                    let _sent_msgs = S2S_COMMANDS.get()
+                        .map(|m| m.with_label_values(&[sid.as_str(), "TOTAL"]).get())
+                        .unwrap_or(0);
                     // Actually S2S_COMMANDS has a command label. Summing is hard without iterating.
                     // For now, let's just report 0 for msg count or try to track it separately if critical.
                     // The user asked for "Track message counts by command type", which we did.

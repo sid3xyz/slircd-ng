@@ -127,7 +127,7 @@ fn process_read_result(
                 FloodCheckResult::Ok
             } else {
                 *flood_violations += 1;
-                crate::metrics::RATE_LIMITED.inc();
+                if let Some(m) = crate::metrics::RATE_LIMITED.get() { m.inc(); }
                 warn!(uid = %uid, violations = flood_violations, "Rate limit exceeded");
 
                 if *flood_violations >= MAX_FLOOD_VIOLATIONS {

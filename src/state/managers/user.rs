@@ -245,6 +245,11 @@ impl UserManager {
             .push(uid.clone());
         self.users.insert(uid.clone(), Arc::new(RwLock::new(user)));
 
+        // Update stats
+        if let Some(stats) = &self.stats_manager {
+            stats.user_connected();
+        }
+
         // Notify observer (local change)
         self.notify_observer(&uid, None).await;
     }
@@ -308,9 +313,9 @@ impl UserManager {
                 // Incoming is older (Winner). Kill existing.
                 self.kill_user(&existing_uid, "Nick collision (older wins)", source.clone())
                     .await;
-                crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL
-                    .with_label_values(&["nick", "kill_existing"])
-                    .inc();
+                if let Some(m) = crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL.get() {
+                    m.with_label_values(&["nick", "kill_existing"]).inc();
+                }
                 // Proceed to merge incoming
             } else if incoming_ts > existing_ts {
                 // Incoming is newer (Loser).
@@ -318,9 +323,9 @@ impl UserManager {
                 self.perform_merge(crdt, source.clone()).await;
                 self.kill_user(&uid, "Nick collision (newer loses)", source)
                     .await;
-                crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL
-                    .with_label_values(&["nick", "kill_incoming"])
-                    .inc();
+                if let Some(m) = crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL.get() {
+                    m.with_label_values(&["nick", "kill_incoming"]).inc();
+                }
 
                 // Restore the existing user's nick index, because perform_merge may have modified it
                 // and kill_user removed the new UID. Ensure existing UID is still present.
@@ -344,9 +349,9 @@ impl UserManager {
                     .await;
                 self.perform_merge(crdt, source.clone()).await;
                 self.kill_user(&uid, "Nick collision (tie)", source).await;
-                crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL
-                    .with_label_values(&["nick", "kill_both"])
-                    .inc();
+                if let Some(m) = crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL.get() {
+                    m.with_label_values(&["nick", "kill_both"]).inc();
+                }
                 return;
             }
         }

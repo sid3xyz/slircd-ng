@@ -15,7 +15,7 @@ async fn test_channel_freeze_protection() {
 
     // 1. Connect Victim (B) - Joins and then stops reading
     let addr_b = addr.clone();
-    let victim_handle = thread::spawn(move || {
+    let _victim_handle = thread::spawn(move || {
         let mut stream = TcpStream::connect(&addr_b).unwrap();
         stream.write_all(b"NICK victim\r\nUSER victim 0 * :Victim\r\n").unwrap();
         // Read welcome to ensure registration

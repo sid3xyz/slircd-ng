@@ -216,7 +216,11 @@ impl ChannelActor {
     /// Convert channel state to CRDT representation.
     pub fn to_crdt(&self) -> ChannelCrdt {
         let fallback_ts = self.get_fallback_timestamp();
-        let mut crdt = ChannelCrdt::new(self.name.clone(), fallback_ts);
+        // Initialize CRDT with zero timestamp to ensure it accepts all historical state
+        // from the actor. If we handled it with fallback_ts (Now), it would reject
+        // any state older than Now due to LWW rules.
+        let base_ts = HybridTimestamp::new(0, 0, &ServerId::new("000"));
+        let mut crdt = ChannelCrdt::new(self.name.clone(), base_ts);
 
         self.serialize_topic_to_crdt(&mut crdt, fallback_ts);
         self.serialize_modes_to_crdt(&mut crdt, fallback_ts);
@@ -382,8 +386,11 @@ impl ChannelActor {
 
     /// Serialize members to CRDT.
     fn serialize_members_to_crdt(&self, crdt: &mut ChannelCrdt, fallback_ts: HybridTimestamp) {
+        let base_ts = HybridTimestamp::new(0, 0, &ServerId::new("000"));
         for (uid, modes) in &self.members {
-            crdt.members.join(uid.clone(), fallback_ts);
+            // Join at base_ts to ensure we don't reject historical mode updates
+            crdt.members.join(uid.clone(), base_ts);
+            
             if let Some(m_crdt) = crdt.members.get_modes_mut(uid) {
                 if let Some(ts) = modes.op_ts {
                     m_crdt.op.update(modes.op, ts);
@@ -454,5 +461,116 @@ impl ChannelActor {
             let crdt = self.to_crdt();
             observer.on_channel_update(&crdt, source);
         }
+    }
+}
+#[cfg(test)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::actor::{ChannelActor, ChannelMode};
+    use crate::state::MemberModes;
+    
+    // Removed unused imports: Crdt trait, HashMap, HashSet
+
+    fn make_actor(name: &str) -> ChannelActor {
+        ChannelActor::new_test(name.to_string(), ServerId::new("000"))
+    }
+
+    #[test]
+    fn test_serialization_topic() {
+        let mut actor = make_actor("#test");
+        let t0 = HybridTimestamp::new(100, 0, &ServerId::new("000"));
+        
+        actor.topic = Some(Topic {
+            text: "Hello World".to_string(),
+            set_by: "Nick!User@Host".to_string(),
+            set_at: 1234567890,
+        });
+        actor.topic_timestamp = Some(t0);
+
+        let crdt = actor.to_crdt();
+        assert_eq!(crdt.name, "#test");
+        
+        let topic_c = crdt.topic.value().as_ref().unwrap();
+        assert_eq!(topic_c.text, "Hello World");
+        assert_eq!(topic_c.set_by, "Nick!User@Host");
+        assert_eq!(crdt.topic.timestamp(), t0);
+    }
+
+    #[test]
+    fn test_serialization_modes() {
+        let mut actor = make_actor("#test");
+        let t1 = HybridTimestamp::new(101, 0, &ServerId::new("001"));
+        let t2 = HybridTimestamp::new(102, 0, &ServerId::new("002"));
+
+        actor.modes.insert(ChannelMode::NoExternal);
+        actor.mode_timestamps.insert('n', t1);
+        
+        actor.modes.insert(ChannelMode::Key("secret".into(), t2));
+
+        let crdt = actor.to_crdt();
+        
+        // Check boolean mode
+        assert!(crdt.modes.no_external.value());
+        assert_eq!(crdt.modes.no_external.timestamp(), t1);
+        
+        // Check parameter mode
+        assert_eq!(crdt.key.value().as_deref(), Some("secret"));
+        assert_eq!(crdt.key.timestamp(), t2);
+    }
+
+    #[test]
+    fn test_serialization_members() {
+        let mut actor = make_actor("#test");
+        let t1 = HybridTimestamp::new(101, 0, &ServerId::new("001"));
+        let t2 = HybridTimestamp::new(102, 0, &ServerId::new("001"));
+
+        let mut modes = MemberModes::default();
+        modes.op = true;
+        modes.op_ts = Some(t1);
+        modes.voice = true;
+        modes.voice_ts = Some(t2);
+
+        actor.members.insert("user1".to_string(), modes);
+
+        let crdt = actor.to_crdt();
+        
+        assert!(crdt.members.contains("user1"));
+        let m_crdt = crdt.members.get_modes("user1").unwrap();
+        
+        assert!(m_crdt.op.value());
+        assert_eq!(m_crdt.op.timestamp(), t1);
+        assert!(m_crdt.voice.value());
+        assert_eq!(m_crdt.voice.timestamp(), t2);
+    }
+
+    #[tokio::test]
+    async fn test_apply_merge() {
+        let mut actor = make_actor("#test");
+        let sid = ServerId::new("00B");
+        let t0 = HybridTimestamp::new(100, 0, &sid);
+        let t1 = HybridTimestamp::new(200, 0, &sid);
+        
+        // Create an incoming CRDT state
+        let mut crdt = ChannelCrdt::new("#test".to_string(), t0);
+        crdt.topic.update(
+            Some(TopicCrdt {
+                text: "New Topic".to_string(),
+                set_by: "Remote".to_string(),
+                set_at: 2000000000,
+            }), 
+            t1
+        );
+        crdt.modes.moderated.update(true, t1);
+        
+        // Merge it
+        actor.handle_merge_crdt(crdt, None).await;
+
+        // Verify actor state updated
+        assert_eq!(actor.topic.as_ref().unwrap().text, "New Topic");
+        assert_eq!(actor.topic_timestamp, Some(t1));
+        
+        assert!(actor.modes.contains(&ChannelMode::Moderated));
+        assert_eq!(*actor.mode_timestamps.get(&'m').unwrap(), t1);
     }
 }

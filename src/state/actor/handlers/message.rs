@@ -437,6 +437,31 @@ impl ChannelActor {
         // Collect member UIDs - we'll use matrix.user_manager.try_send_to_uid() for multi-session support
         let member_uids: Vec<String> = self.members.keys().cloned().collect();
 
+        // Memoization cache for local users: key = capability bitmask
+        // 0: server-time
+        // 1: message-tags
+        // 2: account-tag
+        // 3: draft/relaymsg
+        let mut memoized_msgs: std::collections::HashMap<u8, Arc<Message>> =
+            std::collections::HashMap::with_capacity(4);
+
+        let build_cached_msg =
+            |key: u8,
+             target_caps: &HashSet<String>,
+             memo_map: &mut std::collections::HashMap<u8, Arc<Message>>|
+             -> Arc<Message> {
+                if let Some(msg) = memo_map.get(&key) {
+                    return msg.clone();
+                }
+                
+                // Construct fresh if not in cache (using existing logic)
+                // We pass a dummy UID for local users since x-target-uid isn't used for them
+                let msg = build_msg_for_recipient("", Some(target_caps));
+                let msg_arc = Arc::new(msg);
+                memo_map.insert(key, msg_arc.clone());
+                msg_arc
+            };
+
         for uid in &member_uids {
             let _user_caps = self.user_caps.get(uid);
             let mut should_fanout = uid == &sender_uid;
@@ -522,8 +547,31 @@ impl ChannelActor {
                             if is_tagmsg && !has_message_tags {
                                 continue;
                             }
-                            let recipient_msg = build_msg_for_recipient(uid, Some(&caps));
-                            let _ = sess.tx.try_send(Arc::new(recipient_msg));
+                            
+                            // Check if local or remote for optimization
+                            let is_remote = !uid.starts_with(self.server_id.as_str());
+                            
+                            let msg_arc = if is_remote {
+                                // Remote users might need x-target-uid (handled in build_msg_for_recipient)
+                                // We don't cache these as they are unique per UID
+                                let msg = build_msg_for_recipient(uid, Some(&caps));
+                                Arc::new(msg)
+                            } else {
+                                // Local user - use memoization
+                                let has_server_time = caps.contains("server-time");
+                                let has_account = user_context.account.is_some() && caps.contains("account-tag");
+                                let has_relay = relaymsg_sender_nick.is_some() && caps.contains("draft/relaymsg");
+                                
+                                let mut key = 0u8;
+                                if has_server_time { key |= 1; }
+                                if has_message_tags { key |= 2; }
+                                if has_account { key |= 4; }
+                                if has_relay { key |= 8; }
+                                
+                                build_cached_msg(key, &caps, &mut memoized_msgs)
+                            };
+
+                            let _ = sess.tx.try_send(msg_arc);
                             recipients_sent += 1;
                             any_sent = true;
                         }
@@ -603,9 +651,21 @@ impl ChannelActor {
                                         if is_tagmsg && !sib_has_msg_tags {
                                             continue;
                                         }
-                                        let sibling_msg =
-                                            build_msg_for_recipient(&sibling_uid, Some(&caps));
-                                        let _ = sess.tx.try_send(Arc::new(sibling_msg));
+                                        
+                                        // Use cached message for sibling (local user)
+                                        let has_server_time = caps.contains("server-time");
+                                        let has_account = user_context.account.is_some() && caps.contains("account-tag");
+                                        let has_relay = relaymsg_sender_nick.is_some() && caps.contains("draft/relaymsg");
+                                        
+                                        let mut key = 0u8;
+                                        if has_server_time { key |= 1; }
+                                        if sib_has_msg_tags { key |= 2; }
+                                        if has_account { key |= 4; }
+                                        if has_relay { key |= 8; }
+                                        
+                                        let msg_arc = build_cached_msg(key, &caps, &mut memoized_msgs);
+                                        
+                                        let _ = sess.tx.try_send(msg_arc);
                                         delivered_any = true;
                                         recipients_sent += 1;
                                     }

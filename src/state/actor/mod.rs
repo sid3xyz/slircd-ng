@@ -153,6 +153,39 @@ impl ChannelActor {
         tx
     }
 
+    #[cfg(test)]
+    pub(crate) fn new_test(name: String, server_id: slirc_proto::sync::ServerId) -> Self {
+        use std::collections::{HashMap, HashSet, VecDeque};
+        Self {
+            name,
+            members: im::HashMap::new(),
+            user_nicks: HashMap::new(),
+            senders: HashMap::new(),
+            user_caps: HashMap::new(),
+            modes: HashSet::new(),
+            mode_timestamps: HashMap::new(),
+            topic_timestamp: None,
+            server_id,
+            metadata: HashMap::new(),
+            topic: None,
+            created: Utc::now().timestamp(),
+            bans: Vec::new(),
+            excepts: Vec::new(),
+            invex: Vec::new(),
+            quiets: Vec::new(),
+            invites: VecDeque::new(),
+            silent_members: HashSet::new(),
+            kicked_users: HashMap::new(),
+            flood_config: HashMap::new(),
+            flood_message_limiters: HashMap::new(),
+            flood_join_limiter: None,
+            matrix: Weak::new(),
+            state: ActorState::Active,
+            observer: None,
+            dirty: false,
+        }
+    }
+
     /// The main actor loop.
     pub async fn run(mut self, mut rx: mpsc::Receiver<ChannelEvent>) {
         while let Some(event) = rx.recv().await {
@@ -410,7 +443,7 @@ impl ChannelActor {
                     .remove(&name_lower)
                     .is_some()
                 {
-                    crate::metrics::ACTIVE_CHANNELS.dec();
+                    if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.dec(); }
                 }
             }
         }

@@ -52,6 +52,7 @@ async fn test_read_marker_sync() {
     // 5. Receive CAP ACK
     let msg = client.recv().await.expect("Failed to receive CAP ACK");
     match msg.command {
+        Command::CAP(_, slirc_proto::CapSubCommand::ACK, Some(caps), _) |
         Command::CAP(_, slirc_proto::CapSubCommand::ACK, _, Some(caps)) => {
             assert!(caps.contains("draft/read-marker"), "Server did not ACK draft/read-marker");
         }

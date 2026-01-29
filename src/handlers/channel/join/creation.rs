@@ -243,7 +243,7 @@ pub(crate) async fn join_channel_internal(
             .channels
             .entry(channel_lower.clone())
             .or_insert_with(|| {
-                crate::metrics::ACTIVE_CHANNELS.inc();
+                if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.inc(); }
                 crate::state::actor::ChannelActor::spawn_with_capacity(
                     channel_name.to_string(),
                     Arc::downgrade(&matrix),
@@ -318,7 +318,7 @@ pub(crate) async fn join_channel_internal(
                         .remove(&channel_lower)
                         .is_some()
                     {
-                        crate::metrics::ACTIVE_CHANNELS.dec();
+                        if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.dec(); }
                     }
                     attempt += 1;
                     continue;
@@ -335,7 +335,7 @@ pub(crate) async fn join_channel_internal(
                         .remove(&channel_lower)
                         .is_some()
                     {
-                        crate::metrics::ACTIVE_CHANNELS.dec();
+                        if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.dec(); }
                     }
                     attempt += 1;
                     continue;

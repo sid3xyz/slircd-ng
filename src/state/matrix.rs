@@ -555,7 +555,7 @@ impl Matrix {
                     && remaining == 0
                     && self.channel_manager.channels.remove(channel_name).is_some()
                 {
-                    crate::metrics::ACTIVE_CHANNELS.dec();
+                    if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.dec(); }
                     self.stats_manager.channel_destroyed();
                 }
             }
@@ -586,7 +586,7 @@ impl Matrix {
         self.security_manager.rate_limiter.remove_client(uid);
 
         // Update metrics
-        crate::metrics::CONNECTED_USERS.dec();
+        if let Some(m) = crate::metrics::CONNECTED_USERS.get() { m.dec(); }
 
         // Update StatsManager
         if uid.starts_with(self.server_id.as_str()) {

@@ -116,3 +116,144 @@ pub fn process_batch_message<S: SessionState>(
     // Return the batch ref to indicate this message was consumed
     Ok(Some(batch_ref.to_string()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::SessionState;
+    use crate::state::client::DeviceId;
+    use crate::state::session::ReattachInfo;
+    use crate::handlers::batch::types::{BatchState, BatchLine, MULTILINE_MAX_LINES};
+    use slirc_proto::MessageRef;
+    use std::collections::HashSet;
+
+    // --- Mock Session State ---
+
+    struct MockSessionState {
+        batch: Option<BatchState>,
+        batch_ref: Option<String>,
+        is_server_conn: bool,
+    }
+
+    impl MockSessionState {
+        fn new() -> Self {
+            Self {
+                batch: None,
+                batch_ref: None,
+                is_server_conn: false,
+            }
+        }
+
+        fn with_batch(mut self, ref_tag: &str, target: &str) -> Self {
+            self.batch_ref = Some(ref_tag.to_string());
+            self.batch = Some(BatchState {
+                batch_type: "draft/multiline".to_string(),
+                target: target.to_string(),
+                lines: Vec::new(),
+                total_bytes: 0,
+                command_type: None,
+                response_label: None,
+                client_tags: Vec::new(),
+            });
+            self
+        }
+    }
+
+    impl SessionState for MockSessionState {
+        fn nick(&self) -> Option<&str> { Some("Tester") }
+        fn set_nick(&mut self, _nick: String) {}
+        fn is_registered(&self) -> bool { true }
+        fn set_device_id(&mut self, _device_id: Option<DeviceId>) {}
+        fn set_reattach_info(&mut self, _reattach_info: Option<ReattachInfo>) {}
+        fn capabilities(&self) -> &HashSet<String> { unimplemented!() }
+        fn capabilities_mut(&mut self) -> &mut HashSet<String> { unimplemented!() }
+        fn set_cap_negotiating(&mut self, _negotiating: bool) {}
+        fn set_cap_version(&mut self, _version: u32) {}
+        fn is_tls(&self) -> bool { false }
+        fn certfp(&self) -> Option<&str> { None }
+        
+        fn active_batch_mut(&mut self) -> &mut Option<BatchState> {
+            &mut self.batch
+        }
+        
+        fn active_batch_ref(&self) -> Option<&str> {
+            self.batch_ref.as_deref()
+        }
+        
+        fn is_server(&self) -> bool {
+            self.is_server_conn
+        }
+    }
+
+    // --- Tests ---
+
+    #[test]
+    fn test_process_normal_message() {
+        let mut state = MockSessionState::new();
+        let raw = "PRIVMSG #test :Hello world";
+        let msg = MessageRef::parse(raw).unwrap();
+
+        let result = process_batch_message(&mut state, &msg, "test.server");
+        
+        // Should return Ok(None) meaning "not consumed by batch"
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_process_batch_accumulation() {
+        let mut state = MockSessionState::new().with_batch("123", "#test");
+        let raw = "@batch=123 PRIVMSG #test :Line 1";
+        let msg = MessageRef::parse(raw).unwrap();
+
+        let result = process_batch_message(&mut state, &msg, "test.server");
+        
+        // Should return Ok(Some("123")) meaning consumed
+        assert_eq!(result.unwrap(), Some("123".to_string()));
+        
+        // Verify state
+        let batch = state.batch.unwrap();
+        assert_eq!(batch.lines.len(), 1);
+        assert_eq!(batch.lines[0].content, "Line 1");
+    }
+
+    #[test]
+    fn test_batch_tag_mismatch() {
+        let mut state = MockSessionState::new().with_batch("123", "#test");
+        let raw = "@batch=456 PRIVMSG #test :Line 1";
+        let msg = MessageRef::parse(raw).unwrap();
+
+        let result = process_batch_message(&mut state, &msg, "test.server");
+        
+        // Should fail due to mismatch
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("mismatch"));
+    }
+
+    #[test]
+    fn test_batch_limit_enforcement() {
+        // Create a batch that is almost full
+        let mut state = MockSessionState::new().with_batch("123", "#test");
+        
+        // Fill up to MULTILINE_MAX_LINES - 1
+        for i in 0..(MULTILINE_MAX_LINES - 1) {
+            state.batch.as_mut().unwrap().lines.push(BatchLine {
+                content: format!("Line {}", i),
+                concat: false,
+            });
+        }
+
+        // Add the last allowed line
+        let raw = "@batch=123 PRIVMSG #test :Last Line";
+        let msg = MessageRef::parse(raw).unwrap();
+        assert!(process_batch_message(&mut state, &msg, "test.server").is_ok());
+
+        // Try to add one more
+        let raw_overflow = "@batch=123 PRIVMSG #test :Overflow";
+        let msg_overflow = MessageRef::parse(raw_overflow).unwrap();
+        let result = process_batch_message(&mut state, &msg_overflow, "test.server");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("MULTILINE_MAX_LINES"));
+    }
+}

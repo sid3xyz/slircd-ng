@@ -71,9 +71,9 @@ impl ServerHandler for RoutedMessageHandler {
                 .map(|v| v.value().clone())
             {
                 // Route to ChannelActor for local fanout
-                crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
-                    .with_label_values(&[source_sid, "local", "channel"])
-                    .inc();
+                if let Some(m) = crate::metrics::DISTRIBUTED_MESSAGES_ROUTED.get() {
+                    m.with_label_values(&[source_sid, "local", "channel"]).inc();
+                }
 
                 // Reconstruct message
                 // For channel messages, we preserve the original sender
@@ -208,9 +208,9 @@ impl ServerHandler for RoutedMessageHandler {
             } else {
                 debug!("Received message for unknown channel {}", target_uid);
                 // Cannot route to non-existent channel
-                crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
-                    .with_label_values(&[source_sid, "local", "channel_not_found"])
-                    .inc();
+                if let Some(m) = crate::metrics::DISTRIBUTED_MESSAGES_ROUTED.get() {
+                    m.with_label_values(&[source_sid, "local", "channel_not_found"]).inc();
+                }
             }
             return Ok(());
         }
@@ -218,9 +218,9 @@ impl ServerHandler for RoutedMessageHandler {
         // 1. Is the target local?
         if let Some(sender) = ctx.matrix.user_manager.get_first_sender(target_uid) {
             // Local delivery!
-            crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
-                .with_label_values(&[source_sid, target_sid, "success"])
-                .inc();
+            if let Some(m) = crate::metrics::DISTRIBUTED_MESSAGES_ROUTED.get() {
+                m.with_label_values(&[source_sid, target_sid, "success"]).inc();
+            }
 
             // We need to reconstruct the message to look like it came from the user
             // But wait, the client expects :Nick!User@Host PRIVMSG TargetNick :text
@@ -396,14 +396,14 @@ impl ServerHandler for RoutedMessageHandler {
 
                         debug!(to = %target_uid, via = %peer.name, "Forwarding routed message");
                         let _ = peer.tx.send(Arc::new(out_msg)).await;
-                        crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
-                            .with_label_values(&[source_sid, target_sid.as_str(), "forwarded"])
-                            .inc();
+                        if let Some(m) = crate::metrics::DISTRIBUTED_MESSAGES_ROUTED.get() {
+                            m.with_label_values(&[source_sid, target_sid.as_str(), "forwarded"]).inc();
+                        }
                     } else {
                         warn!(to = %target_uid, "No route to host for routed message");
-                        crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
-                            .with_label_values(&[source_sid, target_sid.as_str(), "no_route"])
-                            .inc();
+                        if let Some(m) = crate::metrics::DISTRIBUTED_MESSAGES_ROUTED.get() {
+                            m.with_label_values(&[source_sid, target_sid.as_str(), "no_route"]).inc();
+                        }
                     }
                 }
             }

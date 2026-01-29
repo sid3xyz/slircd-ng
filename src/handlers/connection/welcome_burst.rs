@@ -24,7 +24,7 @@ use crate::handlers::SaslState;
 use crate::handlers::{apply_user_modes_typed, notify_monitors_online, server_reply};
 use crate::state::{Matrix, UnregisteredState, User};
 use slirc_proto::isupport::{ChanModesBuilder, IsupportBuilder, TargMaxBuilder};
-use slirc_proto::mode::{Mode, UserMode};
+use slirc_proto::mode::{Mode, ModeType, UserMode};
 use slirc_proto::transport::ZeroCopyTransportEnum;
 use slirc_proto::{Command, Message, Prefix, Response};
 use std::net::SocketAddr;
@@ -71,6 +71,160 @@ impl<'a> WelcomeBurstWriter<'a> {
             .write_message(&msg)
             .await
             .map_err(|e| HandlerError::Internal(format!("transport write error: {e}")))
+    }
+
+    /// Validate potential nick collisions, handling multiclient logic if enabled.
+    async fn validate_multiclient_collision(&mut self, nick: &str) -> Result<(), HandlerError> {
+        if !self.matrix.config.multiclient.enabled {
+            return Ok(());
+        }
+
+        let server_name = &self.matrix.server_info.name;
+
+        // Per-account override: if multiclient is disabled for this account, reject additional sessions
+        if let Some(ref account_name) = self.state.account {
+            let override_opt = self
+                .matrix
+                .client_manager
+                .get_multiclient_override(account_name);
+            if !self
+                .matrix
+                .config
+                .multiclient
+                .is_multiclient_enabled(override_opt)
+            {
+                let nick_lower = slirc_proto::irc_to_lower(nick);
+                if let Some(existing) = self.matrix.user_manager.nicks.get(&nick_lower) {
+                    let has_other = existing.value().iter().any(|uid| uid != self.uid);
+                    if has_other {
+                        // Nick is already in use by an existing session; reject this connection
+                        let reply = Response::err_nicknameinuse(nick, nick)
+                            .with_prefix(Prefix::ServerName(server_name.to_string()));
+                        self.write(reply).await?;
+                        let error = Message::from(Command::ERROR(
+                            "Closing Link: Nickname in use (multiclient disabled)".to_string(),
+                        ));
+                        self.write(error).await?;
+                        return Err(HandlerError::NicknameInUse(nick.to_string()));
+                    }
+                }
+            }
+        }
+        
+        // Reject duplicate nick when no account is present (no bouncer)
+        if self.state.account.is_none() {
+            let nick_lower = slirc_proto::irc_to_lower(nick);
+            if let Some(existing) = self.matrix.user_manager.nicks.get(&nick_lower) {
+                let has_other = existing.value().iter().any(|uid| uid != self.uid);
+                if has_other {
+                    let reply = Response::err_nicknameinuse(nick, nick)
+                        .with_prefix(Prefix::ServerName(server_name.to_string()));
+                    self.write(reply).await?;
+                    let error = Message::from(Command::ERROR(
+                        "Closing Link: Nickname in use".to_string(),
+                    ));
+                    self.write(error).await?;
+                    return Err(HandlerError::NicknameInUse(nick.to_string()));
+                }
+            }
+        }
+
+        let nick_lower = slirc_proto::irc_to_lower(nick);
+        if let Some(existing_uids) = self.matrix.user_manager.nicks.get(&nick_lower) {
+            let existing_uids_vec = existing_uids.value().clone();
+            // If more than one UID, validate they all share the same account
+            if existing_uids_vec.len() > 1 {
+                let current_account = self.state.account.clone();
+
+                tracing::debug!(
+                    nick = %nick,
+                    uid = %self.uid,
+                    current_account = ?current_account,
+                    existing_uids = ?existing_uids_vec,
+                    "Validating nick collision for multiclient"
+                );
+
+                // Get account of first existing UID (should be registered by now)
+                let existing_account = if let Some(first_uid) = existing_uids_vec.first() {
+                    if first_uid != self.uid {
+                        if let Some(user_arc) =
+                            self.matrix.user_manager.users.get(first_uid.as_str())
+                        {
+                            let user = user_arc.read().await;
+                            user.account.clone()
+                        } else {
+                            None
+                        }
+                    } else {
+                        // If first UID is self, check second UID
+                        if let Some(second_uid) = existing_uids_vec.get(1) {
+                            if let Some(user_arc) =
+                                self.matrix.user_manager.users.get(second_uid.as_str())
+                            {
+                                let user = user_arc.read().await;
+                                user.account.clone()
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                tracing::debug!(
+                    nick = %nick,
+                    uid = %self.uid,
+                    existing_account = ?existing_account,
+                    "Compared accounts for validation"
+                );
+
+                // Reject if accounts don't match
+                match (current_account, existing_account) {
+                    (Some(ref cur_acc), Some(ref exist_acc)) if cur_acc == exist_acc => {
+                        // Valid multiclient - accounts match
+                        tracing::info!(
+                            nick = %nick,
+                            uid = %self.uid,
+                            account = %cur_acc,
+                            "Valid multiclient connection - accounts match"
+                        );
+                    }
+                    _ => {
+                        // Accounts don't match - remove this UID from the nick list and reject
+                        tracing::warn!(
+                            nick = %nick,
+                            uid = %self.uid,
+                            "Nick collision - accounts don't match, rejecting connection"
+                        );
+
+                        if let Some(mut entry) =
+                            self.matrix.user_manager.nicks.get_mut(&nick_lower)
+                        {
+                            entry.value_mut().retain(|uid| uid != self.uid);
+                            if entry.value().is_empty() {
+                                drop(entry);
+                                self.matrix.user_manager.nicks.remove(&nick_lower);
+                            }
+                        }
+
+                        let reply = Response::err_nicknameinuse(nick, nick)
+                            .with_prefix(Prefix::ServerName(server_name.to_string()));
+                        self.write(reply).await?;
+                        let error = Message::from(Command::ERROR(
+                            "Closing Link: Nickname collision (accounts don't match)"
+                                .to_string(),
+                        ));
+                        self.write(error).await?;
+                        return Err(HandlerError::NicknameInUse(nick.to_string()));
+                    }
+                }
+            }
+        }
+        
+        Ok(())
     }
 
     /// Send the complete welcome burst.
@@ -213,149 +367,7 @@ impl<'a> WelcomeBurstWriter<'a> {
         }
 
         // Validate nick collision for multiclient/bouncer mode
-        // If multiple UIDs share the same nick, they must all have the same account, and respect per-account overrides
-        if self.matrix.config.multiclient.enabled {
-            // Per-account override: if multiclient is disabled for this account, reject additional sessions
-            if let Some(ref account_name) = self.state.account {
-                let override_opt = self
-                    .matrix
-                    .client_manager
-                    .get_multiclient_override(account_name);
-                if !self
-                    .matrix
-                    .config
-                    .multiclient
-                    .is_multiclient_enabled(override_opt)
-                {
-                    let nick_lower = slirc_proto::irc_to_lower(nick);
-                    if let Some(existing) = self.matrix.user_manager.nicks.get(&nick_lower) {
-                        let has_other = existing.value().iter().any(|uid| uid != self.uid);
-                        if has_other {
-                            // Nick is already in use by an existing session; reject this connection
-                            let reply = Response::err_nicknameinuse(nick, nick)
-                                .with_prefix(Prefix::ServerName(server_name.to_string()));
-                            self.write(reply).await?;
-                            let error = Message::from(Command::ERROR(
-                                "Closing Link: Nickname in use (multiclient disabled)".to_string(),
-                            ));
-                            self.write(error).await?;
-                            return Err(HandlerError::NicknameInUse(nick.clone()));
-                        }
-                    }
-                }
-            }
-            // Reject duplicate nick when no account is present (no bouncer)
-            if self.state.account.is_none() {
-                let nick_lower = slirc_proto::irc_to_lower(nick);
-                if let Some(existing) = self.matrix.user_manager.nicks.get(&nick_lower) {
-                    let has_other = existing.value().iter().any(|uid| uid != self.uid);
-                    if has_other {
-                        let reply = Response::err_nicknameinuse(nick, nick)
-                            .with_prefix(Prefix::ServerName(server_name.to_string()));
-                        self.write(reply).await?;
-                        let error = Message::from(Command::ERROR(
-                            "Closing Link: Nickname in use".to_string(),
-                        ));
-                        self.write(error).await?;
-                        return Err(HandlerError::NicknameInUse(nick.clone()));
-                    }
-                }
-            }
-            let nick_lower = slirc_proto::irc_to_lower(nick);
-            if let Some(existing_uids) = self.matrix.user_manager.nicks.get(&nick_lower) {
-                let existing_uids_vec = existing_uids.value().clone();
-                // If more than one UID, validate they all share the same account
-                if existing_uids_vec.len() > 1 {
-                    let current_account = self.state.account.clone();
-
-                    tracing::debug!(
-                        nick = %nick,
-                        uid = %self.uid,
-                        current_account = ?current_account,
-                        existing_uids = ?existing_uids_vec,
-                        "Validating nick collision for multiclient"
-                    );
-
-                    // Get account of first existing UID (should be registered by now)
-                    let existing_account = if let Some(first_uid) = existing_uids_vec.first() {
-                        if first_uid != self.uid {
-                            if let Some(user_arc) =
-                                self.matrix.user_manager.users.get(first_uid.as_str())
-                            {
-                                let user = user_arc.read().await;
-                                user.account.clone()
-                            } else {
-                                None
-                            }
-                        } else {
-                            // If first UID is self, check second UID
-                            if let Some(second_uid) = existing_uids_vec.get(1) {
-                                if let Some(user_arc) =
-                                    self.matrix.user_manager.users.get(second_uid.as_str())
-                                {
-                                    let user = user_arc.read().await;
-                                    user.account.clone()
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        }
-                    } else {
-                        None
-                    };
-
-                    tracing::debug!(
-                        nick = %nick,
-                        uid = %self.uid,
-                        existing_account = ?existing_account,
-                        "Compared accounts for validation"
-                    );
-
-                    // Reject if accounts don't match
-                    match (current_account, existing_account) {
-                        (Some(ref cur_acc), Some(ref exist_acc)) if cur_acc == exist_acc => {
-                            // Valid multiclient - accounts match
-                            tracing::info!(
-                                nick = %nick,
-                                uid = %self.uid,
-                                account = %cur_acc,
-                                "Valid multiclient connection - accounts match"
-                            );
-                        }
-                        _ => {
-                            // Accounts don't match - remove this UID from the nick list and reject
-                            tracing::warn!(
-                                nick = %nick,
-                                uid = %self.uid,
-                                "Nick collision - accounts don't match, rejecting connection"
-                            );
-
-                            if let Some(mut entry) =
-                                self.matrix.user_manager.nicks.get_mut(&nick_lower)
-                            {
-                                entry.value_mut().retain(|uid| uid != self.uid);
-                                if entry.value().is_empty() {
-                                    drop(entry);
-                                    self.matrix.user_manager.nicks.remove(&nick_lower);
-                                }
-                            }
-
-                            let reply = Response::err_nicknameinuse(nick, nick)
-                                .with_prefix(Prefix::ServerName(server_name.to_string()));
-                            self.write(reply).await?;
-                            let error = Message::from(Command::ERROR(
-                                "Closing Link: Nickname collision (accounts don't match)"
-                                    .to_string(),
-                            ));
-                            self.write(error).await?;
-                            return Err(HandlerError::NicknameInUse(nick.clone()));
-                        }
-                    }
-                }
-            }
-        }
+        self.validate_multiclient_collision(nick).await?;
 
         // Check if this is a bouncer reattachment (existing UID to share)
         // If so, we DON'T create a new User - we reuse the existing one
@@ -615,10 +627,12 @@ impl<'a> WelcomeBurstWriter<'a> {
         // User is now registered - decrement unregistered connection count
         self.matrix.user_manager.decrement_unregistered();
 
-        crate::metrics::CONNECTED_USERS.inc();
+        if let Some(c) = crate::metrics::CONNECTED_USERS.get() {
+            c.inc();
+        }
 
         // Update StatsManager counters
-        self.matrix.stats_manager.user_connected();
+        // Note: user_connected() is now called inside add_local_user()
 
         if is_starting_invisible {
             self.matrix.stats_manager.user_set_invisible();
@@ -800,51 +814,25 @@ impl<'a> WelcomeBurstWriter<'a> {
     }
 }
 
-/// Parse a default user mode string (e.g., "+iwR") into Mode objects.
-///
-/// Only allows safe modes that can be set by default:
-/// - i (invisible), w (wallops), R (registered-only PM), T (no CTCP), B (bot)
-///
-/// Ignores special modes that cannot be set by default:
-/// - o (oper), r (registered), Z (TLS), s (snomask), S (service)
+// Helper to parse default user modes from config string
+// e.g. "+iw" -> [Invisible, Wallops]
+// Helper to parse default user modes from config string
+// e.g. "+iw" -> [Add(Invisible), Add(Wallops)]
 fn parse_default_user_modes(mode_str: &str) -> Vec<Mode<UserMode>> {
     let mut modes = Vec::new();
-    let mut adding = true;
-
-    for c in mode_str.chars() {
-        match c {
-            '+' => adding = true,
-            '-' => adding = false,
-            'i' => modes.push(if adding {
-                Mode::Plus(UserMode::Invisible, None)
-            } else {
-                Mode::Minus(UserMode::Invisible, None)
-            }),
-            'w' => modes.push(if adding {
-                Mode::Plus(UserMode::Wallops, None)
-            } else {
-                Mode::Minus(UserMode::Wallops, None)
-            }),
-            'R' => modes.push(if adding {
-                Mode::Plus(UserMode::RegisteredOnly, None)
-            } else {
-                Mode::Minus(UserMode::RegisteredOnly, None)
-            }),
-            'T' => modes.push(if adding {
-                Mode::Plus(UserMode::Unknown('T'), None)
-            } else {
-                Mode::Minus(UserMode::Unknown('T'), None)
-            }),
-            'B' => modes.push(if adding {
-                Mode::Plus(UserMode::Bot, None)
-            } else {
-                Mode::Minus(UserMode::Bot, None)
-            }),
-            // Silently ignore special modes that cannot be set by default
-            'o' | 'r' | 'Z' | 's' | 'S' | 'x' | 'O' => {}
-            _ => {}
+    let mut chars = mode_str.chars();
+    
+    // Skip leading '+' if present
+    if let Some(first) = mode_str.chars().next() {
+        if first == '+' {
+            chars.next();
         }
     }
 
+    for c in chars {
+        // Compiler suggested Mode::plus(mode, None) constructor
+        let mode = UserMode::from_char(c);
+        modes.push(Mode::plus(mode, None));
+    }
     modes
 }

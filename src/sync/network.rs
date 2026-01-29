@@ -488,7 +488,9 @@ async fn handle_inbound_connection(
                 match msg {
                     Some(m) => {
                         let s = m.as_ref().to_string();
-                        S2S_BYTES_SENT.with_label_values(&[remote_sid_val.as_str()]).inc_by(s.len() as u64 + 2);
+                        if let Some(m) = S2S_BYTES_SENT.get() {
+                            m.with_label_values(&[remote_sid_val.as_str()]).inc_by(s.len() as u64 + 2);
+                        }
                         if let Err(e) = framed.send(s.trim_end()).await {
                             tracing::error!(peer = %remote_addr, error = %e, "Failed to send to peer");
                             break;
@@ -510,7 +512,9 @@ async fn handle_inbound_connection(
             result = framed.next() => {
                 match result {
                     Some(Ok(line)) => {
-                        S2S_BYTES_RECEIVED.with_label_values(&[remote_sid_val.as_str()]).inc_by(line.len() as u64 + 2);
+                        if let Some(m) = S2S_BYTES_RECEIVED.get() {
+                            m.with_label_values(&[remote_sid_val.as_str()]).inc_by(line.len() as u64 + 2);
+                        }
                         let msg = match line.parse::<Message>() {
                             Ok(m) => m,
                             Err(e) => {
@@ -519,7 +523,9 @@ async fn handle_inbound_connection(
                             }
                         };
 
-                        S2S_COMMANDS.with_label_values(&[remote_sid_val.as_str(), msg.command.name()]).inc();
+                        if let Some(m) = S2S_COMMANDS.get() {
+                            m.with_label_values(&[remote_sid_val.as_str(), msg.command.name()]).inc();
+                        }
 
                         // Check S2S rate limit
                         match manager.rate_limiter.check_command(remote_sid_val.as_str()) {
@@ -527,7 +533,9 @@ async fn handle_inbound_connection(
                                 // Continue processing
                             }
                             S2SRateLimitResult::Limited { violations } => {
-                                S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "limited"]).inc();
+                                if let Some(m) = S2S_RATE_LIMITED.get() {
+                                    m.with_label_values(&[remote_sid_val.as_str(), "limited"]).inc();
+                                }
                                 tracing::warn!(
                                     sid = %remote_sid_val.as_str(),
                                     violations = violations,
@@ -536,7 +544,9 @@ async fn handle_inbound_connection(
                                 continue;
                             }
                             S2SRateLimitResult::Disconnect { violations } => {
-                                S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "disconnected"]).inc();
+                                if let Some(m) = S2S_RATE_LIMITED.get() {
+                                    m.with_label_values(&[remote_sid_val.as_str(), "disconnected"]).inc();
+                                }
                                 tracing::error!(
                                     sid = %remote_sid_val.as_str(),
                                     violations = violations,
@@ -912,7 +922,9 @@ pub fn connect_to_peer(
                         match msg {
                             Some(m) => {
                                 let s = m.as_ref().to_string();
-                                S2S_BYTES_SENT.with_label_values(&[remote_sid_val.as_str()]).inc_by(s.len() as u64 + 2);
+                                if let Some(m) = S2S_BYTES_SENT.get() {
+                                    m.with_label_values(&[remote_sid_val.as_str()]).inc_by(s.len() as u64 + 2);
+                                }
                                 if let Err(e) = framed.send(s.trim_end()).await {
                                      tracing::error!("Failed to send message to peer: {}", e);
                                      break;
@@ -934,7 +946,9 @@ pub fn connect_to_peer(
                     result = framed.next() => {
                         match result {
                             Some(Ok(line)) => {
-                                S2S_BYTES_RECEIVED.with_label_values(&[remote_sid_val.as_str()]).inc_by(line.len() as u64 + 2);
+                                if let Some(m) = S2S_BYTES_RECEIVED.get() {
+                                    m.with_label_values(&[remote_sid_val.as_str()]).inc_by(line.len() as u64 + 2);
+                                }
                                 let msg = match line.parse::<Message>() {
                                     Ok(m) => m,
                                     Err(e) => {
@@ -943,7 +957,9 @@ pub fn connect_to_peer(
                                     }
                                 };
 
-                                S2S_COMMANDS.with_label_values(&[remote_sid_val.as_str(), msg.command.name()]).inc();
+                                if let Some(m) = S2S_COMMANDS.get() {
+                                    m.with_label_values(&[remote_sid_val.as_str(), msg.command.name()]).inc();
+                                }
 
                                 // Check S2S rate limit before processing
                                 match manager.rate_limiter.check_command(remote_sid_val.as_str()) {
@@ -951,7 +967,9 @@ pub fn connect_to_peer(
                                         // Continue to dispatch below
                                     }
                                     S2SRateLimitResult::Limited { violations } => {
-                                        S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "limited"]).inc();
+                                        if let Some(m) = S2S_RATE_LIMITED.get() {
+                                            m.with_label_values(&[remote_sid_val.as_str(), "limited"]).inc();
+                                        }
                                         tracing::warn!(
                                             sid = %remote_sid_val.as_str(),
                                             violations = violations,
@@ -961,7 +979,9 @@ pub fn connect_to_peer(
                                         continue; // Drop the command but keep connection
                                     }
                                     S2SRateLimitResult::Disconnect { violations } => {
-                                        S2S_RATE_LIMITED.with_label_values(&[remote_sid_val.as_str(), "disconnected"]).inc();
+                                        if let Some(m) = S2S_RATE_LIMITED.get() {
+                                            m.with_label_values(&[remote_sid_val.as_str(), "disconnected"]).inc();
+                                        }
                                         tracing::error!(
                                             sid = %remote_sid_val.as_str(),
                                             violations = violations,

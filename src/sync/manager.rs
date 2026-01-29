@@ -73,9 +73,9 @@ impl SyncManager {
         // 3. Find next hop (must be a directly connected peer)
         if let Some(link) = self.get_next_hop(&target_sid) {
             let _ = link.tx.send(msg).await;
-            crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
-                .with_label_values(&[self.local_id.as_str(), target_sid.as_str(), "success"])
-                .inc();
+            if let Some(m) = crate::metrics::DISTRIBUTED_MESSAGES_ROUTED.get() {
+                m.with_label_values(&[self.local_id.as_str(), target_sid.as_str(), "success"]).inc();
+            }
             true
         } else {
             tracing::warn!(
@@ -83,9 +83,9 @@ impl SyncManager {
                 target_sid.as_str(),
                 target_uid
             );
-            crate::metrics::DISTRIBUTED_MESSAGES_ROUTED
-                .with_label_values(&[self.local_id.as_str(), target_sid.as_str(), "no_route"])
-                .inc();
+            if let Some(m) = crate::metrics::DISTRIBUTED_MESSAGES_ROUTED.get() {
+                m.with_label_values(&[self.local_id.as_str(), target_sid.as_str(), "no_route"]).inc();
+            }
             false
         }
     }

@@ -11,282 +11,156 @@
 //! - `irc_channel_members{channel}` - Members per channel (gauge)
 //! - `irc_message_fanout` - Recipients per channel message (histogram)
 
-use lazy_static::lazy_static;
 use prometheus::{
     Encoder, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge,
     IntGaugeVec, Opts, Registry, TextEncoder,
 };
+use std::sync::OnceLock;
 
-lazy_static! {
-    /// Global Prometheus registry for all metrics.
-    pub static ref REGISTRY: Registry = Registry::new();
+/// Global Prometheus registry for all metrics.
+pub static REGISTRY: OnceLock<Registry> = OnceLock::new();
 
-    // ========================================================================
-    // Counters (monotonic increasing)
-    // ========================================================================
-
-    /// Total IRC messages successfully sent to clients.
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref MESSAGES_SENT: IntCounter = IntCounter::new(
-        "irc_messages_sent_total",
-        "Total messages sent"
-    ).expect("MESSAGES_SENT metric creation failed");
-
-    /// Total messages blocked by spam detection.
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref SPAM_BLOCKED: IntCounter = IntCounter::new(
-        "irc_spam_blocked_total",
-        "Messages blocked as spam"
-    ).expect("SPAM_BLOCKED metric creation failed");
-
-    /// Total ban enforcement events (channel bans blocking JOIN).
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref BANS_TRIGGERED: IntCounter = IntCounter::new(
-        "irc_bans_triggered_total",
-        "Ban enforcement events"
-    ).expect("BANS_TRIGGERED metric creation failed");
-
-    /// Total X-line enforcement events (K/G/Z/R/S-lines blocking connections).
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref XLINES_ENFORCED: IntCounter = IntCounter::new(
-        "irc_xlines_enforced_total",
-        "X-line enforcement events"
-    ).expect("XLINES_ENFORCED metric creation failed");
-
-    /// Total rate limit hits (flood protection).
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref RATE_LIMITED: IntCounter = IntCounter::new(
-        "irc_rate_limited_total",
-        "Rate limit hits"
-    ).expect("RATE_LIMITED metric creation failed");
-
-    /// Total +r (registered-only) enforcement events (JOIN/speak denied).
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref REGISTERED_ONLY_BLOCKED: IntCounter = IntCounter::new(
-        "irc_registered_only_blocked_total",
-        "Registered-only (+r) enforcement events"
-    ).expect("REGISTERED_ONLY_BLOCKED metric creation failed");
-
-    // ========================================================================
-    // Gauges (can increase/decrease)
-    // ========================================================================
-
-    /// Currently connected users.
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref CONNECTED_USERS: IntGauge = IntGauge::new(
-        "irc_connected_users",
-        "Currently connected users"
-    ).expect("CONNECTED_USERS metric creation failed");
-
-    /// Active channels (both registered and temporary).
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref ACTIVE_CHANNELS: IntGauge = IntGauge::new(
-        "irc_active_channels",
-        "Active channels"
-    ).expect("ACTIVE_CHANNELS metric creation failed");
-
-    // ========================================================================
-    // IRC-Specific Metrics (Innovation 3: Protocol-Aware Observability)
-    // ========================================================================
-
-    /// Commands processed by type (PRIVMSG, JOIN, PART, etc.).
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref COMMAND_COUNTER: IntCounterVec = IntCounterVec::new(
-        Opts::new("irc_command_total", "IRC commands processed by type"),
-        &["command"]
-    ).expect("COMMAND_COUNTER metric creation failed");
-
-    /// Command processing latency by command type.
-    /// Buckets optimized for IRC: 50µs to 500ms.
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref COMMAND_LATENCY: HistogramVec = HistogramVec::new(
-        HistogramOpts::new("irc_command_duration_seconds", "IRC command latency by type")
-            .buckets(vec![0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]),
-        &["command"]
-    ).expect("COMMAND_LATENCY metric creation failed");
-
-    /// Channel member counts (gauge).
-    /// Updated on JOIN/PART/KICK/QUIT.
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref CHANNEL_MEMBERS: IntGaugeVec = IntGaugeVec::new(
-        Opts::new("irc_channel_members", "Members per IRC channel"),
-        &["channel"]
-    ).expect("CHANNEL_MEMBERS metric creation failed");
-
-    /// Message fan-out histogram: how many recipients per channel message.
-    /// Buckets: 1, 5, 10, 25, 50, 100, 250, 500, 1000+.
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref MESSAGE_FANOUT: Histogram = Histogram::with_opts(
-        HistogramOpts::new("irc_message_fanout", "Recipients per channel message")
-            .buckets(vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0])
-    ).expect("MESSAGE_FANOUT metric creation failed");
-
-    /// Command errors by type and error kind.
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref COMMAND_ERRORS: IntCounterVec = IntCounterVec::new(
-        Opts::new("irc_command_errors_total", "IRC command errors by type"),
-        &["command", "error"]
-    ).expect("COMMAND_ERRORS metric creation failed");
-
-    pub static ref CHANNEL_MODE_CHANGES: IntCounterVec = IntCounterVec::new(
-        Opts::new("irc_channel_mode_changes_total", "Channel mode changes"),
-        &["mode"]
-    ).expect("CHANNEL_MODE_CHANGES metric creation failed");
-
-    /// Channel messages dropped due to SendQ/backpressure.
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
-    pub static ref CHANNEL_MESSAGES_DROPPED: IntCounter = IntCounter::new(
-        "irc_channel_messages_dropped_total",
-        "Channel messages dropped due to backpressure"
-    ).expect("CHANNEL_MESSAGES_DROPPED metric creation failed");
-
-    // ========================================================================
-    // Distributed System Metrics (Innovation 3, Phase 2)
-    // ========================================================================
-
-    /// Distributed messages routed between servers.
-    /// Labels: source_sid, target_sid, status (success/failure)
-    pub static ref DISTRIBUTED_MESSAGES_ROUTED: IntCounterVec = IntCounterVec::new(
-        Opts::new("slircd_distributed_messages_routed_total", "Messages routed between servers"),
-        &["source_sid", "target_sid", "status"]
-    ).expect("DISTRIBUTED_MESSAGES_ROUTED metric creation failed");
-
-    /// Distributed collisions (nick/channel) resolved.
-    /// Labels: type (nick/channel), resolution (kill/merge)
-    pub static ref DISTRIBUTED_COLLISIONS_TOTAL: IntCounterVec = IntCounterVec::new(
-        Opts::new("slircd_distributed_collisions_total", "Distributed collisions resolved"),
-        &["type", "resolution"]
-    ).expect("DISTRIBUTED_COLLISIONS_TOTAL metric creation failed");
-
-    /// Distributed sync latency (processing time for DELTA messages).
-    /// Labels: peer_sid
-    pub static ref DISTRIBUTED_SYNC_LATENCY: HistogramVec = HistogramVec::new(
-        HistogramOpts::new("slircd_distributed_sync_latency_seconds", "Processing time for sync messages")
-            .buckets(vec![0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]),
-        &["peer_sid"]
-    ).expect("DISTRIBUTED_SYNC_LATENCY metric creation failed");
-
-    /// Connected distributed peers.
-    pub static ref DISTRIBUTED_PEERS_CONNECTED: IntGauge = IntGauge::new(
-        "slircd_distributed_peers_connected",
-        "Number of connected distributed peers"
-    ).expect("DISTRIBUTED_PEERS_CONNECTED metric creation failed");
-
-    /// S2S bytes sent.
-    /// Labels: peer_sid
-    pub static ref S2S_BYTES_SENT: IntCounterVec = IntCounterVec::new(
-        Opts::new("slircd_s2s_bytes_sent_total", "Bytes sent to peer servers"),
-        &["peer_sid"]
-    ).expect("S2S_BYTES_SENT metric creation failed");
-
-    /// S2S bytes received.
-    /// Labels: peer_sid
-    pub static ref S2S_BYTES_RECEIVED: IntCounterVec = IntCounterVec::new(
-        Opts::new("slircd_s2s_bytes_received_total", "Bytes received from peer servers"),
-        &["peer_sid"]
-    ).expect("S2S_BYTES_RECEIVED metric creation failed");
-
-    /// S2S commands processed.
-    /// Labels: peer_sid, command
-    pub static ref S2S_COMMANDS: IntCounterVec = IntCounterVec::new(
-        Opts::new("slircd_s2s_commands_total", "S2S commands processed"),
-        &["peer_sid", "command"]
-    ).expect("S2S_COMMANDS metric creation failed");
-
-    /// S2S rate limit events.
-    /// Labels: peer_sid, result (limited, disconnected)
-    pub static ref S2S_RATE_LIMITED: IntCounterVec = IntCounterVec::new(
-        Opts::new("slircd_s2s_rate_limited_total", "S2S rate limit events"),
-        &["peer_sid", "result"]
-    ).expect("S2S_RATE_LIMITED metric creation failed");
+pub fn registry() -> &'static Registry {
+    REGISTRY.get_or_init(Registry::new)
 }
+
+// ========================================================================
+// Counters (monotonic increasing)
+// ========================================================================
+
+/// Total IRC messages successfully sent to clients.
+pub static MESSAGES_SENT: OnceLock<IntCounter> = OnceLock::new();
+
+/// Total messages blocked by spam detection.
+pub static SPAM_BLOCKED: OnceLock<IntCounter> = OnceLock::new();
+
+/// Total ban enforcement events (channel bans blocking JOIN).
+pub static BANS_TRIGGERED: OnceLock<IntCounter> = OnceLock::new();
+
+/// Total X-line enforcement events (K/G/Z/R/S-lines blocking connections).
+pub static XLINES_ENFORCED: OnceLock<IntCounter> = OnceLock::new();
+
+/// Total rate limit hits (flood protection).
+pub static RATE_LIMITED: OnceLock<IntCounter> = OnceLock::new();
+
+/// Total +r (registered-only) enforcement events (JOIN/speak denied).
+pub static REGISTERED_ONLY_BLOCKED: OnceLock<IntCounter> = OnceLock::new();
+
+// ========================================================================
+// Gauges (can increase/decrease)
+// ========================================================================
+
+/// Currently connected users.
+pub static CONNECTED_USERS: OnceLock<IntGauge> = OnceLock::new();
+
+/// Active channels (both registered and temporary).
+pub static ACTIVE_CHANNELS: OnceLock<IntGauge> = OnceLock::new();
+
+// ========================================================================
+// IRC-Specific Metrics (Innovation 3: Protocol-Aware Observability)
+// ========================================================================
+
+/// Commands processed by type (PRIVMSG, JOIN, PART, etc.).
+pub static COMMAND_COUNTER: OnceLock<IntCounterVec> = OnceLock::new();
+
+/// Command processing latency by command type.
+pub static COMMAND_LATENCY: OnceLock<HistogramVec> = OnceLock::new();
+
+/// Channel member counts (gauge).
+pub static CHANNEL_MEMBERS: OnceLock<IntGaugeVec> = OnceLock::new();
+
+/// Message fan-out histogram: how many recipients per channel message.
+pub static MESSAGE_FANOUT: OnceLock<Histogram> = OnceLock::new();
+
+/// Command errors by type and error kind.
+pub static COMMAND_ERRORS: OnceLock<IntCounterVec> = OnceLock::new();
+
+pub static CHANNEL_MODE_CHANGES: OnceLock<IntCounterVec> = OnceLock::new();
+
+/// Channel messages dropped due to SendQ/backpressure.
+pub static CHANNEL_MESSAGES_DROPPED: OnceLock<IntCounter> = OnceLock::new();
+
+// ========================================================================
+// Distributed System Metrics (Innovation 3, Phase 2)
+// ========================================================================
+
+/// Distributed messages routed between servers.
+pub static DISTRIBUTED_MESSAGES_ROUTED: OnceLock<IntCounterVec> = OnceLock::new();
+
+/// Distributed collisions (nick/channel) resolved.
+pub static DISTRIBUTED_COLLISIONS_TOTAL: OnceLock<IntCounterVec> = OnceLock::new();
+
+/// Distributed sync latency (processing time for DELTA messages).
+pub static DISTRIBUTED_SYNC_LATENCY: OnceLock<HistogramVec> = OnceLock::new();
+
+/// Connected distributed peers.
+pub static DISTRIBUTED_PEERS_CONNECTED: OnceLock<IntGauge> = OnceLock::new();
+
+/// S2S bytes sent.
+pub static S2S_BYTES_SENT: OnceLock<IntCounterVec> = OnceLock::new();
+
+/// S2S bytes received.
+pub static S2S_BYTES_RECEIVED: OnceLock<IntCounterVec> = OnceLock::new();
+
+/// S2S commands processed.
+pub static S2S_COMMANDS: OnceLock<IntCounterVec> = OnceLock::new();
+
+/// S2S rate limit events.
+pub static S2S_RATE_LIMITED: OnceLock<IntCounterVec> = OnceLock::new();
 
 /// Initialize the Prometheus metrics registry.
 ///
 /// Must be called once at server startup before any metrics are recorded.
 pub fn init() {
-    // Legacy counters
-    if let Err(e) = REGISTRY.register(Box::new(MESSAGES_SENT.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_messages_sent_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(SPAM_BLOCKED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_spam_blocked_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(BANS_TRIGGERED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_bans_triggered_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(XLINES_ENFORCED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_xlines_enforced_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(RATE_LIMITED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_rate_limited_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(REGISTERED_ONLY_BLOCKED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_registered_only_blocked_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(CONNECTED_USERS.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_connected_users");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(ACTIVE_CHANNELS.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_active_channels");
+    let r = registry();
+
+    // Helper macro to register metric
+    macro_rules! register {
+        ($metric:ident, $init:expr) => {
+            let m = $init.expect(concat!(stringify!($metric), " creation failed"));
+            if let Err(e) = r.register(Box::new(m.clone())) {
+                tracing::warn!(error = %e, concat!("Failed to register metric ", stringify!($metric)));
+            }
+            let _ = $metric.set(m);
+        };
     }
 
-    // IRC-specific metrics (Innovation 3)
-    if let Err(e) = REGISTRY.register(Box::new(COMMAND_COUNTER.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_command_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(COMMAND_LATENCY.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_command_duration_seconds");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(CHANNEL_MEMBERS.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_channel_members");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(MESSAGE_FANOUT.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_message_fanout");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(COMMAND_ERRORS.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_command_errors_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(CHANNEL_MODE_CHANGES.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_channel_mode_changes_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(CHANNEL_MESSAGES_DROPPED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric irc_channel_messages_dropped_total");
-    }
+    register!(MESSAGES_SENT, IntCounter::new("irc_messages_sent_total", "Total messages sent"));
+    register!(SPAM_BLOCKED, IntCounter::new("irc_spam_blocked_total", "Messages blocked as spam"));
+    register!(BANS_TRIGGERED, IntCounter::new("irc_bans_triggered_total", "Ban enforcement events"));
+    register!(XLINES_ENFORCED, IntCounter::new("irc_xlines_enforced_total", "X-line enforcement events"));
+    register!(RATE_LIMITED, IntCounter::new("irc_rate_limited_total", "Rate limit hits"));
+    register!(REGISTERED_ONLY_BLOCKED, IntCounter::new("irc_registered_only_blocked_total", "Registered-only (+r) enforcement events"));
+    register!(CONNECTED_USERS, IntGauge::new("irc_connected_users", "Currently connected users"));
+    register!(ACTIVE_CHANNELS, IntGauge::new("irc_active_channels", "Active channels"));
 
-    // Distributed metrics (Innovation 3, Phase 2)
-    if let Err(e) = REGISTRY.register(Box::new(DISTRIBUTED_MESSAGES_ROUTED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric slircd_distributed_messages_routed_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(DISTRIBUTED_COLLISIONS_TOTAL.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric slircd_distributed_collisions_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(DISTRIBUTED_SYNC_LATENCY.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric slircd_distributed_sync_latency_seconds");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(DISTRIBUTED_PEERS_CONNECTED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric slircd_distributed_peers_connected");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(S2S_BYTES_SENT.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric slircd_s2s_bytes_sent_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(S2S_BYTES_RECEIVED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric slircd_s2s_bytes_received_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(S2S_COMMANDS.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric slircd_s2s_commands_total");
-    }
-    if let Err(e) = REGISTRY.register(Box::new(S2S_RATE_LIMITED.clone())) {
-        tracing::warn!(error = %e, "Failed to register metric slircd_s2s_rate_limited_total");
-    }
+    register!(COMMAND_COUNTER, IntCounterVec::new(Opts::new("irc_command_total", "IRC commands processed by type"), &["command"]));
+    register!(COMMAND_LATENCY, HistogramVec::new(
+        HistogramOpts::new("irc_command_duration_seconds", "IRC command latency by type")
+            .buckets(vec![0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]),
+        &["command"]));
+    register!(CHANNEL_MEMBERS, IntGaugeVec::new(Opts::new("irc_channel_members", "Members per IRC channel"), &["channel"]));
+    register!(MESSAGE_FANOUT, Histogram::with_opts(
+        HistogramOpts::new("irc_message_fanout", "Recipients per channel message")
+            .buckets(vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0])));
+    register!(COMMAND_ERRORS, IntCounterVec::new(Opts::new("irc_command_errors_total", "IRC command errors by type"), &["command", "error"]));
+    register!(CHANNEL_MODE_CHANGES, IntCounterVec::new(Opts::new("irc_channel_mode_changes_total", "Channel mode changes"), &["mode"]));
+    register!(CHANNEL_MESSAGES_DROPPED, IntCounter::new("irc_channel_messages_dropped_total", "Channel messages dropped due to backpressure"));
+
+    register!(DISTRIBUTED_MESSAGES_ROUTED, IntCounterVec::new(Opts::new("slircd_distributed_messages_routed_total", "Messages routed between servers"), &["source_sid", "target_sid", "status"]));
+    register!(DISTRIBUTED_COLLISIONS_TOTAL, IntCounterVec::new(Opts::new("slircd_distributed_collisions_total", "Distributed collisions resolved"), &["type", "resolution"]));
+    register!(DISTRIBUTED_SYNC_LATENCY, HistogramVec::new(HistogramOpts::new("slircd_distributed_sync_latency_seconds", "Processing time for sync messages").buckets(vec![0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]), &["peer_sid"]));
+    register!(DISTRIBUTED_PEERS_CONNECTED, IntGauge::new("slircd_distributed_peers_connected", "Number of connected distributed peers"));
+    register!(S2S_BYTES_SENT, IntCounterVec::new(Opts::new("slircd_s2s_bytes_sent_total", "Bytes sent to peer servers"), &["peer_sid"]));
+    register!(S2S_BYTES_RECEIVED, IntCounterVec::new(Opts::new("slircd_s2s_bytes_received_total", "Bytes received from peer servers"), &["peer_sid"]));
+    register!(S2S_COMMANDS, IntCounterVec::new(Opts::new("slircd_s2s_commands_total", "S2S commands processed"), &["peer_sid", "command"]));
+    register!(S2S_RATE_LIMITED, IntCounterVec::new(Opts::new("slircd_s2s_rate_limited_total", "S2S rate limit events"), &["peer_sid", "result"]));
 }
 
 /// Gather all metrics and encode them in Prometheus text format.
-///
-/// Returns a string suitable for HTTP response on `/metrics` endpoint.
 pub fn gather_metrics() -> String {
     let encoder = TextEncoder::new();
-    let metric_families = REGISTRY.gather();
+    let metric_families = registry().gather();
     let mut buffer = vec![];
     if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
         tracing::error!(error = %e, "Failed to encode Prometheus metrics");
@@ -305,46 +179,75 @@ pub fn gather_metrics() -> String {
 // Helper functions for IRC-specific metric updates
 // ============================================================================
 
+
+
+fn get_counter_vec(metric: &OnceLock<IntCounterVec>) -> Option<&IntCounterVec> {
+    metric.get()
+}
+
+
+
+fn get_gauge_vec(metric: &OnceLock<IntGaugeVec>) -> Option<&IntGaugeVec> {
+    metric.get()
+}
+
+fn get_histogram(metric: &OnceLock<Histogram>) -> Option<&Histogram> {
+    metric.get()
+}
+
+fn get_histogram_vec(metric: &OnceLock<HistogramVec>) -> Option<&HistogramVec> {
+    metric.get()
+}
+
 /// Record a command execution with latency.
 #[inline]
 pub fn record_command(command: &str, duration_secs: f64) {
-    COMMAND_COUNTER.with_label_values(&[command]).inc();
-    COMMAND_LATENCY
-        .with_label_values(&[command])
-        .observe(duration_secs);
+    if let Some(c) = get_counter_vec(&COMMAND_COUNTER) {
+        c.with_label_values(&[command]).inc();
+    }
+    if let Some(h) = get_histogram_vec(&COMMAND_LATENCY) {
+        h.with_label_values(&[command]).observe(duration_secs);
+    }
 }
 
 /// Record a command error.
 #[inline]
 pub fn record_command_error(command: &str, error: &str) {
-    COMMAND_ERRORS.with_label_values(&[command, error]).inc();
+    if let Some(c) = get_counter_vec(&COMMAND_ERRORS) {
+        c.with_label_values(&[command, error]).inc();
+    }
 }
 
 /// Update channel member count gauge.
 #[inline]
 pub fn set_channel_members(channel: &str, count: i64) {
-    CHANNEL_MEMBERS.with_label_values(&[channel]).set(count);
+    if let Some(g) = get_gauge_vec(&CHANNEL_MEMBERS) {
+        g.with_label_values(&[channel]).set(count);
+    }
 }
 
 /// Remove a channel from the members gauge (when channel is destroyed).
 #[inline]
 pub fn remove_channel_metrics(channel: &str) {
-    // Reset to 0 rather than removing (Prometheus doesn't support removal easily)
-    CHANNEL_MEMBERS.with_label_values(&[channel]).set(0);
+    if let Some(g) = get_gauge_vec(&CHANNEL_MEMBERS) {
+        g.with_label_values(&[channel]).set(0);
+    }
 }
 
 /// Record message fan-out (how many recipients received a channel message).
 #[inline]
 pub fn record_fanout(recipients: usize) {
-    MESSAGE_FANOUT.observe(recipients as f64);
+    if let Some(h) = get_histogram(&MESSAGE_FANOUT) {
+        h.observe(recipients as f64);
+    }
 }
 
 /// Record a channel mode change.
 #[inline]
 pub fn record_mode_change(mode: char) {
-    CHANNEL_MODE_CHANGES
-        .with_label_values(&[&mode.to_string()])
-        .inc();
+    if let Some(c) = get_counter_vec(&CHANNEL_MODE_CHANGES) {
+        c.with_label_values(&[&mode.to_string()]).inc();
+    }
 }
 
 #[cfg(test)]
@@ -352,59 +255,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_record_command_does_not_panic() {
-        // Ensure metric recording doesn't panic
-        record_command("PRIVMSG", 0.001);
-        record_command("JOIN", 0.0005);
-        record_command("PART", 0.00001);
-    }
-
-    #[test]
-    fn test_record_command_error_does_not_panic() {
-        record_command_error("JOIN", "need_more_params");
-        record_command_error("NICK", "nickname_in_use");
-    }
-
-    #[test]
-    fn test_set_channel_members_does_not_panic() {
-        set_channel_members("#test", 10);
-        set_channel_members("#another", 0);
-        set_channel_members("#large", 5000);
-    }
-
-    #[test]
-    fn test_remove_channel_metrics_does_not_panic() {
-        set_channel_members("#todelete", 5);
-        remove_channel_metrics("#todelete");
-    }
-
-    #[test]
-    fn test_record_fanout_does_not_panic() {
-        record_fanout(1);
-        record_fanout(100);
-        record_fanout(10000);
-    }
-
-    #[test]
-    fn test_record_mode_change_does_not_panic() {
-        record_mode_change('o');
-        record_mode_change('v');
-        record_mode_change('b');
-        record_mode_change('i');
-    }
-
-    #[test]
-    fn test_gather_metrics_returns_string() {
-        // Initialize metrics first
+    fn test_metrics_lifecycle() {
+        // Init (safe to call multiple times in tests via OnceLock, though technically only runs once)
         init();
 
-        // Record some data
+        // accessors should work
         record_command("TEST", 0.001);
-        set_channel_members("#test_gather", 5);
-
-        // Gather should return a non-empty string
+        
         let output = gather_metrics();
-        // Should contain prometheus-formatted metrics
-        assert!(output.contains("irc_") || output.is_empty());
+        assert!(output.contains("irc_command_total"));
     }
 }
