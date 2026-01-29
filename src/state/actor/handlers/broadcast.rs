@@ -111,8 +111,10 @@ impl ChannelActor {
             }
 
             let link = entry.value().clone();
-            if let Err(e) = link.tx.send(Arc::new(s2s_msg.clone())).await {
-                warn!(peer = %peer_sid.as_str(), error = %e, "Failed to forward channel message");
+            if let Err(e) = link.tx.try_send(Arc::new(s2s_msg.clone())) {
+                warn!(peer = %peer_sid.as_str(), error = %e, "Failed to forward channel message (SendQ full)");
+                crate::metrics::CHANNEL_MESSAGES_DROPPED.inc();
+                // In the future, we might want to drop the link here if it keeps failing
             } else {
                 trace!(
                     peer = %peer_sid.as_str(),

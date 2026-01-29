@@ -79,13 +79,23 @@ impl ChannelActor {
             });
         }
 
+        let mut failed_uids = Vec::new();
         for (uid, sender) in &self.senders {
             if let Err(err) = sender.try_send(msg.clone()) {
                 match err {
-                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
-                    TrySendError::Closed(_) => {}
+                    TrySendError::Full(_) => {
+                        self.request_disconnect(uid, "SendQ exceeded");
+                        failed_uids.push(uid.clone());
+                    }
+                    TrySendError::Closed(_) => {
+                        failed_uids.push(uid.clone());
+                    }
                 }
             }
+        }
+
+        for uid in failed_uids {
+            self.senders.remove(&uid);
         }
 
         self.members.remove(&target_uid);

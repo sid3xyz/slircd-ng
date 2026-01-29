@@ -10,6 +10,7 @@ use crate::state::{ListEntry, Topic};
 use slirc_proto::mode::ModeType;
 use slirc_proto::sync::clock::{HybridTimestamp, ServerId};
 use slirc_proto::{ChannelMode as ProtoChannelMode, Mode};
+use tokio::sync::mpsc::error::TrySendError;
 
 impl ChannelActor {
     /// Handle incoming TMODE from a peer server with CRDT conflict resolution.
@@ -102,8 +103,23 @@ impl ChannelActor {
                 ),
             });
 
-            for tx in self.senders.values() {
-                let _ = tx.try_send(msg.clone());
+            let mut failed_uids = Vec::new();
+            for (uid, tx) in &self.senders {
+                if let Err(e) = tx.try_send(msg.clone()) {
+                     match e {
+                        TrySendError::Full(_) => {
+                            self.request_disconnect(uid, "SendQ exceeded");
+                            failed_uids.push(uid.clone());
+                        }
+                        TrySendError::Closed(_) => {
+                            failed_uids.push(uid.clone());
+                        }
+                    }
+                }
+            }
+
+            for uid in failed_uids {
+                self.senders.remove(&uid);
             }
 
             // Update metrics

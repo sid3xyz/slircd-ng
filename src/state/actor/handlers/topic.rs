@@ -86,6 +86,7 @@ impl ChannelActor {
             });
         }
 
+        let mut failed_uids = Vec::new();
         for (uid, sender) in &self.senders {
             // Only send tags to clients that support message-tags
             let out_msg = if self
@@ -104,10 +105,19 @@ impl ChannelActor {
             };
             if let Err(err) = sender.try_send(Arc::new(out_msg)) {
                 match err {
-                    TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
-                    TrySendError::Closed(_) => {}
+                    TrySendError::Full(_) => {
+                        self.request_disconnect(uid, "SendQ exceeded");
+                        failed_uids.push(uid.clone());
+                    }
+                    TrySendError::Closed(_) => {
+                        failed_uids.push(uid.clone());
+                    }
                 }
             }
+        }
+
+        for uid in failed_uids {
+            self.senders.remove(&uid);
         }
 
         self.notify_observer(None);

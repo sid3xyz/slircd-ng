@@ -216,31 +216,31 @@ mod tests {
 
     #[test]
     fn test_extract_params_query() {
-        let msg = MessageRef::parse("TOPIC #channel").unwrap();
-        let (channel, action) = extract_params(&msg).unwrap();
+        let msg = MessageRef::parse("TOPIC #channel").expect("valid message");
+        let (channel, action) = extract_params(&msg).expect("valid params");
         assert_eq!(channel, "#channel");
         assert_eq!(action, TopicAction::Query);
     }
 
     #[test]
     fn test_extract_params_set() {
-        let msg = MessageRef::parse("TOPIC #channel :new topic").unwrap();
-        let (channel, action) = extract_params(&msg).unwrap();
+        let msg = MessageRef::parse("TOPIC #channel :new topic").expect("valid message");
+        let (channel, action) = extract_params(&msg).expect("valid params");
         assert_eq!(channel, "#channel");
         assert_eq!(action, TopicAction::Set("new topic"));
     }
 
     #[test]
     fn test_extract_params_clear() {
-        let msg = MessageRef::parse("TOPIC #channel :").unwrap();
-        let (channel, action) = extract_params(&msg).unwrap();
+        let msg = MessageRef::parse("TOPIC #channel :").expect("valid message");
+        let (channel, action) = extract_params(&msg).expect("valid params");
         assert_eq!(channel, "#channel");
         assert_eq!(action, TopicAction::Set(""));
     }
 
     #[test]
     fn test_extract_params_missing_channel() {
-        let msg = MessageRef::parse("TOPIC").unwrap();
+        let msg = MessageRef::parse("TOPIC").expect("valid message");
         let err = extract_params(&msg).unwrap_err();
         assert!(matches!(err, HandlerError::NeedMoreParams));
     }

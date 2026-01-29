@@ -23,6 +23,8 @@ pub enum ValidationError {
     TlsKeyNotFound(String),
     #[error("database.path parent directory does not exist: {0}")]
     DatabasePathInvalid(String),
+    #[error("idle_timeouts.timeout ({0}s) must be greater than idle_timeouts.ping ({1}s)")]
+    PingTimeoutTooShort(u64, u64),
 }
 
 /// Validate a configuration, returning all errors found.
@@ -70,6 +72,16 @@ pub fn validate(config: &Config) -> Result<(), Vec<ValidationError>> {
         {
             errors.push(ValidationError::DatabasePathInvalid(db.path.clone()));
         }
+    }
+
+
+
+    // Idle timeouts validation
+    if config.server.idle_timeouts.timeout <= config.server.idle_timeouts.ping {
+        errors.push(ValidationError::PingTimeoutTooShort(
+            config.server.idle_timeouts.timeout,
+            config.server.idle_timeouts.ping,
+        ));
     }
 
     if errors.is_empty() {
@@ -168,6 +180,31 @@ key_path = "/nonexistent/key.pem"
             errors
                 .iter()
                 .any(|e| matches!(e, ValidationError::TlsCertNotFound(_)))
+        );
+    }
+
+    #[test]
+    fn test_ping_timeout_too_short_fails() {
+        let toml = r#"
+[server]
+name = "test"
+network = "TestNet"
+sid = "00T"
+description = "Test"
+
+[server.idle_timeouts]
+ping = 100
+timeout = 90
+
+[listen]
+address = "127.0.0.1:6667"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        let errors = validate(&config).unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, ValidationError::PingTimeoutTooShort(90, 100)))
         );
     }
 }

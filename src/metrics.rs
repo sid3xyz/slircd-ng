@@ -128,12 +128,17 @@ lazy_static! {
         &["command", "error"]
     ).expect("COMMAND_ERRORS metric creation failed");
 
-    /// Channel mode changes (counter).
-    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
     pub static ref CHANNEL_MODE_CHANGES: IntCounterVec = IntCounterVec::new(
         Opts::new("irc_channel_mode_changes_total", "Channel mode changes"),
         &["mode"]
     ).expect("CHANNEL_MODE_CHANGES metric creation failed");
+
+    /// Channel messages dropped due to SendQ/backpressure.
+    // SAFETY: Metrics init at startup via lazy_static, panic acceptable if prometheus fails
+    pub static ref CHANNEL_MESSAGES_DROPPED: IntCounter = IntCounter::new(
+        "irc_channel_messages_dropped_total",
+        "Channel messages dropped due to backpressure"
+    ).expect("CHANNEL_MESSAGES_DROPPED metric creation failed");
 
     // ========================================================================
     // Distributed System Metrics (Innovation 3, Phase 2)
@@ -244,6 +249,9 @@ pub fn init() {
     }
     if let Err(e) = REGISTRY.register(Box::new(CHANNEL_MODE_CHANGES.clone())) {
         tracing::warn!(error = %e, "Failed to register metric irc_channel_mode_changes_total");
+    }
+    if let Err(e) = REGISTRY.register(Box::new(CHANNEL_MESSAGES_DROPPED.clone())) {
+        tracing::warn!(error = %e, "Failed to register metric irc_channel_messages_dropped_total");
     }
 
     // Distributed metrics (Innovation 3, Phase 2)

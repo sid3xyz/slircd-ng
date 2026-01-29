@@ -47,7 +47,7 @@ fn validate_connection(addr: &SocketAddr, matrix: &Matrix, listener_type: &str) 
         return None;
     }
 
-    info!(%addr, "{} connection accepted", listener_type);
+    info!(address = %addr, "{} connection accepted", listener_type);
     Some(matrix.user_manager.uid_gen.next())
 }
 
@@ -88,7 +88,7 @@ async fn handle_tls_connection(
                 error!(%uid, %addr, error = %e, "TLS connection error");
             }
             matrix.security_manager.rate_limiter.on_connection_end(ip);
-            info!(%uid, %addr, "TLS connection closed");
+            info!(uid = %uid, address = %addr, "TLS connection closed");
         }
         Err(e) => {
             warn!(%addr, error = %e, "TLS handshake failed");
@@ -134,7 +134,7 @@ async fn handle_websocket_connection(
                 error!(%uid, %addr, error = %e, "WebSocket connection error");
             }
             matrix.security_manager.rate_limiter.on_connection_end(ip);
-            info!(%uid, %addr, "WebSocket connection closed");
+            info!(uid = %uid, address = %addr, "WebSocket connection closed");
         }
         Err(e) => {
             warn!(%addr, error = %e, "WebSocket handshake failed");
@@ -215,7 +215,7 @@ async fn handle_plaintext_connection(
         error!(%uid, %addr, error = %e, "Plaintext connection error");
     }
     matrix.security_manager.rate_limiter.on_connection_end(ip);
-    info!(%uid, %addr, "Plaintext connection closed");
+    info!(uid = %uid, address = %addr, "Plaintext connection closed");
 }
 
 /// The Gateway accepts incoming TCP/TLS connections and spawns handlers.
@@ -395,38 +395,46 @@ impl Gateway {
                                 error!(error = %e, "Failed to accept TLS connection");
                             }) else { continue };
 
-                            // Handle PROXY protocol if enabled
-                            if proxy_protocol {
-                                match parse_proxy_header(&mut stream).await {
-                                    Ok(real_addr) => {
-                                        info!(%addr, %real_addr, "PROXY protocol: client address resolved");
-                                        addr = real_addr;
-                                    }
-                                    Err(e) => {
-                                        warn!(%addr, error = %e, "PROXY protocol handshake failed");
-                                        continue;
+                            // Clone Arcs for the new task
+                            let matrix = Arc::clone(&matrix_tls);
+                            let registry = Arc::clone(&registry_tls);
+                            let db = db_tls.clone();
+                            let tls_acceptor = tls_acceptor.clone();
+
+                            tokio::spawn(async move {
+                                // Handle PROXY protocol if enabled
+                                if proxy_protocol {
+                                    match parse_proxy_header(&mut stream).await {
+                                        Ok(real_addr) => {
+                                            info!(%addr, %real_addr, "PROXY protocol: client address resolved");
+                                            addr = real_addr;
+                                        }
+                                        Err(e) => {
+                                            warn!(%addr, error = %e, "PROXY protocol handshake failed");
+                                            return;
+                                        }
                                     }
                                 }
-                            }
 
-                            let Some(uid) = validate_connection(&addr, &matrix_tls, "TLS") else {
-                                continue;
-                            };
+                                let Some(uid) = validate_connection(&addr, &matrix, "TLS") else {
+                                    return;
+                                };
 
-                            if !matrix_tls.security_manager.rate_limiter.on_connection_start(addr.ip()) {
-                                warn!(%addr, "Connection rejected: max connections per IP exceeded");
-                                continue;
-                            }
+                                if !matrix.security_manager.rate_limiter.on_connection_start(addr.ip()) {
+                                    warn!(%addr, "Connection rejected: max connections per IP exceeded");
+                                    return;
+                                }
 
-                            tokio::spawn(handle_tls_connection(
-                                uid,
-                                stream,
-                                addr,
-                                tls_acceptor.clone(),
-                                Arc::clone(&matrix_tls),
-                                Arc::clone(&registry_tls),
-                                db_tls.clone(),
-                            ));
+                                handle_tls_connection(
+                                    uid,
+                                    stream,
+                                    addr,
+                                    tls_acceptor,
+                                    matrix,
+                                    registry,
+                                    db,
+                                ).await;
+                            });
                         }
                         _ = shutdown_rx_tls.recv() => {
                             info!("Shutdown signal received - stopping TLS listener");
@@ -454,38 +462,46 @@ impl Gateway {
                                 error!(error = %e, "Failed to accept WebSocket connection");
                             }) else { continue };
 
-                            // Handle PROXY protocol if enabled
-                            if proxy_protocol {
-                                match parse_proxy_header(&mut stream).await {
-                                    Ok(real_addr) => {
-                                        info!(%addr, %real_addr, "PROXY protocol: client address resolved");
-                                        addr = real_addr;
-                                    }
-                                    Err(e) => {
-                                        warn!(%addr, error = %e, "PROXY protocol handshake failed");
-                                        continue;
+                            // Clone Arcs for the new task
+                            let matrix = Arc::clone(&matrix_ws);
+                            let registry = Arc::clone(&registry_ws);
+                            let db = db_ws.clone();
+                            let allow_origins = allow_origins.clone();
+
+                            tokio::spawn(async move {
+                                // Handle PROXY protocol if enabled
+                                if proxy_protocol {
+                                    match parse_proxy_header(&mut stream).await {
+                                        Ok(real_addr) => {
+                                            info!(%addr, %real_addr, "PROXY protocol: client address resolved");
+                                            addr = real_addr;
+                                        }
+                                        Err(e) => {
+                                            warn!(%addr, error = %e, "PROXY protocol handshake failed");
+                                            return;
+                                        }
                                     }
                                 }
-                            }
 
-                            let Some(uid) = validate_connection(&addr, &matrix_ws, "WebSocket") else {
-                                continue;
-                            };
+                                let Some(uid) = validate_connection(&addr, &matrix, "WebSocket") else {
+                                    return;
+                                };
 
-                            if !matrix_ws.security_manager.rate_limiter.on_connection_start(addr.ip()) {
-                                warn!(%addr, "Connection rejected: max connections per IP exceeded");
-                                continue;
-                            }
+                                if !matrix.security_manager.rate_limiter.on_connection_start(addr.ip()) {
+                                    warn!(%addr, "Connection rejected: max connections per IP exceeded");
+                                    return;
+                                }
 
-                            tokio::spawn(handle_websocket_connection(
-                                uid,
-                                stream,
-                                addr,
-                                allow_origins.clone(),
-                                Arc::clone(&matrix_ws),
-                                Arc::clone(&registry_ws),
-                                db_ws.clone(),
-                            ));
+                                handle_websocket_connection(
+                                    uid,
+                                    stream,
+                                    addr,
+                                    allow_origins,
+                                    matrix,
+                                    registry,
+                                    db,
+                                ).await;
+                            });
                         }
                         _ = shutdown_rx_ws.recv() => {
                             info!("Shutdown signal received - stopping WebSocket listener");
@@ -508,38 +524,47 @@ impl Gateway {
                         continue;
                     };
 
-                    // Handle PROXY protocol if enabled
-                    if self.plaintext_proxy_protocol {
-                        match parse_proxy_header(&mut stream).await {
-                            Ok(real_addr) => {
-                                info!(%addr, %real_addr, "PROXY protocol: client address resolved");
-                                addr = real_addr;
-                            }
-                            Err(e) => {
-                                warn!(%addr, error = %e, "PROXY protocol handshake failed");
-                                continue;
+                    // Clone Arcs for the new task
+                    let matrix = Arc::clone(&matrix);
+                    let registry = Arc::clone(&registry);
+                    let db = self.db.clone();
+                    let starttls_acceptor = starttls_acceptor.clone();
+                    let proxy_protocol = self.plaintext_proxy_protocol;
+
+                    tokio::spawn(async move {
+                        // Handle PROXY protocol if enabled
+                        if proxy_protocol {
+                            match parse_proxy_header(&mut stream).await {
+                                Ok(real_addr) => {
+                                    info!(%addr, %real_addr, "PROXY protocol: client address resolved");
+                                    addr = real_addr;
+                                }
+                                Err(e) => {
+                                    warn!(%addr, error = %e, "PROXY protocol handshake failed");
+                                    return;
+                                }
                             }
                         }
-                    }
 
-                    let Some(uid) = validate_connection(&addr, &matrix, "Plaintext") else {
-                        continue;
-                    };
+                        let Some(uid) = validate_connection(&addr, &matrix, "Plaintext") else {
+                            return;
+                        };
 
-                    if !matrix.security_manager.rate_limiter.on_connection_start(addr.ip()) {
-                        warn!(%addr, "Connection rejected: max connections per IP exceeded");
-                        continue;
-                    }
+                        if !matrix.security_manager.rate_limiter.on_connection_start(addr.ip()) {
+                            warn!(%addr, "Connection rejected: max connections per IP exceeded");
+                            return;
+                        }
 
-                    tokio::spawn(handle_plaintext_connection(
-                        uid,
-                        stream,
-                        addr,
-                        Arc::clone(&matrix),
-                        Arc::clone(&registry),
-                        self.db.clone(),
-                        starttls_acceptor.clone(),
-                    ));
+                        handle_plaintext_connection(
+                            uid,
+                            stream,
+                            addr,
+                            matrix,
+                            registry,
+                            db,
+                            starttls_acceptor,
+                        ).await;
+                    });
                 }
                 // Handle shutdown signal
                 _ = shutdown_rx.recv() => {

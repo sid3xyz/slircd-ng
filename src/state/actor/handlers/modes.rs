@@ -380,14 +380,27 @@ impl ChannelActor {
                 prefix: Some(sender_prefix.clone()),
                 command: Command::ChannelMODE(self.name.clone(), applied_modes.clone()),
             });
+            let mut failed_uids = Vec::new();
             for (uid, sender) in &self.senders {
                 if let Err(err) = sender.try_send(msg.clone()) {
                     match err {
-                        TrySendError::Full(_) => self.request_disconnect(uid, "SendQ exceeded"),
-                        TrySendError::Closed(_) => {}
+                        TrySendError::Full(_) => {
+                            self.request_disconnect(uid, "SendQ exceeded");
+                            failed_uids.push(uid.clone());
+                        }
+                        TrySendError::Closed(_) => {
+                           failed_uids.push(uid.clone());
+                        }
                     }
                 }
             }
+            
+            // Remove failed senders to prevent repeated Error Floods
+            for uid in failed_uids {
+                self.senders.remove(&uid);
+                // Note: User remains in validation lists until formal QUIT/PART event arrives
+            }
+
             self.notify_observer(None);
 
             // Store MODE event in history (EventPlayback)
