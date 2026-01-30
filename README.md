@@ -249,7 +249,7 @@ Load tested with up to 1000 concurrent users.
 - ✅ `cargo clippy -- -D warnings`: 0 warnings (19 documented exceptions)
 - ✅ `cargo test`: 760+ tests passing
 - ✅ Zero unsafe code in library code
-- ✅ Zero TODO/FIXME markers
+- ⚠️ 2 TODOs in stats handler (link metrics placeholders)
 
 ---
 
