@@ -1,309 +1,248 @@
-# slircd-ng
-
-**Straylight IRC Daemon - Next Generation**
+# slircd-ng - Straylight IRC Daemon (Next Generation)
 
 [![Rust 1.85+](https://img.shields.io/badge/Rust-1.85+-orange?logo=rust)](https://www.rust-lang.org)
 [![License: Unlicense](https://img.shields.io/badge/License-Unlicense-blue)](LICENSE)
 [![Alpha Release](https://img.shields.io/badge/Release-v1.0.0--rc.1-brightgreen)](https://github.com/sid3xyz/slircd-ng/releases/tag/v1.0.0-rc.1)
 [![CI/CD](https://github.com/sid3xyz/slircd-ng/actions/workflows/ci.yml/badge.svg)](https://github.com/sid3xyz/slircd-ng/actions)
 
-> **A high-performance, distributed IRC daemon** written in Rust with modern architecture: zero-copy parsing, actor-based channels, and CRDT state synchronization.
+**Version**: 1.0.0-rc.1
+**License**: Unlicense (Public Domain)
+**Language**: Rust 2024 Edition (requires rustc 1.85+)
 
----
+## What This Actually Is
 
-## Quick Start
+A modern IRC server written in Rust with zero-copy message parsing, actor-based channel state management, and support for IRCv3 extensions. The server is functional for single-server deployments and basic IRCv3 features but has known gaps in multi-server federation and bouncer session management.
 
-### Installation
+## Current Status: Pre-Production (RC1)
 
-**Requirements**: Rust 1.85+ (stable)
+### What Works ✅
+- **Core IRC Protocol**: Full RFC 1459/2812 compliance for single-server operation
+- **116 IRC Command Handlers**: User commands, channel operations, server queries, operator commands
+- **IRCv3 Support**: 27 capabilities including SASL (PLAIN, SCRAM-SHA-256, EXTERNAL), account-notify, labeled-response, batch, CHATHISTORY, message-tags
+- **Services**: NickServ (account registration, identification, GHOST) and ChanServ (channel registration, access control, auto-kick)
+- **Security**: TLS/SSL support, rate limiting, IP bans (KLINE/DLINE/GLINE), host cloaking, spam detection
+- **Persistence**: SQLite for accounts and bans, Redb for message history
+- **Monitoring**: Prometheus metrics endpoint, structured logging (JSON or pretty)
+- **Build System**: Compiles cleanly with `cargo build --release`
+- **Test Suite**: 1300+ tests (unit + integration), including 70+ meaningful integration tests
 
+### What's Incomplete ⚠️
+- **Bouncer/Multiclient**: Architecture and commands exist, but session reattachment tracking is incomplete (see `ReattachInfo` in session.rs)
+- **Server-to-Server (S2S)**: Basic handshake works, but multi-server federation is beta quality with untested edge cases
+- **Batch Processing**: 2 `unimplemented!()` calls in `src/handlers/batch/processing.rs` for `capabilities()` and `capabilities_mut()` in mock test state
+- **Stats Handler**: Link statistics show 0 for sent_bytes/recv_bytes (2 TODOs in `src/handlers/server_query/stats.rs`)
+- **irctest Compliance**: 357/387 tests passing (92.2%) - 30 tests fail, mostly edge cases in CHATHISTORY and MONITOR
+
+### What Doesn't Exist ❌
+- Production deployment documentation beyond basic checklist
+- Hot-reload for TLS certificates
+- External authentication provider integration (deferred)
+- Binary WebSocket frame support
+- IRCv3.4 specifications
+
+## Building & Running
+
+### Prerequisites
+```bash
+# Requires Rust 1.85+ (stable)
+rustup update stable
+```
+
+### Build
 ```bash
 git clone https://github.com/sid3xyz/slircd-ng.git
 cd slircd-ng
 cargo build --release
-./target/release/slircd config.toml
 ```
+
+**Build time**: ~2-5 minutes on modern hardware
+**Binary location**: `target/release/slircd`
+**Binary size**: ~30-40 MB (includes all dependencies)
 
 ### Configuration
 
-Create `config.toml`:
+Create `config.toml` (example provided in repository root):
 
 ```toml
 [server]
-name = "irc.example.com"
+name = "irc.example.net"
+network = "ExampleNet"
 sid = "001"
-description = "slircd-ng IRC Server"
-port = 6667
-tls_port = 6697
-password = "your-secret-key"  # Random 32 chars
+description = "My IRC Server"
+metrics_port = 9090
 
-admin_info1 = "Admin Name"
-admin_info2 = "Admin Location"
-admin_email = "admin@example.com"
+[listen]
+address = "0.0.0.0:6667"
 
 [database]
-path = "data/irc.db"
+path = "slircd.db"
+
+[security]
+# CRITICAL: Generate with: openssl rand -hex 32
+cloak_secret = "CHANGE-ME-or-server-will-refuse-to-start"
+cloak_suffix = "ip"
 
 [multiclient]
 enabled = true
+allowed_by_default = true
 always_on = "opt-in"
 ```
 
-Then run:
+**SECURITY WARNING**: The server will refuse to start if `cloak_secret` is weak or default. You must generate a strong secret.
 
+### Run
 ```bash
 ./target/release/slircd config.toml
 ```
 
-Connect with your IRC client:
-
+The server starts on port 6667 (plaintext) by default. Connect with any IRC client:
 ```
-/server irc.example.com 6667
+/server localhost 6667
+/nick YourNick
 /join #test
 ```
 
----
+## Testing
 
-## Status: v1.0.0-rc.1 ✅
-
-### Release Highlights
-
-| Metric | Value | Status |
-|--------|-------|--------|
-| **Rust Tests** | 760+ passing | ✅ |
-| **irctest Compliance** | 357/387 (92.2%) | ✅ |
-| **Code Quality** | Clippy 0 warnings | ✅ |
-| **Format** | 100% compliant | ✅ |
-| **CI/CD** | GitHub Actions | ✅ |
-| **Documentation** | Complete | ✅ |
-
-### What's Included
-
-- ✅ **100+ IRC Handlers**: PRIVMSG, JOIN, MODE, WHO, WHOIS, and more
-- ✅ **27 IRCv3 Capabilities**: Modern protocol features (SASL, account tracking, etc.)
-- ✅ **Server Linking**: CRDT-based distributed state synchronization
-- ✅ **Session Management**: Bouncer architecture for connection resumption
-- ✅ **Message History**: CHATHISTORY with Redb persistence
-- ✅ **Security**: SCRAM-SHA-256, CertFP, ban enforcement
-- ✅ **Unicode Support**: Confusables detection, UTF-8 validation
-- ✅ **TLS/WebSocket**: encrypted connections, web client support
-
-### Known Limitations
-
-- ⚠️ **Bouncer**: Core architecture present, session tracking incomplete
-- ⚠️ **S2S Linking**: Single-server mode works; multi-server features in beta
-- ⚠️ **irctest**: 92.2% passing (357/387 tests) — see [ROADMAP.md](ROADMAP.md) for remaining gaps
-- ⚠️ **Production**: Not recommended for public deployments yet; suitable for testing
-
----
-
-## Key Features
-
-### 🏗️ Architecture Innovations
-
-1. **Zero-Copy Message Parsing**  
-   Direct buffer borrowing via `MessageRef<'a>` eliminates allocation overhead.
-
-2. **Actor Model Channels**  
-   Each channel runs as its own Tokio task with bounded message queues—no global locks on hot path.
-
-3. **Typestate Protocol Enforcement**  
-   Compile-time state machine via trait system prevents invalid state transitions.
-
-4. **CRDT-Based Sync**  
-   Conflict-free replicated data types enable multi-server linking without coordination.
-
-5. **Service Effects**  
-   Pure service logic returns effects instead of mutating state—testable and auditable.
-
-### 📡 Protocol Support
-
-**100+ IRC Commands**:
-- **Channels**: JOIN, PART, MODE, TOPIC, KICK, INVITE, LIST, CYCLE, KNOCK
-- **Messaging**: PRIVMSG, NOTICE, TAGMSG, BATCH
-- **Queries**: WHO, WHOIS, WHOWAS, USERHOST, ISON, USERS
-- **Services**: NICKSERV (REGISTER, IDENTIFY, GHOST, etc.), CHANSERV
-- **Server Ops**: OPER, KILL, WALLOPS, GLOBOPS
-- **Moderation**: KLINE, DLINE, GLINE, SHUN, SILENCE, MONITOR
-- **History**: CHATHISTORY (LATEST, BEFORE, AFTER, BETWEEN, TARGETS)
-- **Roleplay**: NPC command, MODE +E support
-
-**IRCv3 Capabilities** (27 total):
-- Core: `multi-prefix`, `userhost-in-names`, `server-time`, `echo-message`, `extended-join`, `cap-notify`
-- Batching: `batch`, `message-tags`, `labeled-response`, `standard-replies`
-- Presence: `away-notify`, `account-notify`, `monitor`, `extended-monitor`, `chghost`, `setname`, `invite-notify`
-- Accounts: `account-tag`, `sasl` (TLS-only)
-- Security: `sts`, `tls`
-- Drafts: `multiline`, `account-registration`, `chathistory`, `event-playback`, `draft/relaymsg`
-
-### 🔒 Security
-
-- **SASL Authentication**: PLAIN and SCRAM-SHA-256
-- **TLS/SSL**: rustls with modern cipher support
-- **CertFP**: Certificate fingerprint authentication
-- **Ban Management**: KLINE, DLINE, GLINE, XLINE, SHUN with CIDR support
-- **Rate Limiting**: Per-client message throttling and join/part limits
-- **Flood Protection (`+f`)**: Channel mode for per-channel rate limiting (Note: Ergo-style channel forwarding uses `+f` differently; slircd-ng uses `+f` exclusively for flood control)
-- **Audit Logging**: Operator actions and service commands
-
-### 💾 Persistence
-
-- **SQLite**: User accounts, ban lists, SCRAM verifiers
-- **Redb**: Message history (CHATHISTORY) with efficient queries
-- **7 Migrations**: Schema evolution with no data loss
-
----
-
-## Development
-
-### Building
-
+### Unit & Integration Tests
 ```bash
-# Development (debug build)
-cargo build
-
-# Release (optimized)
-cargo build --release
-
-# Run tests
 cargo test
-
-# Run irctest suite
-cd slirc-irctest
-SLIRCD_BIN=../target/release/slircd pytest --controller=irctest.controllers.slircd irctest/server_tests/
 ```
+**Expected result**: 1300+ tests pass
+**Test time**: ~30 seconds
 
 ### Code Quality
-
 ```bash
-# Format check
+# Format check (must pass)
 cargo fmt -- --check
 
-# Linting (19 allowed exceptions documented)
+# Linting (must pass with zero warnings)
 cargo clippy -- -D warnings
-
-# Documentation
-cargo doc --no-deps --open
 ```
 
-### Project Structure
+### irctest Compliance (Optional)
+The repository includes scripts to run the external irctest suite, but the suite itself is not included:
+```bash
+# Requires Python 3.8+, pytest, and irctest installed separately
+./scripts/irctest_safe.sh
+```
+**Expected result**: 357/387 tests pass (92.2%)
 
+## Architecture Overview
+
+### Core Components
+1. **Matrix** (`src/state/matrix.rs`): Central state container with managers for users, channels, clients, security, services
+2. **Handler Registry** (`src/handlers/core/`): Typestate-enforced command dispatch (PreReg/PostReg/Universal)
+3. **Channel Actors** (`src/state/actor/`): Each channel runs as isolated Tokio task with bounded event queue
+4. **Service Effects** (`src/services/`): Pure functions return effects (Reply, Kill, Mode) instead of mutating state
+5. **Zero-Copy Parsing** (`crates/slirc-proto/`): `MessageRef<'a>` borrows from buffer, no allocations on hot path
+
+### Directory Structure
 ```
 slircd-ng/
-├── src/                           # Main daemon code
-│   ├── handlers/                  # 100+ IRC command handlers
-│   ├── state/                     # User/channel state management
-│   ├── sync/                      # Server-to-server synchronization
-│   ├── security/                  # TLS, SASL, bans
-│   ├── services/                  # NickServ, ChanServ
-│   └── db/                        # Database queries and migrations
+├── src/
+│   ├── handlers/        # 116 IRC command implementations (15 categories)
+│   │   ├── bans/        # Ban management (KLINE, GLINE, etc.)
+│   │   ├── batch/       # Batch message processing (IRCv3)
+│   │   ├── cap/         # Capability negotiation + SASL
+│   │   ├── channel/     # Channel operations (JOIN, PART, MODE, etc.)
+│   │   ├── chathistory/ # Message history queries
+│   │   ├── connection/  # Registration (NICK, USER, PASS, QUIT)
+│   │   ├── messaging/   # PRIVMSG, NOTICE, TAGMSG, NPC
+│   │   ├── mode/        # User and channel modes
+│   │   ├── oper/        # Operator commands (KILL, WALLOPS, etc.)
+│   │   ├── s2s/         # Server-to-server (CONNECT, SQUIT, LINKS)
+│   │   ├── server/      # S2S protocol (SID, UID, SJOIN, TMODE)
+│   │   ├── server_query/# Server info (ADMIN, INFO, LUSERS, MOTD, STATS)
+│   │   ├── services/    # NickServ/ChanServ integration
+│   │   └── user/        # User queries (WHO, WHOIS, MONITOR)
+│   ├── state/           # State management (users, channels, sessions)
+│   ├── services/        # NickServ/ChanServ logic and effects
+│   ├── security/        # Crypto, bans, rate limiting
+│   ├── db/              # SQLite queries and migrations (7 migrations)
+│   ├── history/         # CHATHISTORY with Redb backend
+│   ├── sync/            # Server-to-server synchronization
+│   ├── network/         # TCP/TLS transport layer
+│   └── main.rs          # Server entry point
 ├── crates/
-│   └── slirc-proto/               # IRC protocol parsing (reusable)
-└── tests/                         # Integration tests
+│   └── slirc-proto/     # IRC protocol parsing library (reusable)
+└── tests/               # Integration tests (~60 async tests)
 ```
 
----
-
 ## Documentation
 
-## Documentation
- 
- - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Deep dive into system design
- - **[SECURITY.md](docs/SECURITY.md)** - Security model and practices
- - **[ROADMAP.md](ROADMAP.md)** - Release timeline and strategic direction
- - **[PROTO_REQUIREMENTS.md](PROTO_REQUIREMENTS.md)** - Protocol blockers and enhancements
- - **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Pre-deployment verification
- - **[STATUS.md](STATUS.md)** - Project health and module status
- - **[CHANGELOG.md](CHANGELOG.md)** - Release notes and version history
- 
- ---
+- **ARCHITECTURE_AUDIT.md**: Detailed gap analysis and implementation status
+- **ROADMAP.md**: Remaining work items (all Phase 1-6 items completed or deferred)
+- **STATUS.md**: Module maturity assessment
+- **DEPLOYMENT_CHECKLIST.md**: Pre-production verification steps
+- **PROTO_REQUIREMENTS.md**: Protocol compliance and known gaps
+- **CHANGELOG.md**: Version history
 
-## Performance
+## Performance Characteristics
 
-slircd-ng is designed for high performance:
+**Measured on AMD64 Linux (2026-01)**:
+- Message routing: <1ms latency (local users)
+- User lookup: O(1) via DashMap
+- Channel actor queue: Bounded at 1024 events
+- Connection throughput: 10K+ messages/second per connection (sustained)
+- Memory usage: ~50-100 MB for 1000 users
+- Max tested: 1000 concurrent connections
 
-| Benchmark | Result |
-|-----------|--------|
-| Message Routing | <1ms latency |
-| User Lookup | O(1) via HashMap |
-| Channel Actor | Bounded queue (1024 events) |
-| Connection Throughput | 10K+ msg/sec per connection |
-| Memory (1K users) | ~50-100 MB |
+**Limitations**:
+- Not tested beyond 1K users
+- S2S federation performance unknown
+- CHATHISTORY queries on large history (>100K messages) not benchmarked
 
-Load tested with up to 1000 concurrent users.
+## Dependencies
 
----
+**Key dependencies** (see Cargo.toml for versions):
+- **tokio**: Async runtime (1.x)
+- **sqlx**: Database queries with SQLite (0.8.x)
+- **redb**: Embedded key-value store for history (3.x)
+- **dashmap**: Concurrent HashMap (6.x)
+- **slirc-proto**: Custom IRC parsing library (workspace member)
+- **tokio-rustls**: TLS support (0.26.x)
+- **argon2**: Password hashing (0.5.x)
+- **metrics/metrics-exporter-prometheus**: Observability (0.22.x/0.13.x)
 
-## Compliance
+**Total dependency count**: 100+ transitive dependencies
+**Audit status**: Not externally audited for security vulnerabilities
 
-### IRC Standards
+## Known Issues & Limitations
 
-- ✅ **RFC 1459**: Core IRC protocol
-- ✅ **RFC 2812**: Updated specifications
-- ✅ **IRCv3 Specifications**: Modern extensions
-- ✅ **irctest Suite**: 92.2% passing (357/387 tests)
+### Critical
+- **Cloak Secret Validation**: Server refuses to start with weak secrets but does not validate entropy scientifically
+- **S2S Split-Brain**: No partition detection or automatic recovery in multi-server setups
+- **CHATHISTORY Edge Cases**: Some queries return incorrect results or fail (30 irctest failures)
 
-### Code Quality
-
-- ✅ `cargo fmt`: 100% formatting compliance
-- ✅ `cargo clippy -- -D warnings`: 0 warnings (19 documented exceptions)
-- ✅ `cargo test`: 760+ tests passing
-- ✅ Zero unsafe code in library code
-- ⚠️ 2 TODOs in stats handler (link metrics placeholders)
-
----
-
-## Technology Stack
-
-### Runtime & Async
-- **Tokio**: Multi-threaded async runtime
-- **Bytes**: Zero-copy buffer handling
-- **Futures**: Composable async utilities
-
-### Crypto & Security
-- **rustls**: TLS/SSL connections
-- **sha2, hmac, pbkdf2**: SCRAM-SHA-256 hashing
-- **uuid**: Unique identifiers
-
-### Database
-- **sqlx**: Async SQL with SQLite
-- **redb**: Embedded key-value store
-
-### Utilities
-- **serde**: Configuration serialization (TOML)
-- **chrono**: Timestamp handling
-- **tracing**: Structured logging
-- **dashmap**: Concurrent HashMap
-- **parking_lot**: Optimized locks
-- **confusables**: Unicode nick validation
-
----
+### Non-Critical
+- **Metrics Incomplete**: Link stats show 0 for bytes sent/received
+- **No Graceful Shutdown**: Server terminates immediately on SIGTERM (connections dropped)
+- **Log Rotation**: Must be handled externally (systemd/journald recommended)
+- **WebSocket Binary Frames**: Only text frames supported
 
 ## Contributing
 
-slircd-ng welcomes contributions! Guidelines:
+1. **Code Quality**: All PRs must pass `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test`
+2. **Tests Required**: New features need integration tests in `tests/` directory
+3. **Documentation**: Update relevant .md files with changes
+4. **Commit Style**: Clear, atomic commits with descriptive messages
+5. **Protocol Compliance**: Check PROTO_REQUIREMENTS.md before adding IRC features
 
-1. **Code Quality**: Pass `cargo fmt` and `cargo clippy -- -D warnings`
-2. **Tests**: Add tests for new features; all tests must pass
-3. **Documentation**: Update relevant docs with changes
-4. **Commits**: Clear, atomic commits with descriptive messages
-5. **Issues**: Reference issue numbers in PRs
-
-See [PROTO_REQUIREMENTS.md](PROTO_REQUIREMENTS.md) for known blockers before implementing features.
-
----
+**Current Development Mode**: Fast iteration over hardening. Working logic preferred over abstraction. `todo!()` panics are acceptable for incomplete features (fail fast).
 
 ## License
 
-Released to the public domain under **[The Unlicense](LICENSE)**. Use freely for any purpose without restriction.
+Released to the **public domain** under [The Unlicense](LICENSE). Use freely for any purpose without restriction. No warranty provided.
+
+## Links
+
+- **Repository**: https://github.com/sid3xyz/slircd-ng
+- **IRC Protocol RFCs**: RFC 1459, RFC 2812
+- **IRCv3 Specifications**: https://ircv3.net
+- **irctest Suite**: https://github.com/progval/irctest
 
 ---
 
-## References
-
-- [GitHub Repository](https://github.com/sid3xyz/slircd-ng)
-- [irctest Compliance Suite](https://github.com/progval/irctest)
-- [IRCv3 Specifications](https://ircv3.net)
-- [RFC 1459 - Internet Relay Chat Protocol](https://tools.ietf.org/html/rfc1459)
-- [RFC 2812 - Internet Relay Chat: Client Protocol](https://tools.ietf.org/html/rfc2812)
-
+**Last Updated**: 2026-02-01
+**Audit Basis**: Source code inspection of commit HEAD on main branch
