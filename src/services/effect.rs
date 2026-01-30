@@ -291,7 +291,7 @@ async fn apply_effect_impl(
                     };
 
                     let mut target_uids = std::collections::HashMap::with_capacity(1);
-                    target_uids.insert(target_nick.clone(), target_uid.clone());
+                    target_uids.insert(target_nick.clone(), vec![target_uid.clone()]);
 
                     let sender_prefix = Prefix::new(
                         "ChanServ".to_string(),

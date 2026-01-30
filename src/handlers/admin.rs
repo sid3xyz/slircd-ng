@@ -399,8 +399,8 @@ impl PostRegHandler for SamodeHandler {
                 slirc_proto::mode::ChannelMode::Oper | slirc_proto::mode::ChannelMode::Voice => {
                     if let Some(nick) = mode.arg() {
                         let nick_lower = irc_to_lower(nick);
-                        if let Some(uid) = ctx.matrix.user_manager.get_first_uid(&nick_lower) {
-                            target_uids.insert(nick.to_string(), uid);
+                        if let Some(uids) = ctx.matrix.user_manager.nicks.get(&nick_lower) {
+                            target_uids.insert(nick.to_string(), uids.clone());
                         }
                     }
                 }

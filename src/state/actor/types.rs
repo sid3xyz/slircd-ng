@@ -89,7 +89,7 @@ pub struct ModeParams {
     pub sender_uid: Uid,
     pub sender_prefix: Prefix,
     pub modes: Vec<slirc_proto::mode::Mode<slirc_proto::mode::ChannelMode>>,
-    pub target_uids: HashMap<String, Uid>,
+    pub target_uids: HashMap<String, Vec<Uid>>,
     pub force: bool,
     pub nanotime: i64,
 }

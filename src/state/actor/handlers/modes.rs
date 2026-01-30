@@ -309,8 +309,14 @@ impl ChannelActor {
                 }
                 ProtoChannelMode::Founder => {
                     if let Some(nick) = arg {
-                        if let Some(target_uid) = target_uids.get(nick) {
-                            self.update_member_mode(target_uid, |m| m.owner = adding)
+                        if let Some(uids) = target_uids.get(nick) {
+                            let mut any_changed = false;
+                            for uid in uids {
+                                if self.update_member_mode(uid, |m| m.owner = adding) {
+                                    any_changed = true;
+                                }
+                            }
+                            any_changed
                         } else {
                             false
                         }
@@ -320,8 +326,14 @@ impl ChannelActor {
                 }
                 ProtoChannelMode::Admin => {
                     if let Some(nick) = arg {
-                        if let Some(target_uid) = target_uids.get(nick) {
-                            self.update_member_mode(target_uid, |m| m.admin = adding)
+                        if let Some(uids) = target_uids.get(nick) {
+                            let mut any_changed = false;
+                            for uid in uids {
+                                if self.update_member_mode(uid, |m| m.admin = adding) {
+                                    any_changed = true;
+                                }
+                            }
+                            any_changed
                         } else {
                             false
                         }
@@ -331,8 +343,14 @@ impl ChannelActor {
                 }
                 ProtoChannelMode::Oper => {
                     if let Some(nick) = arg {
-                        if let Some(target_uid) = target_uids.get(nick) {
-                            self.update_member_mode(target_uid, |m| m.op = adding)
+                        if let Some(uids) = target_uids.get(nick) {
+                            let mut any_changed = false;
+                            for uid in uids {
+                                if self.update_member_mode(uid, |m| m.op = adding) {
+                                    any_changed = true;
+                                }
+                            }
+                            any_changed
                         } else {
                             false
                         }
@@ -342,8 +360,14 @@ impl ChannelActor {
                 }
                 ProtoChannelMode::Halfop => {
                     if let Some(nick) = arg {
-                        if let Some(target_uid) = target_uids.get(nick) {
-                            self.update_member_mode(target_uid, |m| m.halfop = adding)
+                        if let Some(uids) = target_uids.get(nick) {
+                            let mut any_changed = false;
+                            for uid in uids {
+                                if self.update_member_mode(uid, |m| m.halfop = adding) {
+                                    any_changed = true;
+                                }
+                            }
+                            any_changed
                         } else {
                             false
                         }
@@ -353,8 +377,14 @@ impl ChannelActor {
                 }
                 ProtoChannelMode::Voice => {
                     if let Some(nick) = arg {
-                        if let Some(target_uid) = target_uids.get(nick) {
-                            self.update_member_mode(target_uid, |m| m.voice = adding)
+                        if let Some(uids) = target_uids.get(nick) {
+                            let mut any_changed = false;
+                            for uid in uids {
+                                if self.update_member_mode(uid, |m| m.voice = adding) {
+                                    any_changed = true;
+                                }
+                            }
+                            any_changed
                         } else {
                             false
                         }
