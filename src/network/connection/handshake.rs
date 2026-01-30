@@ -170,7 +170,15 @@ pub async fn run_handshake_loop(
 
             match result {
                 Ok(Some(Ok(msg_ref))) => {
-                    info!(raw = %msg_ref.raw.trim(), "Received message");
+                    // Start Privacy Redaction
+                    // Access public 'name' field of CommandRef
+                    let command_str = msg_ref.command.name.to_uppercase();
+                    if command_str == "PASS" || command_str == "OPER" {
+                        info!(command = %command_str, "Received sensitive message (redacted)");
+                    } else {
+                        info!(raw = %msg_ref.raw.trim(), "Received message");
+                    }
+                    // End Privacy Redaction
 
                     // Convert to owned immediately to release the borrow
                     let msg = msg_ref.to_owned();
