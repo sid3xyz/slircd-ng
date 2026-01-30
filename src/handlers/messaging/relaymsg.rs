@@ -46,9 +46,9 @@ impl PostRegHandler for RelayMsgHandler {
 
         // Enforce draft/relaymsg capability (Audit Fix)
         if !ctx.state.capabilities.contains("draft/relaymsg") {
-             // If client hasn't enabled the CAP, we treat it as unknown command
-             // to avoid leaking existence/functionality.
-             return Err(HandlerError::UnknownCommand("RELAYMSG".to_string()));
+            // If client hasn't enabled the CAP, we treat it as unknown command
+            // to avoid leaking existence/functionality.
+            return Err(HandlerError::UnknownCommand("RELAYMSG".to_string()));
         }
 
         // Validate relay_from nick format FIRST (before oper check)

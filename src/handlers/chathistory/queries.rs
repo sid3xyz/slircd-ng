@@ -237,12 +237,7 @@ impl QueryExecutor {
         // Or slice first then filter?
         // Slicing relies on "center" timestamp.
         // It's safer to query, slice, then filter output.
-        let mut sliced = slice_around(
-            messages,
-            limit as usize,
-            msgref_str,
-            center_ts,
-        );
+        let mut sliced = slice_around(messages, limit as usize, msgref_str, center_ts);
 
         if !ctx.state.capabilities.contains("draft/event-playback") {
             sliced.retain(|item| matches!(item, HistoryItem::Message(_)));

@@ -250,7 +250,6 @@ impl Matrix {
         let stats_manager = Arc::new(crate::state::managers::stats::StatsManager::new());
         user_manager.set_stats_manager(stats_manager.clone());
 
-
         let mut channel_manager = ChannelManager::with_registered_channels(
             registered_channel_names,
             stats_manager.clone(),
@@ -258,9 +257,9 @@ impl Matrix {
         channel_manager.set_observer(sync_manager_arc.clone());
 
         // Create ReadMarkersManager (Unified Read State)
-        let read_marker_manager = Arc::new(crate::state::managers::read_markers::ReadMarkersManager::new(
-            always_on_store.clone(),
-        ));
+        let read_marker_manager = Arc::new(
+            crate::state::managers::read_markers::ReadMarkersManager::new(always_on_store.clone()),
+        );
 
         // Create ServiceManager with server SID for service UIDs
         let service_manager = ServiceManager::new(db.clone(), history, &config.server.sid);
@@ -555,7 +554,7 @@ impl Matrix {
                     && remaining == 0
                     && self.channel_manager.channels.remove(channel_name).is_some()
                 {
-                    if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.dec(); }
+                    crate::metrics::dec_active_channels();
                     self.stats_manager.channel_destroyed();
                 }
             }
@@ -586,7 +585,7 @@ impl Matrix {
         self.security_manager.rate_limiter.remove_client(uid);
 
         // Update metrics
-        if let Some(m) = crate::metrics::CONNECTED_USERS.get() { m.dec(); }
+        crate::metrics::dec_connected_users();
 
         // Update StatsManager
         if uid.starts_with(self.server_id.as_str()) {

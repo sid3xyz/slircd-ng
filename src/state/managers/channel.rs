@@ -55,7 +55,7 @@ impl ChannelManager {
                 self.observer.clone(),
             );
             self.channels.insert(name_lower, tx.clone());
-            if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.inc(); }
+            crate::metrics::inc_active_channels();
             self.stats_manager.channel_created();
             tx
         }
@@ -100,7 +100,7 @@ impl ChannelManager {
             );
 
             self.channels.insert(name_lower, tx);
-            if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.inc(); }
+            crate::metrics::inc_active_channels();
             self.stats_manager.channel_created();
         }
     }

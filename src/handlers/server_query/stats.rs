@@ -1,7 +1,7 @@
 //! STATS handler for server statistics.
 
 use super::super::{Context, HandlerResult, PostRegHandler};
-use crate::metrics::{S2S_BYTES_RECEIVED, S2S_BYTES_SENT, S2S_COMMANDS};
+
 use crate::state::RegisteredState;
 use async_trait::async_trait;
 use slirc_proto::{MessageRef, Response};
@@ -187,13 +187,11 @@ impl PostRegHandler for StatsHandler {
             'l' | 'L' => {
                 // RPL_STATSLINKINFO (211)
                 for entry in ctx.matrix.sync_manager.links.iter() {
-                    let sid = entry.key();
+                    let _sid = entry.key();
                     let link = entry.value();
-                    let sent_bytes = S2S_BYTES_SENT.get().map(|m| m.with_label_values(&[sid.as_str()]).get()).unwrap_or(0);
-                    let recv_bytes = S2S_BYTES_RECEIVED.get().map(|m| m.with_label_values(&[sid.as_str()]).get()).unwrap_or(0);
-                    let _sent_msgs = S2S_COMMANDS.get()
-                        .map(|m| m.with_label_values(&[sid.as_str(), "TOTAL"]).get())
-                        .unwrap_or(0);
+                    let sent_bytes = 0; // TODO: Implement reading from metrics or Link stats
+                    let recv_bytes = 0; // TODO: Implement reading from metrics or Link stats
+                    let _sent_msgs = 0;
                     // Actually S2S_COMMANDS has a command label. Summing is hard without iterating.
                     // For now, let's just report 0 for msg count or try to track it separately if critical.
                     // The user asked for "Track message counts by command type", which we did.

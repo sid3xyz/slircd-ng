@@ -389,12 +389,12 @@ impl ChannelActor {
                             failed_uids.push(uid.clone());
                         }
                         TrySendError::Closed(_) => {
-                           failed_uids.push(uid.clone());
+                            failed_uids.push(uid.clone());
                         }
                     }
                 }
             }
-            
+
             // Remove failed senders to prevent repeated Error Floods
             for uid in failed_uids {
                 self.senders.remove(&uid);

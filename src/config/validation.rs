@@ -74,8 +74,6 @@ pub fn validate(config: &Config) -> Result<(), Vec<ValidationError>> {
         }
     }
 
-
-
     // Idle timeouts validation
     if config.server.idle_timeouts.timeout <= config.server.idle_timeouts.ping {
         errors.push(ValidationError::PingTimeoutTooShort(

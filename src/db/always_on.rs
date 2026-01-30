@@ -281,7 +281,11 @@ impl AlwaysOnStore {
     }
 
     /// Get a read marker.
-    pub fn get_read_marker(&self, account: &str, target: &str) -> Result<Option<i64>, AlwaysOnError> {
+    pub fn get_read_marker(
+        &self,
+        account: &str,
+        target: &str,
+    ) -> Result<Option<i64>, AlwaysOnError> {
         let key = Self::marker_key(account, target);
         let read_txn = self.db.begin_read()?;
         let table = read_txn.open_table(READ_MARKERS)?;
@@ -302,8 +306,8 @@ impl AlwaysOnStore {
             let keys: Vec<String> = table
                 .iter()?
                 .filter_map(|r| {
-                    if let Ok((k, _)) = r 
-                        && k.value().starts_with(&prefix) 
+                    if let Ok((k, _)) = r
+                        && k.value().starts_with(&prefix)
                     {
                         return Some(k.value().to_string());
                     }

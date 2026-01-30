@@ -17,13 +17,13 @@
 
 use aho_corasick::AhoCorasick;
 use dashmap::DashMap;
+use regex::RegexSet;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use regex::RegexSet;
 use tracing::{debug, warn};
 
 use crate::config::SecurityConfig;
@@ -395,17 +395,17 @@ impl SpamDetectionService {
         }
 
         // LAYER 6: Regex Analysis
-        if let Some(set) = &self.regex_matcher 
-            && set.is_match(text) 
+        if let Some(set) = &self.regex_matcher
+            && set.is_match(text)
         {
-             // Get the first matching pattern index
+            // Get the first matching pattern index
             let matches: Vec<_> = set.matches(text).into_iter().collect();
             if let Some(idx) = matches.first() {
-                 debug!("Regex spam pattern match at index {}", idx);
-                 return SpamVerdict::Spam {
+                debug!("Regex spam pattern match at index {}", idx);
+                return SpamVerdict::Spam {
                     pattern: format!("regex:{}", idx), // We'd ideally want the pattern string but RegexSet doesn't store it accessibly by default without keeping a copy. Index is sufficient for now.
-                    confidence: 1.0, // Regex matches are usually definitive
-                 };
+                    confidence: 1.0,                   // Regex matches are usually definitive
+                };
             }
         }
 
@@ -671,8 +671,9 @@ mod tests {
     #[test]
     fn test_regex_matching() {
         let mut config = SecurityConfig::default();
-        config.spam.regex_patterns = vec![r"^!foo.*bar$".to_string(), r"\d{3}-\d{2}-\d{4}".to_string()];
-        
+        config.spam.regex_patterns =
+            vec![r"^!foo.*bar$".to_string(), r"\d{3}-\d{2}-\d{4}".to_string()];
+
         // Custom construction for test since we need to inject config
         let service = SpamDetectionService::new(None, config);
 
@@ -685,7 +686,7 @@ mod tests {
 
         // Test matching second pattern
         let verdict = service.check_content("123-45-6789");
-         assert!(matches!(verdict, SpamVerdict::Spam { .. }));
+        assert!(matches!(verdict, SpamVerdict::Spam { .. }));
 
         // Test non-matching
         let verdict = service.check_content("clean message");
@@ -697,10 +698,10 @@ mod tests {
         let mut config = SecurityConfig::default();
         // Invalid regex (unclosed parenthesis)
         config.spam.regex_patterns = vec![r"(unclosed".to_string()];
-        
+
         // Should not panic, but log specific warning and disable regex
         let service = SpamDetectionService::new(None, config);
-        
+
         let verdict = service.check_content("(unclosed");
         assert_eq!(verdict, SpamVerdict::Clean);
     }

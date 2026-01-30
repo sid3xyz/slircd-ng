@@ -110,7 +110,7 @@ impl<'a> WelcomeBurstWriter<'a> {
                 }
             }
         }
-        
+
         // Reject duplicate nick when no account is present (no bouncer)
         if self.state.account.is_none() {
             let nick_lower = slirc_proto::irc_to_lower(nick);
@@ -120,9 +120,8 @@ impl<'a> WelcomeBurstWriter<'a> {
                     let reply = Response::err_nicknameinuse(nick, nick)
                         .with_prefix(Prefix::ServerName(server_name.to_string()));
                     self.write(reply).await?;
-                    let error = Message::from(Command::ERROR(
-                        "Closing Link: Nickname in use".to_string(),
-                    ));
+                    let error =
+                        Message::from(Command::ERROR("Closing Link: Nickname in use".to_string()));
                     self.write(error).await?;
                     return Err(HandlerError::NicknameInUse(nick.to_string()));
                 }
@@ -200,8 +199,7 @@ impl<'a> WelcomeBurstWriter<'a> {
                             "Nick collision - accounts don't match, rejecting connection"
                         );
 
-                        if let Some(mut entry) =
-                            self.matrix.user_manager.nicks.get_mut(&nick_lower)
+                        if let Some(mut entry) = self.matrix.user_manager.nicks.get_mut(&nick_lower)
                         {
                             entry.value_mut().retain(|uid| uid != self.uid);
                             if entry.value().is_empty() {
@@ -214,8 +212,7 @@ impl<'a> WelcomeBurstWriter<'a> {
                             .with_prefix(Prefix::ServerName(server_name.to_string()));
                         self.write(reply).await?;
                         let error = Message::from(Command::ERROR(
-                            "Closing Link: Nickname collision (accounts don't match)"
-                                .to_string(),
+                            "Closing Link: Nickname collision (accounts don't match)".to_string(),
                         ));
                         self.write(error).await?;
                         return Err(HandlerError::NicknameInUse(nick.to_string()));
@@ -223,7 +220,7 @@ impl<'a> WelcomeBurstWriter<'a> {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -627,9 +624,7 @@ impl<'a> WelcomeBurstWriter<'a> {
         // User is now registered - decrement unregistered connection count
         self.matrix.user_manager.decrement_unregistered();
 
-        if let Some(c) = crate::metrics::CONNECTED_USERS.get() {
-            c.inc();
-        }
+        crate::metrics::inc_connected_users();
 
         // Update StatsManager counters
         // Note: user_connected() is now called inside add_local_user()
@@ -821,12 +816,10 @@ impl<'a> WelcomeBurstWriter<'a> {
 fn parse_default_user_modes(mode_str: &str) -> Vec<Mode<UserMode>> {
     let mut modes = Vec::new();
     let mut chars = mode_str.chars();
-    
+
     // Skip leading '+' if present
-    if let Some(first) = mode_str.chars().next() {
-        if first == '+' {
-            chars.next();
-        }
+    if mode_str.starts_with('+') {
+        chars.next();
     }
 
     for c in chars {

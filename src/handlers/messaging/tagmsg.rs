@@ -62,7 +62,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
 
         // Check for +draft/read-marker tag (Unified Read State)
         // Format: +draft/read-marker=2024-01-01T12:00:00.000Z
-        if let Some((_, ts_val)) = msg.tags_iter().find(|(k, _)| *k == "+draft/read-marker") 
+        if let Some((_, ts_val)) = msg.tags_iter().find(|(k, _)| *k == "+draft/read-marker")
             && !ts_val.is_empty()
         {
             let ts_str = slirc_proto::message::tags::unescape_tag_value(ts_val);
@@ -70,7 +70,9 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                 && let Some(account) = &ctx.state.account
             {
                 let nanotime = dt.timestamp_nanos_opt().unwrap_or(0);
-                ctx.matrix.read_marker_manager.update_marker(account, target, nanotime);
+                ctx.matrix
+                    .read_marker_manager
+                    .update_marker(account, target, nanotime);
                 debug!(account = %account, target = %target, ts = %nanotime, "Updated read marker");
             }
         }

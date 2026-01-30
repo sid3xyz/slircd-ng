@@ -1,7 +1,6 @@
 use crate::common::TestServer;
 use slirc_proto::Command;
 
-
 mod common;
 
 #[tokio::test]
@@ -10,12 +9,14 @@ async fn test_relaymsg_no_cap() {
     let port = listener.local_addr().expect("Failed to get addr").port();
     drop(listener);
 
-    let server = TestServer::spawn(port).await.expect("Failed to spawn server");
-    
+    let server = TestServer::spawn(port)
+        .await
+        .expect("Failed to spawn server");
+
     // 1. Client without capability
     let mut client = server.connect("NoCap").await.expect("Failed to connect");
     client.register().await.expect("Failed to register");
-    
+
     // Drain welcome burst
     loop {
         let msg = client.recv().await.expect("Failed to recv during burst");
@@ -27,18 +28,27 @@ async fn test_relaymsg_no_cap() {
     }
 
     // Attempt RELAYMSG
-    client.send(Command::Raw("RELAYMSG #test other/net :hello".to_string(), vec![])).await.expect("Failed to send");
-        
+    client
+        .send(Command::Raw(
+            "RELAYMSG #test other/net :hello".to_string(),
+            vec![],
+        ))
+        .await
+        .expect("Failed to send");
+
     // Expect FAIL or UNKNOWN (421)
     let msg = client.recv().await.expect("Failed to recv");
     match msg.command {
         Command::Response(resp, _) if resp.code() == 421 => {
-             // ERR_UNKNOWNCOMMAND (expected)
+            // ERR_UNKNOWNCOMMAND (expected)
         }
         Command::FAIL(cmd, _, _) if cmd == "RELAYMSG" => {
             // Also acceptable
         }
-        _ => panic!("Expected ERR_UNKNOWNCOMMAND (421) for missing CAP, got: {:?}", msg),
+        _ => panic!(
+            "Expected ERR_UNKNOWNCOMMAND (421) for missing CAP, got: {:?}",
+            msg
+        ),
     }
 }
 
@@ -48,17 +58,37 @@ async fn test_relaymsg_with_cap() {
     let port = listener.local_addr().expect("Failed to get addr").port();
     drop(listener);
 
-    let server = TestServer::spawn(port).await.expect("Failed to spawn server");
-    
+    let server = TestServer::spawn(port)
+        .await
+        .expect("Failed to spawn server");
+
     // 2. Client with capability
     let mut client = server.connect("WithCap").await.expect("Failed to connect");
-    
+
     // Start negotiation proper
-    client.send(Command::CAP(None, slirc_proto::CapSubCommand::LS, None, Some("302".to_string()))).await.expect("Failed LS");
-    
+    client
+        .send(Command::CAP(
+            None,
+            slirc_proto::CapSubCommand::LS,
+            None,
+            Some("302".to_string()),
+        ))
+        .await
+        .expect("Failed LS");
+
     // Perform registration (NICK/USER) during negotiation
-    client.send(Command::NICK("WithCap".to_string())).await.expect("Failed NICK");
-    client.send(Command::USER("WithCap".to_string(), "0".to_string(), "With Cap User".to_string())).await.expect("Failed USER");
+    client
+        .send(Command::NICK("WithCap".to_string()))
+        .await
+        .expect("Failed NICK");
+    client
+        .send(Command::USER(
+            "WithCap".to_string(),
+            "0".to_string(),
+            "With Cap User".to_string(),
+        ))
+        .await
+        .expect("Failed USER");
 
     // Read headers until LS
     loop {
@@ -66,21 +96,36 @@ async fn test_relaymsg_with_cap() {
         // CAP LS can return caps in arg1 or arg2 dependig on implementation details
         if let Command::CAP(_, slirc_proto::CapSubCommand::LS, arg1, arg2) = m.command {
             let caps = arg2.as_ref().or(arg1.as_ref()).expect("No caps in LS");
-            assert!(caps.contains("draft/relaymsg"), "Server strictly needs to advertise draft/relaymsg. Got: {}", caps);
+            assert!(
+                caps.contains("draft/relaymsg"),
+                "Server strictly needs to advertise draft/relaymsg. Got: {}",
+                caps
+            );
             break;
         }
     }
 
     // 4. Request the capability
-    client.send(Command::CAP(None, slirc_proto::CapSubCommand::REQ, None, Some("draft/relaymsg".to_string()))).await.expect("Failed REQ");
+    client
+        .send(Command::CAP(
+            None,
+            slirc_proto::CapSubCommand::REQ,
+            None,
+            Some("draft/relaymsg".to_string()),
+        ))
+        .await
+        .expect("Failed REQ");
 
     // 5. Wait for ACK
     loop {
         let m = client.recv().await.expect("Failed recv ACK");
         match m.command {
-            Command::CAP(_, slirc_proto::CapSubCommand::ACK, Some(caps), _) |
-            Command::CAP(_, slirc_proto::CapSubCommand::ACK, _, Some(caps)) => {
-                assert!(caps.contains("draft/relaymsg"), "Server did not ACK draft/relaymsg");
+            Command::CAP(_, slirc_proto::CapSubCommand::ACK, Some(caps), _)
+            | Command::CAP(_, slirc_proto::CapSubCommand::ACK, _, Some(caps)) => {
+                assert!(
+                    caps.contains("draft/relaymsg"),
+                    "Server did not ACK draft/relaymsg"
+                );
                 break;
             }
             _ => continue,
@@ -88,7 +133,15 @@ async fn test_relaymsg_with_cap() {
     }
 
     // 6. End negotiation
-    client.send(Command::CAP(None, slirc_proto::CapSubCommand::END, None, None)).await.expect("Failed END");
+    client
+        .send(Command::CAP(
+            None,
+            slirc_proto::CapSubCommand::END,
+            None,
+            None,
+        ))
+        .await
+        .expect("Failed END");
 
     // 7. Wait for Welcome
     loop {
@@ -107,32 +160,60 @@ async fn test_chathistory_compliance() {
     let port = listener.local_addr().expect("Failed to get addr").port();
     drop(listener);
 
-    let server = TestServer::spawn(port).await.expect("Failed to spawn server");
-    
+    let server = TestServer::spawn(port)
+        .await
+        .expect("Failed to spawn server");
+
     // 1. Setup: Alice connects and populates history
-    let mut alice = server.connect("Alice").await.expect("Failed to connect Alice");
+    let mut alice = server
+        .connect("Alice")
+        .await
+        .expect("Failed to connect Alice");
     // Alice just wants to register normally
     alice.register().await.expect("Failed to register Alice");
 
     let channel = "#history_test";
-    alice.send(Command::JOIN(channel.to_string(), None, None)).await.expect("Alice JOIN");
-    
+    alice
+        .send(Command::JOIN(channel.to_string(), None, None))
+        .await
+        .expect("Alice JOIN");
+
     // Send 3 messages
     for i in 1..=3 {
-        alice.send(Command::PRIVMSG(channel.to_string(), format!("Message {}", i))).await.expect("Alice PRIVMSG");
+        alice
+            .send(Command::PRIVMSG(
+                channel.to_string(),
+                format!("Message {}", i),
+            ))
+            .await
+            .expect("Alice PRIVMSG");
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
     // 2. Bob connects with chathistory capability
     let mut bob = server.connect("Bob").await.expect("Failed to connect Bob");
-    
-    bob.send(Command::CAP(None, slirc_proto::CapSubCommand::LS, None, Some("302".to_string()))).await.expect("Bob CAP LS");
-    
+
+    bob.send(Command::CAP(
+        None,
+        slirc_proto::CapSubCommand::LS,
+        None,
+        Some("302".to_string()),
+    ))
+    .await
+    .expect("Bob CAP LS");
+
     // Perform registration
-    bob.send(Command::NICK("Bob".to_string())).await.expect("Bob NICK");
-    bob.send(Command::USER("Bob".to_string(), "0".to_string(), "Bob User".to_string())).await.expect("Bob USER");
-    
-    
+    bob.send(Command::NICK("Bob".to_string()))
+        .await
+        .expect("Bob NICK");
+    bob.send(Command::USER(
+        "Bob".to_string(),
+        "0".to_string(),
+        "Bob User".to_string(),
+    ))
+    .await
+    .expect("Bob USER");
+
     // Wait for LS
     loop {
         let m = bob.recv().await.expect("Bob recv LS");
@@ -142,8 +223,15 @@ async fn test_chathistory_compliance() {
     }
 
     // Request chathistory
-    bob.send(Command::CAP(None, slirc_proto::CapSubCommand::REQ, None, Some("draft/chathistory".to_string()))).await.expect("Bob CAP REQ");
-    
+    bob.send(Command::CAP(
+        None,
+        slirc_proto::CapSubCommand::REQ,
+        None,
+        Some("draft/chathistory".to_string()),
+    ))
+    .await
+    .expect("Bob CAP REQ");
+
     // Wait for ACK
     loop {
         let m = bob.recv().await.expect("Bob recv ACK");
@@ -152,28 +240,41 @@ async fn test_chathistory_compliance() {
         }
     }
 
-    bob.send(Command::CAP(None, slirc_proto::CapSubCommand::END, None, None)).await.expect("Bob CAP END");
-    
+    bob.send(Command::CAP(
+        None,
+        slirc_proto::CapSubCommand::END,
+        None,
+        None,
+    ))
+    .await
+    .expect("Bob CAP END");
+
     // Wait for Bob welcome
     loop {
         let m = bob.recv().await.expect("Bob recv Welcome");
         if let Command::Response(resp, _) = &m.command {
-            if resp.code() == 1 { break; }
+            if resp.code() == 1 {
+                break;
+            }
         }
     }
 
     // Bob must join the channel to see history
-    bob.send(Command::JOIN(channel.to_string(), None, None)).await.expect("Bob JOIN");
+    bob.send(Command::JOIN(channel.to_string(), None, None))
+        .await
+        .expect("Bob JOIN");
 
     // 3. Bob queries history
     // CHATHISTORY LATEST <target> <limit>
-    bob.send_raw(&format!("CHATHISTORY LATEST {} * 10", channel)).await.expect("Bob CHATHISTORY");
+    bob.send_raw(&format!("CHATHISTORY LATEST {} * 10", channel))
+        .await
+        .expect("Bob CHATHISTORY");
 
     // 4. Verify Batch response
     // Expect: BATCH +<id> chathistory <target>
     //         @batch=<id> ... PRIVMSG ...
     //         BATCH -<id>
-    
+
     let mut batch_id = None;
     let mut msg_count = 0;
 
@@ -189,9 +290,9 @@ async fn test_chathistory_compliance() {
                         }
                     }
                 } else if let Some(id) = reference.strip_prefix('-') {
-                     // End of batch
-                     assert_eq!(batch_id.as_deref(), Some(id), "Batch ID mismatch");
-                     break; // Batch ended
+                    // End of batch
+                    assert_eq!(batch_id.as_deref(), Some(id), "Batch ID mismatch");
+                    break; // Batch ended
                 }
             }
             Command::PRIVMSG(ref target, ref text) => {
@@ -206,5 +307,8 @@ async fn test_chathistory_compliance() {
         }
     }
 
-    assert_eq!(msg_count, 3, "Bob should receive exactly 3 history messages");
+    assert_eq!(
+        msg_count, 3,
+        "Bob should receive exactly 3 history messages"
+    );
 }

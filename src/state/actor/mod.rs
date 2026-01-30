@@ -443,7 +443,7 @@ impl ChannelActor {
                     .remove(&name_lower)
                     .is_some()
                 {
-                    if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.dec(); }
+                    crate::metrics::dec_active_channels();
                 }
             }
         }

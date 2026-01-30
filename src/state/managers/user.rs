@@ -313,9 +313,7 @@ impl UserManager {
                 // Incoming is older (Winner). Kill existing.
                 self.kill_user(&existing_uid, "Nick collision (older wins)", source.clone())
                     .await;
-                if let Some(m) = crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL.get() {
-                    m.with_label_values(&["nick", "kill_existing"]).inc();
-                }
+                crate::metrics::inc_distributed_collisions("nick", "kill_existing");
                 // Proceed to merge incoming
             } else if incoming_ts > existing_ts {
                 // Incoming is newer (Loser).
@@ -323,9 +321,7 @@ impl UserManager {
                 self.perform_merge(crdt, source.clone()).await;
                 self.kill_user(&uid, "Nick collision (newer loses)", source)
                     .await;
-                if let Some(m) = crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL.get() {
-                    m.with_label_values(&["nick", "kill_incoming"]).inc();
-                }
+                crate::metrics::inc_distributed_collisions("nick", "kill_incoming");
 
                 // Restore the existing user's nick index, because perform_merge may have modified it
                 // and kill_user removed the new UID. Ensure existing UID is still present.
@@ -349,9 +345,7 @@ impl UserManager {
                     .await;
                 self.perform_merge(crdt, source.clone()).await;
                 self.kill_user(&uid, "Nick collision (tie)", source).await;
-                if let Some(m) = crate::metrics::DISTRIBUTED_COLLISIONS_TOTAL.get() {
-                    m.with_label_values(&["nick", "kill_both"]).inc();
-                }
+                crate::metrics::inc_distributed_collisions("nick", "kill_both");
                 return;
             }
         }

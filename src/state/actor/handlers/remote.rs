@@ -106,7 +106,7 @@ impl ChannelActor {
             let mut failed_uids = Vec::new();
             for (uid, tx) in &self.senders {
                 if let Err(e) = tx.try_send(msg.clone()) {
-                     match e {
+                    match e {
                         TrySendError::Full(_) => {
                             self.request_disconnect(uid, "SendQ exceeded");
                             failed_uids.push(uid.clone());

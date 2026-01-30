@@ -123,7 +123,7 @@ pub async fn perform_autoreplay(
 
     // 2. Replay history
     for (channel_name, _membership) in &info.channels {
-        // Determine start bound per-target: Use device last_seen from reattach info, 
+        // Determine start bound per-target: Use device last_seen from reattach info,
         // effectively falling back to the global reattach time if we haven't implemented finer grained logic yet.
         let start_dt_opt = info.replay_since;
         if let Some(start_dt) = start_dt_opt {
@@ -211,22 +211,25 @@ async fn replay_channel_history(
                 )
             {
                 let ts_iso = dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                    let marker_msg = Message {
-                        tags: Some(vec![
-                            slirc_proto::Tag(
-                                std::borrow::Cow::Borrowed("+draft/read-marker"),
-                                Some(ts_iso),
+                let marker_msg = Message {
+                    tags: Some(vec![
+                        slirc_proto::Tag(
+                            std::borrow::Cow::Borrowed("+draft/read-marker"),
+                            Some(ts_iso),
+                        ),
+                        slirc_proto::Tag(
+                            std::borrow::Cow::Borrowed("time"),
+                            Some(
+                                chrono::Utc::now()
+                                    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
                             ),
-                            slirc_proto::Tag(
-                                std::borrow::Cow::Borrowed("time"),
-                                Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
-                            ),
-                        ]),
-                        prefix: Some(Prefix::ServerName(server_name.clone())),
-                        command: Command::TAGMSG(target.to_string()),
-                    };
-                    let _ = ctx.transport.write_message(&marker_msg).await;
-                    debug!(target = %target, "Sent read marker sync");
+                        ),
+                    ]),
+                    prefix: Some(Prefix::ServerName(server_name.clone())),
+                    command: Command::TAGMSG(target.to_string()),
+                };
+                let _ = ctx.transport.write_message(&marker_msg).await;
+                debug!(target = %target, "Sent read marker sync");
             }
         }
         Ok(_) => {

@@ -135,7 +135,7 @@ pub(super) async fn leave_channel_internal(
 
             if remaining_members == 0 {
                 ctx.matrix.channel_manager.channels.remove(channel_lower);
-                if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.dec(); }
+                crate::metrics::dec_active_channels();
             }
 
             info!(nick = %nick, channel = %channel_lower, "User left channel");

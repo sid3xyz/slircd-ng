@@ -46,9 +46,7 @@ pub async fn echo_to_other_sessions(
 
             let _ = sess.tx.send(Arc::new(msg_for_session)).await;
             any_sent = true;
-            if let Some(c) = crate::metrics::MESSAGES_SENT.get() {
-                c.inc();
-            }
+            crate::metrics::inc_messages_sent();
         }
         if any_sent {
             debug!(uid = %ctx.uid, "Echoed message to other bouncer sessions");

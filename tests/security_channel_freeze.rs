@@ -17,12 +17,16 @@ async fn test_channel_freeze_protection() {
     let addr_b = addr.clone();
     let _victim_handle = thread::spawn(move || {
         let mut stream = TcpStream::connect(&addr_b).unwrap();
-        stream.write_all(b"NICK victim\r\nUSER victim 0 * :Victim\r\n").unwrap();
+        stream
+            .write_all(b"NICK victim\r\nUSER victim 0 * :Victim\r\n")
+            .unwrap();
         // Read welcome to ensure registration
         let mut buf = [0u8; 512];
         stream.read(&mut buf).unwrap();
-        stream.write_all(format!("JOIN {}\r\n", channel).as_bytes()).unwrap();
-        
+        stream
+            .write_all(format!("JOIN {}\r\n", channel).as_bytes())
+            .unwrap();
+
         // Stop reading. TCP buffer will fill up.
         loop {
             thread::sleep(Duration::from_secs(1));
@@ -46,9 +50,14 @@ async fn test_channel_freeze_protection() {
     println!("Sender starting flood...");
     for i in 0..5000 {
         // Send long messages to fill buffer faster
-        let msg = format!("PRIVMSG {} :Flood message {} filling the buffer {}\r\n", channel, i, "x".repeat(100));
+        let msg = format!(
+            "PRIVMSG {} :Flood message {} filling the buffer {}\r\n",
+            channel,
+            i,
+            "x".repeat(100)
+        );
         client_a.send_raw(&msg).await.unwrap();
-        
+
         // Yield occasionally to let server process
         if i % 100 == 0 {
             tokio::time::sleep(Duration::from_millis(1)).await;
@@ -68,7 +77,8 @@ async fn test_channel_freeze_protection() {
                 return Ok::<(), anyhow::Error>(());
             }
         }
-    }).await;
+    })
+    .await;
 
     match check {
         Ok(_) => println!("PASSED: Channel is alive despite victim blocking."),
@@ -86,10 +96,14 @@ async fn test_mode_freeze() {
     let addr_b = addr.clone();
     let _victim_handle = thread::spawn(move || {
         let mut stream = TcpStream::connect(&addr_b).unwrap();
-        stream.write_all(b"NICK victim\r\nUSER victim 0 * :Victim\r\n").unwrap();
+        stream
+            .write_all(b"NICK victim\r\nUSER victim 0 * :Victim\r\n")
+            .unwrap();
         let mut buf = [0u8; 512];
         stream.read(&mut buf).unwrap();
-        stream.write_all(format!("JOIN {}\r\n", channel).as_bytes()).unwrap();
+        stream
+            .write_all(format!("JOIN {}\r\n", channel).as_bytes())
+            .unwrap();
         // Stop reading, block TCP buffer.
         loop {
             thread::sleep(Duration::from_secs(1));
@@ -120,8 +134,12 @@ async fn test_mode_freeze() {
     let flood_task = tokio::spawn(async move {
         for i in 0..50 {
             let mode = if i % 2 == 0 { "+t" } else { "-t" };
-            if client_a.send_raw(&format!("MODE {} {}\r\n", channel, mode)).await.is_err() {
-                 break;
+            if client_a
+                .send_raw(&format!("MODE {} {}\r\n", channel, mode))
+                .await
+                .is_err()
+            {
+                break;
             }
             if i % 10 == 0 {
                 tokio::time::sleep(Duration::from_millis(1)).await;
@@ -143,13 +161,14 @@ async fn test_mode_freeze() {
                 return Ok::<(), anyhow::Error>(());
             }
         }
-    }).await;
+    })
+    .await;
 
     match check {
         Ok(_) => println!("PASSED: MODE flood did not freeze channel."),
         Err(_) => panic!("FAILED: Channel frozen by MODE flood! Liveness check timed out."),
     }
-    
+
     // Cleanup
     let _ = flood_task.await;
 }

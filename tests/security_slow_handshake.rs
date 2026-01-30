@@ -61,7 +61,9 @@ host = "*@*"
     std::fs::write(&config_path, config_content).unwrap();
 
     // Spawn server with proxy support
-    let server = TestServer::spawn_with_config(port, config_path).await.unwrap();
+    let server = TestServer::spawn_with_config(port, config_path)
+        .await
+        .unwrap();
     let addr = server.address();
 
     // Barrier to synchronize start of "Good Client" after "Slow Client" has established connection
@@ -72,12 +74,14 @@ host = "*@*"
     // 1. Spawn "Slowloris" client in a separate thread (blocking I/O easier here)
     thread::spawn(move || {
         let mut stream = TcpStream::connect(&addr_clone).expect("Slow client connect failed");
-        
+
         // Send partial PROXY header
         // "PROXY TCP4 " ... wait ...
-        stream.write_all(b"PROXY TCP4 192.168.0.1 192.168.0.2 12345 6667").unwrap();
+        stream
+            .write_all(b"PROXY TCP4 192.168.0.1 192.168.0.2 12345 6667")
+            .unwrap();
         // Do NOT send \r\n yet.
-        
+
         // Signal that we are connected and stalling
         barrier_clone.wait();
 
@@ -97,13 +101,17 @@ host = "*@*"
     // If the server is blocking on the Slow client, this connect or handshake will hang.
     let good_client_connect = tokio::time::timeout(Duration::from_secs(1), async {
         let mut stream = tokio::net::TcpStream::connect(&addr).await?;
-        
+
         // Send valid PROXY header immediately
         use tokio::io::AsyncWriteExt;
-        stream.write_all(b"PROXY TCP4 10.0.0.1 10.0.0.2 12345 6667\r\n").await?;
-        
+        stream
+            .write_all(b"PROXY TCP4 10.0.0.1 10.0.0.2 12345 6667\r\n")
+            .await?;
+
         // Perform IRC handshake
-        stream.write_all(b"NICK goodclient\r\nUSER good 0 * :Good Client\r\n").await?;
+        stream
+            .write_all(b"NICK goodclient\r\nUSER good 0 * :Good Client\r\n")
+            .await?;
 
         // Expect welcome
         let mut buf = [0u8; 512];

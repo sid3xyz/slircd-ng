@@ -62,7 +62,7 @@ pub async fn force_join_channel<S>(
         .channels
         .entry(channel_lower.clone())
         .or_insert_with(|| {
-            if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.inc(); }
+            crate::metrics::inc_active_channels();
             crate::state::actor::ChannelActor::spawn_with_capacity(
                 channel_name.to_string(),
                 std::sync::Arc::downgrade(ctx.matrix),
@@ -321,7 +321,7 @@ pub async fn force_part_channel<S>(
 
             if remaining_members == 0 {
                 ctx.matrix.channel_manager.channels.remove(channel_lower);
-                if let Some(m) = crate::metrics::ACTIVE_CHANNELS.get() { m.dec(); }
+                crate::metrics::dec_active_channels();
             }
 
             Ok(true)

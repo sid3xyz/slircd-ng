@@ -49,8 +49,8 @@ impl ReadMarkersManager {
         self.markers.insert(key.clone(), nanotime);
 
         // Persist
-        if let Some(store) = &self.store 
-            && let Err(e) = store.save_read_marker(&key.account, &key.target, nanotime) 
+        if let Some(store) = &self.store
+            && let Err(e) = store.save_read_marker(&key.account, &key.target, nanotime)
         {
             error!(account = %key.account, target = %key.target, error = %e, "Failed to persist read marker");
         }
@@ -93,13 +93,13 @@ impl ReadMarkersManager {
     #[allow(dead_code)]
     pub fn cleanup_account(&self, account: &str) {
         let account_lower = irc_to_lower(account);
-        
+
         // Remove from cache
         self.markers.retain(|k, _| k.account != account_lower);
 
         // Remove from storage
-        if let Some(store) = &self.store 
-            && let Err(e) = store.delete_markers(&account_lower) 
+        if let Some(store) = &self.store
+            && let Err(e) = store.delete_markers(&account_lower)
         {
             error!(account = %account_lower, error = %e, "Failed to delete read markers");
         }

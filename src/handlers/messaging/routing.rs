@@ -321,9 +321,7 @@ pub async fn route_to_user_with_snapshot(
                     );
                     let _ = sess.tx.send(Arc::new(msg_for_target)).await;
                     any_sent = true;
-                    if let Some(c) = crate::metrics::MESSAGES_SENT.get() {
-                        c.inc();
-                    }
+                    crate::metrics::inc_messages_sent();
                     sent_count += 1;
                 }
                 if any_sent {
@@ -421,9 +419,7 @@ pub async fn route_to_user_with_snapshot(
                     );
                     let _ = sess.tx.send(Arc::new(msg_for_sibling)).await;
                     delivered_any = true;
-                    if let Some(c) = crate::metrics::MESSAGES_SENT.get() {
-                        c.inc();
-                    }
+                    crate::metrics::inc_messages_sent();
                     sent_count += 1;
                 }
                 if delivered_any {

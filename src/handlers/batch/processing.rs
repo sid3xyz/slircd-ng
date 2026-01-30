@@ -120,10 +120,10 @@ pub fn process_batch_message<S: SessionState>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::handlers::batch::types::{BatchLine, BatchState, MULTILINE_MAX_LINES};
     use crate::state::SessionState;
     use crate::state::client::DeviceId;
     use crate::state::session::ReattachInfo;
-    use crate::handlers::batch::types::{BatchState, BatchLine, MULTILINE_MAX_LINES};
     use slirc_proto::MessageRef;
     use std::collections::HashSet;
 
@@ -160,26 +160,38 @@ mod tests {
     }
 
     impl SessionState for MockSessionState {
-        fn nick(&self) -> Option<&str> { Some("Tester") }
+        fn nick(&self) -> Option<&str> {
+            Some("Tester")
+        }
         fn set_nick(&mut self, _nick: String) {}
-        fn is_registered(&self) -> bool { true }
+        fn is_registered(&self) -> bool {
+            true
+        }
         fn set_device_id(&mut self, _device_id: Option<DeviceId>) {}
         fn set_reattach_info(&mut self, _reattach_info: Option<ReattachInfo>) {}
-        fn capabilities(&self) -> &HashSet<String> { unimplemented!() }
-        fn capabilities_mut(&mut self) -> &mut HashSet<String> { unimplemented!() }
+        fn capabilities(&self) -> &HashSet<String> {
+            unimplemented!()
+        }
+        fn capabilities_mut(&mut self) -> &mut HashSet<String> {
+            unimplemented!()
+        }
         fn set_cap_negotiating(&mut self, _negotiating: bool) {}
         fn set_cap_version(&mut self, _version: u32) {}
-        fn is_tls(&self) -> bool { false }
-        fn certfp(&self) -> Option<&str> { None }
-        
+        fn is_tls(&self) -> bool {
+            false
+        }
+        fn certfp(&self) -> Option<&str> {
+            None
+        }
+
         fn active_batch_mut(&mut self) -> &mut Option<BatchState> {
             &mut self.batch
         }
-        
+
         fn active_batch_ref(&self) -> Option<&str> {
             self.batch_ref.as_deref()
         }
-        
+
         fn is_server(&self) -> bool {
             self.is_server_conn
         }
@@ -194,7 +206,7 @@ mod tests {
         let msg = MessageRef::parse(raw).unwrap();
 
         let result = process_batch_message(&mut state, &msg, "test.server");
-        
+
         // Should return Ok(None) meaning "not consumed by batch"
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
@@ -207,10 +219,10 @@ mod tests {
         let msg = MessageRef::parse(raw).unwrap();
 
         let result = process_batch_message(&mut state, &msg, "test.server");
-        
+
         // Should return Ok(Some("123")) meaning consumed
         assert_eq!(result.unwrap(), Some("123".to_string()));
-        
+
         // Verify state
         let batch = state.batch.unwrap();
         assert_eq!(batch.lines.len(), 1);
@@ -224,7 +236,7 @@ mod tests {
         let msg = MessageRef::parse(raw).unwrap();
 
         let result = process_batch_message(&mut state, &msg, "test.server");
-        
+
         // Should fail due to mismatch
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("mismatch"));
@@ -234,7 +246,7 @@ mod tests {
     fn test_batch_limit_enforcement() {
         // Create a batch that is almost full
         let mut state = MockSessionState::new().with_batch("123", "#test");
-        
+
         // Fill up to MULTILINE_MAX_LINES - 1
         for i in 0..(MULTILINE_MAX_LINES - 1) {
             state.batch.as_mut().unwrap().lines.push(BatchLine {
