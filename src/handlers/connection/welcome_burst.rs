@@ -152,7 +152,16 @@ impl<'a> WelcomeBurstWriter<'a> {
                             let user = user_arc.read().await;
                             user.account.clone()
                         } else {
-                            None
+                            // OTHER UID IS NOT REGISTERED (No User object)
+                            // This means we are racing another pre-reg connection.
+                            // We ignore it and proceed - let "First to Register" logic win.
+                            tracing::info!(
+                                nick = %nick,
+                                uid = %self.uid,
+                                other_uid = %first_uid,
+                                "Ignoring collision with unregistered UID (race condition resolution)"
+                            );
+                            return Ok(());
                         }
                     } else {
                         // If first UID is self, check second UID
@@ -163,7 +172,14 @@ impl<'a> WelcomeBurstWriter<'a> {
                                 let user = user_arc.read().await;
                                 user.account.clone()
                             } else {
-                                None
+                                // OTHER UID IS NOT REGISTERED
+                                tracing::info!(
+                                    nick = %nick,
+                                    uid = %self.uid,
+                                    other_uid = %second_uid,
+                                    "Ignoring collision with unregistered UID (race condition resolution)"
+                                );
+                                return Ok(());
                             }
                         } else {
                             None
