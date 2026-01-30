@@ -98,10 +98,16 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
             ti += 1;
         } else if let Some(s_pi) = star_pi {
             pi = s_pi + 1;
-            // SAFETY: star_ti is always Some when star_pi is Some - both set together on lines 91-92
-            let new_ti = star_ti.expect("star_ti set with star_pi") + 1;
-            star_ti = Some(new_ti);
-            ti = new_ti;
+            // SAFETY: star_ti should be Some when star_pi is Some (set together).
+            // We use if let to avoid panic if this invariant is violated.
+            if let Some(s_ti) = star_ti {
+                let new_ti = s_ti + 1;
+                star_ti = Some(new_ti);
+                ti = new_ti;
+            } else {
+                // Invariant violated: star_pi set but star_ti not. Treat as mismatch.
+                return false;
+            }
         } else {
             return false;
         }
@@ -246,6 +252,29 @@ mod tests {
         assert!(wildcard_match("f?o", "foo"));
         assert!(wildcard_match("f?o", "fOo"));
         assert!(!wildcard_match("foo", "bar"));
+    }
+
+    #[test]
+    fn test_wildcard_match_complex() {
+        // Test multiple wildcards and backtracking
+        assert!(wildcard_match("*a*b*c", "zaabbcc"));
+        assert!(wildcard_match("a*b*c*", "aabbcc"));
+        assert!(wildcard_match("*a*b*c", "abc"));
+        assert!(wildcard_match("a*b?c", "axybzc"));
+
+        // Mismatch cases
+        assert!(!wildcard_match("*a*b*c", "zaabbd"));
+        assert!(!wildcard_match("a*b*c", "ab")); // Missing c
+
+        // Backtracking stress
+        // Pattern: *a*b
+        // Text:    aaaaab
+        assert!(wildcard_match("*a*b", "aaaaab"));
+
+        // Edge cases
+        assert!(wildcard_match("", ""));
+        assert!(!wildcard_match("", "a"));
+        assert!(wildcard_match("*", ""));
     }
 
     #[test]
