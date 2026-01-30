@@ -338,15 +338,17 @@ pub async fn run_event_loop(
             SelectResult::None => continue,
 
             SelectResult::Continue { pending_writes } => {
-                for msg in pending_writes {
-                    let _ = conn.transport.write_message(&msg).await;
+                if !pending_writes.is_empty() {
+                    // Use batch write optimization
+                    let _ = conn.transport.write_messages(&pending_writes).await;
                 }
                 continue;
             }
 
             SelectResult::Break { pending_writes } => {
-                for msg in pending_writes {
-                    let _ = conn.transport.write_message(&msg).await;
+                if !pending_writes.is_empty() {
+                    // Use batch write optimization before disconnect
+                    let _ = conn.transport.write_messages(&pending_writes).await;
                 }
                 break;
             }
