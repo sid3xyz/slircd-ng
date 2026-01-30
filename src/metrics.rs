@@ -1,5 +1,5 @@
 //! Prometheus metrics collection using the `metrics` facade.
-#![allow(dead_code)]
+
 //!
 //! Provides production-ready observability via Prometheus metrics exposed on
 //! an HTTP endpoint. Tracks server health, message throughput, security events,
@@ -90,25 +90,13 @@ pub fn inc_messages_sent() {
     counter!("irc_messages_sent_total").increment(1);
 }
 
-pub fn inc_spam_blocked() {
-    counter!("irc_spam_blocked_total").increment(1);
-}
 
-pub fn inc_bans_triggered() {
-    counter!("irc_bans_triggered_total").increment(1);
-}
-
-pub fn inc_xlines_enforced() {
-    counter!("irc_xlines_enforced_total").increment(1);
-}
 
 pub fn inc_rate_limited() {
     counter!("irc_rate_limited_total").increment(1);
 }
 
-pub fn inc_registered_only_blocked() {
-    counter!("irc_registered_only_blocked_total").increment(1);
-}
+
 
 pub fn inc_connected_users() {
     gauge!("irc_connected_users").increment(1.0);
@@ -192,21 +180,7 @@ pub fn inc_distributed_collisions(kind: &str, resolution: &str) {
     .increment(1);
 }
 
-pub fn record_distributed_sync_latency(peer_sid: &str, duration_secs: f64) {
-    histogram!(
-        "slircd_distributed_sync_latency_seconds",
-        "peer_sid" => peer_sid.to_string()
-    )
-    .record(duration_secs);
-}
 
-pub fn inc_distributed_peers_connected() {
-    gauge!("slircd_distributed_peers_connected").increment(1.0);
-}
-
-pub fn dec_distributed_peers_connected() {
-    gauge!("slircd_distributed_peers_connected").decrement(1.0);
-}
 
 pub fn inc_s2s_bytes_sent(peer_sid: &str, bytes: u64) {
     counter!("slircd_s2s_bytes_sent_total", "peer_sid" => peer_sid.to_string()).increment(bytes);
