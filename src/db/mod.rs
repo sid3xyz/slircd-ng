@@ -158,7 +158,7 @@ impl Database {
         sqlx::migrate!("./migrations")
             .run(pool)
             .await
-            .map_err(|e| DbError::Migration(e))?;
+            .map_err(DbError::Migration)?;
 
         info!("Database migrations checked/applied");
         Ok(())
