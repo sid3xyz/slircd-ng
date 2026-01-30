@@ -657,6 +657,10 @@ impl SessionState for RegisteredState {
     fn active_batch_ref(&self) -> Option<&str> {
         self.active_batch_ref.as_deref()
     }
+
+    fn set_reattach_info(&mut self, reattach_info: Option<ReattachInfo>) {
+        self.reattach_info = reattach_info;
+    }
 }
 
 impl SaslAccess for RegisteredState {
