@@ -115,6 +115,11 @@ impl Database {
             .execute(&pool)
             .await?;
 
+        // Enable foreign key constraints (critical for ON DELETE CASCADE schema)
+        sqlx::query("PRAGMA foreign_keys=ON")
+            .execute(&pool)
+            .await?;
+
         // Use NORMAL synchronous mode instead of FULL for better performance
         // NORMAL provides good durability while being faster than FULL
         // (trades immediate disk fsync for transaction durability)
