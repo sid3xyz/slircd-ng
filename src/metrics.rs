@@ -90,13 +90,9 @@ pub fn inc_messages_sent() {
     counter!("irc_messages_sent_total").increment(1);
 }
 
-
-
 pub fn inc_rate_limited() {
     counter!("irc_rate_limited_total").increment(1);
 }
-
-
 
 pub fn inc_connected_users() {
     gauge!("irc_connected_users").increment(1.0);
@@ -179,8 +175,6 @@ pub fn inc_distributed_collisions(kind: &str, resolution: &str) {
     )
     .increment(1);
 }
-
-
 
 pub fn inc_s2s_bytes_sent(peer_sid: &str, bytes: u64) {
     counter!("slircd_s2s_bytes_sent_total", "peer_sid" => peer_sid.to_string()).increment(bytes);
