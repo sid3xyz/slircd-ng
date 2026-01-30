@@ -160,6 +160,17 @@ where
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }
 
+    /// Write multiple IRC messages to the WebSocket transport.
+    ///
+    /// For WebSocket, we currently iterate and send individual frames to ensure
+    /// maximum compatibility with clients that expect one frame per message.
+    pub async fn write_messages(&mut self, messages: &[Message]) -> std::io::Result<()> {
+        for message in messages {
+            self.write_message(message).await?;
+        }
+        Ok(())
+    }
+
     /// Write a borrowed IRC message to the WebSocket transport (zero-copy forwarding).
     ///
     /// This is optimized for relay scenarios where you receive a `MessageRef`

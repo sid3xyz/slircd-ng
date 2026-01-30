@@ -144,6 +144,26 @@ impl<S: AsyncWrite + Unpin> ZeroCopyTransport<S> {
         self.stream.write_all(buf.as_bytes()).await?;
         self.stream.flush().await
     }
+
+    /// Write multiple IRC messages to the transport in a single batch.
+    ///
+    /// This is highly optimized: it concatenates all messages into a single buffer
+    /// and performs a single write + flush operation, minimizing syscalls.
+    pub async fn write_messages(&mut self, messages: &[Message]) -> std::io::Result<()> {
+        if messages.is_empty() {
+            return Ok(());
+        }
+
+        use std::fmt::Write;
+        // Pre-allocate buffer (estimate 128 bytes per message to avoid reallocs)
+        let mut buffer = String::with_capacity(messages.len() * 128);
+        for message in messages {
+            write!(&mut buffer, "{}", message).expect("fmt::Write to String cannot fail");
+        }
+        
+        self.stream.write_all(buffer.as_bytes()).await?;
+        self.stream.flush().await
+    }
 }
 
 impl<S: AsyncRead + Unpin> ZeroCopyTransport<S> {

@@ -161,6 +161,22 @@ impl ZeroCopyTransportEnum {
         }
     }
 
+    /// Write multiple IRC messages to the transport in a single batch.
+    ///
+    /// This delegates to `ZeroCopyTransport::write_messages` for efficient
+    /// single-syscall writing.
+    pub async fn write_messages(&mut self, messages: &[Message]) -> std::io::Result<()> {
+        match self {
+            Self::Tcp(t) => t.write_messages(messages).await,
+            Self::Tls(t) => t.write_messages(messages).await,
+            Self::ClientTls(t) => t.write_messages(messages).await,
+            #[cfg(feature = "tokio")]
+            Self::WebSocket(t) => t.write_messages(messages).await,
+            #[cfg(feature = "tokio")]
+            Self::WebSocketTls(t) => t.write_messages(messages).await,
+        }
+    }
+
     /// Write a borrowed IRC message to the transport (zero-copy forwarding).
     ///
     /// This is optimized for S2S message forwarding and relay scenarios
