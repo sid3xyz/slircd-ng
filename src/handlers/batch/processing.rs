@@ -133,6 +133,7 @@ mod tests {
         batch: Option<BatchState>,
         batch_ref: Option<String>,
         is_server_conn: bool,
+        capabilities: HashSet<String>,
     }
 
     impl MockSessionState {
@@ -141,6 +142,7 @@ mod tests {
                 batch: None,
                 batch_ref: None,
                 is_server_conn: false,
+                capabilities: HashSet::new(),
             }
         }
 
@@ -170,10 +172,10 @@ mod tests {
         fn set_device_id(&mut self, _device_id: Option<DeviceId>) {}
         fn set_reattach_info(&mut self, _reattach_info: Option<ReattachInfo>) {}
         fn capabilities(&self) -> &HashSet<String> {
-            unimplemented!()
+            &self.capabilities
         }
         fn capabilities_mut(&mut self) -> &mut HashSet<String> {
-            unimplemented!()
+            &mut self.capabilities
         }
         fn set_cap_negotiating(&mut self, _negotiating: bool) {}
         fn set_cap_version(&mut self, _version: u32) {}

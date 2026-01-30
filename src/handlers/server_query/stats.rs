@@ -189,8 +189,11 @@ impl PostRegHandler for StatsHandler {
                 for entry in ctx.matrix.sync_manager.links.iter() {
                     let _sid = entry.key();
                     let link = entry.value();
-                    let sent_bytes = 0; // TODO: Implement reading from metrics or Link stats
-                    let recv_bytes = 0; // TODO: Implement reading from metrics or Link stats
+                    // FIXME: Link struct doesn't expose byte counters yet
+                    // The Link struct tracks connection state but doesn't have public
+                    // fields for sent_bytes/recv_bytes. Need to add metrics tracking.
+                    let sent_bytes = 0;
+                    let recv_bytes = 0;
                     let _sent_msgs = 0;
                     // Actually S2S_COMMANDS has a command label. Summing is hard without iterating.
                     // For now, let's just report 0 for msg count or try to track it separately if critical.
