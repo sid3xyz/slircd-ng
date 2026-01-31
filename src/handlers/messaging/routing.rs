@@ -71,6 +71,7 @@ pub async fn route_to_channel_with_snapshot(
     let event = crate::state::actor::ChannelEvent::Message {
         params: Box::new(crate::state::actor::ChannelMessageParams {
             sender_uid: ctx.uid.to_string(),
+            sender_session_id: ctx.state.session_id,
             text,
             tags,
             is_notice,
@@ -319,7 +320,7 @@ pub async fn route_to_user_with_snapshot(
                         &timestamp_str,
                         ctx.label.as_ref(),
                     );
-                    let _ = sess.tx.send(Arc::new(msg_for_target)).await;
+                    let _ = sess.tx.try_send(Arc::new(msg_for_target));
                     any_sent = true;
                     crate::metrics::inc_messages_sent();
                     sent_count += 1;
@@ -417,7 +418,7 @@ pub async fn route_to_user_with_snapshot(
                         &timestamp_str,
                         None, // self-echo copies never carry labels
                     );
-                    let _ = sess.tx.send(Arc::new(msg_for_sibling)).await;
+                    let _ = sess.tx.try_send(Arc::new(msg_for_sibling));
                     delivered_any = true;
                     crate::metrics::inc_messages_sent();
                     sent_count += 1;

@@ -80,6 +80,7 @@ impl ChannelActor {
     ) {
         let ChannelMessageParams {
             sender_uid,
+            sender_session_id,
             text,
             tags,
             is_notice,
@@ -484,9 +485,18 @@ impl ChannelActor {
                                 .get_session_caps(sess.session_id)
                                 .unwrap_or_default();
                             let has_echo = caps.contains("echo-message");
+                            let has_echo = caps.contains("echo-message");
                             if !has_echo && override_nick.is_none() {
                                 continue;
                             }
+                            
+                            // DOUBLE-DELIVERY FIX: `routing.rs` handles fan-out to OTHER sessions.
+                            // The actor must ONLY handle echo for the ORIGINATING session to avoid duplicates.
+                            if sess.session_id != sender_session_id {
+                                continue;
+                            }
+                            
+                            let has_message_tags = caps.contains("message-tags");
                             let has_message_tags = caps.contains("message-tags");
                             let has_server_time = caps.contains("server-time");
                             let mut echo_msg = base_msg.clone();
