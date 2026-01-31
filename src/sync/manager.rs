@@ -209,7 +209,7 @@ impl SyncManager {
 
     pub async fn send_burst(&self, sid: &ServerId, matrix: &Matrix) {
         info!("Sending burst to {}", sid.as_str());
-        let commands = burst::generate_burst(matrix, self.local_id.as_str()).await;
+        let commands = burst::generate_burst(matrix, self.local_id.as_str(), sid.as_str()).await;
 
         let link = self.links.get(sid).map(|l| l.value().clone());
         if let Some(link) = link {

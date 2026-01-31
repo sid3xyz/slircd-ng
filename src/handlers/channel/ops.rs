@@ -68,6 +68,7 @@ pub async fn force_join_channel<S>(
                 std::sync::Arc::downgrade(ctx.matrix),
                 None, // initial_topic
                 None, // initial_modes
+                None, // initial_metadata
                 None, // created_at
                 mailbox_capacity,
                 observer,

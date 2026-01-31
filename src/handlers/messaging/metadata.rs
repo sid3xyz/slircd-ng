@@ -8,11 +8,10 @@
 //! - `METADATA SET <target> <key> [value]` - Set a metadata key (empty value deletes)
 //! - `METADATA LIST <target>` - List all metadata for a target
 //!
-//! This handler provides stub implementations that respond with proper IRC
-//! replies but do not yet persist metadata. Full implementation requires:
-//! - Adding metadata storage to Matrix or user/channel state
-//! - Parsing metadata requests and returning key-value pairs
-//! - Enforcing proper ownership/permissions
+//! This handler implements the METADATA command, supporting:
+//! - Channel metadata (saved to runtime state and registered channel DB)
+//! - User metadata (saved to account DB if identified)
+//! - Access control via proper ownership checks
 
 use super::super::{Context, HandlerResult, PostRegHandler, server_reply};
 use crate::state::RegisteredState;
@@ -156,9 +155,34 @@ impl PostRegHandler for MetadataHandler {
                             let reply = server_reply(
                                 &ctx.matrix.server_info.name,
                                 Response::RPL_KEYVALUE,
-                                vec![ctx.state.nick.clone(), k, "*".to_string(), v],
+                                vec![ctx.state.nick.clone(), k.clone(), "*".to_string(), v.clone()],
                             );
                             ctx.sender.send(reply).await?;
+
+                            if subcommand == MetadataSubCommand::SET 
+                                && ctx.matrix.channel_manager.registered_channels.contains(&target_lower) 
+                            {
+                                let repo = ctx.matrix.db.channels();
+                                if let Ok(Some(channel)) = repo.find_by_name(&target_lower).await {
+                                    // params[0] is key, value is v (or from params)
+                                    // The actor returned the map? No, actor returns empty map for SET.
+                                    // Wait, SET returns Ok(HashMap::new()).
+                                    // So we can't get the value from the map if it's empty.
+                                    // We must use params.
+                                    if !params.is_empty() {
+                                        let key = params[0].to_string();
+                                        // Re-derive value from params logic
+                                        let value_to_save = if params.len() > 1 {
+                                            Some(params[1].to_string())
+                                        } else {
+                                            None
+                                        };
+                                        if let Err(e) = repo.set_metadata(channel.id, &key, value_to_save.as_deref()).await {
+                                             tracing::error!("Failed to persist channel metadata: {}", e);
+                                        }
+                                    }
+                                }
+                            }
                         }
                         let reply = server_reply(
                             &ctx.matrix.server_info.name,
@@ -328,9 +352,54 @@ impl PostRegHandler for MetadataHandler {
                                     vec![ctx.state.nick.clone(), "End of metadata".to_string()],
                                 );
                                 ctx.sender.send(reply).await?;
+
+                                // Persist insertion (User)
+                                if let Some(account_name) = &user.account {
+                                    let account_name = account_name.clone();
+                                    let key_clone = key.clone();
+                                    let val_clone = val.clone();
+                                    let repo = ctx.matrix.db.accounts();
+                                    
+                                    match repo.find_by_name(&account_name).await {
+                                        Ok(Some(account)) => {
+                                            if let Err(e) = repo.set_metadata(account.id, &key_clone, Some(&val_clone)).await {
+                                                tracing::error!("Failed to persist user metadata: {}", e);
+                                            }
+                                        }
+                                        Ok(None) => {
+                                             tracing::warn!("User account not found for metadata: {}", account_name);
+                                        }
+                                        Err(e) => {
+                                             tracing::error!("DB error: {}", e);
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             user.metadata.remove(&key);
+
+                            // Persist removal (User)
+                            if let Some(account_name) = &user.account {
+                                let account_name = account_name.clone();
+                                let key_clone = key.clone();
+                                let repo = ctx.matrix.db.accounts();
+                                
+                                // Spawn to avoid blocking lock? No, keep it simple for now, async is fine.
+                                match repo.find_by_name(&account_name).await {
+                                    Ok(Some(account)) => {
+                                        if let Err(e) = repo.set_metadata(account.id, &key_clone, None).await {
+                                            tracing::error!("Failed to persist user metadata removal: {}", e);
+                                        }
+                                    }
+                                    Ok(None) => {
+                                         tracing::warn!("User account not found for metadata: {}", account_name);
+                                    }
+                                    Err(e) => {
+                                         tracing::error!("DB error: {}", e);
+                                    }
+                                }
+                            }
+
                             let reply = server_reply(
                                 &ctx.matrix.server_info.name,
                                 Response::RPL_METADATAEND,

@@ -17,6 +17,7 @@ pub struct ChannelRecord {
     pub topic_set_by: Option<String>,
     /// When the persisted topic was set (Unix timestamp)
     pub topic_set_at: Option<i64>,
+    pub metadata: std::collections::HashMap<String, String>,
 }
 
 /// Channel access entry.

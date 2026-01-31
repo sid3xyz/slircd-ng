@@ -388,8 +388,16 @@ impl ChannelActor {
     fn serialize_members_to_crdt(&self, crdt: &mut ChannelCrdt, fallback_ts: HybridTimestamp) {
         let base_ts = HybridTimestamp::new(0, 0, &ServerId::new("000"));
         for (uid, modes) in &self.members {
-            // Join at base_ts to ensure we don't reject historical mode updates
-            crdt.members.join(uid.clone(), base_ts);
+            // Join at real join_time (or fallback to base_ts if missing) to preserve causality
+            let join_ts = if let Some(join_time) = modes.join_time {
+                // We use ServerId 000 because join_time is a scalar (Unix timestamp)
+                // and we don't have the original SID of the join easily accessible here.
+                // This is a simplified approximation but better than TS=0.
+                HybridTimestamp::new(join_time as u64 * 1000, 0, &ServerId::new("000"))
+            } else {
+                base_ts
+            };
+            crdt.members.join(uid.clone(), join_ts);
 
             if let Some(m_crdt) = crdt.members.get_modes_mut(uid) {
                 if let Some(ts) = modes.op_ts {

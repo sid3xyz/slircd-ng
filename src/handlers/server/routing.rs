@@ -172,6 +172,7 @@ impl ServerHandler for RoutedMessageHandler {
 
                 let params = Box::new(ChannelMessageParams {
                     sender_uid: source_uid.to_string(),
+                    sender_session_id: uuid::Uuid::nil(),
                     text: text.to_string(),
                     tags: out_msg.tags.clone(),
                     is_notice: matches!(msg.command_name(), "NOTICE"),

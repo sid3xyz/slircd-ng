@@ -210,28 +210,31 @@ pub(crate) async fn join_channel_internal(
 
     let mut attempt = 0;
 
-    // Pre-load saved topic for registered channels (passed to actor at spawn)
-    let initial_topic = if is_registered_channel {
+    // Pre-load saved topic and metadata for registered channels
+    let (initial_topic, initial_metadata) = if is_registered_channel {
         if let Some(db) = db {
-            db.channels()
-                .find_by_name(&channel_lower)
-                .await
-                .ok()
-                .flatten()
-                .filter(|r| r.keeptopic)
-                .and_then(|r| match (r.topic_text, r.topic_set_by, r.topic_set_at) {
-                    (Some(text), Some(set_by), Some(set_at)) => Some(Topic {
-                        text,
-                        set_by,
-                        set_at,
-                    }),
-                    _ => None,
-                })
+            if let Ok(Some(record)) = db.channels().find_by_name(&channel_lower).await {
+                let topic = if record.keeptopic {
+                    match (record.topic_text, record.topic_set_by, record.topic_set_at) {
+                        (Some(text), Some(set_by), Some(set_at)) => Some(Topic {
+                            text,
+                            set_by,
+                            set_at,
+                        }),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                (topic, Some(record.metadata))
+            } else {
+                (None, None)
+            }
         } else {
-            None
+            (None, None)
         }
     } else {
-        None
+        (None, None)
     };
 
     let mailbox_capacity = matrix.config.limits.channel_mailbox_capacity;
@@ -249,6 +252,7 @@ pub(crate) async fn join_channel_internal(
                     Arc::downgrade(&matrix),
                     initial_topic.clone(),
                     None, // initial_modes
+                    initial_metadata.clone(),
                     None, // created_at
                     mailbox_capacity,
                     observer,

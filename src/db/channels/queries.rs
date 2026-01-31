@@ -70,6 +70,7 @@ impl<'a> ChannelRepository<'a> {
             topic_text: None,
             topic_set_by: None,
             topic_set_at: None,
+            metadata: std::collections::HashMap::new(),
         })
     }
 
@@ -86,8 +87,22 @@ impl<'a> ChannelRepository<'a> {
         .fetch_optional(self.pool)
         .await?;
 
-        Ok(row.map(
-            |(
+        if let Some((
+            id,
+            name,
+            founder_account_id,
+            registered_at,
+            last_used_at,
+            description,
+            mlock,
+            keeptopic,
+            topic_text,
+            topic_set_by,
+            topic_set_at,
+        )) = row
+        {
+            let metadata = self.fetch_metadata(id).await?;
+            Ok(Some(ChannelRecord {
                 id,
                 name,
                 founder_account_id,
@@ -99,22 +114,11 @@ impl<'a> ChannelRepository<'a> {
                 topic_text,
                 topic_set_by,
                 topic_set_at,
-            )| {
-                ChannelRecord {
-                    id,
-                    name,
-                    founder_account_id,
-                    registered_at,
-                    last_used_at,
-                    description,
-                    mlock,
-                    keeptopic,
-                    topic_text,
-                    topic_set_by,
-                    topic_set_at,
-                }
-            },
-        ))
+                metadata,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Load all registered channels from the database.
@@ -128,38 +132,39 @@ impl<'a> ChannelRepository<'a> {
         .fetch_all(self.pool)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(
-                |(
-                    id,
-                    name,
-                    founder_account_id,
-                    registered_at,
-                    last_used_at,
-                    description,
-                    mlock,
-                    keeptopic,
-                    topic_text,
-                    topic_set_by,
-                    topic_set_at,
-                )| {
-                    ChannelRecord {
-                        id,
-                        name,
-                        founder_account_id,
-                        registered_at,
-                        last_used_at,
-                        description,
-                        mlock,
-                        keeptopic,
-                        topic_text,
-                        topic_set_by,
-                        topic_set_at,
-                    }
-                },
-            )
-            .collect())
+        let mut channels = Vec::new();
+        for (
+            id,
+            name,
+            founder_account_id,
+            registered_at,
+            last_used_at,
+            description,
+            mlock,
+            keeptopic,
+            topic_text,
+            topic_set_by,
+            topic_set_at,
+        ) in rows
+        {
+            let metadata = self.fetch_metadata(id).await?;
+            channels.push(ChannelRecord {
+                id,
+                name,
+                founder_account_id,
+                registered_at,
+                last_used_at,
+                description,
+                mlock,
+                keeptopic,
+                topic_text,
+                topic_set_by,
+                topic_set_at,
+                metadata,
+            });
+        }
+
+        Ok(channels)
     }
 
     /// Get access flags for an account on a channel.
@@ -540,6 +545,56 @@ impl<'a> ChannelRepository<'a> {
 
         // If pattern is also exhausted, we have a match.
         p_iter.next().is_none()
+    }
+
+    /// Get metadata for a channel.
+    pub async fn get_metadata(&self, channel_id: i64) -> Result<std::collections::HashMap<String, String>, DbError> {
+        self.fetch_metadata(channel_id).await
+    }
+
+    /// Set a metadata key for a channel.
+    /// If value is None, the key is removed.
+    pub async fn set_metadata(
+        &self,
+        channel_id: i64,
+        key: &str,
+        value: Option<&str>,
+    ) -> Result<(), DbError> {
+        if let Some(val) = value {
+            sqlx::query(
+                r#"
+                INSERT OR REPLACE INTO channel_metadata (channel_id, key, value)
+                VALUES (?, ?, ?)
+                "#,
+            )
+            .bind(channel_id)
+            .bind(key)
+            .bind(val)
+            .execute(self.pool)
+            .await?;
+        } else {
+            sqlx::query("DELETE FROM channel_metadata WHERE channel_id = ? AND key = ?")
+                .bind(channel_id)
+                .bind(key)
+                .execute(self.pool)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Helper to fetch metadata for a channel.
+    async fn fetch_metadata(
+        &self,
+        channel_id: i64,
+    ) -> Result<std::collections::HashMap<String, String>, DbError> {
+        let rows = sqlx::query_as::<_, (String, String)>(
+            "SELECT key, value FROM channel_metadata WHERE channel_id = ?",
+        )
+        .bind(channel_id)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows.into_iter().collect())
     }
 }
 

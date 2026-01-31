@@ -98,6 +98,7 @@ impl ChannelActor {
         matrix: Weak<Matrix>,
         initial_topic: Option<Topic>,
         initial_modes: Option<HashSet<ChannelMode>>,
+        initial_metadata: Option<HashMap<String, String>>,
         created_at: Option<i64>,
         capacity: usize,
         observer: Option<Arc<dyn StateObserver>>,
@@ -128,7 +129,7 @@ impl ChannelActor {
             mode_timestamps: HashMap::new(),
             topic_timestamp: None,
             server_id,
-            metadata: HashMap::new(),
+            metadata: initial_metadata.unwrap_or_default(),
             topic: initial_topic,
             created: created_at.unwrap_or_else(|| Utc::now().timestamp()),
             bans: Vec::new(),
@@ -391,6 +392,12 @@ impl ChannelActor {
                 }
             });
 
+            let metadata_json = if self.metadata.is_empty() {
+                None
+            } else {
+                serde_json::to_string(&self.metadata).ok()
+            };
+
             let state = crate::state::persistence::ChannelState {
                 name: self.name.clone(),
                 modes: crate::state::actor::helpers::modes_to_string(&self.modes),
@@ -400,6 +407,7 @@ impl ChannelActor {
                 created_at: self.created,
                 key,
                 user_limit,
+                metadata: metadata_json,
             };
 
             if let Err(e) = repo.save(&state).await {

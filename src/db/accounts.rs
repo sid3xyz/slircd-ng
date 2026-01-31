@@ -29,6 +29,7 @@ pub struct Account {
     pub last_seen_at: i64,
     pub enforce: bool,
     pub hide_email: bool,
+    pub metadata: std::collections::HashMap<String, String>,
 }
 
 /// Repository for account operations.
@@ -125,6 +126,7 @@ impl<'a> AccountRepository<'a> {
             last_seen_at: now,
             enforce: false,
             hide_email: true,
+            metadata: std::collections::HashMap::new(),
         })
     }
 
@@ -199,6 +201,8 @@ impl<'a> AccountRepository<'a> {
             .execute(self.pool)
             .await?;
 
+        let metadata = self.fetch_metadata(id).await?;
+
         Ok(Account {
             id,
             name,
@@ -207,6 +211,7 @@ impl<'a> AccountRepository<'a> {
             last_seen_at: now,
             enforce,
             hide_email,
+            metadata,
         })
     }
 
@@ -223,8 +228,9 @@ impl<'a> AccountRepository<'a> {
         .fetch_optional(self.pool)
         .await?;
 
-        Ok(row.map(
-            |(id, name, email, registered_at, last_seen_at, enforce, hide_email)| Account {
+        if let Some((id, name, email, registered_at, last_seen_at, enforce, hide_email)) = row {
+            let metadata = self.fetch_metadata(id).await?;
+            Ok(Some(Account {
                 id,
                 name,
                 email,
@@ -232,8 +238,11 @@ impl<'a> AccountRepository<'a> {
                 last_seen_at,
                 enforce,
                 hide_email,
-            },
-        ))
+                metadata,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Find account by nickname (looks up in nicknames table first).
@@ -267,8 +276,9 @@ impl<'a> AccountRepository<'a> {
         .fetch_optional(self.pool)
         .await?;
 
-        Ok(row.map(
-            |(id, name, email, registered_at, last_seen_at, enforce, hide_email)| Account {
+        if let Some((id, name, email, registered_at, last_seen_at, enforce, hide_email)) = row {
+            let metadata = self.fetch_metadata(id).await?;
+            Ok(Some(Account {
                 id,
                 name,
                 email,
@@ -276,8 +286,11 @@ impl<'a> AccountRepository<'a> {
                 last_seen_at,
                 enforce,
                 hide_email,
-            },
-        ))
+                metadata,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Get all nicknames for an account.
@@ -487,8 +500,9 @@ impl<'a> AccountRepository<'a> {
         .fetch_optional(self.pool)
         .await?;
 
-        Ok(row.map(
-            |(id, name, email, registered_at, last_seen_at, enforce, hide_email)| Account {
+        if let Some((id, name, email, registered_at, last_seen_at, enforce, hide_email)) = row {
+            let metadata = self.fetch_metadata(id).await?;
+            Ok(Some(Account {
                 id,
                 name,
                 email,
@@ -496,8 +510,11 @@ impl<'a> AccountRepository<'a> {
                 last_seen_at,
                 enforce,
                 hide_email,
-            },
-        ))
+                metadata,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Get the certificate fingerprint for an account.
@@ -583,6 +600,56 @@ impl<'a> AccountRepository<'a> {
             }
             _ => Ok(None), // Account doesn't exist or has no SCRAM verifiers
         }
+    }
+
+    /// Get metadata for an account.
+    pub async fn get_metadata(&self, account_id: i64) -> Result<std::collections::HashMap<String, String>, DbError> {
+        self.fetch_metadata(account_id).await
+    }
+
+    /// Set a metadata key for an account.
+    /// If value is None, the key is removed.
+    pub async fn set_metadata(
+        &self,
+        account_id: i64,
+        key: &str,
+        value: Option<&str>,
+    ) -> Result<(), DbError> {
+        if let Some(val) = value {
+            sqlx::query(
+                r#"
+                INSERT OR REPLACE INTO account_metadata (account_id, key, value)
+                VALUES (?, ?, ?)
+                "#,
+            )
+            .bind(account_id)
+            .bind(key)
+            .bind(val)
+            .execute(self.pool)
+            .await?;
+        } else {
+            sqlx::query("DELETE FROM account_metadata WHERE account_id = ? AND key = ?")
+                .bind(account_id)
+                .bind(key)
+                .execute(self.pool)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Helper to fetch metadata for an account.
+    async fn fetch_metadata(
+        &self,
+        account_id: i64,
+    ) -> Result<std::collections::HashMap<String, String>, DbError> {
+        let rows = sqlx::query_as::<_, (String, String)>(
+            "SELECT key, value FROM account_metadata WHERE account_id = ?",
+        )
+        .bind(account_id)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows.into_iter().collect())
     }
 }
 
@@ -769,5 +836,51 @@ mod tests {
         dummy_password_verify("test").await;
         dummy_password_verify("").await;
         dummy_password_verify(&"x".repeat(100)).await;
+    }
+
+    #[tokio::test]
+    async fn test_account_metadata_persistence() {
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        // Run migrations
+        crate::db::Database::run_migrations(&pool).await.unwrap();
+
+        let repo = AccountRepository::new(&pool);
+
+        // Register account
+        let account = repo
+            .register("testuser", "password", Some("test@example.com"))
+            .await
+            .unwrap();
+
+        // Set metadata
+        repo.set_metadata(account.id, "key1", Some("value1"))
+            .await
+            .unwrap();
+        
+        let meta = repo.get_metadata(account.id).await.unwrap();
+        assert_eq!(meta.get("key1").map(|s| s.as_str()), Some("value1"));
+
+        // Update metadata
+        repo.set_metadata(account.id, "key1", Some("value2"))
+            .await
+            .unwrap();
+        let meta = repo.get_metadata(account.id).await.unwrap();
+        assert_eq!(meta.get("key1").map(|s| s.as_str()), Some("value2"));
+
+        // Delete metadata
+        repo.set_metadata(account.id, "key1", None).await.unwrap();
+        let meta = repo.get_metadata(account.id).await.unwrap();
+        assert!(meta.get("key1").is_none());
+
+        // Verify find_by_name loads metadata
+        repo.set_metadata(account.id, "key2", Some("value2"))
+            .await
+            .unwrap();
+        let found = repo.find_by_name("testuser").await.unwrap().unwrap();
+        assert_eq!(found.metadata.get("key2").map(|s| s.as_str()), Some("value2"));
     }
 }

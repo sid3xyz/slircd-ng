@@ -41,6 +41,8 @@ use crate::handlers::{
         topic::TopicHandler as ServerTopicHandler,
         uid::UidHandler,
     },
+    s2s::encap::EncapHandler,
+    s2s::kline::{KlineHandler, UnklineHandler},
     services::account::RegisterHandler,
     services::aliases::{CsHandler, NsHandler},
     user::monitor::MonitorHandler,
@@ -132,6 +134,10 @@ impl Registry {
             "BATCH",
             Box::new(crate::handlers::batch::server::ServerBatchHandler),
         );
+        server_handlers.insert("KLINE", Box::new(KlineHandler::default()));
+        server_handlers.insert("KLN", Box::new(KlineHandler::default())); // Alias
+        server_handlers.insert("UNKLINE", Box::new(UnklineHandler::default()));
+        server_handlers.insert("UNKLN", Box::new(UnklineHandler::default())); // Alias
 
         // ====================================================================
         // Post-registration handlers (require completed registration)

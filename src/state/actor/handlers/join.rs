@@ -122,7 +122,10 @@ impl ChannelActor {
         {
             // Trigger protection: Set +i if not already set
             if !self.modes.contains(&ChannelMode::InviteOnly) {
+                // Fix #45: Explicitly timestamp the mode change.
+                let ts = self.get_fallback_timestamp();
                 self.modes.insert(ChannelMode::InviteOnly);
+                self.mode_timestamps.insert('i', ts);
                 self.dirty = true;
 
                 // Broadcast mode change

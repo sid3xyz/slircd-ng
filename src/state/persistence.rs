@@ -16,6 +16,7 @@ pub struct ChannelState {
     pub created_at: i64,
     pub key: Option<String>,
     pub user_limit: Option<i32>,
+    pub metadata: Option<String>,
 }
 
 /// Repository for channel state persistence.
@@ -34,8 +35,8 @@ impl<'a> ChannelStateRepository<'a> {
         sqlx::query(
             r#"
             INSERT OR REPLACE INTO channel_state
-            (name, modes, topic, topic_set_by, topic_set_at, created_at, key, user_limit)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (name, modes, topic, topic_set_by, topic_set_at, created_at, key, user_limit, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&state.name)
@@ -46,6 +47,7 @@ impl<'a> ChannelStateRepository<'a> {
         .bind(state.created_at)
         .bind(&state.key)
         .bind(state.user_limit)
+        .bind(&state.metadata)
         .execute(self.pool)
         .await?;
         Ok(())
@@ -73,10 +75,11 @@ impl<'a> ChannelStateRepository<'a> {
                 i64,
                 Option<String>,
                 Option<i32>,
+                Option<String>,
             ),
         >(
             r#"
-            SELECT name, modes, topic, topic_set_by, topic_set_at, created_at, key, user_limit
+            SELECT name, modes, topic, topic_set_by, topic_set_at, created_at, key, user_limit, metadata
             FROM channel_state
             "#,
         )
@@ -86,7 +89,17 @@ impl<'a> ChannelStateRepository<'a> {
         Ok(rows
             .into_iter()
             .map(
-                |(name, modes, topic, topic_set_by, topic_set_at, created_at, key, user_limit)| {
+                |(
+                    name,
+                    modes,
+                    topic,
+                    topic_set_by,
+                    topic_set_at,
+                    created_at,
+                    key,
+                    user_limit,
+                    metadata,
+                )| {
                     ChannelState {
                         name,
                         modes,
@@ -96,6 +109,7 @@ impl<'a> ChannelStateRepository<'a> {
                         created_at,
                         key,
                         user_limit,
+                        metadata,
                     }
                 },
             )
@@ -116,10 +130,11 @@ impl<'a> ChannelStateRepository<'a> {
                 i64,
                 Option<String>,
                 Option<i32>,
+                Option<String>,
             ),
         >(
             r#"
-            SELECT name, modes, topic, topic_set_by, topic_set_at, created_at, key, user_limit
+            SELECT name, modes, topic, topic_set_by, topic_set_at, created_at, key, user_limit, metadata
             FROM channel_state
             WHERE name = ? COLLATE NOCASE
             "#,
@@ -129,7 +144,17 @@ impl<'a> ChannelStateRepository<'a> {
         .await?;
 
         Ok(row.map(
-            |(name, modes, topic, topic_set_by, topic_set_at, created_at, key, user_limit)| {
+            |(
+                name,
+                modes,
+                topic,
+                topic_set_by,
+                topic_set_at,
+                created_at,
+                key,
+                user_limit,
+                metadata,
+            )| {
                 ChannelState {
                     name,
                     modes,
@@ -139,6 +164,7 @@ impl<'a> ChannelStateRepository<'a> {
                     created_at,
                     key,
                     user_limit,
+                    metadata,
                 }
             },
         ))
@@ -168,7 +194,8 @@ mod tests {
                 topic_set_at INTEGER,
                 created_at INTEGER NOT NULL DEFAULT 0,
                 key TEXT,
-                user_limit INTEGER
+                user_limit INTEGER,
+                metadata TEXT
             );",
         )
         .execute(&pool)
@@ -187,6 +214,9 @@ mod tests {
             created_at: now,
             key: Some("secret".to_string()),
             user_limit: Some(10),
+            metadata: Some(serde_json::to_string(&std::collections::HashMap::from([
+                ("foo".to_string(), "bar".to_string())
+            ])).unwrap()),
         };
 
         // Test Save
@@ -204,6 +234,8 @@ mod tests {
         assert_eq!(found.topic.as_deref(), Some("Hello World"));
         assert_eq!(found.key.as_deref(), Some("secret"));
         assert_eq!(found.user_limit, Some(10));
+        assert!(found.metadata.is_some());
+        assert!(found.metadata.unwrap().contains("foo"));
 
         // Test Load All
         let all = repo.load_all().await.expect("Failed to load all");

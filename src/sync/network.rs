@@ -346,13 +346,13 @@ async fn handle_inbound_connection(
     while let Some(result) = framed.next().await {
         if handshake_start.elapsed() > handshake_timeout {
             tracing::warn!(peer = %remote_addr, "Inbound S2S handshake timeout");
-            let _ = framed
-                .send(
-                    Message::from(Command::ERROR("Handshake timeout".into()))
-                        .to_string()
-                        .trim_end(),
-                )
-                .await;
+            let err_cmd = Message::from(Command::ERROR("Handshake timeout".into()))
+                .to_string()
+                .trim_end()
+                .to_string();
+            if let Err(e) = framed.send(err_cmd).await {
+                tracing::error!("Failed to send handshake timeout error: {}", e);
+            }
             return;
         }
 
@@ -374,13 +374,13 @@ async fn handle_inbound_connection(
             let sid_obj = ServerId::new(sid.clone());
             if manager.topology.servers.contains_key(&sid_obj) {
                 tracing::error!(peer = %remote_addr, "Loop detected: {} ({})", name, sid);
-                let _ = framed
-                    .send(
-                        Message::from(Command::ERROR(format!("Loop detected: {} ({})", name, sid)))
-                            .to_string()
-                            .trim_end(),
-                    )
-                    .await;
+                let err_cmd = Message::from(Command::ERROR(format!("Loop detected: {} ({})", name, sid)))
+                    .to_string()
+                    .trim_end()
+                    .to_string();
+                if let Err(e) = framed.send(err_cmd).await {
+                    tracing::error!("Failed to send loop detection error: {}", e);
+                }
                 return;
             }
         }
@@ -552,11 +552,13 @@ async fn handle_inbound_connection(
                                     violations = violations,
                                     "S2S rate limit threshold exceeded, disconnecting"
                                 );
-                                let _ = framed.send(
-                                    Message::from(Command::ERROR(format!("Rate limit exceeded ({} violations)", violations)))
-                                        .to_string()
-                                        .trim_end(),
-                                ).await;
+                                let err_cmd = Message::from(Command::ERROR(format!("Rate limit exceeded ({} violations)", violations)))
+                                    .to_string()
+                                    .trim_end()
+                                    .to_string();
+                                if let Err(e) = framed.send(err_cmd).await {
+                                    tracing::error!("Failed to send rate limit error: {}", e);
+                                }
                                 break;
                             }
                         }
@@ -603,13 +605,13 @@ async fn handle_inbound_connection(
             }
             _ = shutdown_rx.recv() => {
                 info!(peer = %remote_addr, "Inbound S2S connection stopping due to shutdown");
-                let _ = framed
-                    .send(
-                        Message::from(Command::ERROR("Server shutting down".into()))
-                            .to_string()
-                            .trim_end(),
-                    )
-                    .await;
+                let err_cmd = Message::from(Command::ERROR("Server shutting down".into()))
+                    .to_string()
+                    .trim_end()
+                    .to_string();
+                if let Err(e) = framed.send(err_cmd).await {
+                    tracing::error!("Failed to send shutdown error: {}", e);
+                }
                 break;
             }
         }
@@ -768,16 +770,16 @@ pub fn connect_to_peer(
                     let sid_obj = ServerId::new(sid.clone());
                     if manager.topology.servers.contains_key(&sid_obj) {
                         tracing::error!("Loop detected during handshake: {} ({})", name, sid);
-                        let _ = framed
-                            .send(
-                                Message::from(Command::ERROR(format!(
-                                    "Loop detected: {} ({})",
-                                    name, sid
-                                )))
-                                .to_string()
-                                .trim_end(),
-                            )
-                            .await;
+                        let err_cmd = Message::from(Command::ERROR(format!(
+                            "Loop detected: {} ({})",
+                            name, sid
+                        )))
+                        .to_string()
+                        .trim_end()
+                        .to_string();
+                        if let Err(e) = framed.send(err_cmd).await {
+                            tracing::error!("Failed to send loop detection error (inbound): {}", e);
+                        }
                         break;
                     }
                 }

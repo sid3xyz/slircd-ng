@@ -26,6 +26,7 @@ impl ChannelActor {
                 } else {
                     self.metadata.remove(&key);
                 }
+                self.dirty = true;
                 Ok(HashMap::new())
             }
             MetadataCommand::List => Ok(self.metadata.clone()),

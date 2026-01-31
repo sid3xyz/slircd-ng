@@ -22,8 +22,8 @@ use tracing::error;
 /// # Arguments
 ///
 /// * `state` - The global server state (Matrix).
-/// * `local_sid` - The local server ID (used for filtering local users and hopcounts).
-pub async fn generate_burst(state: &Matrix, local_sid: &str) -> Vec<Command> {
+/// * `target_sid` - The SID of the server we are bursting TO (for Split Horizon).
+pub async fn generate_burst(state: &Matrix, local_sid: &str, target_sid: &str) -> Vec<Command> {
     let mut commands = Vec::new();
 
     // 0. Burst Global Bans (before users/channels to prevent race conditions)
@@ -66,8 +66,9 @@ pub async fn generate_burst(state: &Matrix, local_sid: &str) -> Vec<Command> {
     for user_arc in user_arcs {
         let user = user_arc.read().await;
 
-        // Only burst LOCAL users (UID prefix = local SID)
-        if !user.uid.starts_with(local_sid) {
+        // SPLIT HORIZON: Do not send users back to the server they originated from.
+        // We know a user is from `target_sid` if their UID starts with `target_sid`.
+        if user.uid.starts_with(target_sid) {
             continue;
         }
 

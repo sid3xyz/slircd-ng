@@ -50,6 +50,7 @@ impl ChannelManager {
                 matrix,
                 None, // initial_topic
                 None, // initial_modes
+                None, // initial_metadata
                 None, // created_at
                 100,  // capacity
                 self.observer.clone(),
@@ -88,12 +89,17 @@ impl ChannelManager {
             };
 
             let initial_modes = Some(modes_from_string(&state.modes, state.key, state.user_limit));
+            
+            let initial_metadata = state.metadata.and_then(|json| {
+                serde_json::from_str::<std::collections::HashMap<String, String>>(&json).ok()
+            });
 
             let tx = ChannelActor::spawn_with_capacity(
                 name,
                 matrix.clone(),
                 initial_topic,
                 initial_modes,
+                initial_metadata,
                 Some(state.created_at),
                 100,
                 self.observer.clone(),
