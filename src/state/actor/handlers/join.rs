@@ -7,6 +7,7 @@ use super::{
     ActorState, ChannelActor, ChannelError, ChannelMode, JoinParams, JoinSuccessData, MemberModes,
 };
 use slirc_proto::Message;
+use subtle::ConstantTimeEq;
 use tokio::sync::oneshot;
 use tracing::debug;
 
@@ -104,11 +105,13 @@ impl ChannelActor {
 
         // 4. Key (+k)
         for mode in &self.modes {
-            if let ChannelMode::Key(key, _) = mode
-                && key_arg.as_deref() != Some(key)
-            {
-                let _ = reply_tx.send(Err(ChannelError::BadChannelKey));
-                return;
+            if let ChannelMode::Key(key, _) = mode {
+                let provided = key_arg.as_deref().unwrap_or("");
+                // Constant-time comparison to prevent timing attacks
+                if !bool::from(provided.as_bytes().ct_eq(key.as_bytes())) {
+                    let _ = reply_tx.send(Err(ChannelError::BadChannelKey));
+                    return;
+                }
             }
         }
 
