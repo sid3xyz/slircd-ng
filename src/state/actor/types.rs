@@ -98,6 +98,7 @@ pub struct ModeParams {
 #[derive(Debug)]
 pub struct ChannelMessageParams {
     pub sender_uid: Uid,
+    pub sender_session_id: Uuid,
     pub text: String,
     pub tags: Option<Vec<slirc_proto::message::Tag>>,
     pub is_notice: bool,

@@ -3,6 +3,7 @@ use crate::state::Matrix;
 use dashmap::DashMap;
 use slirc_proto::sync::ServerId;
 use slirc_proto::{Command, Message};
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -189,6 +190,8 @@ impl SyncManager {
                 last_pong: Instant::now(),
                 last_ping: Instant::now(),
                 connected_at: Instant::now(),
+                bytes_sent: Arc::new(AtomicU64::new(0)),
+                bytes_recv: Arc::new(AtomicU64::new(0)),
             },
         );
         self.topology.servers.insert(

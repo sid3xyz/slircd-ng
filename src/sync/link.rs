@@ -1,5 +1,6 @@
 use crate::sync::handshake;
 use slirc_proto::Message;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -19,6 +20,10 @@ pub struct LinkState {
     pub last_ping: Instant,
     /// Time when the connection was established.
     pub connected_at: Instant,
+    /// Total bytes sent to this peer.
+    pub bytes_sent: Arc<AtomicU64>,
+    /// Total bytes received from this peer.
+    pub bytes_recv: Arc<AtomicU64>,
 }
 
 impl Clone for LinkState {
@@ -30,6 +35,8 @@ impl Clone for LinkState {
             last_pong: self.last_pong,
             last_ping: self.last_ping,
             connected_at: self.connected_at,
+            bytes_sent: self.bytes_sent.clone(),
+            bytes_recv: self.bytes_recv.clone(),
         }
     }
 }

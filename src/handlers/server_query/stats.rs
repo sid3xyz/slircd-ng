@@ -189,11 +189,9 @@ impl PostRegHandler for StatsHandler {
                 for entry in ctx.matrix.sync_manager.links.iter() {
                     let _sid = entry.key();
                     let link = entry.value();
-                    // FIXME: Link struct doesn't expose byte counters yet
-                    // The Link struct tracks connection state but doesn't have public
-                    // fields for sent_bytes/recv_bytes. Need to add metrics tracking.
-                    let sent_bytes = 0;
-                    let recv_bytes = 0;
+                    // Link struct now exposes atomic byte counters
+                    let sent_bytes = link.bytes_sent.load(std::sync::atomic::Ordering::Relaxed);
+                    let recv_bytes = link.bytes_recv.load(std::sync::atomic::Ordering::Relaxed);
                     let _sent_msgs = 0;
                     // Actually S2S_COMMANDS has a command label. Summing is hard without iterating.
                     // For now, let's just report 0 for msg count or try to track it separately if critical.

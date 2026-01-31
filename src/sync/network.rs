@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use slirc_proto::sync::ServerId;
 use slirc_proto::{Command, Message};
 use std::io::Cursor;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
@@ -443,8 +444,13 @@ async fn handle_inbound_connection(
             last_pong: Instant::now(),
             last_ping: Instant::now(),
             connected_at: Instant::now(),
+            bytes_sent: Arc::new(AtomicU64::new(0)),
+            bytes_recv: Arc::new(AtomicU64::new(0)),
         },
     );
+    // Get references to counters for the loop (cheap Arc clones)
+    let link_bytes_sent = manager.links.get(&remote_sid_val).unwrap().bytes_sent.clone();
+    let link_bytes_recv = manager.links.get(&remote_sid_val).unwrap().bytes_recv.clone();
 
     // Add to topology (direct peer's parent/uplink is the local server)
     manager.topology.add_server(
@@ -488,7 +494,9 @@ async fn handle_inbound_connection(
                 match msg {
                     Some(m) => {
                         let s = m.as_ref().to_string();
-                        crate::metrics::inc_s2s_bytes_sent(remote_sid_val.as_str(), s.len() as u64 + 2);
+                        let len = s.len() as u64 + 2; // +2 for \r\n
+                        crate::metrics::inc_s2s_bytes_sent(remote_sid_val.as_str(), len);
+                        link_bytes_sent.fetch_add(len, Ordering::Relaxed);
                         if let Err(e) = framed.send(s.trim_end()).await {
                             tracing::error!(peer = %remote_addr, error = %e, "Failed to send to peer");
                             break;
@@ -510,7 +518,9 @@ async fn handle_inbound_connection(
             result = framed.next() => {
                 match result {
                     Some(Ok(line)) => {
-                        crate::metrics::inc_s2s_bytes_received(remote_sid_val.as_str(), line.len() as u64 + 2);
+                        let len = line.len() as u64 + 2;
+                        crate::metrics::inc_s2s_bytes_received(remote_sid_val.as_str(), len);
+                        link_bytes_recv.fetch_add(len, Ordering::Relaxed);
                         let msg = match line.parse::<Message>() {
                             Ok(m) => m,
                             Err(e) => {
@@ -862,8 +872,13 @@ pub fn connect_to_peer(
                     last_pong: Instant::now(),
                     last_ping: Instant::now(),
                     connected_at: Instant::now(),
+                    bytes_sent: Arc::new(AtomicU64::new(0)),
+                    bytes_recv: Arc::new(AtomicU64::new(0)),
                 },
             );
+            // Get references to counters for the loop
+            let link_bytes_sent = manager.links.get(&remote_sid_val).unwrap().bytes_sent.clone();
+            let link_bytes_recv = manager.links.get(&remote_sid_val).unwrap().bytes_recv.clone();
 
             // Add to topology (direct peer's parent/uplink is the local server)
             manager.topology.add_server(
@@ -912,8 +927,10 @@ pub fn connect_to_peer(
                         match msg {
                             Some(m) => {
                                 let s = m.as_ref().to_string();
-                                crate::metrics::inc_s2s_bytes_sent(remote_sid_val.as_str(), s.len() as u64 + 2);
-                                if let Err(e) = framed.send(s.trim_end()).await {
+                        let len = s.len() as u64 + 2; // +2 for \r\n
+                        crate::metrics::inc_s2s_bytes_sent(remote_sid_val.as_str(), len);
+                        link_bytes_sent.fetch_add(len, Ordering::Relaxed);
+                        if let Err(e) = framed.send(s.trim_end()).await {
                                      tracing::error!("Failed to send message to peer: {}", e);
                                      break;
                                 }
@@ -934,8 +951,10 @@ pub fn connect_to_peer(
                     result = framed.next() => {
                         match result {
                             Some(Ok(line)) => {
-                                crate::metrics::inc_s2s_bytes_received(remote_sid_val.as_str(), line.len() as u64 + 2);
-                                let msg = match line.parse::<Message>() {
+                        let len = line.len() as u64 + 2;
+                        crate::metrics::inc_s2s_bytes_received(remote_sid_val.as_str(), len);
+                        link_bytes_recv.fetch_add(len, Ordering::Relaxed);
+                        let msg = match line.parse::<Message>() {
                                     Ok(m) => m,
                                     Err(e) => {
                                         tracing::warn!("Failed to parse inbound message: {}", e);
