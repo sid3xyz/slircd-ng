@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use slirc_proto::{Command, Message, MessageRef, Prefix, Tag};
 use std::sync::Arc;
 use tracing::{debug, warn};
+use uuid::Uuid;
 
 /// Handler for routed PRIVMSG/NOTICE from other servers.
 pub struct RoutedMessageHandler;
@@ -172,7 +173,7 @@ impl ServerHandler for RoutedMessageHandler {
 
                 let params = Box::new(ChannelMessageParams {
                     sender_uid: source_uid.to_string(),
-                    sender_session_id: uuid::Uuid::nil(),
+                    sender_session_id: Uuid::nil(),
                     text: text.to_string(),
                     tags: out_msg.tags.clone(),
                     is_notice: matches!(msg.command_name(), "NOTICE"),

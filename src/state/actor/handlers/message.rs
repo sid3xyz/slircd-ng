@@ -485,7 +485,6 @@ impl ChannelActor {
                                 .get_session_caps(sess.session_id)
                                 .unwrap_or_default();
                             let has_echo = caps.contains("echo-message");
-                            let has_echo = caps.contains("echo-message");
                             if !has_echo && override_nick.is_none() {
                                 continue;
                             }
@@ -496,7 +495,6 @@ impl ChannelActor {
                                 continue;
                             }
                             
-                            let has_message_tags = caps.contains("message-tags");
                             let has_message_tags = caps.contains("message-tags");
                             let has_server_time = caps.contains("server-time");
                             let mut echo_msg = base_msg.clone();

@@ -17,19 +17,18 @@ A modern IRC server written in Rust with zero-copy message parsing, actor-based 
 
 ### What Works ✅
 - **Core IRC Protocol**: Full RFC 1459/2812 compliance for single-server operation
-- **116 IRC Command Handlers**: User commands, channel operations, server queries, operator commands
+- **110+ IRC Command Handlers**: User commands, channel operations, server queries, operator commands
 - **IRCv3 Support**: 27 capabilities including SASL (PLAIN, SCRAM-SHA-256, EXTERNAL), account-notify, labeled-response, batch, CHATHISTORY, message-tags
 - **Services**: NickServ (account registration, identification, GHOST) and ChanServ (channel registration, access control, auto-kick)
 - **Security**: TLS/SSL support, rate limiting, IP bans (KLINE/DLINE/GLINE), host cloaking, spam detection
 - **Persistence**: SQLite for accounts and bans, Redb for message history
 - **Monitoring**: Prometheus metrics endpoint, structured logging (JSON or pretty)
 - **Build System**: Compiles cleanly with `cargo build --release`
-- **Test Suite**: 1300+ tests (unit + integration), including 70+ meaningful integration tests
+- **Test Suite**: 1400+ tests (unit + integration), including 70+ meaningful integration tests
 
 ### What's Incomplete ⚠️
 - **Bouncer/Multiclient**: Architecture and commands exist, but session reattachment tracking is incomplete (see `ReattachInfo` in session.rs)
 - **Server-to-Server (S2S)**: Basic handshake works, but multi-server federation is beta quality with untested edge cases
-- **Batch Processing**: 2 `unimplemented!()` calls in `src/handlers/batch/processing.rs` for `capabilities()` and `capabilities_mut()` in mock test state
 - **Stats Handler**: Link statistics show 0 for sent_bytes/recv_bytes (2 TODOs in `src/handlers/server_query/stats.rs`)
 - **irctest Compliance**: 357/387 tests passing (92.2%) - 30 tests fail, mostly edge cases in CHATHISTORY and MONITOR
 
@@ -244,5 +243,5 @@ Released to the **public domain** under [The Unlicense](LICENSE). Use freely for
 
 ---
 
-**Last Updated**: 2026-02-01
+**Last Updated**: 2026-02-02
 **Audit Basis**: Source code inspection of commit HEAD on main branch
