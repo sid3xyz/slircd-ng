@@ -628,10 +628,10 @@ async fn verify_password(password: &str, hash: &str) -> Result<(), DbError> {
     tokio::task::spawn_blocking(move || {
         let parsed_hash = PasswordHash::new(&hash).map_err(|_| DbError::InvalidPassword)?;
 
-        crate::security::password::verify_password(&password, &parsed_hash)
+        let valid = crate::security::password::verify_password(&password, &parsed_hash)
             .map_err(|_| DbError::InvalidPassword)?;
 
-        if crate::security::password::verify_password(&password, &parsed_hash).unwrap_or(false) {
+        if valid {
             Ok(())
         } else {
             Err(DbError::InvalidPassword)
