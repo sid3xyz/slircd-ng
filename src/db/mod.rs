@@ -49,6 +49,8 @@ pub enum DbError {
     ChannelExists(String),
     #[error("insufficient access")]
     InsufficientAccess,
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 /// Database handle with connection pool.

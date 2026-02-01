@@ -16,9 +16,13 @@ static PROMETHEUS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
 /// Must be called once at server startup before any metrics are recorded.
 pub fn init() {
     let builder = PrometheusBuilder::new();
-    let handle = builder
-        .install_recorder()
-        .expect("failed to install Prometheus recorder");
+    let handle = match builder.install_recorder() {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::error!("Failed to install Prometheus recorder: {}", e);
+            return;
+        }
+    };
     let _ = PROMETHEUS_HANDLE.set(handle);
 
     // Register descriptions

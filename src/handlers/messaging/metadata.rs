@@ -340,6 +340,9 @@ impl PostRegHandler for MetadataHandler {
                             } else {
                                 user.metadata.insert(key.clone(), val.clone());
                                 // Deprecated spec format: 761 <client> <key> <visibility> <value>
+                                // Clone for persistence before moving into reply vec
+                                let key_clone = key.clone();
+                                let val_clone = val.clone();
                                 let reply = server_reply(
                                     &ctx.matrix.server_info.name,
                                     Response::RPL_KEYVALUE,
@@ -356,8 +359,6 @@ impl PostRegHandler for MetadataHandler {
                                 // Persist insertion (User)
                                 if let Some(account_name) = &user.account {
                                     let account_name = account_name.clone();
-                                    let key_clone = key.clone();
-                                    let val_clone = val.clone();
                                     let repo = ctx.matrix.db.accounts();
                                     
                                     match repo.find_by_name(&account_name).await {

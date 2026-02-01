@@ -23,6 +23,18 @@ pub struct LimitsConfig {
     /// Higher values provide burst tolerance during floods.
     #[serde(default = "default_channel_mailbox_capacity")]
     pub channel_mailbox_capacity: usize,
+
+    // WHOWAS limits (DoS protection - Audit Finding #4)
+    /// Maximum unique nicks stored in WHOWAS history (default: 1000).
+    /// When exceeded, oldest nicks are evicted (LRU).
+    #[serde(default = "default_whowas_maxgroups")]
+    pub whowas_maxgroups: usize,
+    /// Maximum WHOWAS entries per nickname (default: 10).
+    #[serde(default = "default_whowas_groupsize")]
+    pub whowas_groupsize: usize,
+    /// Maximum age (days) for WHOWAS entries (default: 7).
+    #[serde(default = "default_whowas_maxkeep_days")]
+    pub whowas_maxkeep_days: i64,
 }
 
 impl Default for LimitsConfig {
@@ -32,6 +44,9 @@ impl Default for LimitsConfig {
             max_list_channels: default_max_list_channels(),
             max_names_channels: default_max_names_channels(),
             channel_mailbox_capacity: default_channel_mailbox_capacity(),
+            whowas_maxgroups: default_whowas_maxgroups(),
+            whowas_groupsize: default_whowas_groupsize(),
+            whowas_maxkeep_days: default_whowas_maxkeep_days(),
         }
     }
 }
@@ -50,6 +65,18 @@ fn default_max_names_channels() -> usize {
 
 fn default_channel_mailbox_capacity() -> usize {
     500
+}
+
+fn default_whowas_maxgroups() -> usize {
+    1000
+}
+
+fn default_whowas_groupsize() -> usize {
+    10
+}
+
+fn default_whowas_maxkeep_days() -> i64 {
+    7
 }
 
 #[cfg(test)]

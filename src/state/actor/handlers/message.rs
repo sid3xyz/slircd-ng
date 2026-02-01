@@ -505,7 +505,9 @@ impl ChannelActor {
                                 has_message_tags,
                                 has_server_time,
                             );
-                            let _ = sess.tx.try_send(Arc::new(echo_msg));
+                            if let Err(e) = sess.tx.try_send(Arc::new(echo_msg)) {
+                                tracing::warn!(session = %sess.session_id, error = %e, "Failed to send echo message to session");
+                            }
                             any_sent = true;
                             recipients_sent += 1;
                         }
@@ -588,7 +590,9 @@ impl ChannelActor {
                                 build_cached_msg(key, &caps, &mut memoized_msgs)
                             };
 
-                            let _ = sess.tx.try_send(msg_arc);
+                            if let Err(e) = sess.tx.try_send(msg_arc) {
+                                tracing::warn!(session = %sess.session_id, error = %e, "Failed to send message to session");
+                            }
                             recipients_sent += 1;
                             any_sent = true;
                         }
@@ -786,7 +790,9 @@ impl ChannelActor {
 
                 for peer_sid in target_peers {
                     if let Some(link) = matrix.sync_manager.get_peer_for_server(&peer_sid) {
-                        let _ = link.tx.try_send(s2s_msg.clone());
+                        if let Err(e) = link.tx.try_send(s2s_msg.clone()) {
+                            tracing::warn!(peer_sid = %peer_sid.as_str(), error = %e, "Failed to route S2S message");
+                        }
                     }
                 }
             }

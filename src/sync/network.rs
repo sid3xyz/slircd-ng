@@ -405,7 +405,8 @@ async fn handle_inbound_connection(
                     remote_info = machine.remote_info.clone();
 
                     // Generate and send burst
-                    let burst = burst::generate_burst(&matrix, manager.local_id.as_str()).await;
+                    let target = remote_sid.as_ref().map(|s| s.as_str()).unwrap_or("");
+                    let burst = burst::generate_burst(&matrix, manager.local_id.as_str(), target).await;
                     for cmd in burst {
                         if let Err(e) = framed.send(Message::from(cmd).to_string().trim_end()).await
                         {
@@ -808,8 +809,9 @@ pub fn connect_to_peer(
                             remote_info = machine.remote_info.clone();
 
                             // Generate Burst
+                            let target = remote_sid.as_ref().map(|s| s.as_str()).unwrap_or("");
                             let burst =
-                                burst::generate_burst(&matrix, manager.local_id.as_str()).await;
+                                burst::generate_burst(&matrix, manager.local_id.as_str(), target).await;
                             for cmd in burst {
                                 if let Err(e) =
                                     framed.send(Message::from(cmd).to_string().trim_end()).await

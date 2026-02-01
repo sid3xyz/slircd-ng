@@ -41,7 +41,6 @@ use crate::handlers::{
         topic::TopicHandler as ServerTopicHandler,
         uid::UidHandler,
     },
-    s2s::encap::EncapHandler,
     s2s::kline::{KlineHandler, UnklineHandler},
     services::account::RegisterHandler,
     services::aliases::{CsHandler, NsHandler},

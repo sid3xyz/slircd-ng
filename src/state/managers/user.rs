@@ -13,10 +13,13 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use std::time::Instant;
+use std::sync::Mutex;
 use tokio::sync::{RwLock, mpsc};
 
-/// Maximum number of WHOWAS entries to keep per nickname.
-const MAX_WHOWAS_PER_NICK: usize = 10;
+/// Default maximum number of WHOWAS entries to keep per nickname.
+const DEFAULT_WHOWAS_GROUPSIZE: usize = 10;
+/// Default maximum unique nicks in WHOWAS history (LRU eviction).
+const DEFAULT_WHOWAS_MAXGROUPS: usize = 1000;
 
 /// Manages all user-related state and behavior.
 ///
@@ -52,6 +55,13 @@ pub struct UserManager {
     pub stats_manager: Option<Arc<crate::state::managers::stats::StatsManager>>,
     /// Observer for state changes (Innovation 2).
     pub observer: Option<Arc<dyn StateObserver>>,
+
+    // WHOWAS limits (Audit Finding #4 DoS protection)
+    whowas_maxgroups: usize,
+    whowas_groupsize: usize,
+    whowas_maxkeep_days: i64,
+    /// LRU order tracker: front = oldest, back = newest
+    whowas_lru: Mutex<VecDeque<String>>,
 }
 
 impl UserManager {
@@ -69,7 +79,21 @@ impl UserManager {
 
             stats_manager: None,
             observer: None,
+
+            whowas_maxgroups: DEFAULT_WHOWAS_MAXGROUPS,
+            whowas_groupsize: DEFAULT_WHOWAS_GROUPSIZE,
+            whowas_maxkeep_days: 7, // Default to 7 days
+            whowas_lru: Mutex::new(VecDeque::new()),
         }
+    }
+
+    /// Configure WHOWAS limits from config.
+    ///
+    /// Call this after construction with values from `LimitsConfig`.
+    pub fn configure_whowas(&mut self, maxgroups: usize, groupsize: usize, maxkeep_days: i64) {
+        self.whowas_maxgroups = maxgroups;
+        self.whowas_groupsize = groupsize;
+        self.whowas_maxkeep_days = maxkeep_days;
     }
 
     /// Update the last_active timestamp for a user.
@@ -202,7 +226,7 @@ impl UserManager {
     }
 
     /// Update capabilities for a specific session.
-    #[allow(dead_code)]
+    /// Update capabilities for a specific session.
     pub fn update_session_caps(&self, session_id: SessionId, caps: HashSet<String>) {
         self.session_caps.insert(session_id, caps);
     }
@@ -571,7 +595,7 @@ impl UserManager {
     /// Record a WHOWAS entry for a user who is disconnecting.
     ///
     /// Entries are stored per-nick (lowercase) with most recent first.
-    /// Old entries are pruned to keep only MAX_WHOWAS_PER_NICK entries.
+    /// Implements LRU eviction when maxgroups is exceeded to prevent DoS.
     pub fn record_whowas(&self, nick: &str, user: &str, host: &str, realname: &str) {
         let nick_lower = slirc_proto::irc_to_lower(nick);
         let entry = WhowasEntry {
@@ -583,14 +607,40 @@ impl UserManager {
             logout_time: chrono::Utc::now().timestamp_millis(),
         };
 
+        // Check if this is a new nick (not already in whowas)
+        let is_new_nick = !self.whowas.contains_key(&nick_lower);
+
+        // LRU eviction: if adding a new nick and we're at capacity, evict oldest
+        if is_new_nick {
+            if let Ok(mut lru) = self.whowas_lru.lock() {
+                // If at capacity, evict oldest nick
+                while lru.len() >= self.whowas_maxgroups {
+                    if let Some(oldest) = lru.pop_front() {
+                        self.whowas.remove(&oldest);
+                    } else {
+                        break;
+                    }
+                }
+                // Add new nick to LRU (back = newest)
+                lru.push_back(nick_lower.clone());
+            }
+        } else {
+            // Update LRU position for existing nick (move to back)
+            if let Ok(mut lru) = self.whowas_lru.lock() {
+                lru.retain(|n| n != &nick_lower);
+                lru.push_back(nick_lower.clone());
+            }
+        }
+
+        // Insert entry
         self.whowas
             .entry(nick_lower.clone())
             .or_default()
             .push_front(entry);
 
-        // Prune old entries if over the limit
+        // Prune per-nick entries if over groupsize limit
         if let Some(mut entries) = self.whowas.get_mut(&nick_lower) {
-            while entries.len() > MAX_WHOWAS_PER_NICK {
+            while entries.len() > self.whowas_groupsize {
                 entries.pop_back();
             }
         }

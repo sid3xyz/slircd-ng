@@ -296,7 +296,9 @@ async fn main() -> anyhow::Result<()> {
 
                     if let Some(peer) = matrix.sync_manager.get_peer_for_server(&target_sid) {
                         info!(target_sid = %target_sid.as_str(), "Routing message to peer");
-                        let _ = peer.tx.send(Arc::new(msg)).await;
+                        if let Err(e) = peer.tx.send(Arc::new(msg)).await {
+                            tracing::warn!(target_sid = %target_sid.as_str(), error = %e, "Failed to route message to peer (link likely dead)");
+                        }
                     } else {
                         tracing::warn!(target_sid = %target_sid.as_str(), "No peer found for target server");
                     }
@@ -310,7 +312,8 @@ async fn main() -> anyhow::Result<()> {
         let matrix = Arc::clone(&matrix);
         tokio::spawn(async move {
             while let Some((uid, reason)) = disconnect_rx.recv().await {
-                let _ = matrix.disconnect_user(&uid, &reason).await;
+                // Disconnect is asynchronous, but we should log if it somehow fails (unlikely since it returns Vec<String>)
+                 matrix.disconnect_user(&uid, &reason).await;
             }
         });
     }

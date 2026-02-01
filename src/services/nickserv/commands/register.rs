@@ -34,6 +34,7 @@ pub async fn handle_register(
                     target_uid: uid.to_string(),
                     account: account.name.clone(),
                     account_id: Some(account.id),
+                    metadata: std::collections::HashMap::new(),
                 },
                 ServiceEffect::BroadcastAccount {
                     target_uid: uid.to_string(),

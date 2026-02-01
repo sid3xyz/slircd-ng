@@ -231,7 +231,7 @@ impl ChannelActor {
     }
 
     /// Get fallback timestamp for CRDT operations.
-    fn get_fallback_timestamp(&self) -> HybridTimestamp {
+    pub(crate) fn get_fallback_timestamp(&self) -> HybridTimestamp {
         if let Some(matrix) = self.matrix.upgrade() {
             HybridTimestamp::now(&matrix.server_id)
         } else {
@@ -393,7 +393,7 @@ impl ChannelActor {
                 // We use ServerId 000 because join_time is a scalar (Unix timestamp)
                 // and we don't have the original SID of the join easily accessible here.
                 // This is a simplified approximation but better than TS=0.
-                HybridTimestamp::new(join_time as u64 * 1000, 0, &ServerId::new("000"))
+                HybridTimestamp::new(join_time as i64 * 1000, 0, &ServerId::new("000"))
             } else {
                 base_ts
             };

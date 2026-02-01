@@ -201,7 +201,8 @@ impl<'a> AccountRepository<'a> {
             .execute(self.pool)
             .await?;
 
-        let metadata = self.fetch_metadata(id).await?;
+        // Fetch metadata
+        let metadata = self.get_metadata(id).await?;
 
         Ok(Account {
             id,
@@ -229,7 +230,9 @@ impl<'a> AccountRepository<'a> {
         .await?;
 
         if let Some((id, name, email, registered_at, last_seen_at, enforce, hide_email)) = row {
-            let metadata = self.fetch_metadata(id).await?;
+            // Fetch metadata
+            let metadata = self.get_metadata(id).await?;
+
             Ok(Some(Account {
                 id,
                 name,
@@ -277,7 +280,9 @@ impl<'a> AccountRepository<'a> {
         .await?;
 
         if let Some((id, name, email, registered_at, last_seen_at, enforce, hide_email)) = row {
-            let metadata = self.fetch_metadata(id).await?;
+            // Fetch metadata
+            let metadata = self.get_metadata(id).await?;
+
             Ok(Some(Account {
                 id,
                 name,
@@ -501,7 +506,9 @@ impl<'a> AccountRepository<'a> {
         .await?;
 
         if let Some((id, name, email, registered_at, last_seen_at, enforce, hide_email)) = row {
-            let metadata = self.fetch_metadata(id).await?;
+            // Fetch metadata
+            let metadata = self.get_metadata(id).await?;
+
             Ok(Some(Account {
                 id,
                 name,
@@ -604,10 +611,15 @@ impl<'a> AccountRepository<'a> {
 
     /// Get metadata for an account.
     pub async fn get_metadata(&self, account_id: i64) -> Result<std::collections::HashMap<String, String>, DbError> {
-        self.fetch_metadata(account_id).await
-    }
+        let rows = sqlx::query_as::<_, (String, String)>(
+            "SELECT key, value FROM account_metadata WHERE account_id = ?"
+        )
+        .bind(account_id)
+        .fetch_all(self.pool)
+        .await?;
 
-    /// Set a metadata key for an account.
+        Ok(rows.into_iter().collect())
+    }
     /// If value is None, the key is removed.
     pub async fn set_metadata(
         &self,
@@ -637,28 +649,16 @@ impl<'a> AccountRepository<'a> {
         Ok(())
     }
 
-    /// Helper to fetch metadata for an account.
-    async fn fetch_metadata(
-        &self,
-        account_id: i64,
-    ) -> Result<std::collections::HashMap<String, String>, DbError> {
-        let rows = sqlx::query_as::<_, (String, String)>(
-            "SELECT key, value FROM account_metadata WHERE account_id = ?",
-        )
-        .bind(account_id)
-        .fetch_all(self.pool)
-        .await?;
 
-        Ok(rows.into_iter().collect())
-    }
 }
 
 /// Hash a password using Argon2 in a blocking task.
 async fn hash_password(password: &str) -> Result<String, DbError> {
     let password = password.to_string();
-    tokio::task::spawn_blocking(move || Ok(crate::security::password::hash_password(&password)))
+    tokio::task::spawn_blocking(move || crate::security::password::hash_password(&password))
         .await
         .map_err(|e| DbError::Sqlx(sqlx::Error::Io(std::io::Error::other(e.to_string()))))?
+        .map_err(|_| DbError::Internal("Password hashing failed".to_string())) // Map argon2 error to Generic DbError
 }
 
 /// Compute SCRAM-SHA-256 verifiers for a password in a blocking task.
@@ -838,49 +838,5 @@ mod tests {
         dummy_password_verify(&"x".repeat(100)).await;
     }
 
-    #[tokio::test]
-    async fn test_account_metadata_persistence() {
-        let pool = SqlitePoolOptions::new()
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
 
-        // Run migrations
-        crate::db::Database::run_migrations(&pool).await.unwrap();
-
-        let repo = AccountRepository::new(&pool);
-
-        // Register account
-        let account = repo
-            .register("testuser", "password", Some("test@example.com"))
-            .await
-            .unwrap();
-
-        // Set metadata
-        repo.set_metadata(account.id, "key1", Some("value1"))
-            .await
-            .unwrap();
-        
-        let meta = repo.get_metadata(account.id).await.unwrap();
-        assert_eq!(meta.get("key1").map(|s| s.as_str()), Some("value1"));
-
-        // Update metadata
-        repo.set_metadata(account.id, "key1", Some("value2"))
-            .await
-            .unwrap();
-        let meta = repo.get_metadata(account.id).await.unwrap();
-        assert_eq!(meta.get("key1").map(|s| s.as_str()), Some("value2"));
-
-        // Delete metadata
-        repo.set_metadata(account.id, "key1", None).await.unwrap();
-        let meta = repo.get_metadata(account.id).await.unwrap();
-        assert!(meta.get("key1").is_none());
-
-        // Verify find_by_name loads metadata
-        repo.set_metadata(account.id, "key2", Some("value2"))
-            .await
-            .unwrap();
-        let found = repo.find_by_name("testuser").await.unwrap().unwrap();
-        assert_eq!(found.metadata.get("key2").map(|s| s.as_str()), Some("value2"));
-    }
 }

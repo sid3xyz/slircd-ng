@@ -76,14 +76,14 @@ mod tests {
     #[test]
     fn verify_password_argon2_match() {
         // Generate Argon2 hash at runtime
-        let hash = crate::security::password::hash_password("secret123");
+        let hash = crate::security::password::hash_password("secret123").unwrap();
         let oper = make_oper(&hash);
         assert!(oper.verify_password("secret123"));
     }
 
     #[test]
     fn verify_password_argon2_mismatch() {
-        let hash = crate::security::password::hash_password("secret123");
+        let hash = crate::security::password::hash_password("secret123").unwrap();
         let oper = make_oper(&hash);
         assert!(!oper.verify_password("wrongpassword"));
     }

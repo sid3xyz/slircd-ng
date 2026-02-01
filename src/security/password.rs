@@ -18,12 +18,11 @@ pub fn verify_password(
 }
 
 /// Hash a password using default Argon2 settings.
-pub fn hash_password(password: &str) -> String {
+pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
 
-    argon2
-        .hash_password(password.as_bytes(), &salt)
-        .expect("Argon2 hashing failed") // Should only fail on memory issues
-        .to_string()
+    Ok(argon2
+        .hash_password(password.as_bytes(), &salt)?
+        .to_string())
 }

@@ -26,6 +26,7 @@ pub enum ServiceEffect {
         target_uid: String,
         account: String,
         account_id: Option<i64>,
+        metadata: std::collections::HashMap<String, String>,
     },
 
     /// Clear user's account and -r mode (DROP).
@@ -176,6 +177,7 @@ async fn apply_effect_impl(
             target_uid,
             account,
             account_id,
+            metadata,
         } => {
             if let Some(nick) = resolve_user_nick(matrix, &target_uid).await {
                 info!(uid = %target_uid, account = %account, "User identified to account");
@@ -186,6 +188,7 @@ async fn apply_effect_impl(
                     user.modes.registered = true;
                     user.account = Some(account.clone());
                     user.account_id = account_id;
+                    user.metadata = metadata;
                 }
 
                 // Broadcast to S2S

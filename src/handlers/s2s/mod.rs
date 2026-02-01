@@ -6,7 +6,6 @@ pub use map::MapHandler;
 pub use squit::SquitHandler;
 
 mod connect;
-pub mod encap;
 pub mod kline;
 mod links;
 mod map;

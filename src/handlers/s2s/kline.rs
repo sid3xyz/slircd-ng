@@ -1,13 +1,16 @@
-use crate::handlers::{Context, HandlerResult, ServerHandler};
+use crate::handlers::core::traits::ServerHandler;
+use crate::handlers::{Context, HandlerResult};
+use async_trait::async_trait;
 use slirc_proto::MessageRef;
 use tracing::instrument;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct KlineHandler;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct UnklineHandler;
 
+#[async_trait]
 impl ServerHandler for KlineHandler {
     #[instrument(skip(ctx, msg), fields(command = "KLINE"))]
     async fn handle(&self, ctx: &mut Context<'_, crate::state::ServerState>, msg: &MessageRef<'_>) -> HandlerResult {
@@ -40,17 +43,24 @@ impl ServerHandler for KlineHandler {
         // Note: For a real KLINE, we combine user/host. The mask might be "user@host".
         // If it's just "host", we treat it as "*@host".
         
-        // TODO: Parse mask properly. Assuming full mask for now.
+        // Parse mask properly. If no '@', assume it is a host mask and prepend "*@"
+        let normalized_mask = if mask.contains('@') {
+            mask.to_string()
+        } else {
+            format!("*@{}", mask)
+        };
+
         ctx.matrix.security_manager.ban_cache.add_gline(
-            mask.to_string(),
+            normalized_mask,
             reason.to_string(),
-            duration as i64,
+            Some(duration as i64),
         );
 
         Ok(())
     }
 }
 
+#[async_trait]
 impl ServerHandler for UnklineHandler {
     #[instrument(skip(ctx, msg), fields(command = "UNKLINE"))]
     async fn handle(&self, ctx: &mut Context<'_, crate::state::ServerState>, msg: &MessageRef<'_>) -> HandlerResult {

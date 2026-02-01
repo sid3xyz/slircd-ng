@@ -28,6 +28,9 @@ pub async fn handle_group(
     {
         Ok(id) => {
             info!(nick = %nick, account = %account_name, "Nickname grouped");
+            // Fetch metadata (link_nickname returns i64, so we need to fetch metadata separately)
+            let metadata = db.accounts().get_metadata(id).await.unwrap_or_default();
+
             vec![
                 reply_effect(
                     uid,
@@ -41,6 +44,7 @@ pub async fn handle_group(
                     target_uid: uid.to_string(),
                     account: account_name.to_string(),
                     account_id: Some(id),
+                    metadata,
                 },
                 ServiceEffect::BroadcastAccount {
                     target_uid: uid.to_string(),

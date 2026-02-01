@@ -88,15 +88,15 @@ mod tests {
         assert_eq!(res.len(), 3);
         match &res[0] {
             HistoryItem::Message(m) => assert_eq!(m.msgid, "2"),
-            _ => panic!(),
+            _ => unreachable!("Expected HistoryItem::Message"),
         }
         match &res[1] {
             HistoryItem::Message(m) => assert_eq!(m.msgid, "3"),
-            _ => panic!(),
+            _ => unreachable!("Expected HistoryItem::Message"),
         }
         match &res[2] {
             HistoryItem::Message(m) => assert_eq!(m.msgid, "4"),
-            _ => panic!(),
+            _ => unreachable!("Expected HistoryItem::Message"),
         }
     }
 
@@ -115,7 +115,7 @@ mod tests {
         assert_eq!(res.len(), 3);
         match &res[1] {
             HistoryItem::Message(m) => assert_eq!(m.msgid, "3"),
-            _ => panic!(),
+            _ => unreachable!("Expected HistoryItem::Message"),
         }
     }
 
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(res.len(), 3);
         match &res[0] {
             HistoryItem::Message(m) => assert_eq!(m.msgid, "1"),
-            _ => panic!(),
+            _ => unreachable!("Expected HistoryItem::Message"),
         }
     }
 
@@ -149,11 +149,11 @@ mod tests {
         assert_eq!(res.len(), 2);
         match &res[0] {
             HistoryItem::Message(m) => assert_eq!(m.msgid, "2"),
-            _ => panic!(),
+            _ => unreachable!("Expected HistoryItem::Message"),
         }
         match &res[1] {
             HistoryItem::Message(m) => assert_eq!(m.msgid, "3"),
-            _ => panic!(),
+            _ => unreachable!("Expected HistoryItem::Message"),
         }
     }
 }

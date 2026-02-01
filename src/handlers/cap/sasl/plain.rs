@@ -95,6 +95,12 @@ pub(crate) async fn handle_sasl_plain_data<S: SessionState + SaslAccess>(
                     attach_session_to_client(ctx, &account.name, device_id).await;
 
                     if ctx.state.is_registered() {
+                        // Propagate metadata to RegisteredUser
+                        if let Some(user_ref) = ctx.matrix.user_manager.users.get(ctx.uid) {
+                            let mut user = user_ref.write().await;
+                            user.metadata = account.metadata.clone();
+                        }
+                        
                         broadcast_account_change(ctx, nick, &account_name).await;
                     }
                 }
