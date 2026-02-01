@@ -62,6 +62,9 @@ pub struct UserManager {
     whowas_maxkeep_days: i64,
     /// LRU order tracker: front = oldest, back = newest
     whowas_lru: Mutex<VecDeque<String>>,
+
+    pub max_local_users: std::sync::atomic::AtomicUsize,
+    pub max_global_users: std::sync::atomic::AtomicUsize,
 }
 
 impl UserManager {
@@ -84,7 +87,16 @@ impl UserManager {
             whowas_groupsize: DEFAULT_WHOWAS_GROUPSIZE,
             whowas_maxkeep_days: 7, // Default to 7 days
             whowas_lru: Mutex::new(VecDeque::new()),
+
+            max_local_users: std::sync::atomic::AtomicUsize::new(0),
+            max_global_users: std::sync::atomic::AtomicUsize::new(0),
         }
+    }
+
+    /// Get count of real users (excluding services/bots if tagged).
+    /// Currently returns total user count until service tagging is fully implemented.
+    pub async fn real_user_count(&self) -> usize {
+        self.users.len()
     }
 
     /// Configure WHOWAS limits from config.

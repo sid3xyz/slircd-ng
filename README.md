@@ -146,7 +146,7 @@ slircd-ng/
 │   │   ├── channel/     # Channel operations (JOIN, PART, MODE, etc.)
 │   │   ├── chathistory/ # Message history queries
 │   │   ├── connection/  # Registration (NICK, USER, PASS, QUIT)
-│   │   ├── messaging/   # PRIVMSG, NOTICE, TAGMSG, NPC
+│   │   ├── messaging/   # PRIVMSG, NOTICE, TAGMSG
 │   │   ├── mode/        # User and channel modes
 │   │   ├── oper/        # Operator commands (KILL, WALLOPS, etc.)
 │   │   ├── s2s/         # Server-to-server (CONNECT, SQUIT, LINKS)

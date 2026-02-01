@@ -149,7 +149,7 @@ impl PostRegHandler for OperHandler {
             return Ok(());
         }
 
-        if !oper_block.verify_password(password) {
+        if !oper_block.verify_password(password).await {
             // Apply timing normalization before responding
             apply_timing_delay().await;
 

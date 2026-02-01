@@ -23,8 +23,8 @@ use crate::handlers::{
     chathistory::ChatHistoryHandler,
     helpers::with_label,
     messaging::{
-        AcceptHandler, MetadataHandler, NoticeHandler, NpcHandler, PrivmsgHandler, RelayMsgHandler,
-        SceneHandler, TagmsgHandler,
+        AcceptHandler, MetadataHandler, NoticeHandler, PrivmsgHandler, RelayMsgHandler,
+        TagmsgHandler,
     },
     mode::ModeHandler,
     server::{
@@ -152,8 +152,7 @@ impl Registry {
         post_reg_handlers.insert("TAGMSG", Box::new(TagmsgHandler));
         post_reg_handlers.insert("ACCEPT", Box::new(AcceptHandler));
         post_reg_handlers.insert("METADATA", Box::new(MetadataHandler));
-        post_reg_handlers.insert("NPC", Box::new(NpcHandler));
-        post_reg_handlers.insert("SCENE", Box::new(SceneHandler));
+
         post_reg_handlers.insert("RELAYMSG", Box::new(RelayMsgHandler));
 
         // User query handlers

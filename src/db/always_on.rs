@@ -27,11 +27,6 @@ const ALWAYS_ON_CLIENTS: TableDefinition<&str, &[u8]> = TableDefinition::new("al
 /// Redb table for device state.
 const DEVICE_STATE: TableDefinition<&str, &[u8]> = TableDefinition::new("device_state");
 
-/// Redb table for read markers.
-/// Key: "account_lower\0target_lower"
-/// Value: Timestamp (nanoseconds)
-const READ_MARKERS: TableDefinition<&str, i64> = TableDefinition::new("read_markers");
-
 /// Errors from always-on persistence.
 #[derive(Debug, Error)]
 pub enum AlwaysOnError {
@@ -132,7 +127,6 @@ impl AlwaysOnStore {
         {
             let _ = write_txn.open_table(ALWAYS_ON_CLIENTS)?;
             let _ = write_txn.open_table(DEVICE_STATE)?;
-            let _ = write_txn.open_table(READ_MARKERS)?;
         }
         write_txn.commit()?;
 
@@ -260,74 +254,6 @@ impl AlwaysOnStore {
         };
         write_txn.commit()?;
         Ok(deleted)
-    }
-
-    /// Save a read marker.
-    pub fn save_read_marker(
-        &self,
-        account: &str,
-        target: &str,
-        timestamp: i64,
-    ) -> Result<(), AlwaysOnError> {
-        let key = Self::marker_key(account, target);
-        let write_txn = self.db.begin_write()?;
-        {
-            let mut table = write_txn.open_table(READ_MARKERS)?;
-            table.insert(key.as_str(), timestamp)?;
-        }
-        write_txn.commit()?;
-        debug!(account = %account, target = %target, ts = %timestamp, "Saved read marker");
-        Ok(())
-    }
-
-    /// Get a read marker.
-    pub fn get_read_marker(
-        &self,
-        account: &str,
-        target: &str,
-    ) -> Result<Option<i64>, AlwaysOnError> {
-        let key = Self::marker_key(account, target);
-        let read_txn = self.db.begin_read()?;
-        let table = read_txn.open_table(READ_MARKERS)?;
-        let result = table.get(key.as_str())?.map(|v| v.value());
-        Ok(result)
-    }
-
-    /// Delete all markers for an account.
-    pub fn delete_markers(&self, account: &str) -> Result<usize, AlwaysOnError> {
-        let prefix = format!("{}\0", irc_to_lower(account));
-        let write_txn = self.db.begin_write()?;
-        let mut count = 0;
-        {
-            let mut table = write_txn.open_table(READ_MARKERS)?;
-            // Redb doesn't support prefix delete directly efficiently without iteration,
-            // but we can iterate and collect keys to delete.
-            // Note: Mutating while iterating is not allowed, so we collect first.
-            let keys: Vec<String> = table
-                .iter()?
-                .filter_map(|r| {
-                    if let Ok((k, _)) = r
-                        && k.value().starts_with(&prefix)
-                    {
-                        return Some(k.value().to_string());
-                    }
-                    None
-                })
-                .collect();
-
-            for key in keys {
-                if table.remove(key.as_str())?.is_some() {
-                    count += 1;
-                }
-            }
-        }
-        write_txn.commit()?;
-        debug!(account = %account, count = %count, "Deleted read markers");
-        Ok(count)
-    }
-
-    fn marker_key(account: &str, target: &str) -> String {
-        format!("{}\0{}", irc_to_lower(account), irc_to_lower(target))
     }
 
     /// Expire clients that haven't been seen within the cutoff time.

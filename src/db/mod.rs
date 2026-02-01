@@ -157,10 +157,7 @@ impl Database {
 
     /// Run embedded migrations.
     async fn run_migrations(pool: &SqlitePool) -> Result<(), DbError> {
-        // Baselining: If we have an existing database (e.g. 'accounts' table exists)
-        // but no _sqlx_migrations table, we need to mark existing migrations as applied
-        // to prevent sqlx from trying to re-run them and failing.
-        Self::baseline_if_needed(pool).await?;
+
 
         sqlx::migrate!("./migrations")
             .run(pool)
@@ -171,99 +168,7 @@ impl Database {
         Ok(())
     }
 
-    /// Check if we need to baseline the database (inject migration history for existing DB).
-    async fn baseline_if_needed(pool: &SqlitePool) -> Result<(), DbError> {
-        // Check if accounts table exists (proxy for "is this an existing database?")
-        let accounts_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts')",
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(false);
 
-        if !accounts_exists {
-            return Ok(());
-        }
-
-        // Check if _sqlx_migrations table exists
-        let migrations_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations')"
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(false);
-
-        if migrations_exists {
-            return Ok(());
-        }
-
-        info!("Detected existing database without migration history. Baselining...");
-
-        // Create _sqlx_migrations table manually
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS _sqlx_migrations (
-                version BIGINT PRIMARY KEY,
-                description TEXT NOT NULL,
-                installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                success BOOLEAN NOT NULL DEFAULT 1,
-                checksum BLOB NOT NULL,
-                execution_time BIGINT NOT NULL
-            );
-            "#,
-        )
-        .execute(pool)
-        .await
-        .map_err(|e| DbError::Migration(e.into()))?;
-
-        // Insert records for known legacy migrations (001-008)
-        // We use dummy checksums/execution times because we just want to skip them.
-        // sqlx uses checksums to verify integrity, but for baselining we force it.
-        // The versions MUST match the filenames in migrations/ folder (e.g. 1, 2, 3...)
-        // Note: sqlx migrate uses the integer prefix. 001 -> 1.
-
-        let migrations = vec![
-            (1, "init"),
-            (2, "shuns"), // Note: 002_shuns and 002_xlines share prefix, simplified here or need careful handling?
-            // Actually sqlx assumes unique versions.
-            // Wait, our file listing had 002_shuns.sql AND 002_xlines.sql.
-            // This is a violation of sqlx strict versioning if they both start with 002.
-            // But wait, sqlx::migrate! macro reads files. If I have duplicate versions, sqlx will panic at compile time or run time.
-            // Let's assume for now 002_shuns and 002_xlines are managed.
-            // Actually, looking at the previous manual runner, it ran both.
-            // If I use sqlx::migrate!, I might need to rename one of them to 003?
-            // Let's assume for this step I just insert 1..8 and let the user verify file names later if needed.
-            // Or better: Checking file list again...
-            // 002_shuns.sql
-            // 002_xlines.sql
-            // 100% chance sqlx will complain about duplicate version 2.
-            // I should rename 002_xlines.sql to 003_xlines.sql, and bump others?
-            // Or merge them?
-            // Merging is safer for baselining.
-            // But I cannot easily merge them on disk without `mv` and combining content.
-            // For now, I will assume I need to fix the filenames too.
-            (3, "xlines"),
-            (4, "history"),
-            (5, "certfp"),
-            (6, "channel_topics"),
-            (7, "reputation"),
-            (8, "scram_verifiers"),
-            (9, "channels"),
-        ];
-
-        for (ver, desc) in migrations {
-            sqlx::query("INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time) VALUES (?, ?, 1, x'00', 0)")
-                .bind(ver)
-                .bind(desc)
-                .execute(pool)
-                .await
-                .map_err(|e| DbError::Migration(e.into()))?;
-        }
-
-        info!("Baselining complete. Injected migration history for versions 1-9.");
-
-        Ok(())
-    }
 
     /// Get account repository.
     pub fn accounts(&self) -> AccountRepository<'_> {

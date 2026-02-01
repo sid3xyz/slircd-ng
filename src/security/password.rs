@@ -8,21 +8,32 @@ use argon2::{
 };
 
 /// Verify a password against a stored Argon2 hash.
-pub fn verify_password(
-    password: &str,
-    hash: &PasswordHash<'_>,
+/// Verify a password against a stored Argon2 hash (non-blocking).
+pub async fn verify_password(
+    password: String,
+    hash: String,
 ) -> Result<bool, argon2::password_hash::Error> {
-    Ok(Argon2::default()
-        .verify_password(password.as_bytes(), hash)
-        .is_ok())
+    tokio::task::spawn_blocking(move || {
+        let parsed_hash = PasswordHash::new(&hash)?;
+        Ok(Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .is_ok())
+    })
+    .await
+    .expect("spawn_blocking failed")
 }
 
 /// Hash a password using default Argon2 settings.
-pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
+/// Hash a password using default Argon2 settings (non-blocking).
+pub async fn hash_password(password: String) -> Result<String, argon2::password_hash::Error> {
+    tokio::task::spawn_blocking(move || {
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::default();
 
-    Ok(argon2
-        .hash_password(password.as_bytes(), &salt)?
-        .to_string())
+        Ok(argon2
+            .hash_password(password.as_bytes(), &salt)?
+            .to_string())
+    })
+    .await
+    .expect("spawn_blocking failed")
 }

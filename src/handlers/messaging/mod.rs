@@ -15,11 +15,11 @@ mod errors;
 mod metadata;
 mod multiclient;
 mod notice;
-mod npc;
+
 mod privmsg;
 mod relaymsg;
 mod routing;
-mod scene;
+
 mod tagmsg;
 mod types;
 mod validation;
@@ -27,10 +27,8 @@ mod validation;
 pub use accept::AcceptHandler;
 pub use metadata::MetadataHandler;
 pub use notice::NoticeHandler;
-pub use npc::NpcHandler;
 pub use privmsg::PrivmsgHandler;
 pub use relaymsg::RelayMsgHandler;
-pub use scene::SceneHandler;
 
 // ============================================================================
 // TAGMSG Handler

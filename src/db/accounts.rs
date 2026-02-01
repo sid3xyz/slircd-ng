@@ -54,7 +54,9 @@ impl<'a> AccountRepository<'a> {
         email: Option<&str>,
     ) -> Result<Account, DbError> {
         // Hash the password using Argon2 (for PLAIN auth fallback)
-        let password_hash = hash_password(password).await?;
+        let password_hash = crate::security::password::hash_password(password.to_string())
+            .await
+            .map_err(|e| DbError::Internal(format!("Password hashing failed: {}", e)))?;
 
         // Compute SCRAM-SHA-256 verifiers
         let scram_verifiers = compute_scram_verifiers(password).await;
@@ -191,7 +193,13 @@ impl<'a> AccountRepository<'a> {
             row;
 
         // Verify password (runs in blocking task to avoid executor stalls)
-        verify_password(password, &password_hash).await?;
+        let matches = crate::security::password::verify_password(password.to_string(), password_hash.clone())
+            .await
+            .map_err(|_| DbError::InvalidPassword)?;
+
+        if !matches {
+            return Err(DbError::InvalidPassword);
+        }
 
         // Update last seen
         let now = chrono::Utc::now().timestamp();
@@ -358,7 +366,9 @@ impl<'a> AccountRepository<'a> {
                     .await?;
             }
             "password" => {
-                let password_hash = hash_password(value).await?;
+                let password_hash = crate::security::password::hash_password(value.to_string())
+                    .await
+                    .map_err(|e| DbError::Internal(format!("Password hashing failed: {}", e)))?;
                 let scram_verifiers = compute_scram_verifiers(value).await;
                 sqlx::query(
                     r#"UPDATE accounts SET
@@ -648,17 +658,6 @@ impl<'a> AccountRepository<'a> {
         }
         Ok(())
     }
-
-
-}
-
-/// Hash a password using Argon2 in a blocking task.
-async fn hash_password(password: &str) -> Result<String, DbError> {
-    let password = password.to_string();
-    tokio::task::spawn_blocking(move || crate::security::password::hash_password(&password))
-        .await
-        .map_err(|e| DbError::Sqlx(sqlx::Error::Io(std::io::Error::other(e.to_string()))))?
-        .map_err(|_| DbError::Internal("Password hashing failed".to_string())) // Map argon2 error to Generic DbError
 }
 
 /// Compute SCRAM-SHA-256 verifiers for a password in a blocking task.
@@ -687,40 +686,13 @@ async fn compute_scram_verifiers(password: &str) -> ScramVerifiers {
     .expect("spawn_blocking should not be cancelled")
 }
 
-/// Verify a password against a stored hash in a blocking task.
-async fn verify_password(password: &str, hash: &str) -> Result<(), DbError> {
-    let password = password.to_string();
-    let hash = hash.to_string();
 
-    tokio::task::spawn_blocking(move || {
-        let parsed_hash = PasswordHash::new(&hash).map_err(|_| DbError::InvalidPassword)?;
 
-        crate::security::password::verify_password(&password, &parsed_hash)
-            .map_err(|_| DbError::InvalidPassword)?;
-
-        if crate::security::password::verify_password(&password, &parsed_hash).unwrap_or(false) {
-            Ok(())
-        } else {
-            Err(DbError::InvalidPassword)
-        }
-    })
-    .await
-    .map_err(|e| DbError::Sqlx(sqlx::Error::Io(std::io::Error::other(e.to_string()))))?
-}
-
-/// Dummy password verification for constant-time account lookup in a blocking task.
+/// Dummy password verification for constant-time account lookup.
 async fn dummy_password_verify(password: &str) {
-    let password = password.to_string();
-    tokio::task::spawn_blocking(move || {
-        // Pre-computed Argon2id hash of "dummy"
-        const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$dGltaW5nLW9yYWNsZS1kdW1teQ$K4VZh8k8YL3E8H7E8H7E8H7E8H7E8H7E8H7E8H7E8Hs";
-
-        if let Ok(parsed) = PasswordHash::new(DUMMY_HASH) {
-            let _ = crate::security::password::verify_password(&password, &parsed);
-        }
-    })
-    .await
-    .ok();
+    // Pre-computed Argon2id hash of "dummy"
+    const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$dGltaW5nLW9yYWNsZS1kdW1teQ$K4VZh8k8YL3E8H7E8H7E8H7E8H7E8H7E8H7E8H7E8Hs";
+    let _ = crate::security::password::verify_password(password.to_string(), DUMMY_HASH.to_string()).await;
 }
 
 #[cfg(test)]

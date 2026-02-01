@@ -18,16 +18,13 @@ pub struct OperBlock {
 
 impl OperBlock {
     /// Verify the provided password against the stored password (plaintext or Argon2).
-    pub fn verify_password(&self, password: &str) -> bool {
+    /// Verify the provided password against the stored password (plaintext or Argon2).
+    pub async fn verify_password(&self, password: &str) -> bool {
         if self.password.starts_with("$argon2") {
             // Verify using Argon2 via the same mechanism as user passwords
-            match argon2::PasswordHash::new(&self.password) {
-                Ok(parsed_hash) => {
-                    crate::security::password::verify_password(password, &parsed_hash)
-                        .unwrap_or(false)
-                }
-                Err(_) => false,
-            }
+            crate::security::password::verify_password(password.to_string(), self.password.clone())
+                .await
+                .unwrap_or(false)
         } else {
             // Fallback to plaintext check
             self.password == password
@@ -61,52 +58,52 @@ mod tests {
         }
     }
 
-    #[test]
-    fn verify_password_plaintext_match() {
+    #[tokio::test]
+    async fn verify_password_plaintext_match() {
         let oper = make_oper("hunter2");
-        assert!(oper.verify_password("hunter2"));
+        assert!(oper.verify_password("hunter2").await);
     }
 
-    #[test]
-    fn verify_password_plaintext_mismatch() {
+    #[tokio::test]
+    async fn verify_password_plaintext_mismatch() {
         let oper = make_oper("hunter2");
-        assert!(!oper.verify_password("wrongpass"));
+        assert!(!oper.verify_password("wrongpass").await);
     }
 
-    #[test]
-    fn verify_password_argon2_match() {
+    #[tokio::test]
+    async fn verify_password_argon2_match() {
         // Generate Argon2 hash at runtime
-        let hash = crate::security::password::hash_password("secret123").unwrap();
+        let hash = crate::security::password::hash_password("secret123".to_string()).await.unwrap();
         let oper = make_oper(&hash);
-        assert!(oper.verify_password("secret123"));
+        assert!(oper.verify_password("secret123").await);
     }
 
-    #[test]
-    fn verify_password_argon2_mismatch() {
-        let hash = crate::security::password::hash_password("secret123").unwrap();
+    #[tokio::test]
+    async fn verify_password_argon2_mismatch() {
+        let hash = crate::security::password::hash_password("secret123".to_string()).await.unwrap();
         let oper = make_oper(&hash);
-        assert!(!oper.verify_password("wrongpassword"));
+        assert!(!oper.verify_password("wrongpassword").await);
     }
 
-    #[test]
-    fn verify_password_invalid_argon2_hash() {
+    #[tokio::test]
+    async fn verify_password_invalid_argon2_hash() {
         // Starts with $argon2 but is not a valid hash
         let oper = make_oper("$argon2_invalid_not_a_real_hash");
-        assert!(!oper.verify_password("anything"));
+        assert!(!oper.verify_password("anything").await);
     }
 
-    #[test]
-    fn verify_password_empty_password() {
+    #[tokio::test]
+    async fn verify_password_empty_password() {
         let oper = make_oper("");
         // Empty password should match empty input
-        assert!(oper.verify_password(""));
+        assert!(oper.verify_password("").await);
         // But not match non-empty input
-        assert!(!oper.verify_password("something"));
+        assert!(!oper.verify_password("something").await);
     }
 
-    #[test]
-    fn verify_password_empty_input() {
+    #[tokio::test]
+    async fn verify_password_empty_input() {
         let oper = make_oper("secret");
-        assert!(!oper.verify_password(""));
+        assert!(!oper.verify_password("").await);
     }
 }
