@@ -29,7 +29,6 @@ A modern IRC server written in Rust with zero-copy message parsing, actor-based 
 ### What's Incomplete ⚠️
 - **Bouncer/Multiclient**: Architecture and commands exist, but session reattachment tracking is incomplete (see `ReattachInfo` in session.rs)
 - **Server-to-Server (S2S)**: Basic handshake works, but multi-server federation is beta quality with untested edge cases
-- **Stats Handler**: Link statistics show 0 for sent_bytes/recv_bytes (2 TODOs in `src/handlers/server_query/stats.rs`)
 - **irctest Compliance**: 357/387 tests passing (92.2%) - 30 tests fail, mostly edge cases in CHATHISTORY and MONITOR
 
 ### What Doesn't Exist ❌
@@ -215,7 +214,6 @@ slircd-ng/
 - **CHATHISTORY Edge Cases**: Some queries return incorrect results or fail (30 irctest failures)
 
 ### Non-Critical
-- **Metrics Incomplete**: Link stats show 0 for bytes sent/received
 - **No Graceful Shutdown**: Server terminates immediately on SIGTERM (connections dropped)
 - **Log Rotation**: Must be handled externally (systemd/journald recommended)
 - **WebSocket Binary Frames**: Only text frames supported
@@ -243,5 +241,5 @@ Released to the **public domain** under [The Unlicense](LICENSE). Use freely for
 
 ---
 
-**Last Updated**: 2026-02-02
+**Last Updated**: 2026-02-04
 **Audit Basis**: Source code inspection of commit HEAD on main branch
