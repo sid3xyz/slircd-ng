@@ -37,6 +37,10 @@ use crate::telemetry::spans;
 use creation::join_channel;
 use tracing::Instrument;
 
+/// Maximum number of channels allowed in a single JOIN command.
+/// Matches TARGMAX advertised in ISUPPORT.
+const MAX_JOIN_TARGETS: usize = 10;
+
 pub struct JoinHandler;
 
 #[async_trait]
@@ -86,7 +90,28 @@ impl PostRegHandler for JoinHandler {
             let channels = parse_channel_list(channels_str);
             let keys = parse_key_list(msg.arg(1), channels.len());
 
-            for (i, channel_name) in channels.iter().enumerate() {
+            // Limit targets to prevent DoS (Innovation: Enforce advertised TARGMAX)
+            let (channels_to_process, keys_to_process) = if channels.len() > MAX_JOIN_TARGETS {
+                let dropped_count = channels.len() - MAX_JOIN_TARGETS;
+                let reply = server_reply(
+                    ctx.server_name(),
+                    Response::ERR_TOOMANYTARGETS,
+                    vec![
+                        ctx.state.nick.clone(),
+                        format!(
+                            "Only {} targets allowed (dropped {})",
+                            MAX_JOIN_TARGETS, dropped_count
+                        ),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+
+                (&channels[..MAX_JOIN_TARGETS], &keys[..MAX_JOIN_TARGETS])
+            } else {
+                (channels.as_slice(), keys.as_slice())
+            };
+
+            for (i, channel_name) in channels_to_process.iter().enumerate() {
                 // Empty entries already filtered by parse_channel_list
 
                 if !channel_name.is_channel_name() {
@@ -104,7 +129,7 @@ impl PostRegHandler for JoinHandler {
                     continue;
                 }
 
-                let key = keys.get(i).and_then(|k| *k);
+                let key = keys_to_process.get(i).and_then(|k| *k);
                 join_channel(ctx, channel_name, key).await?;
             }
 

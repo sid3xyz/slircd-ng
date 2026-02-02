@@ -393,7 +393,7 @@ impl ChannelActor {
                 // We use ServerId 000 because join_time is a scalar (Unix timestamp)
                 // and we don't have the original SID of the join easily accessible here.
                 // This is a simplified approximation but better than TS=0.
-                HybridTimestamp::new(join_time as i64 * 1000, 0, &ServerId::new("000"))
+                HybridTimestamp::new(join_time * 1000, 0, &ServerId::new("000"))
             } else {
                 base_ts
             };
