@@ -1,63 +1,92 @@
-# SLIRC-ng Architecture
+# slircd-ng Architecture
 
 ## Overview
-SLIRC-ng is a modern, high-performance IRCv3 daemon written in Rust. It emphasizes safety, concurrency, and protocol compliance (IRCv3.2).
+
+Modern IRC daemon in Rust 2024. Actor-based channels, typestate handlers, zero-copy parsing.
 
 ## Core Components
 
-### 1. State Management (`src/state`)
-The state is managed using a "Matrix" hierarchy:
-- **Matrix Global State**: Holds server-wide configuration and capabilities.
-- **Managers**: Specialized components for different domains:
-  - `UserManager`: Tracks connected users (local and remote).
-  - `ChannelManager`: Manages channel state and membership.
-  - `ServerManager`: Maintains the server topology graph.
-  - `SecurityManager`: Handles bans (`ip_deny`), rate limiting (`token_bucket`), and cloaking.
-- **Actor Model**: State is protected by `RwLock` and `Arc`, with actor-like event processing for channels (`src/state/actor`).
+### Matrix (`src/state/matrix.rs`)
+Central state container. Everything flows through `Arc<Matrix>`:
+- `user_manager` - Connected users, nicks, WHOWAS
+- `channel_manager` - Channel actors
+- `client_manager` - Bouncer sessions
+- `security_manager` - Bans, rate limits
+- `service_manager` - NickServ, ChanServ
+- `sync_manager` - S2S federation
+- `stats_manager` - LUSERS, uptime
 
-### 2. Handlers (`src/handlers`)
-Handlers process incoming IRC commands. They are organized by function:
-- **Core**: Registry, context, and traits (`src/handlers/core`).
-- **Connection**: Lifecycle handlers (pre-registration) like `NICK`, `USER` (`src/handlers/connection`).
-- **User**: User-focused commands (`src/handlers/user`) including `monitor`, `status`, and queries (`who`, `whois`).
-- **Channel**: Channel operations (`src/handlers/channel`).
-- **Server**: Server-to-server protocol handlers (`src/handlers/server`), including `SID`, `UID`, `SJOIN`.
-- **Services**: Service integration (`src/handlers/services`) like `NICKSERV`, `CHANSERV`.
-- **Messaging**: Message routing (`src/handlers/messaging`) like `PRIVMSG`, `NOTICE`.
-- **Util**: Shared helpers (`src/handlers/util`).
+### Handlers (`src/handlers/`)
+141 files, 25 directories. Typestate traits:
+- `PreRegHandler` - Before registration
+- `PostRegHandler` - After registration  
+- `ServerHandler` - S2S commands
 
-### 3. Database & Persistence (`src/db`)
-A hybrid approach is used:
-- **SQLite (SQLx)**: Relational data (User accounts, channel limits).
-- **Redb**: Embedded, high-performance storage for chat history (`src/history/redb.rs`) and transient state.
+Directories:
+```
+handlers/
+├── bans/           # KLINE, GLINE, etc.
+├── cap/            # CAP, SASL
+├── channel/        # JOIN, PART, MODE
+├── chathistory/    # CHATHISTORY
+├── connection/     # NICK, USER, QUIT
+├── messaging/      # PRIVMSG, NOTICE
+├── mode/           # User/channel modes
+├── oper/           # Operator commands
+├── s2s/            # Server-to-server
+├── server/         # SERVER, BURST
+├── server_query/   # ADMIN, INFO, LUSERS
+├── services/       # NickServ, ChanServ routing
+└── user/           # WHO, WHOIS, AWAY
+```
 
-### 4. Security (`src/security`)
-- **Argon2**: Default password hashing for users and operators (`src/security/password.rs`).
-- **IP Deny**: Dynamic IP banning persisted via JSON/Redb.
-- **Rate Limiting**: Flood protection using token buckets.
+### Channel Actors (`src/state/actor/`)
+Each channel is a Tokio task with bounded mailbox:
+- Members, modes, topic, bans owned by actor
+- Events via `mpsc::Sender<ChannelEvent>`
+- No lock contention on message routing
 
-## Key Innovations
-- **Zero-Copy Parsing**: Uses `slirc-proto` for efficient message handling.
-- **Unified Event Loop**: A single event loop (`src/network/connection/event_loop.rs`) handles all user interactions post-registration.
-- **Typestate Registry**: Commands are segregated by connection state (Pre-Reg, Post-Reg, Server), making invalid state access impossible.
+### Services (`src/services/`)
+Pure functions returning effects:
+```rust
+pub enum ServiceEffect {
+    Reply { target_uid, msg },
+    AccountIdentify { target_uid, account },
+    Kill { target_uid, killer, reason },
+}
+```
+
+### Database (`src/db/`)
+- SQLite (SQLx) - Accounts, bans, channel registration
+- Redb - Message history
 
 ## Directory Structure
+
 ```
 src/
-├── config/       # Configuration loading (TOML)
-├── db/           # Database repositories
-├── handlers/     # Command implementations
-│   ├── channel/
-│   ├── connection/
-│   ├── core/
-│   ├── messaging/
-│   ├── server/
-│   ├── services/
-│   ├── user/
-│   └── util/
-├── history/      # Chat history (IRCv3 chathistory)
-├── network/      # TCP/TLS transport layer
-├── security/     # Crypto and access control
-├── services/     # Internal services logic
-└── state/        # In-memory state containers
+├── main.rs           # Entry point
+├── config/           # TOML config loading
+├── db/               # Database repositories
+├── handlers/         # 141 command handlers
+├── history/          # CHATHISTORY storage
+├── network/          # TCP/TLS gateway
+├── security/         # Auth, rate limiting
+├── services/         # NickServ, ChanServ
+├── state/            # Matrix, managers, actors
+└── sync/             # S2S federation
 ```
+
+## Key Patterns
+
+### Zero-Copy Parsing
+`MessageRef<'a>` borrows from buffer. Clone before `.await`:
+```rust
+let nick = msg.arg(0).map(|s| s.to_string());
+async_op().await;  // Safe
+```
+
+### Lock Ordering
+DashMap → Channel RwLock → User RwLock
+
+### IRC Case Rules
+Use `slirc_proto::irc_to_lower()`, not `to_lowercase()`.

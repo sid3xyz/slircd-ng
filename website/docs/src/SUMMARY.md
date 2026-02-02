@@ -7,4 +7,3 @@
     - [Configuration](usage/configuration.md)
 - [Development](development/protocol.md)
     - [Protocol Requirements](development/protocol.md)
-- [Roadmap](roadmap.md)

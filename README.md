@@ -24,12 +24,13 @@ A modern IRC server written in Rust with zero-copy message parsing, actor-based 
 - **Persistence**: SQLite for accounts and bans, Redb for message history
 - **Monitoring**: Prometheus metrics endpoint, structured logging (JSON or pretty)
 - **Build System**: Compiles cleanly with `cargo build --release`
-- **Test Suite**: 1400+ tests (unit + integration), including 70+ meaningful integration tests
+- **Test Suite**: 25 integration test files, 356 irctest compliance tests
 
 ### What's Incomplete ⚠️
 - **Bouncer/Multiclient**: Architecture and commands exist, but session reattachment tracking is incomplete (see `ReattachInfo` in session.rs)
 - **Server-to-Server (S2S)**: Basic handshake works, but multi-server federation is beta quality with untested edge cases
-- **irctest Compliance**: 357/387 tests passing (92.2%) - 30 tests fail, mostly edge cases in CHATHISTORY and MONITOR
+- **irctest Compliance**: ~350/387 tests passing (~90%) - edge cases in CHATHISTORY and MONITOR
+- **Clippy**: ~55 warnings (unused code, collapsible ifs) - not blocking but needs cleanup
 
 ### What Doesn't Exist ❌
 - Production deployment documentation beyond basic checklist
@@ -102,29 +103,27 @@ The server starts on port 6667 (plaintext) by default. Connect with any IRC clie
 
 ## Testing
 
-### Unit & Integration Tests
+### Integration Tests
 ```bash
-cargo test
+cargo test --test '*'
 ```
-**Expected result**: 1300+ tests pass
-**Test time**: ~30 seconds
+**Expected result**: Most tests pass (some rehash tests may fail due to timing)
 
 ### Code Quality
 ```bash
 # Format check (must pass)
 cargo fmt -- --check
 
-# Linting (must pass with zero warnings)
-cargo clippy -- -D warnings
+# Linting (informational - has warnings)
+cargo clippy --all-targets
 ```
 
 ### irctest Compliance (Optional)
-The repository includes scripts to run the external irctest suite, but the suite itself is not included:
+The repository includes scripts to run the external irctest suite:
 ```bash
-# Requires Python 3.8+, pytest, and irctest installed separately
 ./scripts/irctest_safe.sh
 ```
-**Expected result**: 357/387 tests pass (92.2%)
+**Expected result**: ~350/387 tests pass (~90%)
 
 ## Architecture Overview
 

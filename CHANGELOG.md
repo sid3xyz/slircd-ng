@@ -61,14 +61,13 @@ First alpha release. Production-ready for testing environments.
 - UTF-8 nickname validation for PRECIS casemapping mode
 - InvalidUtf8 error now preserves command metadata for FAIL responses
 
-### Metrics
+### Metrics (at release)
 
 | Metric | Value |
 |--------|-------|
-| Unit Tests | 664 passing |
-| irctest Compliance | 92.2% (357/387) |
-| Clippy Warnings | 0 |
-| TODO/FIXME Markers | 0 |
+| Integration Tests | 25 files |
+| irctest Compliance | ~350/387 |
+| Clippy Warnings | 55 |
 
 ### Notes
 

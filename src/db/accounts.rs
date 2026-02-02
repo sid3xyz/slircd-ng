@@ -7,6 +7,7 @@ use argon2::password_hash::{PasswordHash, rand_core::OsRng};
 use rand::RngCore;
 use sqlx::SqlitePool;
 use std::num::NonZeroU32;
+use crate::security::password::{hash_password, verify_password};
 
 /// Default iteration count for SCRAM-SHA-256 (RFC 7677 recommends >= 4096).
 const SCRAM_ITERATIONS: u32 = 4096;
