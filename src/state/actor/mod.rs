@@ -93,6 +93,7 @@ impl ChannelActor {
     /// Create a new Channel Actor with custom mailbox capacity.
     /// The capacity controls how many events can be queued before senders block.
     /// Higher values provide burst tolerance; lower values apply backpressure sooner.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_with_capacity(
         name: String,
         matrix: Weak<Matrix>,
