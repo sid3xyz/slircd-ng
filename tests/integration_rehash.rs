@@ -10,14 +10,30 @@ use tokio::time::{Duration, sleep};
 mod common;
 use common::TestClient;
 
+/// Generate a unique test directory to avoid conflicts between test runs.
+fn unique_test_dir(prefix: &str) -> std::path::PathBuf {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("{}-{}", prefix, ts))
+}
+
 /// Test that REHASH reloads configuration without disconnecting users.
 ///
 /// This is the critical test for "no-restart deployments" - users must not
 /// disconnect when operators reload the config.
 #[tokio::test]
 async fn test_rehash_no_disconnect() -> Result<()> {
+    // Use unique directory for this test run
+    let test_dir = unique_test_dir("rehash_no_disconnect");
+    fs::create_dir_all(&test_dir)?;
+    let db_path = test_dir.join("test.db");
+    let config_path = test_dir.join("config.toml");
+
     // Start server with initial config
-    let initial_config = r#"
+    let initial_config = format!(r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -29,7 +45,7 @@ created = 1673449200
 address = "127.0.0.1:6669"
 
 [database]
-path = "/tmp/slircd_rehash_test.db"
+path = "{}"
 
 [[oper]]
 name = "admin"
@@ -43,10 +59,10 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
 
 [motd]
 lines = ["Welcome to the Original MOTD", "This is before REHASH"]
-"#;
+"#, db_path.display());
 
     // Modified config: MOTD changed, new oper added
-    let modified_config = r#"
+    let modified_config = format!(r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -58,7 +74,7 @@ created = 1673449200
 address = "127.0.0.1:6669"
 
 [database]
-path = "/tmp/slircd_rehash_test.db"
+path = "{}"
 
 [[oper]]
 name = "admin"
@@ -76,13 +92,9 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
 
 [motd]
 lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
-"#;
+"#, db_path.display());
 
-    // Use unique temp config file for this test
-    let test_dir = std::env::temp_dir().join("rehash_test_no_disconnect");
-    fs::create_dir_all(&test_dir)?;
-    let config_path = test_dir.join("config.toml");
-    fs::write(&config_path, initial_config)?;
+    fs::write(&config_path, &initial_config)?;
 
     // Start test server
     let server = common::TestServer::spawn_with_config(6669, config_path.clone()).await?;
@@ -130,7 +142,7 @@ lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
     );
 
     // **Step 2: Update config file**
-    fs::write(&config_path, modified_config)?;
+    fs::write(&config_path, &modified_config)?;
     sleep(Duration::from_millis(100)).await;
 
     // **Step 3: Admin executes REHASH**
@@ -178,7 +190,13 @@ lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
 /// If config file is corrupt, REHASH must fail without affecting live config.
 #[tokio::test]
 async fn test_rehash_invalid_config_rejected() -> Result<()> {
-    let initial_config = r#"
+    // Use unique directory for this test run
+    let test_dir = unique_test_dir("rehash_invalid");
+    fs::create_dir_all(&test_dir)?;
+    let db_path = test_dir.join("test.db");
+    let config_path = test_dir.join("config.toml");
+
+    let initial_config = format!(r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -190,7 +208,7 @@ created = 1673449200
 address = "127.0.0.1:6670"
 
 [database]
-path = "/tmp/slircd_rehash_fail_test.db"
+path = "{}"
 
 [[oper]]
 name = "admin"
@@ -201,12 +219,9 @@ enabled = false
 
 [security]
 cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a"
-"#;
+"#, db_path.display());
 
-    let test_dir = std::env::temp_dir().join("rehash_fail_test");
-    fs::create_dir_all(&test_dir)?;
-    let config_path = test_dir.join("config.toml");
-    fs::write(&config_path, initial_config)?;
+    fs::write(&config_path, &initial_config)?;
 
     let server = common::TestServer::spawn_with_config(6670, config_path.clone()).await?;
     sleep(Duration::from_millis(100)).await;
@@ -253,7 +268,13 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
 /// Test that REHASH updates operator list atomically.
 #[tokio::test]
 async fn test_rehash_updates_operators() -> Result<()> {
-    let initial_config = r#"
+    // Use unique directory for this test run
+    let test_dir = unique_test_dir("rehash_oper");
+    fs::create_dir_all(&test_dir)?;
+    let db_path = test_dir.join("test.db");
+    let config_path = test_dir.join("config.toml");
+
+    let initial_config = format!(r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -265,7 +286,7 @@ created = 1673449200
 address = "127.0.0.1:6671"
 
 [database]
-path = "/tmp/slircd_rehash_oper_test.db"
+path = "{}"
 
 [[oper]]
 name = "admin"
@@ -276,9 +297,9 @@ enabled = false
 
 [security]
 cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a"
-"#;
+"#, db_path.display());
 
-    let modified_config = r#"
+    let modified_config = format!(r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -290,7 +311,7 @@ created = 1673449200
 address = "127.0.0.1:6671"
 
 [database]
-path = "/tmp/slircd_rehash_oper_test.db"
+path = "{}"
 
 [[oper]]
 name = "admin"
@@ -305,12 +326,9 @@ enabled = false
 
 [security]
 cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a"
-"#;
+"#, db_path.display());
 
-    let test_dir = std::env::temp_dir().join("rehash_oper_test");
-    fs::create_dir_all(&test_dir)?;
-    let config_path = test_dir.join("config.toml");
-    fs::write(&config_path, initial_config)?;
+    fs::write(&config_path, &initial_config)?;
 
     let server = common::TestServer::spawn_with_config(6671, config_path.clone()).await?;
     sleep(Duration::from_millis(100)).await;
@@ -319,7 +337,7 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
     admin.register().await?;
 
     // Update config to add new operator
-    fs::write(&config_path, modified_config)?;
+    fs::write(&config_path, &modified_config)?;
     sleep(Duration::from_millis(100)).await;
 
     // Trigger REHASH

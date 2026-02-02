@@ -377,3 +377,93 @@ async fn test_quit_with_reason() {
         .await
         .expect("Bob quit failed");
 }
+
+/// Test NOTICE command - should deliver message without generating automatic reply.
+#[tokio::test]
+async fn test_notice_command() {
+    let port = 16686;
+    let server = TestServer::spawn(port)
+        .await
+        .expect("Failed to spawn test server");
+
+    let mut alice = TestClient::connect(&server.address(), "alice")
+        .await
+        .expect("Failed to connect alice");
+    let mut bob = TestClient::connect(&server.address(), "bob")
+        .await
+        .expect("Failed to connect bob");
+
+    alice.register().await.expect("Alice registration failed");
+    bob.register().await.expect("Bob registration failed");
+
+    // Drain welcome bursts
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    while alice.recv_timeout(tokio::time::Duration::from_millis(10)).await.is_ok() {}
+    while bob.recv_timeout(tokio::time::Duration::from_millis(10)).await.is_ok() {}
+
+    // Alice sends NOTICE to Bob
+    alice
+        .send_raw("NOTICE bob :This is a test notice\r\n")
+        .await
+        .expect("Failed to send NOTICE");
+
+    // Bob should receive the NOTICE
+    let msg = bob
+        .recv_timeout(tokio::time::Duration::from_secs(2))
+        .await
+        .expect("Bob failed to receive NOTICE");
+
+    match &msg.command {
+        Command::NOTICE(target, text) => {
+            assert_eq!(target, "bob", "NOTICE target should be bob");
+            assert!(text.contains("test notice"), "NOTICE text should contain message");
+        }
+        other => panic!("Expected NOTICE, got {:?}", other),
+    }
+}
+
+/// Test ISON command - check if users are online.
+#[tokio::test]
+async fn test_ison_command() {
+    let port = 16687;
+    let server = TestServer::spawn(port)
+        .await
+        .expect("Failed to spawn test server");
+
+    let mut alice = TestClient::connect(&server.address(), "alice")
+        .await
+        .expect("Failed to connect alice");
+    let mut bob = TestClient::connect(&server.address(), "bob")
+        .await
+        .expect("Failed to connect bob");
+
+    alice.register().await.expect("Alice registration failed");
+    bob.register().await.expect("Bob registration failed");
+
+    // Drain welcome bursts
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    while alice.recv_timeout(tokio::time::Duration::from_millis(10)).await.is_ok() {}
+    while bob.recv_timeout(tokio::time::Duration::from_millis(10)).await.is_ok() {}
+
+    // Alice checks if bob and nonexistent are online
+    alice
+        .send_raw("ISON bob nonexistent\r\n")
+        .await
+        .expect("Failed to send ISON");
+
+    // Should get RPL_ISON (303) with only bob in the response
+    let msg = alice
+        .recv_timeout(tokio::time::Duration::from_secs(2))
+        .await
+        .expect("Failed to receive ISON response");
+
+    match &msg.command {
+        Command::Response(resp, params) if resp.code() == 303 => {
+            // Response should contain "bob" but not "nonexistent"
+            let response_text = params.join(" ");
+            assert!(response_text.to_lowercase().contains("bob"), "ISON should list bob as online");
+            assert!(!response_text.to_lowercase().contains("nonexistent"), "ISON should not list nonexistent");
+        }
+        other => panic!("Expected RPL_ISON (303), got {:?}", other),
+    }
+}

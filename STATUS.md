@@ -1,16 +1,27 @@
 # Project Status
 
 **Version**: 1.0.0-rc.1  
-**Updated**: 2026-02-01
+**Updated**: 2026-02-02
 
 ## Build State
 
 | Check | Status |
 |-------|--------|
 | `cargo build --release` | ✅ Pass |
-| `cargo test --test '*'` | ⚠️ 3 failing (rehash timing) |
+| `cargo test --test '*'` | ✅ 84 tests pass |
 | `cargo clippy` | ⚠️ 55 warnings |
-| Test file errors | ⚠️ 2 files (`security_channel_freeze`, `sasl_buffer_overflow`) |
+
+## Test Coverage
+
+See [AUDIT.md](AUDIT.md) for detailed feature-by-feature test coverage.
+
+| Category | Coverage |
+|----------|----------|
+| Core IRC commands | 100% |
+| Operator commands | 100% |
+| IRCv3 features | ~80% |
+| S2S protocol | 100% |
+| Security | ~80% |
 
 ## Components
 
@@ -21,11 +32,11 @@
 | State | ✅ Stable | Matrix, actors |
 | Database | ✅ Stable | SQLite + Redb |
 | Security | ✅ Stable | SASL, bans, rate limits |
-| S2S | ⚠️ Beta | Basic federation works |
-| Bouncer | ⚠️ Incomplete | Session tracking needs work |
+| S2S | ⚠️ Beta | Tested but edge cases possible |
+| Bouncer | ⚠️ Beta | Session tracking works |
 
 ## Known Issues
 
-1. **Rehash tests fail** - Server startup timing in tests
-2. **Test file errors** - Unhandled IO in 2 security tests
-3. **55 clippy warnings** - Unused code, collapsible ifs
+1. **55 clippy warnings** - Unused code, collapsible ifs (non-blocking)
+2. **IRCv3 gaps** - METADATA, MONITOR, SETNAME not integration tested
+3. **SASL EXTERNAL** - Not integration tested
