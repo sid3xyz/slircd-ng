@@ -55,7 +55,7 @@ pub const SUPPORTED_CAPS: &[Capability] = &[
     Capability::ChatHistory,
     Capability::EventPlayback,
     Capability::DraftRelaymsg,
-    Capability::ReadMarker,
+    // Capability::ReadMarker, // Disabled: ReadMarkerManager removed from Matrix
     Capability::Tls,             // STARTTLS - only useful on plaintext connections
     Capability::Sts, // Strict Transport Security - advertised dynamically based on config
     Capability::StandardReplies, // FAIL/WARN/NOTE standard replies

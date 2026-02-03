@@ -18,13 +18,13 @@ A modern IRC server written in Rust with zero-copy message parsing, actor-based 
 ### What Works ✅
 - **Core IRC Protocol**: Full RFC 1459/2812 compliance for single-server operation
 - **110+ IRC Command Handlers**: User commands, channel operations, server queries, operator commands
-- **IRCv3 Support**: 27 capabilities including SASL (PLAIN, SCRAM-SHA-256, EXTERNAL), account-notify, labeled-response, batch, CHATHISTORY, message-tags
+- **IRCv3 Support**: 26 capabilities including SASL (PLAIN, SCRAM-SHA-256, EXTERNAL), account-notify, labeled-response, batch, CHATHISTORY, message-tags
 - **Services**: NickServ (account registration, identification, GHOST) and ChanServ (channel registration, access control, auto-kick)
 - **Security**: TLS/SSL support, rate limiting, IP bans (KLINE/DLINE/GLINE), host cloaking, spam detection
 - **Persistence**: SQLite for accounts and bans, Redb for message history
 - **Monitoring**: Prometheus metrics endpoint, structured logging (JSON or pretty)
 - **Build System**: Compiles cleanly with `cargo build --release`
-- **Test Suite**: 1400+ tests (unit + integration), including 70+ meaningful integration tests
+- **Test Suite**: 1450+ tests (unit + integration), including 70+ meaningful integration tests
 
 ### What's Incomplete ⚠️
 - **Bouncer/Multiclient**: Architecture and commands exist, but session reattachment tracking is incomplete (see `ReattachInfo` in session.rs)
@@ -106,7 +106,7 @@ The server starts on port 6667 (plaintext) by default. Connect with any IRC clie
 ```bash
 cargo test
 ```
-**Expected result**: 1300+ tests pass
+**Expected result**: 1450+ tests pass
 **Test time**: ~30 seconds
 
 ### Code Quality
@@ -241,5 +241,5 @@ Released to the **public domain** under [The Unlicense](LICENSE). Use freely for
 
 ---
 
-**Last Updated**: 2026-02-04
+**Last Updated**: 2026-02-03
 **Audit Basis**: Source code inspection of commit HEAD on main branch

@@ -698,11 +698,12 @@ async fn dummy_password_verify(password: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::security::password::{hash_password, verify_password};
 
     #[tokio::test]
     async fn test_hash_password_produces_valid_argon2_hash() {
         let password = "test_password_123";
-        let hash = hash_password(password)
+        let hash = hash_password(password.to_string())
             .await
             .expect("hashing should succeed");
 
@@ -724,8 +725,8 @@ mod tests {
     #[tokio::test]
     async fn test_hash_password_produces_unique_hashes() {
         let password = "same_password";
-        let hash1 = hash_password(password).await.expect("first hash");
-        let hash2 = hash_password(password).await.expect("second hash");
+        let hash1 = hash_password(password.to_string()).await.expect("first hash");
+        let hash2 = hash_password(password.to_string()).await.expect("second hash");
 
         // Different salts should produce different hashes
         assert_ne!(hash1, hash2, "hashes should differ due to random salt");
@@ -734,10 +735,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_password_correct() {
         let password = "my_secure_password";
-        let hash = hash_password(password).await.expect("hashing");
+        let hash = hash_password(password.to_string()).await.expect("hashing");
 
         assert!(
-            verify_password(password, &hash).await.is_ok(),
+            verify_password(password.to_string(), hash).await.is_ok(),
             "correct password should verify"
         );
     }
@@ -746,10 +747,10 @@ mod tests {
     async fn test_verify_password_incorrect() {
         let password = "correct_password";
         let wrong_password = "wrong_password";
-        let hash = hash_password(password).await.expect("hashing");
+        let hash = hash_password(password.to_string()).await.expect("hashing");
 
         assert!(
-            verify_password(wrong_password, &hash).await.is_err(),
+            verify_password(wrong_password.to_string(), hash).await.is_err(),
             "wrong password should fail verification"
         );
     }
@@ -757,23 +758,23 @@ mod tests {
     #[tokio::test]
     async fn test_verify_password_empty_password() {
         let password = "";
-        let hash = hash_password(password)
+        let hash = hash_password(password.to_string())
             .await
             .expect("empty password should hash");
 
         assert!(
-            verify_password(password, &hash).await.is_ok(),
+            verify_password(password.to_string(), hash.clone()).await.is_ok(),
             "empty password should verify against its own hash"
         );
         assert!(
-            verify_password("nonempty", &hash).await.is_err(),
+            verify_password("nonempty".to_string(), hash).await.is_err(),
             "nonempty should fail against empty hash"
         );
     }
 
     #[tokio::test]
     async fn test_verify_password_invalid_hash_format() {
-        let result = verify_password("password", "not_a_valid_hash").await;
+        let result = verify_password("password".to_string(), "not_a_valid_hash".to_string()).await;
 
         assert!(result.is_err(), "invalid hash format should return error");
     }
@@ -781,10 +782,10 @@ mod tests {
     #[tokio::test]
     async fn test_hash_password_unicode() {
         let password = "пароль密码🔐";
-        let hash = hash_password(password).await.expect("unicode should hash");
+        let hash = hash_password(password.to_string()).await.expect("unicode should hash");
 
         assert!(
-            verify_password(password, &hash).await.is_ok(),
+            verify_password(password.to_string(), hash).await.is_ok(),
             "unicode password should verify"
         );
     }
@@ -792,12 +793,12 @@ mod tests {
     #[tokio::test]
     async fn test_hash_password_very_long() {
         let password = "a".repeat(1000);
-        let hash = hash_password(&password)
+        let hash = hash_password(password.clone())
             .await
             .expect("long password should hash");
 
         assert!(
-            verify_password(&password, &hash).await.is_ok(),
+            verify_password(password, hash).await.is_ok(),
             "long password should verify"
         );
     }
