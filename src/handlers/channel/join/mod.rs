@@ -37,6 +37,9 @@ use crate::telemetry::spans;
 use creation::join_channel;
 use tracing::Instrument;
 
+/// Maximum number of channels that can be joined in a single command.
+const MAX_JOIN_TARGETS: usize = 10;
+
 pub struct JoinHandler;
 
 #[async_trait]
@@ -84,6 +87,21 @@ impl PostRegHandler for JoinHandler {
 
             // Parse channel list (comma-separated) and optional keys
             let channels = parse_channel_list(channels_str);
+
+            if channels.len() > MAX_JOIN_TARGETS {
+                let reply = server_reply(
+                    ctx.server_name(),
+                    Response::ERR_TOOMANYTARGETS,
+                    vec![
+                        ctx.state.nick.clone(),
+                        channels_str.to_string(),
+                        format!("Cannot join more than {} channels at once", MAX_JOIN_TARGETS),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+
             let keys = parse_key_list(msg.arg(1), channels.len());
 
             for (i, channel_name) in channels.iter().enumerate() {
