@@ -202,6 +202,7 @@ async fn replay_channel_history(
             let _ = ctx.transport.write_message(&batch_end).await;
 
             // Send read marker if client supports it (Unified Read State)
+            /* ReadMarkerManager removed temporarily
             if reg_state.capabilities.contains("draft/read-marker")
                 && let Some(account) = &reg_state.account
                 && let Some(marker_ts) = ctx.matrix.read_marker_manager.get_marker(account, target)
@@ -231,6 +232,7 @@ async fn replay_channel_history(
                 let _ = ctx.transport.write_message(&marker_msg).await;
                 debug!(target = %target, "Sent read marker sync");
             }
+            */
         }
         Ok(_) => {
             // No messages delivered
