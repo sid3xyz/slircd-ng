@@ -17,8 +17,8 @@ A modern IRC server written in Rust with zero-copy message parsing, actor-based 
 
 ### What Works ✅
 - **Core IRC Protocol**: Full RFC 1459/2812 compliance for single-server operation
-- **110+ IRC Command Handlers**: User commands, channel operations, server queries, operator commands
-- **IRCv3 Support**: 27 capabilities including SASL (PLAIN, SCRAM-SHA-256, EXTERNAL), account-notify, labeled-response, batch, CHATHISTORY, message-tags
+- **120+ IRC Command Handlers**: User commands, channel operations, server queries, operator commands
+- **IRCv3 Support**: 26 capabilities including SASL (PLAIN, SCRAM-SHA-256, EXTERNAL), account-notify, labeled-response, batch, CHATHISTORY, message-tags
 - **Services**: NickServ (account registration, identification, GHOST) and ChanServ (channel registration, access control, auto-kick)
 - **Security**: TLS/SSL support, rate limiting, IP bans (KLINE/DLINE/GLINE), host cloaking, spam detection
 - **Persistence**: SQLite for accounts and bans, Redb for message history
@@ -139,7 +139,7 @@ The repository includes scripts to run the external irctest suite, but the suite
 ```
 slircd-ng/
 ├── src/
-│   ├── handlers/        # 116 IRC command implementations (15 categories)
+│   ├── handlers/        # 126 IRC command implementations (15 categories)
 │   │   ├── bans/        # Ban management (KLINE, GLINE, etc.)
 │   │   ├── batch/       # Batch message processing (IRCv3)
 │   │   ├── cap/         # Capability negotiation + SASL
