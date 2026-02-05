@@ -24,7 +24,7 @@ A modern IRC server written in Rust with zero-copy message parsing, actor-based 
 - **Persistence**: SQLite for accounts and bans, Redb for message history
 - **Monitoring**: Prometheus metrics endpoint, structured logging (JSON or pretty)
 - **Build System**: Compiles cleanly with `cargo build --release`
-- **Test Suite**: 1400+ tests (unit + integration), including 70+ meaningful integration tests
+- **Test Suite**: 1450+ tests (unit + integration), including 70+ meaningful integration tests
 
 ### What's Incomplete ⚠️
 - **Bouncer/Multiclient**: Architecture and commands exist, but session reattachment tracking is incomplete (see `ReattachInfo` in session.rs)
@@ -106,7 +106,7 @@ The server starts on port 6667 (plaintext) by default. Connect with any IRC clie
 ```bash
 cargo test
 ```
-**Expected result**: 1300+ tests pass
+**Expected result**: 1450+ tests pass
 **Test time**: ~30 seconds
 
 ### Code Quality
@@ -157,7 +157,7 @@ slircd-ng/
 │   ├── state/           # State management (users, channels, sessions)
 │   ├── services/        # NickServ/ChanServ logic and effects
 │   ├── security/        # Crypto, bans, rate limiting
-│   ├── db/              # SQLite queries and migrations (7 migrations)
+│   ├── db/              # SQLite queries and migrations (10 migrations)
 │   ├── history/         # CHATHISTORY with Redb backend
 │   ├── sync/            # Server-to-server synchronization
 │   ├── network/         # TCP/TLS transport layer
@@ -241,5 +241,5 @@ Released to the **public domain** under [The Unlicense](LICENSE). Use freely for
 
 ---
 
-**Last Updated**: 2026-02-04
+**Last Updated**: 2026-02-05
 **Audit Basis**: Source code inspection of commit HEAD on main branch
