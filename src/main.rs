@@ -313,7 +313,7 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move {
             while let Some((uid, reason)) = disconnect_rx.recv().await {
                 // Disconnect is asynchronous, but we should log if it somehow fails (unlikely since it returns Vec<String>)
-                 matrix.disconnect_user(&uid, &reason).await;
+                matrix.disconnect_user(&uid, &reason).await;
             }
         });
     }

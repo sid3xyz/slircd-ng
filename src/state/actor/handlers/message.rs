@@ -488,13 +488,13 @@ impl ChannelActor {
                             if !has_echo && override_nick.is_none() {
                                 continue;
                             }
-                            
+
                             // DOUBLE-DELIVERY FIX: `routing.rs` handles fan-out to OTHER sessions.
                             // The actor must ONLY handle echo for the ORIGINATING session to avoid duplicates.
                             if sess.session_id != sender_session_id {
                                 continue;
                             }
-                            
+
                             let has_message_tags = caps.contains("message-tags");
                             let has_server_time = caps.contains("server-time");
                             let mut echo_msg = base_msg.clone();

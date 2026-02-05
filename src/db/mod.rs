@@ -118,9 +118,7 @@ impl Database {
             .await?;
 
         // Enable foreign key constraints (critical for ON DELETE CASCADE schema)
-        sqlx::query("PRAGMA foreign_keys=ON")
-            .execute(&pool)
-            .await?;
+        sqlx::query("PRAGMA foreign_keys=ON").execute(&pool).await?;
 
         // Use NORMAL synchronous mode instead of FULL for better performance
         // NORMAL provides good durability while being faster than FULL
@@ -157,8 +155,6 @@ impl Database {
 
     /// Run embedded migrations.
     async fn run_migrations(pool: &SqlitePool) -> Result<(), DbError> {
-
-
         sqlx::migrate!("./migrations")
             .run(pool)
             .await
@@ -167,8 +163,6 @@ impl Database {
         info!("Database migrations checked/applied");
         Ok(())
     }
-
-
 
     /// Get account repository.
     pub fn accounts(&self) -> AccountRepository<'_> {

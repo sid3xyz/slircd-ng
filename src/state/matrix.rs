@@ -79,8 +79,6 @@ pub struct Matrix {
     /// Runtime statistics (user/channel counts, uptime).
     pub stats_manager: Arc<crate::state::managers::stats::StatsManager>,
 
-
-
     /// This server's identity.
     pub server_info: ServerInfo,
 
@@ -254,8 +252,6 @@ impl Matrix {
             stats_manager.clone(),
         );
         channel_manager.set_observer(sync_manager_arc.clone());
-
-
 
         // Create ServiceManager with server SID for service UIDs
         let service_manager = ServiceManager::new(db.clone(), history, &config.server.sid);
