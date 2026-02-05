@@ -548,7 +548,10 @@ impl<'a> ChannelRepository<'a> {
     }
 
     /// Get metadata for a channel.
-    pub async fn get_metadata(&self, channel_id: i64) -> Result<std::collections::HashMap<String, String>, DbError> {
+    pub async fn get_metadata(
+        &self,
+        channel_id: i64,
+    ) -> Result<std::collections::HashMap<String, String>, DbError> {
         self.fetch_metadata(channel_id).await
     }
 

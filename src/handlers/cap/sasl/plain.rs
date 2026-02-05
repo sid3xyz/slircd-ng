@@ -100,7 +100,7 @@ pub(crate) async fn handle_sasl_plain_data<S: SessionState + SaslAccess>(
                             let mut user = user_ref.write().await;
                             user.metadata = account.metadata.clone();
                         }
-                        
+
                         broadcast_account_change(ctx, nick, &account_name).await;
                     }
                 }

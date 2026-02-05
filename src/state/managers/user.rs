@@ -12,8 +12,8 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use std::time::Instant;
 use std::sync::Mutex;
+use std::time::Instant;
 use tokio::sync::{RwLock, mpsc};
 
 /// Default maximum number of WHOWAS entries to keep per nickname.

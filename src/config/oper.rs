@@ -73,14 +73,18 @@ mod tests {
     #[tokio::test]
     async fn verify_password_argon2_match() {
         // Generate Argon2 hash at runtime
-        let hash = crate::security::password::hash_password("secret123".to_string()).await.unwrap();
+        let hash = crate::security::password::hash_password("secret123".to_string())
+            .await
+            .unwrap();
         let oper = make_oper(&hash);
         assert!(oper.verify_password("secret123").await);
     }
 
     #[tokio::test]
     async fn verify_password_argon2_mismatch() {
-        let hash = crate::security::password::hash_password("secret123".to_string()).await.unwrap();
+        let hash = crate::security::password::hash_password("secret123".to_string())
+            .await
+            .unwrap();
         let oper = make_oper(&hash);
         assert!(!oper.verify_password("wrongpassword").await);
     }

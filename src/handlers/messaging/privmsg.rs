@@ -14,7 +14,9 @@
 //!
 //! See: <https://modern.ircdocs.horse/ctcp.html>
 
-use super::super::{Context, HandlerError, HandlerResult, PostRegHandler, user_prefix};
+use super::super::{
+    Context, HandlerError, HandlerResult, PostRegHandler, server_reply, user_prefix,
+};
 use super::delivery::{send_cannot_send, send_no_such_channel};
 use super::errors::*;
 use super::routing::{route_to_channel_with_snapshot, route_to_user_with_snapshot};
@@ -165,6 +167,8 @@ fn create_stored_message(
 // PRIVMSG Handler
 // ============================================================================
 
+const MAX_TARGETS: usize = 4;
+
 /// Handler for PRIVMSG command.
 pub struct PrivmsgHandler;
 
@@ -197,6 +201,20 @@ impl PostRegHandler for PrivmsgHandler {
 
             // Split comma-separated targets (RFC 2812 section 3.3.1)
             let target_list: Vec<&str> = targets.split(',').map(|s| s.trim()).collect();
+
+            if target_list.len() > MAX_TARGETS {
+                let reply = server_reply(
+                    ctx.server_name(),
+                    slirc_proto::Response::ERR_TOOMANYTARGETS,
+                    vec![
+                        ctx.state.nick.clone(),
+                        target_list[0].to_string(),
+                        format!("Too many recipients. Limit is {}.", MAX_TARGETS),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
 
             // Process each target individually
             for target in target_list {

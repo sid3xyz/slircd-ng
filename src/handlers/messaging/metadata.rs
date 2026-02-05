@@ -155,12 +155,21 @@ impl PostRegHandler for MetadataHandler {
                             let reply = server_reply(
                                 &ctx.matrix.server_info.name,
                                 Response::RPL_KEYVALUE,
-                                vec![ctx.state.nick.clone(), k.clone(), "*".to_string(), v.clone()],
+                                vec![
+                                    ctx.state.nick.clone(),
+                                    k.clone(),
+                                    "*".to_string(),
+                                    v.clone(),
+                                ],
                             );
                             ctx.sender.send(reply).await?;
 
-                            if subcommand == MetadataSubCommand::SET 
-                                && ctx.matrix.channel_manager.registered_channels.contains(&target_lower) 
+                            if subcommand == MetadataSubCommand::SET
+                                && ctx
+                                    .matrix
+                                    .channel_manager
+                                    .registered_channels
+                                    .contains(&target_lower)
                             {
                                 let repo = ctx.matrix.db.channels();
                                 if let Ok(Some(channel)) = repo.find_by_name(&target_lower).await {
@@ -177,8 +186,18 @@ impl PostRegHandler for MetadataHandler {
                                         } else {
                                             None
                                         };
-                                        if let Err(e) = repo.set_metadata(channel.id, &key, value_to_save.as_deref()).await {
-                                             tracing::error!("Failed to persist channel metadata: {}", e);
+                                        if let Err(e) = repo
+                                            .set_metadata(
+                                                channel.id,
+                                                &key,
+                                                value_to_save.as_deref(),
+                                            )
+                                            .await
+                                        {
+                                            tracing::error!(
+                                                "Failed to persist channel metadata: {}",
+                                                e
+                                            );
                                         }
                                     }
                                 }
@@ -360,18 +379,31 @@ impl PostRegHandler for MetadataHandler {
                                 if let Some(account_name) = &user.account {
                                     let account_name = account_name.clone();
                                     let repo = ctx.matrix.db.accounts();
-                                    
+
                                     match repo.find_by_name(&account_name).await {
                                         Ok(Some(account)) => {
-                                            if let Err(e) = repo.set_metadata(account.id, &key_clone, Some(&val_clone)).await {
-                                                tracing::error!("Failed to persist user metadata: {}", e);
+                                            if let Err(e) = repo
+                                                .set_metadata(
+                                                    account.id,
+                                                    &key_clone,
+                                                    Some(&val_clone),
+                                                )
+                                                .await
+                                            {
+                                                tracing::error!(
+                                                    "Failed to persist user metadata: {}",
+                                                    e
+                                                );
                                             }
                                         }
                                         Ok(None) => {
-                                             tracing::warn!("User account not found for metadata: {}", account_name);
+                                            tracing::warn!(
+                                                "User account not found for metadata: {}",
+                                                account_name
+                                            );
                                         }
                                         Err(e) => {
-                                             tracing::error!("DB error: {}", e);
+                                            tracing::error!("DB error: {}", e);
                                         }
                                     }
                                 }
@@ -384,19 +416,27 @@ impl PostRegHandler for MetadataHandler {
                                 let account_name = account_name.clone();
                                 let key_clone = key.clone();
                                 let repo = ctx.matrix.db.accounts();
-                                
+
                                 // Spawn to avoid blocking lock? No, keep it simple for now, async is fine.
                                 match repo.find_by_name(&account_name).await {
                                     Ok(Some(account)) => {
-                                        if let Err(e) = repo.set_metadata(account.id, &key_clone, None).await {
-                                            tracing::error!("Failed to persist user metadata removal: {}", e);
+                                        if let Err(e) =
+                                            repo.set_metadata(account.id, &key_clone, None).await
+                                        {
+                                            tracing::error!(
+                                                "Failed to persist user metadata removal: {}",
+                                                e
+                                            );
                                         }
                                     }
                                     Ok(None) => {
-                                         tracing::warn!("User account not found for metadata: {}", account_name);
+                                        tracing::warn!(
+                                            "User account not found for metadata: {}",
+                                            account_name
+                                        );
                                     }
                                     Err(e) => {
-                                         tracing::error!("DB error: {}", e);
+                                        tracing::error!("DB error: {}", e);
                                     }
                                 }
                             }

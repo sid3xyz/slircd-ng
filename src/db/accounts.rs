@@ -193,9 +193,10 @@ impl<'a> AccountRepository<'a> {
             row;
 
         // Verify password (runs in blocking task to avoid executor stalls)
-        let matches = crate::security::password::verify_password(password.to_string(), password_hash.clone())
-            .await
-            .map_err(|_| DbError::InvalidPassword)?;
+        let matches =
+            crate::security::password::verify_password(password.to_string(), password_hash.clone())
+                .await
+                .map_err(|_| DbError::InvalidPassword)?;
 
         if !matches {
             return Err(DbError::InvalidPassword);
@@ -620,9 +621,12 @@ impl<'a> AccountRepository<'a> {
     }
 
     /// Get metadata for an account.
-    pub async fn get_metadata(&self, account_id: i64) -> Result<std::collections::HashMap<String, String>, DbError> {
+    pub async fn get_metadata(
+        &self,
+        account_id: i64,
+    ) -> Result<std::collections::HashMap<String, String>, DbError> {
         let rows = sqlx::query_as::<_, (String, String)>(
-            "SELECT key, value FROM account_metadata WHERE account_id = ?"
+            "SELECT key, value FROM account_metadata WHERE account_id = ?",
         )
         .bind(account_id)
         .fetch_all(self.pool)
@@ -686,13 +690,13 @@ async fn compute_scram_verifiers(password: &str) -> ScramVerifiers {
     .expect("spawn_blocking should not be cancelled")
 }
 
-
-
 /// Dummy password verification for constant-time account lookup.
 async fn dummy_password_verify(password: &str) {
     // Pre-computed Argon2id hash of "dummy"
     const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$dGltaW5nLW9yYWNsZS1kdW1teQ$K4VZh8k8YL3E8H7E8H7E8H7E8H7E8H7E8H7E8H7E8Hs";
-    let _ = crate::security::password::verify_password(password.to_string(), DUMMY_HASH.to_string()).await;
+    let _ =
+        crate::security::password::verify_password(password.to_string(), DUMMY_HASH.to_string())
+            .await;
 }
 
 #[cfg(test)]
@@ -809,6 +813,4 @@ mod tests {
         dummy_password_verify("").await;
         dummy_password_verify(&"x".repeat(100)).await;
     }
-
-
 }

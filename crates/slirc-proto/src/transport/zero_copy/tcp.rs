@@ -160,7 +160,7 @@ impl<S: AsyncWrite + Unpin> ZeroCopyTransport<S> {
         for message in messages {
             write!(&mut buffer, "{}", message).expect("fmt::Write to String cannot fail");
         }
-        
+
         self.stream.write_all(buffer.as_bytes()).await?;
         self.stream.flush().await
     }

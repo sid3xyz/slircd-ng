@@ -27,6 +27,7 @@ use crate::handlers::{
         TagmsgHandler,
     },
     mode::ModeHandler,
+    s2s::kline::{KlineHandler, UnklineHandler},
     server::{
         base::{ServerHandshakeHandler, ServerPropagationHandler},
         capab::CapabHandler,
@@ -41,7 +42,6 @@ use crate::handlers::{
         topic::TopicHandler as ServerTopicHandler,
         uid::UidHandler,
     },
-    s2s::kline::{KlineHandler, UnklineHandler},
     services::account::RegisterHandler,
     services::aliases::{CsHandler, NsHandler},
     user::monitor::MonitorHandler,

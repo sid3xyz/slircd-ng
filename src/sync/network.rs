@@ -15,8 +15,8 @@ use sha2::{Digest, Sha256};
 use slirc_proto::sync::ServerId;
 use slirc_proto::{Command, Message};
 use std::io::Cursor;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -374,10 +374,11 @@ async fn handle_inbound_connection(
             let sid_obj = ServerId::new(sid.clone());
             if manager.topology.servers.contains_key(&sid_obj) {
                 tracing::error!(peer = %remote_addr, "Loop detected: {} ({})", name, sid);
-                let err_cmd = Message::from(Command::ERROR(format!("Loop detected: {} ({})", name, sid)))
-                    .to_string()
-                    .trim_end()
-                    .to_string();
+                let err_cmd =
+                    Message::from(Command::ERROR(format!("Loop detected: {} ({})", name, sid)))
+                        .to_string()
+                        .trim_end()
+                        .to_string();
                 if let Err(e) = framed.send(err_cmd).await {
                     tracing::error!("Failed to send loop detection error: {}", e);
                 }
@@ -406,7 +407,8 @@ async fn handle_inbound_connection(
 
                     // Generate and send burst
                     let target = remote_sid.as_ref().map(|s| s.as_str()).unwrap_or("");
-                    let burst = burst::generate_burst(&matrix, manager.local_id.as_str(), target).await;
+                    let burst =
+                        burst::generate_burst(&matrix, manager.local_id.as_str(), target).await;
                     for cmd in burst {
                         if let Err(e) = framed.send(Message::from(cmd).to_string().trim_end()).await
                         {
@@ -450,8 +452,18 @@ async fn handle_inbound_connection(
         },
     );
     // Get references to counters for the loop (cheap Arc clones)
-    let link_bytes_sent = manager.links.get(&remote_sid_val).unwrap().bytes_sent.clone();
-    let link_bytes_recv = manager.links.get(&remote_sid_val).unwrap().bytes_recv.clone();
+    let link_bytes_sent = manager
+        .links
+        .get(&remote_sid_val)
+        .unwrap()
+        .bytes_sent
+        .clone();
+    let link_bytes_recv = manager
+        .links
+        .get(&remote_sid_val)
+        .unwrap()
+        .bytes_recv
+        .clone();
 
     // Add to topology (direct peer's parent/uplink is the local server)
     manager.topology.add_server(
@@ -811,7 +823,8 @@ pub fn connect_to_peer(
                             // Generate Burst
                             let target = remote_sid.as_ref().map(|s| s.as_str()).unwrap_or("");
                             let burst =
-                                burst::generate_burst(&matrix, manager.local_id.as_str(), target).await;
+                                burst::generate_burst(&matrix, manager.local_id.as_str(), target)
+                                    .await;
                             for cmd in burst {
                                 if let Err(e) =
                                     framed.send(Message::from(cmd).to_string().trim_end()).await
@@ -881,8 +894,18 @@ pub fn connect_to_peer(
                 },
             );
             // Get references to counters for the loop
-            let link_bytes_sent = manager.links.get(&remote_sid_val).unwrap().bytes_sent.clone();
-            let link_bytes_recv = manager.links.get(&remote_sid_val).unwrap().bytes_recv.clone();
+            let link_bytes_sent = manager
+                .links
+                .get(&remote_sid_val)
+                .unwrap()
+                .bytes_sent
+                .clone();
+            let link_bytes_recv = manager
+                .links
+                .get(&remote_sid_val)
+                .unwrap()
+                .bytes_recv
+                .clone();
 
             // Add to topology (direct peer's parent/uplink is the local server)
             manager.topology.add_server(
