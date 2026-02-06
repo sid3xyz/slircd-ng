@@ -9,6 +9,7 @@ use argon2::{
 
 /// Verify a password against a stored Argon2 hash.
 /// Verify a password against a stored Argon2 hash (non-blocking).
+#[must_use = "password verification result must be checked"]
 pub async fn verify_password(
     password: String,
     hash: String,
@@ -25,6 +26,7 @@ pub async fn verify_password(
 
 /// Hash a password using default Argon2 settings.
 /// Hash a password using default Argon2 settings (non-blocking).
+#[must_use = "password hash must be used"]
 pub async fn hash_password(password: String) -> Result<String, argon2::password_hash::Error> {
     tokio::task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
