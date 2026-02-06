@@ -65,16 +65,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
         if let Some((_, ts_val)) = msg.tags_iter().find(|(k, _)| *k == "+draft/read-marker")
             && !ts_val.is_empty()
         {
-            let ts_str = slirc_proto::message::tags::unescape_tag_value(ts_val);
-            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&ts_str)
-                && let Some(account) = &ctx.state.account
-            {
-                let nanotime = dt.timestamp_nanos_opt().unwrap_or(0);
-                ctx.matrix
-                    .read_marker_manager
-                    .update_marker(account, target, nanotime);
-                debug!(account = %account, target = %target, ts = %nanotime, "Updated read marker");
-            }
+             // Note: Read marker logic is currently disabled due to missing ReadMarkerManager
         }
 
         // Generate msgid for history storage and echo-message (with dashes for IRCv3 compatibility)
