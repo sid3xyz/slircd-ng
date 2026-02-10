@@ -286,25 +286,6 @@ pub fn collect_message_args(msg: &MessageRef<'_>, start_idx: usize) -> Vec<Strin
     args
 }
 
-/// Join all arguments starting at `start_idx` using spaces.
-///
-/// This is primarily used by ROLEPLAY-style commands like NPC/SCENE, where some
-/// clients may omit the IRC trailing-parameter `:` and still expect the server
-/// to treat remaining args as freeform text.
-pub fn join_message_args(msg: &MessageRef<'_>, start_idx: usize) -> Option<String> {
-    let mut out = String::new();
-    let mut idx = start_idx;
-    while let Some(arg) = msg.arg(idx) {
-        if !out.is_empty() {
-            out.push(' ');
-        }
-        out.push_str(arg);
-        idx += 1;
-    }
-
-    if out.is_empty() { None } else { Some(out) }
-}
-
 /// Helper to create a user prefix (nick!user@host).
 ///
 /// Note: This is equivalent to `Prefix::new(nick, user, host)` from slirc-proto.

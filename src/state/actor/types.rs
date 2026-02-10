@@ -177,10 +177,6 @@ pub enum ChannelEvent {
         uid: Uid,
         reply_tx: oneshot::Sender<Option<MemberModes>>,
     },
-    /// Request channel modes.
-    GetModes {
-        reply_tx: oneshot::Sender<HashSet<ChannelMode>>,
-    },
     /// Apply mode changes.
     ApplyModes {
         params: ModeParams,

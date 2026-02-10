@@ -22,9 +22,6 @@ use helpers::{
 };
 use queries::QueryExecutor;
 
-// Re-export for use in ISUPPORT
-pub use helpers::MAX_HISTORY_LIMIT as MAX_HISTORY_LIMIT_CONST;
-
 /// Handler for CHATHISTORY command.
 pub struct ChatHistoryHandler;
 

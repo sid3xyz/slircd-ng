@@ -547,11 +547,6 @@ impl<'a> ChannelRepository<'a> {
         p_iter.next().is_none()
     }
 
-    /// Get metadata for a channel.
-    pub async fn get_metadata(&self, channel_id: i64) -> Result<std::collections::HashMap<String, String>, DbError> {
-        self.fetch_metadata(channel_id).await
-    }
-
     /// Set a metadata key for a channel.
     /// If value is None, the key is removed.
     pub async fn set_metadata(

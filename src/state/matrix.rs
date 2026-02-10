@@ -245,6 +245,10 @@ impl Matrix {
         let sync_manager_arc = Arc::new(sync_manager);
         let mut user_manager =
             UserManager::new(config.server.sid.clone(), config.server.name.clone());
+        user_manager.configure_whowas(
+            config.limits.whowas_maxgroups,
+            config.limits.whowas_groupsize,
+        );
         user_manager.set_observer(sync_manager_arc.clone());
 
         let stats_manager = Arc::new(crate::state::managers::stats::StatsManager::new());
@@ -255,8 +259,6 @@ impl Matrix {
             stats_manager.clone(),
         );
         channel_manager.set_observer(sync_manager_arc.clone());
-
-
 
         // Create ServiceManager with server SID for service UIDs
         let service_manager = ServiceManager::new(db.clone(), history, &config.server.sid);
@@ -298,7 +300,9 @@ impl Matrix {
                 sync_manager: Arc::try_unwrap(sync_manager_arc)
                     .unwrap_or_else(|arc| (*arc).clone()),
                 stats_manager,
-                read_marker_manager: crate::state::managers::read_marker::ReadMarkerManager::new(Some(db.clone())),
+                read_marker_manager: crate::state::managers::read_marker::ReadMarkerManager::new(
+                    Some(db.clone()),
+                ),
 
                 server_info: ServerInfo {
                     name: config.server.name.clone(),

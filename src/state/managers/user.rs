@@ -12,8 +12,8 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use std::time::Instant;
 use std::sync::Mutex;
+use std::time::Instant;
 use tokio::sync::{RwLock, mpsc};
 
 /// Default maximum number of WHOWAS entries to keep per nickname.
@@ -59,7 +59,6 @@ pub struct UserManager {
     // WHOWAS limits (Audit Finding #4 DoS protection)
     whowas_maxgroups: usize,
     whowas_groupsize: usize,
-    whowas_maxkeep_days: i64,
     /// LRU order tracker: front = oldest, back = newest
     whowas_lru: Mutex<VecDeque<String>>,
 
@@ -85,7 +84,6 @@ impl UserManager {
 
             whowas_maxgroups: DEFAULT_WHOWAS_MAXGROUPS,
             whowas_groupsize: DEFAULT_WHOWAS_GROUPSIZE,
-            whowas_maxkeep_days: 7, // Default to 7 days
             whowas_lru: Mutex::new(VecDeque::new()),
 
             max_local_users: std::sync::atomic::AtomicUsize::new(0),
@@ -102,10 +100,9 @@ impl UserManager {
     /// Configure WHOWAS limits from config.
     ///
     /// Call this after construction with values from `LimitsConfig`.
-    pub fn configure_whowas(&mut self, maxgroups: usize, groupsize: usize, maxkeep_days: i64) {
+    pub fn configure_whowas(&mut self, maxgroups: usize, groupsize: usize) {
         self.whowas_maxgroups = maxgroups;
         self.whowas_groupsize = groupsize;
-        self.whowas_maxkeep_days = maxkeep_days;
     }
 
     /// Update the last_active timestamp for a user.

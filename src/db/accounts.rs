@@ -3,11 +3,10 @@
 //! Handles account registration, authentication, and nickname management.
 
 use super::DbError;
-use argon2::password_hash::{PasswordHash, rand_core::OsRng};
+use argon2::password_hash::rand_core::OsRng;
 use rand::RngCore;
 use sqlx::SqlitePool;
 use std::num::NonZeroU32;
-use crate::security::password::{hash_password, verify_password};
 
 /// Default iteration count for SCRAM-SHA-256 (RFC 7677 recommends >= 4096).
 const SCRAM_ITERATIONS: u32 = 4096;
@@ -194,9 +193,10 @@ impl<'a> AccountRepository<'a> {
             row;
 
         // Verify password (runs in blocking task to avoid executor stalls)
-        let matches = crate::security::password::verify_password(password.to_string(), password_hash.clone())
-            .await
-            .map_err(|_| DbError::InvalidPassword)?;
+        let matches =
+            crate::security::password::verify_password(password.to_string(), password_hash.clone())
+                .await
+                .map_err(|_| DbError::InvalidPassword)?;
 
         if !matches {
             return Err(DbError::InvalidPassword);
@@ -621,9 +621,12 @@ impl<'a> AccountRepository<'a> {
     }
 
     /// Get metadata for an account.
-    pub async fn get_metadata(&self, account_id: i64) -> Result<std::collections::HashMap<String, String>, DbError> {
+    pub async fn get_metadata(
+        &self,
+        account_id: i64,
+    ) -> Result<std::collections::HashMap<String, String>, DbError> {
         let rows = sqlx::query_as::<_, (String, String)>(
-            "SELECT key, value FROM account_metadata WHERE account_id = ?"
+            "SELECT key, value FROM account_metadata WHERE account_id = ?",
         )
         .bind(account_id)
         .fetch_all(self.pool)
@@ -687,23 +690,25 @@ async fn compute_scram_verifiers(password: &str) -> ScramVerifiers {
     .expect("spawn_blocking should not be cancelled")
 }
 
-
-
 /// Dummy password verification for constant-time account lookup.
 async fn dummy_password_verify(password: &str) {
     // Pre-computed Argon2id hash of "dummy"
     const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$dGltaW5nLW9yYWNsZS1kdW1teQ$K4VZh8k8YL3E8H7E8H7E8H7E8H7E8H7E8H7E8H7E8Hs";
-    let _ = crate::security::password::verify_password(password.to_string(), DUMMY_HASH.to_string()).await;
+    let _ =
+        crate::security::password::verify_password(password.to_string(), DUMMY_HASH.to_string())
+            .await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use argon2::password_hash::PasswordHash;
+    use crate::security::password::{hash_password, verify_password};
 
     #[tokio::test]
     async fn test_hash_password_produces_valid_argon2_hash() {
         let password = "test_password_123";
-        let hash = hash_password(password)
+        let hash = hash_password(password.to_string())
             .await
             .expect("hashing should succeed");
 
@@ -725,8 +730,12 @@ mod tests {
     #[tokio::test]
     async fn test_hash_password_produces_unique_hashes() {
         let password = "same_password";
-        let hash1 = hash_password(password).await.expect("first hash");
-        let hash2 = hash_password(password).await.expect("second hash");
+        let hash1 = hash_password(password.to_string())
+            .await
+            .expect("first hash");
+        let hash2 = hash_password(password.to_string())
+            .await
+            .expect("second hash");
 
         // Different salts should produce different hashes
         assert_ne!(hash1, hash2, "hashes should differ due to random salt");
@@ -735,46 +744,50 @@ mod tests {
     #[tokio::test]
     async fn test_verify_password_correct() {
         let password = "my_secure_password";
-        let hash = hash_password(password).await.expect("hashing");
+        let hash = hash_password(password.to_string()).await.expect("hashing");
 
-        assert!(
-            verify_password(password, &hash).await.is_ok(),
-            "correct password should verify"
-        );
+        let ok = verify_password(password.to_string(), hash.clone())
+            .await
+            .expect("verify should succeed");
+        assert!(ok, "correct password should verify");
     }
 
     #[tokio::test]
     async fn test_verify_password_incorrect() {
         let password = "correct_password";
         let wrong_password = "wrong_password";
-        let hash = hash_password(password).await.expect("hashing");
+        let hash = hash_password(password.to_string()).await.expect("hashing");
 
-        assert!(
-            verify_password(wrong_password, &hash).await.is_err(),
-            "wrong password should fail verification"
-        );
+        let ok = verify_password(wrong_password.to_string(), hash.clone())
+            .await
+            .expect("verify should succeed");
+        assert!(!ok, "wrong password should not verify");
     }
 
     #[tokio::test]
     async fn test_verify_password_empty_password() {
         let password = "";
-        let hash = hash_password(password)
+        let hash = hash_password(password.to_string())
             .await
             .expect("empty password should hash");
 
+        let ok = verify_password(password.to_string(), hash.clone())
+            .await
+            .expect("verify should succeed");
+        assert!(ok, "empty password should verify against its own hash");
+
+        let ok = verify_password("nonempty".to_string(), hash.clone())
+            .await
+            .expect("verify should succeed");
         assert!(
-            verify_password(password, &hash).await.is_ok(),
-            "empty password should verify against its own hash"
-        );
-        assert!(
-            verify_password("nonempty", &hash).await.is_err(),
-            "nonempty should fail against empty hash"
+            !ok,
+            "nonempty should not verify against empty password hash"
         );
     }
 
     #[tokio::test]
     async fn test_verify_password_invalid_hash_format() {
-        let result = verify_password("password", "not_a_valid_hash").await;
+        let result = verify_password("password".to_string(), "not_a_valid_hash".to_string()).await;
 
         assert!(result.is_err(), "invalid hash format should return error");
     }
@@ -782,25 +795,27 @@ mod tests {
     #[tokio::test]
     async fn test_hash_password_unicode() {
         let password = "пароль密码🔐";
-        let hash = hash_password(password).await.expect("unicode should hash");
+        let hash = hash_password(password.to_string())
+            .await
+            .expect("unicode should hash");
 
-        assert!(
-            verify_password(password, &hash).await.is_ok(),
-            "unicode password should verify"
-        );
+        let ok = verify_password(password.to_string(), hash.clone())
+            .await
+            .expect("verify should succeed");
+        assert!(ok, "unicode password should verify");
     }
 
     #[tokio::test]
     async fn test_hash_password_very_long() {
         let password = "a".repeat(1000);
-        let hash = hash_password(&password)
+        let hash = hash_password(password.clone())
             .await
             .expect("long password should hash");
 
-        assert!(
-            verify_password(&password, &hash).await.is_ok(),
-            "long password should verify"
-        );
+        let ok = verify_password(password.clone(), hash.clone())
+            .await
+            .expect("verify should succeed");
+        assert!(ok, "long password should verify");
     }
 
     #[tokio::test]
@@ -810,6 +825,4 @@ mod tests {
         dummy_password_verify("").await;
         dummy_password_verify(&"x".repeat(100)).await;
     }
-
-
 }

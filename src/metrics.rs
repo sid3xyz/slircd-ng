@@ -47,10 +47,6 @@ pub fn init() {
     describe_histogram!("irc_message_fanout", "Recipients per channel message");
     describe_counter!("irc_command_errors_total", "IRC command errors by type");
     describe_counter!("irc_channel_mode_changes_total", "Channel mode changes");
-    describe_counter!(
-        "irc_channel_messages_dropped_total",
-        "Channel messages dropped due to backpressure"
-    );
 
     // Distributed System Metrics
     describe_counter!(
@@ -153,10 +149,6 @@ pub fn record_fanout(recipients: usize) {
 #[inline]
 pub fn record_mode_change(mode: char) {
     counter!("irc_channel_mode_changes_total", "mode" => mode.to_string()).increment(1);
-}
-
-pub fn inc_channel_messages_dropped() {
-    counter!("irc_channel_messages_dropped_total").increment(1);
 }
 
 // S2S Metrics Helpers

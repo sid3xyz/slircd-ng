@@ -32,9 +32,6 @@ pub struct LimitsConfig {
     /// Maximum WHOWAS entries per nickname (default: 10).
     #[serde(default = "default_whowas_groupsize")]
     pub whowas_groupsize: usize,
-    /// Maximum age (days) for WHOWAS entries (default: 7).
-    #[serde(default = "default_whowas_maxkeep_days")]
-    pub whowas_maxkeep_days: i64,
 }
 
 impl Default for LimitsConfig {
@@ -46,7 +43,6 @@ impl Default for LimitsConfig {
             channel_mailbox_capacity: default_channel_mailbox_capacity(),
             whowas_maxgroups: default_whowas_maxgroups(),
             whowas_groupsize: default_whowas_groupsize(),
-            whowas_maxkeep_days: default_whowas_maxkeep_days(),
         }
     }
 }
@@ -73,10 +69,6 @@ fn default_whowas_maxgroups() -> usize {
 
 fn default_whowas_groupsize() -> usize {
     10
-}
-
-fn default_whowas_maxkeep_days() -> i64 {
-    7
 }
 
 #[cfg(test)]

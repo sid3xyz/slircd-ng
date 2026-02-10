@@ -292,9 +292,6 @@ impl ChannelActor {
                 let modes = self.members.get(&uid).cloned();
                 let _ = reply_tx.send(modes);
             }
-            ChannelEvent::GetModes { reply_tx } => {
-                let _ = reply_tx.send(self.modes.clone());
-            }
             ChannelEvent::ApplyModes { params, reply_tx } => {
                 self.handle_apply_modes(params, reply_tx).await;
             }
