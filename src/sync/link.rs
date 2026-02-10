@@ -1,7 +1,7 @@
 use crate::sync::handshake;
 use slirc_proto::Message;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::Instant;
 use tokio::sync::mpsc;
 
