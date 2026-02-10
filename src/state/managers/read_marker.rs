@@ -31,11 +31,12 @@ impl ReadMarkerManager {
         // Only update if newer? Or just overwrite?
         // Usually we only advance read markers forward.
         // But for now, simple overwrite or max.
-        
-        self.markers.entry(key)
+
+        self.markers
+            .entry(key)
             .and_modify(|ts| *ts = (*ts).max(timestamp))
             .or_insert(timestamp);
-            
+
         // TODO: Persist to DB asynchronously
     }
 

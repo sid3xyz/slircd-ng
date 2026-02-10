@@ -32,7 +32,7 @@ async fn run_client(id: usize, role: Role) -> std::io::Result<()> {
 
     println!("[{}] Connecting as {:?}...", nick, role);
     let stream = TcpStream::connect(SERVER_ADDR).await?;
-    let (read_half, mut write_half) = stream.into_split();
+    let (read_half, write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
     let mut writer = write_half;
 
@@ -49,29 +49,46 @@ async fn run_client(id: usize, role: Role) -> std::io::Result<()> {
             println!("[{}] Attempting OPER...", nick);
             writer.write_all(b"OPER admin password\r\n").await?;
             // Join Admin Channel
-            writer.write_all(format!("JOIN {}\r\n", CHANNEL_ADMIN).as_bytes()).await?;
+            writer
+                .write_all(format!("JOIN {}\r\n", CHANNEL_ADMIN).as_bytes())
+                .await?;
             sleep(Duration::from_millis(200)).await;
             // Set Key and Topic
-            writer.write_all(format!("MODE {} +k secret\r\n", CHANNEL_ADMIN).as_bytes()).await?;
-            writer.write_all(format!("TOPIC {} :Restricted Area for Operators\r\n", CHANNEL_ADMIN).as_bytes()).await?;
+            writer
+                .write_all(format!("MODE {} +k secret\r\n", CHANNEL_ADMIN).as_bytes())
+                .await?;
+            writer
+                .write_all(
+                    format!("TOPIC {} :Restricted Area for Operators\r\n", CHANNEL_ADMIN)
+                        .as_bytes(),
+                )
+                .await?;
             // Also join General to moderate
-            writer.write_all(format!("JOIN {}\r\n", CHANNEL_GENERAL).as_bytes()).await?;
+            writer
+                .write_all(format!("JOIN {}\r\n", CHANNEL_GENERAL).as_bytes())
+                .await?;
             sleep(Duration::from_millis(200)).await;
-            writer.write_all(format!("MODE {} +nt\r\n", CHANNEL_GENERAL).as_bytes()).await?;
+            writer
+                .write_all(format!("MODE {} +nt\r\n", CHANNEL_GENERAL).as_bytes())
+                .await?;
         }
         Role::Chatter => {
             // Join General
-            writer.write_all(format!("JOIN {}\r\n", CHANNEL_GENERAL).as_bytes()).await?;
+            writer
+                .write_all(format!("JOIN {}\r\n", CHANNEL_GENERAL).as_bytes())
+                .await?;
             // Set Away status
-            if id % 2 == 0 {
+            if id.is_multiple_of(2) {
                 writer.write_all(b"AWAY :I am a busy bot\r\n").await?;
             }
         }
         Role::Lurker => {
             // Set Invisible
-            writer.write_all(b"MODE SwarmBot8 +i\r\n").await?; 
+            writer.write_all(b"MODE SwarmBot8 +i\r\n").await?;
             // Join General
-            writer.write_all(format!("JOIN {}\r\n", CHANNEL_GENERAL).as_bytes()).await?;
+            writer
+                .write_all(format!("JOIN {}\r\n", CHANNEL_GENERAL).as_bytes())
+                .await?;
             // List channels
             writer.write_all(b"LIST\r\n").await?;
         }
@@ -88,16 +105,16 @@ async fn run_client(id: usize, role: Role) -> std::io::Result<()> {
                     println!("[{}] Disconnected", nick);
                     break;
                 }
-                
+
                 let trim_line = line.trim();
-                
+
                 // Handle PING
                 if trim_line.starts_with("PING") {
                     let token = trim_line.split_whitespace().nth(1).unwrap_or("");
                     let pong = format!("PONG {}\r\n", token);
                     writer.write_all(pong.as_bytes()).await?;
                 }
-                
+
                 // Parsed Output for Verification
                 if trim_line.contains(" 381 ") {
                      println!("[{}] \x1b[32mVERIFIED: You are now an IRC Operator\x1b[0m", nick);
@@ -110,7 +127,7 @@ async fn run_client(id: usize, role: Role) -> std::io::Result<()> {
                      // Auto-accept invites
                      let parts: Vec<&str> = trim_line.split_whitespace().collect();
                      if let Some(chan) = parts.last() {
-                         let join = format!("JOIN {}\r\n", chan.trim_start_matches(':')); 
+                         let join = format!("JOIN {}\r\n", chan.trim_start_matches(':'));
                          writer.write_all(join.as_bytes()).await?;
                      }
                 }
@@ -121,7 +138,7 @@ async fn run_client(id: usize, role: Role) -> std::io::Result<()> {
                      writer.write_all(format!("JOIN {}\r\n", CHANNEL_GENERAL).as_bytes()).await?;
                 }
             }
-            
+
             // Periodic Actions
             _ = sleep(Duration::from_secs(3 + (id as u64 % 5))) => {
                 step += 1;
@@ -141,7 +158,7 @@ async fn run_client(id: usize, role: Role) -> std::io::Result<()> {
                     Role::Chatter => {
                          let msg = format!("PRIVMSG {} :[Step {}] Hello from {}\r\n", CHANNEL_GENERAL, step, nick);
                          writer.write_all(msg.as_bytes()).await?;
-                         
+
                          // Occasional WHOIS
                          if step % 10 == 0 {
                              writer.write_all(b"WHOIS SwarmBot0\r\n").await?;
@@ -164,7 +181,7 @@ async fn run_client(id: usize, role: Role) -> std::io::Result<()> {
 async fn main() -> std::io::Result<()> {
     println!("Starting Enhanced Swarm Simulator ({} Clients)", SWARM_SIZE);
     println!("Roles: [0:Admin] [1-7:Chatter] [8-9:Lurker]");
-    
+
     let mut set = tokio::task::JoinSet::new();
 
     for i in 0..SWARM_SIZE {

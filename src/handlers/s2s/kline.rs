@@ -13,7 +13,11 @@ pub struct UnklineHandler;
 #[async_trait]
 impl ServerHandler for KlineHandler {
     #[instrument(skip(ctx, msg), fields(command = "KLINE"))]
-    async fn handle(&self, ctx: &mut Context<'_, crate::state::ServerState>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(
+        &self,
+        ctx: &mut Context<'_, crate::state::ServerState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // KLINE <timestamp> <duration> <mask-user> <mask-host> :<reason>
         // OR TS6 variants.
         // For simplicity, we assume TS6 style: KLINE <mask-user> <mask-host> <duration> :<reason>
@@ -26,7 +30,7 @@ impl ServerHandler for KlineHandler {
         // Arg 1: Duration (seconds)
         // Arg 2: Reason
         // Sometimes Timestamp is implicit or prepended.
-        
+
         let mask = match msg.arg(0) {
             Some(m) => m,
             None => return Ok(()),
@@ -42,7 +46,7 @@ impl ServerHandler for KlineHandler {
         // Apply to local ban cache
         // Note: For a real KLINE, we combine user/host. The mask might be "user@host".
         // If it's just "host", we treat it as "*@host".
-        
+
         // Parse mask properly. If no '@', assume it is a host mask and prepend "*@"
         let normalized_mask = if mask.contains('@') {
             mask.to_string()
@@ -63,10 +67,14 @@ impl ServerHandler for KlineHandler {
 #[async_trait]
 impl ServerHandler for UnklineHandler {
     #[instrument(skip(ctx, msg), fields(command = "UNKLINE"))]
-    async fn handle(&self, ctx: &mut Context<'_, crate::state::ServerState>, msg: &MessageRef<'_>) -> HandlerResult {
+    async fn handle(
+        &self,
+        ctx: &mut Context<'_, crate::state::ServerState>,
+        msg: &MessageRef<'_>,
+    ) -> HandlerResult {
         // UNKLINE <mask-user> <mask-host>
         // or UNKLINE <mask>
-        
+
         let mask = match msg.arg(0) {
             Some(m) => m,
             None => return Ok(()),

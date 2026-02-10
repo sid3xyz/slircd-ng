@@ -89,7 +89,7 @@ impl ChannelManager {
             };
 
             let initial_modes = Some(modes_from_string(&state.modes, state.key, state.user_limit));
-            
+
             let initial_metadata = state.metadata.and_then(|json| {
                 serde_json::from_str::<std::collections::HashMap<String, String>>(&json).ok()
             });

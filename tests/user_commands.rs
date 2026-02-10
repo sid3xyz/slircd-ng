@@ -398,8 +398,16 @@ async fn test_notice_command() {
 
     // Drain welcome bursts
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    while alice.recv_timeout(tokio::time::Duration::from_millis(10)).await.is_ok() {}
-    while bob.recv_timeout(tokio::time::Duration::from_millis(10)).await.is_ok() {}
+    while alice
+        .recv_timeout(tokio::time::Duration::from_millis(10))
+        .await
+        .is_ok()
+    {}
+    while bob
+        .recv_timeout(tokio::time::Duration::from_millis(10))
+        .await
+        .is_ok()
+    {}
 
     // Alice sends NOTICE to Bob
     alice
@@ -416,7 +424,10 @@ async fn test_notice_command() {
     match &msg.command {
         Command::NOTICE(target, text) => {
             assert_eq!(target, "bob", "NOTICE target should be bob");
-            assert!(text.contains("test notice"), "NOTICE text should contain message");
+            assert!(
+                text.contains("test notice"),
+                "NOTICE text should contain message"
+            );
         }
         other => panic!("Expected NOTICE, got {:?}", other),
     }
@@ -442,8 +453,16 @@ async fn test_ison_command() {
 
     // Drain welcome bursts
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    while alice.recv_timeout(tokio::time::Duration::from_millis(10)).await.is_ok() {}
-    while bob.recv_timeout(tokio::time::Duration::from_millis(10)).await.is_ok() {}
+    while alice
+        .recv_timeout(tokio::time::Duration::from_millis(10))
+        .await
+        .is_ok()
+    {}
+    while bob
+        .recv_timeout(tokio::time::Duration::from_millis(10))
+        .await
+        .is_ok()
+    {}
 
     // Alice checks if bob and nonexistent are online
     alice
@@ -461,8 +480,14 @@ async fn test_ison_command() {
         Command::Response(resp, params) if resp.code() == 303 => {
             // Response should contain "bob" but not "nonexistent"
             let response_text = params.join(" ");
-            assert!(response_text.to_lowercase().contains("bob"), "ISON should list bob as online");
-            assert!(!response_text.to_lowercase().contains("nonexistent"), "ISON should not list nonexistent");
+            assert!(
+                response_text.to_lowercase().contains("bob"),
+                "ISON should list bob as online"
+            );
+            assert!(
+                !response_text.to_lowercase().contains("nonexistent"),
+                "ISON should not list nonexistent"
+            );
         }
         other => panic!("Expected RPL_ISON (303), got {:?}", other),
     }

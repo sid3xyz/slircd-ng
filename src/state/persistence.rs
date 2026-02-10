@@ -214,9 +214,13 @@ mod tests {
             created_at: now,
             key: Some("secret".to_string()),
             user_limit: Some(10),
-            metadata: Some(serde_json::to_string(&std::collections::HashMap::from([
-                ("foo".to_string(), "bar".to_string())
-            ])).unwrap()),
+            metadata: Some(
+                serde_json::to_string(&std::collections::HashMap::from([(
+                    "foo".to_string(),
+                    "bar".to_string(),
+                )]))
+                .unwrap(),
+            ),
         };
 
         // Test Save

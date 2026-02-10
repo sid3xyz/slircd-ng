@@ -33,7 +33,8 @@ async fn test_rehash_no_disconnect() -> Result<()> {
     let config_path = test_dir.join("config.toml");
 
     // Start server with initial config
-    let initial_config = format!(r#"
+    let initial_config = format!(
+        r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -59,10 +60,13 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
 
 [motd]
 lines = ["Welcome to the Original MOTD", "This is before REHASH"]
-"#, db_path.display());
+"#,
+        db_path.display()
+    );
 
     // Modified config: MOTD changed, new oper added
-    let modified_config = format!(r#"
+    let modified_config = format!(
+        r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -92,7 +96,9 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
 
 [motd]
 lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
-"#, db_path.display());
+"#,
+        db_path.display()
+    );
 
     fs::write(&config_path, &initial_config)?;
 
@@ -112,13 +118,13 @@ lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
     admin.send_raw("OPER admin testpass\r\n").await?;
     // Read until we get the OPER confirmation (381)
     for _ in 0..10 {
-        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await {
-            if let Ok(response) = msg {
-                let s = response.to_string();
-                eprintln!("OPER response: {}", s);
-                if s.contains("381") || s.contains("IRC operator") {
-                    break;
-                }
+        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await
+            && let Ok(response) = msg
+        {
+            let s = response.to_string();
+            eprintln!("OPER response: {}", s);
+            if s.contains("381") || s.contains("IRC operator") {
+                break;
             }
         }
     }
@@ -127,13 +133,12 @@ lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
     regular_user.send_raw("MOTD\r\n").await?;
     let mut found_original_motd = false;
     for _ in 0..10 {
-        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), regular_user.recv()).await {
-            if let Ok(response) = msg {
-                if response.to_string().contains("Original MOTD") {
-                    found_original_motd = true;
-                    break;
-                }
-            }
+        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), regular_user.recv()).await
+            && let Ok(response) = msg
+            && response.to_string().contains("Original MOTD")
+        {
+            found_original_motd = true;
+            break;
         }
     }
     assert!(
@@ -151,14 +156,14 @@ lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
     // Read REHASH response and wait for completion
     let mut rehash_acknowledged = false;
     for _ in 0..10 {
-        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await {
-            if let Ok(response) = msg {
-                let s = response.to_string();
-                eprintln!("Admin received: {}", s);
-                if s.contains("REHASH complete") || s.contains("Configuration reloaded") {
-                    rehash_acknowledged = true;
-                    break;
-                }
+        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await
+            && let Ok(response) = msg
+        {
+            let s = response.to_string();
+            eprintln!("Admin received: {}", s);
+            if s.contains("REHASH complete") || s.contains("Configuration reloaded") {
+                rehash_acknowledged = true;
+                break;
             }
         }
     }
@@ -168,13 +173,12 @@ lines = ["Welcome to the NEW MOTD", "This is AFTER REHASH - Hot reload works!"]
     regular_user.send_raw("MOTD\r\n").await?;
     let mut found_new_motd = false;
     for _ in 0..10 {
-        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), regular_user.recv()).await {
-            if let Ok(response) = msg {
-                if response.to_string().contains("NEW MOTD") {
-                    found_new_motd = true;
-                    break;
-                }
-            }
+        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), regular_user.recv()).await
+            && let Ok(response) = msg
+            && response.to_string().contains("NEW MOTD")
+        {
+            found_new_motd = true;
+            break;
         }
     }
     assert!(found_new_motd, "Should see new MOTD after REHASH");
@@ -196,7 +200,8 @@ async fn test_rehash_invalid_config_rejected() -> Result<()> {
     let db_path = test_dir.join("test.db");
     let config_path = test_dir.join("config.toml");
 
-    let initial_config = format!(r#"
+    let initial_config = format!(
+        r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -219,7 +224,9 @@ enabled = false
 
 [security]
 cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a"
-"#, db_path.display());
+"#,
+        db_path.display()
+    );
 
     fs::write(&config_path, &initial_config)?;
 
@@ -232,12 +239,11 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
     admin.send_raw("OPER admin testpass\r\n").await?;
     // Drain all OPER responses until we see 381 (You are now an IRC operator)
     for _ in 0..10 {
-        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await {
-            if let Ok(response) = msg {
-                if response.to_string().contains("381") {
-                    break;
-                }
-            }
+        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await
+            && let Ok(response) = msg
+            && response.to_string().contains("381")
+        {
+            break;
         }
     }
 
@@ -250,13 +256,13 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
     // Should get error response, not disconnect
     let mut got_error = false;
     for _ in 0..5 {
-        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await {
-            if let Ok(response) = msg {
-                let s = response.to_string();
-                if s.contains("failed") || s.contains("error") || s.contains("not updated") {
-                    got_error = true;
-                    break;
-                }
+        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await
+            && let Ok(response) = msg
+        {
+            let s = response.to_string();
+            if s.contains("failed") || s.contains("error") || s.contains("not updated") {
+                got_error = true;
+                break;
             }
         }
     }
@@ -274,7 +280,8 @@ async fn test_rehash_updates_operators() -> Result<()> {
     let db_path = test_dir.join("test.db");
     let config_path = test_dir.join("config.toml");
 
-    let initial_config = format!(r#"
+    let initial_config = format!(
+        r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -297,9 +304,12 @@ enabled = false
 
 [security]
 cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a"
-"#, db_path.display());
+"#,
+        db_path.display()
+    );
 
-    let modified_config = format!(r#"
+    let modified_config = format!(
+        r#"
 [server]
 name = "test.example.com"
 network = "TestNet"
@@ -326,7 +336,9 @@ enabled = false
 
 [security]
 cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a"
-"#, db_path.display());
+"#,
+        db_path.display()
+    );
 
     fs::write(&config_path, &initial_config)?;
 
@@ -344,12 +356,11 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
     admin.send_raw("OPER admin testpass\r\n").await?;
     // Drain all OPER responses until we see 381 (You are now an IRC operator)
     for _ in 0..10 {
-        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await {
-            if let Ok(response) = msg {
-                if response.to_string().contains("381") {
-                    break;
-                }
-            }
+        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await
+            && let Ok(response) = msg
+            && response.to_string().contains("381")
+        {
+            break;
         }
     }
 
@@ -357,12 +368,11 @@ cloak_secret = "e14d9fd27d9e2ae742fd32b46adceb630f0d517579d14651c15266859d70892a
 
     // Wait for REHASH to complete
     for _ in 0..5 {
-        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await {
-            if let Ok(response) = msg {
-                if response.to_string().contains("REHASH") {
-                    break;
-                }
-            }
+        if let Ok(msg) = tokio::time::timeout(Duration::from_secs(1), admin.recv()).await
+            && let Ok(response) = msg
+            && response.to_string().contains("REHASH")
+        {
+            break;
         }
     }
 
