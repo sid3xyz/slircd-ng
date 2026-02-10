@@ -108,8 +108,10 @@ mod tests {
         )
         .await;
 
-        let r = replies.lock().unwrap();
-        assert!(r.iter().any(|s| s.contains("has been registered")));
+        {
+            let r = replies.lock().unwrap();
+            assert!(r.iter().any(|s| s.contains("has been registered")));
+        }
 
         // Verify in DB
         let account = db.accounts().find_by_name("TestUser").await.unwrap();
@@ -128,7 +130,7 @@ mod tests {
         let replies_clone = replies.clone();
 
         let uid = "uid2";
-        let nick = "NewNick";
+        let _nick = "NewNick";
         let args = vec!["password", "email"];
 
         // Try to register with 'ExistingUser' nick

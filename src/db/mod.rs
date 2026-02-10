@@ -22,9 +22,12 @@ pub use channels::{ChannelAkick, ChannelRecord, ChannelRepository};
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use thiserror::Error;
 use tracing::info;
+
+static MEMDB_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Database errors.
 #[derive(Debug, Error)]
@@ -70,14 +73,22 @@ impl Database {
     pub async fn new(path: &str) -> Result<Self, DbError> {
         let pool = if path == ":memory:" {
             // In-memory database - use proper SQLx in-memory mode
-            // Use file::memory: with shared cache for connection pool compatibility
+            // Use a uniquely named shared-cache memory database per call.
+            // `file::memory:` is global-ish and will collide across parallel tests.
+            let id = MEMDB_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let memdb_uri = format!(
+                "file:slircd-ng-memdb-{}-{}?mode=memory&cache=shared",
+                std::process::id(),
+                id
+            );
+
             let options = SqliteConnectOptions::new()
-                .filename("file::memory:")
+                .filename(&memdb_uri)
                 .shared_cache(true)
                 .create_if_missing(true);
 
             SqlitePoolOptions::new()
-                .max_connections(5)
+                .max_connections(1)
                 .acquire_timeout(Self::ACQUIRE_TIMEOUT)
                 .idle_timeout(Some(Self::IDLE_TIMEOUT))
                 .test_before_acquire(true)
@@ -118,9 +129,7 @@ impl Database {
             .await?;
 
         // Enable foreign key constraints (critical for ON DELETE CASCADE schema)
-        sqlx::query("PRAGMA foreign_keys=ON")
-            .execute(&pool)
-            .await?;
+        sqlx::query("PRAGMA foreign_keys=ON").execute(&pool).await?;
 
         // Use NORMAL synchronous mode instead of FULL for better performance
         // NORMAL provides good durability while being faster than FULL
@@ -157,8 +166,6 @@ impl Database {
 
     /// Run embedded migrations.
     async fn run_migrations(pool: &SqlitePool) -> Result<(), DbError> {
-
-
         sqlx::migrate!("./migrations")
             .run(pool)
             .await
@@ -167,8 +174,6 @@ impl Database {
         info!("Database migrations checked/applied");
         Ok(())
     }
-
-
 
     /// Get account repository.
     pub fn accounts(&self) -> AccountRepository<'_> {
