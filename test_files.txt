@@ -6,6 +6,7 @@ tests/chrono_check.rs
 tests/common/client.rs
 tests/common/mod.rs
 tests/common/server.rs
+tests/common/tls.rs
 tests/compliance.rs
 tests/connection_lifecycle.rs
 tests/distributed_channel_sync.rs
@@ -13,14 +14,18 @@ tests/integration_bouncer.rs
 tests/integration_partition.rs
 tests/integration_rehash.rs
 tests/ircv3_features.rs
+tests/ircv3_gaps.rs
 tests/operator_commands.rs
 tests/operator_moderation.rs
 tests/s2s_two_server.rs
 tests/sasl_buffer_overflow.rs
+tests/sasl_external.rs
 tests/security_channel_freeze.rs
+tests/security_channel_key.rs
 tests/security_flood_dos.rs
 tests/security_slow_handshake.rs
 tests/server_queries.rs
+tests/services_chanserv.rs
 tests/stress_sasl.rs
 tests/unified_read_state.rs
 tests/user_commands.rs

@@ -5,7 +5,9 @@
 
 pub mod client;
 pub mod server;
+pub mod tls;
 
 #[allow(unused_imports)]
 pub use client::TestClient;
+#[allow(unused_imports)]
 pub use server::TestServer;

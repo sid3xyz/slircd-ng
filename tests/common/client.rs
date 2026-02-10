@@ -4,16 +4,27 @@
 //! and assert on received responses.
 
 use slirc_proto::{Command, Message};
+use std::io::{BufReader as StdBufReader, Cursor};
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{
+    AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader as TokioBufReader,
+    BufWriter as TokioBufWriter,
+};
 use tokio::net::TcpStream;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::time::timeout;
+use tokio_rustls::TlsConnector;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
+use tokio_rustls::rustls::{ClientConfig, RootCertStore};
+
+use rustls_pemfile::{certs, pkcs8_private_keys};
+
+use super::tls::TlsClientConfig;
 
 /// A test IRC client.
 pub struct TestClient {
-    reader: BufReader<OwnedReadHalf>,
-    writer: BufWriter<OwnedWriteHalf>,
+    reader: TokioBufReader<Box<dyn AsyncRead + Unpin + Send>>,
+    writer: TokioBufWriter<Box<dyn AsyncWrite + Unpin + Send>>,
     #[allow(dead_code)]
     nick: String,
 }
@@ -25,8 +36,32 @@ impl TestClient {
 
         // Split stream for reading and writing
         let (read_half, write_half) = stream.into_split();
-        let reader = BufReader::new(read_half);
-        let writer = BufWriter::new(write_half);
+        let reader: Box<dyn AsyncRead + Unpin + Send> = Box::new(read_half);
+        let writer: Box<dyn AsyncWrite + Unpin + Send> = Box::new(write_half);
+        let reader = TokioBufReader::new(reader);
+        let writer = TokioBufWriter::new(writer);
+
+        Ok(Self {
+            reader,
+            writer,
+            nick: nick.to_string(),
+        })
+    }
+
+    /// Connect to a test server over TLS.
+    pub async fn connect_tls(
+        address: &str,
+        nick: &str,
+        tls: TlsClientConfig,
+    ) -> anyhow::Result<Self> {
+        let stream = TcpStream::connect(address).await?;
+        let tls_stream = connect_tls_stream(stream, &tls).await?;
+
+        let (read_half, write_half) = tokio::io::split(tls_stream);
+        let reader: Box<dyn AsyncRead + Unpin + Send> = Box::new(read_half);
+        let writer: Box<dyn AsyncWrite + Unpin + Send> = Box::new(write_half);
+        let reader = TokioBufReader::new(reader);
+        let writer = TokioBufWriter::new(writer);
 
         Ok(Self {
             reader,
@@ -181,4 +216,55 @@ impl TestClient {
         self.send_raw(&format!("MODE {} +o {}", channel, nick))
             .await
     }
+}
+
+async fn connect_tls_stream(
+    stream: TcpStream,
+    tls: &TlsClientConfig,
+) -> anyhow::Result<tokio_rustls::client::TlsStream<TcpStream>> {
+    let _ = tokio_rustls::rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+    let ca_data = tokio::fs::read(&tls.ca_path).await?;
+    let mut ca_reader = StdBufReader::new(Cursor::new(ca_data));
+    let ca_certs: Vec<CertificateDer> = certs(&mut ca_reader).collect::<Result<Vec<_>, _>>()?;
+
+    let mut root_store = RootCertStore::empty();
+    for cert in ca_certs {
+        root_store.add(cert)?;
+    }
+
+    let config = if let (Some(cert_path), Some(key_path)) =
+        (tls.client_cert_path.as_ref(), tls.client_key_path.as_ref())
+    {
+        let cert_data = tokio::fs::read(cert_path).await?;
+        let mut cert_reader = StdBufReader::new(Cursor::new(cert_data));
+        let certs: Vec<CertificateDer> = certs(&mut cert_reader).collect::<Result<Vec<_>, _>>()?;
+
+        let key_data = tokio::fs::read(key_path).await?;
+        let mut key_reader = StdBufReader::new(Cursor::new(key_data));
+        let mut keys: Vec<PrivateKeyDer> = pkcs8_private_keys(&mut key_reader)
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .map(PrivateKeyDer::from)
+            .collect();
+
+        if keys.is_empty() {
+            anyhow::bail!("No private keys found in {}", key_path.display());
+        }
+
+        let key = keys.remove(0);
+        ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_client_auth_cert(certs, key)?
+    } else {
+        ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth()
+    };
+
+    let connector = TlsConnector::from(Arc::new(config));
+    let server_name = ServerName::try_from(tls.server_name.clone())
+        .map_err(|e| anyhow::anyhow!("Invalid TLS server name: {e}"))?;
+    let tls_stream = connector.connect(server_name, stream).await?;
+    Ok(tls_stream)
 }
