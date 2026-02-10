@@ -1,116 +1,244 @@
-# Server-to-Server (S2S) Protocol Specification
+# slircd-ng S2S Protocol
 
-This document describes the S2S protocol used by `slircd-ng`. It is primarily based on the **TS6** protocol (used by UnrealIRCd, InspIRCd, and others) with specific extensions for modern features.
+> Generated from source code audit on 2026-02-10. Documents actual S2S implementation in `src/sync/` and `src/handlers/server/`.
 
-## 1. Connection & Handshake
+## Overview
 
-The S2S handshake authenticates two servers and negotiates capabilities.
-
-### Sequence
-1. **Initiator** connects to **Listener** (usually on a high-numbered port like 7000+).
-2. **Initiator** sends `PASS` and `CAPAB`.
-3. **Listener** sends `PASS` and `CAPAB`.
-4. **Initiator** sends `SERVER` (introducing itself).
-5. **Listener** sends `SERVER`.
-6. Both servers send `SVINFO` (protocol version check).
-7. Authorization logic runs (password match, IP check).
-8. **Burst Phase** begins.
-
-### Commands
-
-#### `PASS`
-`PASS <password> TS <ts_version> :<sid>`
-- `password`: The shared secret key from `link` block.
-- `TS`: Timestamp protocol version (must be 6).
-- `sid`: The local server's unique 3-digit Server ID (e.g., `001`).
-
-#### `CAPAB`
-`CAPAB :<capabilities>`
-Advertises supported features.
-- `QS`: Can handle Quit Storms.
-- `EX`: Extended messages.
-- `CHW`: Channel modes.
-- `IE`: Invite exceptions.
-- `EOB`: End of Burst support.
-- `KLN`: K-Line support.
-- `UNKLN`: Un-K-Line support.
-- `KNOCK`: Knock command support.
-- `TB`: Topic burst support.
-- `ENCAP`: Encapsulated commands.
-- `SERVICES`: Services integration support.
-
-#### `SERVER`
-`SERVER <name> <hopcount> <description>`
-- `name`: The server's hostname (e.g., `irc.example.com`).
-- `hopcount`: Distance from sender (1 for direct link).
-- `description`: Human-readable info.
-
-#### `SVINFO`
-`SVINFO <version> <min_version> <serial> :<current_time>`
-Used to verify protocol compatibility.
-- `version`: Current TS version (6).
-- `min_version`: Minimum supported TS version (6).
-- `serial`: 0.
-- `current_time`: Unix timestamp.
+slircd-ng uses a **TS6-like server-to-server protocol** with CRDT extensions for distributed state synchronization. The implementation is in `src/sync/` (manager, handshake, burst, link, topology, netsplit) and `src/handlers/server/` (message handlers).
 
 ---
 
-## 2. State Synchronization (The Burst)
+## Architecture
 
-After handshake, servers exchange their full state. This is called "bursting".
-
-### User Handlers (`UID`)
-`:<sid> UID <nick> <hops> <ts> <user> <host> <ip> <uid> <modes> :<realname>`
-Introduces a new user to the network.
-- `sid`: Source Server ID.
-- `uid`: Unique User ID (9 chars, starts with SID).
-- `ts`: Nickname TS (for collision resolution).
-
-### Channel Handlers (`SJOIN`)
-`:<sid> SJOIN <ts> <channel> <modes> [args...] :<uids>`
-Syncs a channel and its members.
-- `ts`: Channel creation TS.
-- `uids`: List of UIDs to join. Prefixes (e.g., `@`, `+`) denote status.
-
-### Bandlers/X-Lines
-- `ADDLINE <type> <mask> <who> <set_time> <expire_time> :<reason>`
-    - `type`: `Z` (IP ban), `G` (G-Line), `Q` (Q-Line), `E` (K-Line exception).
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        SyncManager                               │
+│                                                                   │
+│  ┌──────────┐  ┌───────────────┐  ┌────────────┐  ┌──────────┐ │
+│  │  Peers   │  │   Topology    │  │  Heartbeat │  │ Observer │ │
+│  │ DashMap  │  │ Spanning Tree │  │  PING/PONG │  │  CRDT    │ │
+│  │ Per-Link │  │ SID → hops   │  │  30s / 90s │  │ Propagate│ │
+│  └──────────┘  └───────────────┘  └────────────┘  └──────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 3. Runtime Protocol
+## Configuration
 
-Once synced, servers exchange real-time messages.
+```toml
+# S2S link block
+[[link]]
+name = "hub.example.net"
+address = "192.168.1.1:6668"
+send_password = "linkpass123"
+receive_password = "linkpass123"
+autoconnect = true
+tls = false
 
-### Routing
-Messages are routed using **UIDs** for users and **SIDs** for servers.
-`:<source_uid> PRIVMSG <target_uid> :Hello world`
+# S2S TLS listener (optional)
+[s2s_tls]
+address = "0.0.0.0:6698"
+cert_path = "certs/server.crt"
+key_path = "certs/server.key"
 
-### Command Extensions (`ENCAP`)
-`:<source> ENCAP <target_server_mask> <subcommand> [args...]`
-Used for commands that don't have a native TS6 opcode or need to target specific servers.
-
-Supported Subcommands:
-- `CHGHOST <uid> <new_host>`: Changes a user's visible hostname.
-- `REALHOST <uid> <real_host>`: Updates internal real hostname.
-- `LOGIN <uid> <account_name>`: Associates user with services account.
-- `CERTFP <uid> <fingerprint>`: Propagates TLS client cert fingerprint.
-
-### Network Topology
-- `SQUIT <sid> :<reason>`: Signals a server text-split.
-- `PONG <sid>`: Reply to PING from specific server.
+# Plaintext S2S listener (optional, not recommended for production)
+[s2s]
+address = "0.0.0.0:6668"
+```
 
 ---
 
-## 4. Slircd-ng Extensions
+## Handshake Protocol (`src/sync/handshake.rs`)
 
-Specific behaviors unique to `slircd-ng` or strict checks we enforce.
+### State Machine
 
-### Strict SID Format
-We strictly enforce the 3-digit SID format (e.g., `001`, `00A`, `XYZ`). Legacy numeric SIDs are supported but mapped to this format.
+```
+WaitingForPass → WaitingForCapab → WaitingForServer → WaitingForSvinfo → Complete
+```
 
-### UTF-8 Only
-All text (nicks, topics, realnames) MUST be valid UTF-8. Invalid sequences are replaced or dropped.
+### Sequence (both sides simultaneously)
 
-### Atomic Bursts
-We buffer the entire initial burst before applying it to the local state to ensure consistency. If `EOB` (End of Burst) is not received within a timeout, the link is dropped.
+```
+Server A                          Server B
+────────                          ────────
+PASS <password> TS 6 <SID>  →
+                             ←    PASS <password> TS 6 <SID>
+CAPAB :<capabilities>       →
+                             ←    CAPAB :<capabilities>
+SERVER <name> <hop> :<desc>  →
+                             ←    SERVER <name> <hop> :<desc>
+SVINFO 6 6 0 :<timestamp>   →
+                             ←    SVINFO 6 6 0 :<timestamp>
+<burst>                      →
+                             ←    <burst>
+```
+
+### PASS Format
+
+```
+PASS <password> TS 6 <SID>
+```
+- `TS 6` — TS6 protocol version
+- `<SID>` — 3-character Server ID
+
+### CAPAB
+
+Capabilities exchanged during handshake:
+
+| Token | Description |
+|-------|-------------|
+| `QS` | QuitStorm (efficient netsplit handling) |
+| `ENCAP` | Encapsulated commands for extensions |
+| `EX` | Ban exceptions (+e mode) |
+| `IE` | Invite exceptions (+I mode) |
+| `KLN` | K-line propagation |
+| `UNKLN` | K-line removal propagation |
+| `GLN` | G-line propagation |
+| `HOPS` | Hop count in topology |
+| `CHW` | Channel half-ops/owner support |
+| `KNOCK` | Channel knock support |
+| `SERVICES` | Services integration |
+
+### Verification
+
+- Remote server name must match a configured `[[link]]` block
+- Password is validated against `receive_password`
+- SID must be unique on the network
+
+---
+
+## State Burst (`src/sync/burst.rs`)
+
+After handshake completes, each server sends its full state to the peer. Burst order is critical for consistency:
+
+### 1. Global Bans (first)
+```
+:<SID> ENCAP * GLINE <mask> <duration> :<reason>
+:<SID> ENCAP * SHUN <mask> <duration> :<reason>
+:<SID> ENCAP * ZLINE <mask> <duration> :<reason>
+```
+Sent first to prevent race conditions where a banned user could join channels during burst.
+
+### 2. Users (UID)
+```
+:<SID> UID <nick> <hopcount> <timestamp> <modes> <username> <hostname> <IP> <UID> :<realname>
+```
+- Only local users are sent (split-horizon: skip users from target server's SID)
+- CRDT merge on receiving end handles nick collisions
+
+### 3. Channels (SJOIN)
+```
+:<SID> SJOIN <timestamp> <channel> <modes> [<modeargs>] :<members>
+```
+- Members prefixed with status chars: `@` (op), `+` (voice), etc.
+- Channel modes and arguments included
+
+### 4. Topics (TB)
+```
+:<SID> TB <channel> <timestamp> <setter> :<topic>
+```
+
+### 5. Topology (SID)
+```
+:<SID> SID <name> <hopcount+1> <SID> :<description>
+```
+Known servers propagated with incremented hop count.
+
+---
+
+## Operational Messages
+
+### User Introduction
+```
+:<SID> UID <nick> <hop> <ts> <modes> <user> <host> <ip> <uid> :<realname>
+```
+Received via `ServerHandler` in `src/handlers/server/uid.rs`. CRDT merge with nick collision resolution: older timestamp wins, ties kill both users.
+
+### Channel Mode Change
+```
+:<SID> TMODE <timestamp> <channel> <modes> [<args>...]
+```
+Timestamped mode changes for conflict resolution.
+
+### Message Routing
+```
+:<prefix> PRIVMSG <target> :<text>
+:<prefix> NOTICE <target> :<text>
+```
+Routed via `src/handlers/server/routing.rs`. Target can be a channel (broadcast locally) or a UID (forward to correct server via SID prefix routing).
+
+### ENCAP (Encapsulated Commands)
+```
+:<SID> ENCAP <target> <command> [<args>...]
+```
+Used for: CHGHOST, REALHOST, CERTFP, METADATA, and ban propagation.
+
+### Kick/Kill Propagation
+```
+:<prefix> KICK <channel> <target> :<reason>
+:<prefix> KILL <target> :<reason>
+```
+
+---
+
+## Message Routing
+
+### UID-Based Routing
+1. Extract target UID from message
+2. First 3 characters of UID = target SID
+3. Look up next-hop peer for target SID in topology
+4. Forward message to that peer's send channel
+
+### Router Task (in `main.rs`)
+A dedicated Tokio task processes `router_tx` messages:
+- Checks `x-target-uid` tag for explicit routing
+- Falls back to command target parsing
+- Looks up SID prefix → peer mapping
+- Forwards via peer's `tx` channel
+
+---
+
+## Netsplit Handling (`src/sync/split.rs`)
+
+When a link drops:
+
+1. **Detect**: Connection error or heartbeat timeout (90s)
+2. **Compute scope**: `topology.downstream_sids(lost_sid)` → all affected SIDs
+3. **Mass QUIT**: Collect all users whose UID prefix matches affected SIDs
+4. **Build QUIT messages**: Reason format: `<local_server> <remote_server>`
+5. **Remove users**: Via `user_manager.remove_user()` (handles stats, metrics)
+6. **Cleanup topology**: Remove affected SID entries
+
+---
+
+## Heartbeat
+
+- **PING interval**: Every 30 seconds
+- **Timeout**: 90 seconds without PONG
+- Runs as background task via `sync_manager.start_heartbeat()`
+- Uses shutdown signal for graceful termination
+
+---
+
+## Topology (`src/sync/network.rs`)
+
+Spanning tree representation:
+- Maps `ServerId` → `ServerEntry` (name, description, hop count, upstream SID)
+- Supports: `add_server()`, `remove_server()`, `downstream_sids()`, `route_to()`
+- Used for message routing and netsplit scope calculation
+
+---
+
+## Observer Pattern (`src/sync/observer.rs`)
+
+`UserManager` and `ChannelManager` notify the `SyncManager` of state changes:
+- User registration/nick change → broadcast UID/NICK to peers
+- Channel create/mode change → broadcast SJOIN/TMODE to peers
+- Enables CRDT propagation without tight coupling
+
+---
+
+## S2S Flood Protection
+
+Rate limiting applied to S2S connections using the same Governor-based system as client connections, with separate configuration.
