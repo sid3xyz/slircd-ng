@@ -150,7 +150,7 @@ async fn perform_sasl_plain_auth(
     }
 
     // Initiate SASL PLAIN
-    client.send_raw(&format!("AUTHENTICATE PLAIN\r\n")).await?;
+    client.send_raw("AUTHENTICATE PLAIN\r\n").await?;
 
     // Wait for AUTHENTICATE + prompt
     loop {
@@ -184,7 +184,7 @@ async fn perform_sasl_plain_auth(
             }
             Err(e) => {
                 eprintln!("Error during SASL: {}", e);
-                return Err(e.into());
+                return Err(e);
             }
         }
     }

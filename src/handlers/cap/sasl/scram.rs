@@ -231,12 +231,11 @@ pub(crate) async fn handle_scram_client_final<S: SessionState + SaslAccess>(
 
         if ctx.state.is_registered() {
             // Fetch account to get metadata (SCRAM verify doesn't return it)
-            if let Ok(Some(account)) = ctx.db.accounts().find_by_name(account_name).await {
-                if let Some(user_ref) = ctx.matrix.user_manager.users.get(ctx.uid) {
+            if let Ok(Some(account)) = ctx.db.accounts().find_by_name(account_name).await
+                && let Some(user_ref) = ctx.matrix.user_manager.users.get(ctx.uid) {
                     let mut user = user_ref.write().await;
                     user.metadata = account.metadata;
                 }
-            }
 
             broadcast_account_change(ctx, nick, account_name).await;
         }

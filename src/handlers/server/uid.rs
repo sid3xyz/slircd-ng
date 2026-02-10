@@ -148,7 +148,7 @@ mod tests {
         assert_eq!(crdt.user.value(), "alice");
         assert_eq!(crdt.host.value(), "example.com");
         assert_eq!(crdt.realname.value(), "Alice Wonderland");
-        assert_eq!(*crdt.modes.invisible.value(), true);
+        assert!(*crdt.modes.invisible.value());
     }
 
     #[test]
@@ -165,14 +165,14 @@ mod tests {
             &source,
         );
 
-        assert_eq!(*crdt.modes.invisible.value(), true);
-        assert_eq!(*crdt.modes.wallops.value(), true);
-        assert_eq!(*crdt.modes.oper.value(), true);
-        assert_eq!(*crdt.modes.registered.value(), true);
-        assert_eq!(*crdt.modes.secure.value(), true);
-        assert_eq!(*crdt.modes.registered_only.value(), true);
-        assert_eq!(*crdt.modes.no_ctcp.value(), true);
-        assert_eq!(*crdt.modes.bot.value(), true);
+        assert!(*crdt.modes.invisible.value());
+        assert!(*crdt.modes.wallops.value());
+        assert!(*crdt.modes.oper.value());
+        assert!(*crdt.modes.registered.value());
+        assert!(*crdt.modes.secure.value());
+        assert!(*crdt.modes.registered_only.value());
+        assert!(*crdt.modes.no_ctcp.value());
+        assert!(*crdt.modes.bot.value());
     }
 
     #[test]
@@ -189,9 +189,9 @@ mod tests {
             &source,
         );
 
-        assert_eq!(*crdt.modes.invisible.value(), false);
-        assert_eq!(*crdt.modes.wallops.value(), false);
-        assert_eq!(*crdt.modes.oper.value(), false);
+        assert!(!(*crdt.modes.invisible.value()));
+        assert!(!(*crdt.modes.wallops.value()));
+        assert!(!(*crdt.modes.oper.value()));
     }
 
     #[test]
@@ -231,8 +231,8 @@ mod tests {
 
         apply_user_modes_to_crdt(&mut crdt, "", timestamp);
 
-        assert_eq!(*crdt.modes.invisible.value(), false);
-        assert_eq!(*crdt.modes.oper.value(), false);
+        assert!(!(*crdt.modes.invisible.value()));
+        assert!(!(*crdt.modes.oper.value()));
     }
 
     #[test]
@@ -253,9 +253,9 @@ mod tests {
         let modes_ts = base_ts.increment();
         apply_user_modes_to_crdt(&mut crdt, "+ow", modes_ts);
 
-        assert_eq!(*crdt.modes.oper.value(), true);
-        assert_eq!(*crdt.modes.wallops.value(), true);
-        assert_eq!(*crdt.modes.invisible.value(), false);
+        assert!(*crdt.modes.oper.value());
+        assert!(*crdt.modes.wallops.value());
+        assert!(!(*crdt.modes.invisible.value()));
     }
 
     #[test]
@@ -277,7 +277,7 @@ mod tests {
         apply_user_modes_to_crdt(&mut crdt, "+iXYZ", modes_ts);
 
         // Should only set 'i', ignore X, Y, Z
-        assert_eq!(*crdt.modes.invisible.value(), true);
-        assert_eq!(*crdt.modes.oper.value(), false);
+        assert!(*crdt.modes.invisible.value());
+        assert!(!(*crdt.modes.oper.value()));
     }
 }

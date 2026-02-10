@@ -219,39 +219,49 @@ mod tests {
 
     #[test]
     fn test_get_member_prefixes_op_single() {
-        let mut modes = MemberModes::default();
-        modes.op = true;
+        let modes = MemberModes {
+            op: true,
+            ..Default::default()
+        };
         assert_eq!(get_member_prefixes(&modes, false), "@");
     }
 
     #[test]
     fn test_get_member_prefixes_op_multi() {
-        let mut modes = MemberModes::default();
-        modes.op = true;
+        let modes = MemberModes {
+            op: true,
+            ..Default::default()
+        };
         assert_eq!(get_member_prefixes(&modes, true), "@");
     }
 
     #[test]
     fn test_get_member_prefixes_voice_single() {
-        let mut modes = MemberModes::default();
-        modes.voice = true;
+        let modes = MemberModes {
+            voice: true,
+            ..Default::default()
+        };
         assert_eq!(get_member_prefixes(&modes, false), "+");
     }
 
     #[test]
     fn test_get_member_prefixes_op_voice_single() {
-        let mut modes = MemberModes::default();
-        modes.op = true;
-        modes.voice = true;
+        let modes = MemberModes {
+            op: true,
+            voice: true,
+            ..Default::default()
+        };
         // Should return highest rank only
         assert_eq!(get_member_prefixes(&modes, false), "@");
     }
 
     #[test]
     fn test_get_member_prefixes_op_voice_multi() {
-        let mut modes = MemberModes::default();
-        modes.op = true;
-        modes.voice = true;
+        let modes = MemberModes {
+            op: true,
+            voice: true,
+            ..Default::default()
+        };
         // Should return all prefixes
         assert_eq!(get_member_prefixes(&modes, true), "@+");
     }

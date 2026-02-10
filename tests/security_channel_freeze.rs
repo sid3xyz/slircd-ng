@@ -22,7 +22,7 @@ async fn test_channel_freeze_protection() {
             .unwrap();
         // Read welcome to ensure registration
         let mut buf = [0u8; 512];
-        stream.read(&mut buf).unwrap();
+        let _ = stream.read(&mut buf).unwrap();
         stream
             .write_all(format!("JOIN {}\r\n", channel).as_bytes())
             .unwrap();
@@ -100,7 +100,7 @@ async fn test_mode_freeze() {
             .write_all(b"NICK victim\r\nUSER victim 0 * :Victim\r\n")
             .unwrap();
         let mut buf = [0u8; 512];
-        stream.read(&mut buf).unwrap();
+        let _ = stream.read(&mut buf).unwrap();
         stream
             .write_all(format!("JOIN {}\r\n", channel).as_bytes())
             .unwrap();

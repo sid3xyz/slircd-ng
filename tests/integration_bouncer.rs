@@ -36,11 +36,10 @@ async fn perform_sasl_auth(
     // 4. Wait for +
     loop {
         let msg = client.recv().await?;
-        if let Command::AUTHENTICATE(data) = &msg.command {
-            if data == "+" {
+        if let Command::AUTHENTICATE(data) = &msg.command
+            && data == "+" {
                 break;
             }
-        }
     }
 
     // 5. Send Credentials

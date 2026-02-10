@@ -51,19 +51,19 @@ fn test_handshake_flow() {
     let svinfo1 = Command::SVINFO(6, 6, 0, 1234567890);
 
     // 2 processes PASS
-    let res = machine2.step(pass1, &[link2.clone()]).unwrap();
+    let res = machine2.step(pass1, std::slice::from_ref(&link2)).unwrap();
     assert!(res.is_empty());
 
     // 2 processes CAPAB
-    let res = machine2.step(capab1, &[link2.clone()]).unwrap();
+    let res = machine2.step(capab1, std::slice::from_ref(&link2)).unwrap();
     assert!(res.is_empty());
 
     // 2 processes SERVER
-    let res = machine2.step(server1, &[link2.clone()]).unwrap();
+    let res = machine2.step(server1, std::slice::from_ref(&link2)).unwrap();
     assert!(res.is_empty()); // Not complete yet, waiting for SVINFO
 
     // 4. SVINFO1 from 1 - now 2 is complete
-    let res = machine2.step(svinfo1, &[link2.clone()]).unwrap();
+    let res = machine2.step(svinfo1, std::slice::from_ref(&link2)).unwrap();
     assert_eq!(machine2.state, HandshakeState::Bursting);
     assert_eq!(res.len(), 4); // Should send PASS, CAPAB, SERVER, SVINFO back
 
@@ -89,11 +89,11 @@ fn test_handshake_flow() {
     let svinfo2 = res[3].clone();
 
     // 1 processes PASS from 2
-    let res = machine1.step(pass2, &[link1.clone()]).unwrap();
+    let res = machine1.step(pass2, std::slice::from_ref(&link1)).unwrap();
     assert!(res.is_empty());
 
     // 1 processes CAPAB from 2
-    let res = machine1.step(capab2, &[link1.clone()]).unwrap();
+    let res = machine1.step(capab2, std::slice::from_ref(&link1)).unwrap();
     assert!(res.is_empty());
     // Verify CAPAB exchange (2 should have sent all SUPPORTED_CAPABS)
     assert!(
@@ -112,11 +112,11 @@ fn test_handshake_flow() {
     );
 
     // 1 processes SERVER from 2
-    let res = machine1.step(server2, &[link1.clone()]).unwrap();
+    let res = machine1.step(server2, std::slice::from_ref(&link1)).unwrap();
     assert!(res.is_empty());
 
     // 1 processes SVINFO from 2 - now 1 is complete
-    let res = machine1.step(svinfo2, &[link1.clone()]).unwrap();
+    let res = machine1.step(svinfo2, std::slice::from_ref(&link1)).unwrap();
     assert_eq!(machine1.state, HandshakeState::Bursting);
     assert!(res.is_empty());
 }
@@ -135,7 +135,7 @@ fn test_handshake_mismatched_sid() {
                 password: "secret".to_string(),
                 sid: "002".to_string(),
             },
-            &[link.clone()],
+            std::slice::from_ref(&link),
         )
         .unwrap();
 
@@ -169,11 +169,11 @@ fn test_handshake_authentication_failure() {
                 password: "wrong".to_string(),
                 sid: "002".to_string(),
             },
-            &[link.clone()],
+            std::slice::from_ref(&link),
         )
         .unwrap();
     machine
-        .step(Command::CAPAB(vec![]), &[link.clone()])
+        .step(Command::CAPAB(vec![]), std::slice::from_ref(&link))
         .unwrap();
     machine
         .step(
@@ -183,7 +183,7 @@ fn test_handshake_authentication_failure() {
                 "002".to_string(),
                 "desc".to_string(),
             ),
-            &[link.clone()],
+            std::slice::from_ref(&link),
         )
         .unwrap();
 

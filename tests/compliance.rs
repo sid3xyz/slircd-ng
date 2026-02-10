@@ -20,11 +20,10 @@ async fn test_relaymsg_no_cap() {
     // Drain welcome burst
     loop {
         let msg = client.recv().await.expect("Failed to recv during burst");
-        if let Command::Response(resp, _) = &msg.command {
-            if resp.code() == 376 || resp.code() == 422 {
+        if let Command::Response(resp, _) = &msg.command
+            && (resp.code() == 376 || resp.code() == 422) {
                 break;
             }
-        }
     }
 
     // Attempt RELAYMSG
@@ -146,11 +145,10 @@ async fn test_relaymsg_with_cap() {
     // 7. Wait for Welcome
     loop {
         let m = client.recv().await.expect("Failed recv Welcome");
-        if let Command::Response(resp, _) = &m.command {
-            if resp.code() == 1 {
+        if let Command::Response(resp, _) = &m.command
+            && resp.code() == 1 {
                 break;
             }
-        }
     }
 }
 
@@ -252,11 +250,10 @@ async fn test_chathistory_compliance() {
     // Wait for Bob welcome
     loop {
         let m = bob.recv().await.expect("Bob recv Welcome");
-        if let Command::Response(resp, _) = &m.command {
-            if resp.code() == 1 {
+        if let Command::Response(resp, _) = &m.command
+            && resp.code() == 1 {
                 break;
             }
-        }
     }
 
     // Bob must join the channel to see history
@@ -284,11 +281,10 @@ async fn test_chathistory_compliance() {
             Command::BATCH(ref reference, ref type_arg, _) => {
                 if let Some(id) = reference.strip_prefix('+') {
                     // Start of batch
-                    if let Some(slirc_proto::BatchSubCommand::CUSTOM(t)) = type_arg {
-                        if t == "CHATHISTORY" {
+                    if let Some(slirc_proto::BatchSubCommand::CUSTOM(t)) = type_arg
+                        && t == "CHATHISTORY" {
                             batch_id = Some(id.to_string());
                         }
-                    }
                 } else if let Some(id) = reference.strip_prefix('-') {
                     // End of batch
                     assert_eq!(batch_id.as_deref(), Some(id), "Batch ID mismatch");

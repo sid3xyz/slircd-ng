@@ -303,8 +303,10 @@ mod tests {
 
     #[test]
     fn test_get_member_prefix_single() {
-        let mut modes = MemberModes::default();
-        modes.op = true;
+        let mut modes = MemberModes {
+            op: true,
+            ..Default::default()
+        };
         assert_eq!(get_member_prefix(&modes, false), "@");
 
         modes.voice = true; // op > voice
@@ -313,9 +315,11 @@ mod tests {
 
     #[test]
     fn test_get_member_prefix_multi() {
-        let mut modes = MemberModes::default();
-        modes.op = true;
-        modes.voice = true;
+        let modes = MemberModes {
+            op: true,
+            voice: true,
+            ..Default::default()
+        };
         assert_eq!(get_member_prefix(&modes, true), "@+");
     }
 

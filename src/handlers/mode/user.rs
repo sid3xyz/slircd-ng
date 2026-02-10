@@ -246,8 +246,10 @@ mod tests {
 
     #[test]
     fn test_apply_user_modes_remove() {
-        let mut modes = UserModes::default();
-        modes.invisible = true;
+        let mut modes = UserModes {
+            invisible: true,
+            ..Default::default()
+        };
 
         let changes = vec![Mode::Minus(UserMode::Invisible, None)];
         let (applied, _) = apply_user_modes_typed(&mut modes, &changes);

@@ -702,30 +702,36 @@ mod tests {
 
     #[test]
     fn test_unregistered_cannot_register_without_user() {
-        let mut state = UnregisteredState::default();
-        state.nick = Some("test".to_string());
+        let state = UnregisteredState {
+            nick: Some("test".to_string()),
+            ..Default::default()
+        };
         assert!(!state.can_register());
         assert!(state.try_register().is_err());
     }
 
     #[test]
     fn test_unregistered_cannot_register_during_cap_negotiation() {
-        let mut state = UnregisteredState::default();
-        state.nick = Some("test".to_string());
-        state.user = Some("testuser".to_string());
-        state.cap_negotiating = true;
+        let state = UnregisteredState {
+            nick: Some("test".to_string()),
+            user: Some("testuser".to_string()),
+            cap_negotiating: true,
+            ..Default::default()
+        };
         assert!(!state.can_register());
         assert!(state.try_register().is_err());
     }
 
     #[test]
     fn test_successful_registration() {
-        let mut state = UnregisteredState::default();
-        state.nick = Some("test".to_string());
-        state.user = Some("testuser".to_string());
-        state.realname = Some("Test User".to_string());
+        let mut state = UnregisteredState {
+            nick: Some("test".to_string()),
+            user: Some("testuser".to_string()),
+            realname: Some("Test User".to_string()),
+            account: Some("testaccount".to_string()),
+            ..Default::default()
+        };
         state.capabilities.insert("echo-message".to_string());
-        state.account = Some("testaccount".to_string());
 
         assert!(state.can_register());
 

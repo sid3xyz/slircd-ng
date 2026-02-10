@@ -228,8 +228,10 @@ mod tests {
     #[test]
     fn test_cap_list_plaintext_sasl_allowed() {
         // Test non-TLS SASL when allow_plaintext_sasl_plain is true (CAP 302)
-        let mut sec_cfg = SecurityConfig::default();
-        sec_cfg.allow_plaintext_sasl_plain = true;
+        let sec_cfg = SecurityConfig {
+            allow_plaintext_sasl_plain: true,
+            ..Default::default()
+        };
         let caps = build_cap_list_tokens(&make_params_with_sec_cfg(302, false, false, sec_cfg));
 
         assert!(
@@ -242,8 +244,10 @@ mod tests {
     #[test]
     fn test_cap_list_plaintext_sasl_allowed_301() {
         // Test non-TLS SASL when allow_plaintext_sasl_plain is true (CAP 301)
-        let mut sec_cfg = SecurityConfig::default();
-        sec_cfg.allow_plaintext_sasl_plain = true;
+        let sec_cfg = SecurityConfig {
+            allow_plaintext_sasl_plain: true,
+            ..Default::default()
+        };
         let caps = build_cap_list_tokens(&make_params_with_sec_cfg(301, false, false, sec_cfg));
 
         assert!(
@@ -582,8 +586,10 @@ mod tests {
         // Verify that setting allow_plaintext_sasl_plain=true enables SASL on plaintext
         let acct_cfg: &'static AccountRegistrationConfig =
             Box::leak(Box::new(AccountRegistrationConfig::default()));
-        let mut sec_config = SecurityConfig::default();
-        sec_config.allow_plaintext_sasl_plain = true;
+        let sec_config = SecurityConfig {
+            allow_plaintext_sasl_plain: true,
+            ..Default::default()
+        };
         let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_config));
 
         let caps = build_cap_list_tokens(&CapListParams {
@@ -633,8 +639,10 @@ mod tests {
         // Verify that CAP 301 advertises bare 'sasl' on plaintext when allow_plaintext_sasl_plain=true
         let acct_cfg: &'static AccountRegistrationConfig =
             Box::leak(Box::new(AccountRegistrationConfig::default()));
-        let mut sec_config = SecurityConfig::default();
-        sec_config.allow_plaintext_sasl_plain = true;
+        let sec_config = SecurityConfig {
+            allow_plaintext_sasl_plain: true,
+            ..Default::default()
+        };
         let sec_cfg: &'static SecurityConfig = Box::leak(Box::new(sec_config));
 
         let caps = build_cap_list_tokens(&CapListParams {

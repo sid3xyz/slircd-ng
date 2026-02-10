@@ -180,15 +180,14 @@ async fn wait_for_link(client: &mut TestClient, peer_name: &str) -> anyhow::Resu
             .await?;
 
         for msg in msgs {
-            if let Command::Response(resp, params) = msg.command {
-                if resp.code() == 211 && params.len() > 1 && params[1] == peer_name {
+            if let Command::Response(resp, params) = msg.command
+                && resp.code() == 211 && params.len() > 1 && params[1] == peer_name {
                     // Check "open" time or bytes > 0?
                     // Just existence in the list means it's a registered link.
                     // But SyncManager adds it early.
                     // We trust it's connecting.
                     linked = true;
                 }
-            }
         }
 
         if linked {

@@ -25,11 +25,11 @@ async fn test_sasl_buffer_overflow() {
     // Consume CAP ACK - use manual loop since recv_until might not be available or behaves differently
     let mut cap_ack = false;
     for _ in 0..10 {
-        if let Ok(msg) = client.recv_timeout(Duration::from_secs(1)).await {
-            if msg.to_string().contains("CAP") && msg.to_string().contains("ACK") {
-                cap_ack = true;
-                break;
-            }
+        if let Ok(msg) = client.recv_timeout(Duration::from_secs(1)).await
+            && msg.to_string().contains("CAP") && msg.to_string().contains("ACK")
+        {
+            cap_ack = true;
+            break;
         }
     }
     assert!(cap_ack, "Did not receive CAP ACK");
@@ -43,11 +43,11 @@ async fn test_sasl_buffer_overflow() {
     // Wait for challenge (+)
     let mut challenge = false;
     for _ in 0..10 {
-        if let Ok(msg) = client.recv_timeout(Duration::from_secs(1)).await {
-            if msg.to_string().contains("AUTHENTICATE +") {
-                challenge = true;
-                break;
-            }
+        if let Ok(msg) = client.recv_timeout(Duration::from_secs(1)).await
+            && msg.to_string().contains("AUTHENTICATE +")
+        {
+            challenge = true;
+            break;
         }
     }
     assert!(challenge, "Did not receive challenge");

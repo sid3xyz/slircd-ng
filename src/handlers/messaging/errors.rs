@@ -43,6 +43,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[allow(clippy::const_is_empty)]
     fn error_messages_are_not_empty() {
         assert!(!CANNOT_SEND_NOT_IN_CHANNEL.is_empty());
         assert!(!CANNOT_SEND_MODERATED.is_empty());

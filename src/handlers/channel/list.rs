@@ -299,23 +299,31 @@ mod tests {
 
     #[test]
     fn test_list_filter_matches() {
-        let mut f = ListFilter::default();
-        f.min_users = Some(5);
+        let f = ListFilter {
+            min_users: Some(5),
+            ..Default::default()
+        };
         assert!(!f.matches("#chan", 5));
         assert!(f.matches("#chan", 6));
 
-        let mut f = ListFilter::default();
-        f.max_users = Some(5);
+        let f = ListFilter {
+            max_users: Some(5),
+            ..Default::default()
+        };
         assert!(!f.matches("#chan", 5));
         assert!(f.matches("#chan", 4));
 
-        let mut f = ListFilter::default();
-        f.mask = Some("#chan*".to_string());
+        let f = ListFilter {
+            mask: Some("#chan*".to_string()),
+            ..Default::default()
+        };
         assert!(f.matches("#channel", 10));
         assert!(!f.matches("#other", 10));
 
-        let mut f = ListFilter::default();
-        f.negative_mask = Some("*bad*".to_string());
+        let f = ListFilter {
+            negative_mask: Some("*bad*".to_string()),
+            ..Default::default()
+        };
         assert!(!f.matches("#badchan", 10));
         assert!(f.matches("#goodchan", 10));
     }

@@ -36,14 +36,13 @@ async fn who_get_user_host(oper: &mut TestClient, nick: &str) -> (String, String
 
     // Find the 352 reply and extract user/host
     for m in &msgs {
-        if let Command::Response(resp, params) = &m.command {
-            if resp.code() == 352 && params.len() >= 6 {
+        if let Command::Response(resp, params) = &m.command
+            && resp.code() == 352 && params.len() >= 6 {
                 // 352: <me> <channel|*> <user> <host> <server> <nick> <H|G>[*][@|+] :<hopcount> <real name>
                 let user = params[2].clone();
                 let host = params[3].clone();
                 return (user, host);
             }
-        }
     }
     panic!("WHO 352 not found for {}", nick);
 }

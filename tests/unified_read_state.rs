@@ -98,11 +98,10 @@ async fn test_read_marker_sync() {
             .recv()
             .await
             .expect("Failed to receive registration message");
-        if let Command::Response(resp, _) = &msg.command {
-            if resp.code() == 1 {
+        if let Command::Response(resp, _) = &msg.command
+            && resp.code() == 1 {
                 break;
             }
-        }
     }
 
     // 8. Join Channel

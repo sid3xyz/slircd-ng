@@ -197,29 +197,29 @@ async fn test_motd_command() {
         matches!(&m.command, Command::Response(resp, _) if resp.code() == 375 || resp.code() == 422)
     }).expect("MOTD response not found");
 
-    if let Command::Response(resp, _) = &first_msg.command {
-        if resp.code() == 375 {
-            // If MOTD exists, drain RPL_MOTD (372) until RPL_ENDOFMOTD (376)
-            let mut motd_lines = 0;
-            loop {
-                let msg = client.recv_timeout(Duration::from_millis(500)).await;
-                match msg {
-                    Ok(m) => match &m.command {
-                        Command::Response(r, _) if r.code() == 372 => {
-                            motd_lines += 1;
-                        }
-                        Command::Response(r, _) if r.code() == 376 => {
-                            break;
-                        }
-                        _ => continue,
-                    },
-                    Err(_) => panic!("MOTD timed out without RPL_ENDOFMOTD"),
-                }
+    if let Command::Response(resp, _) = &first_msg.command
+        && resp.code() == 375
+    {
+        // If MOTD exists, drain RPL_MOTD (372) until RPL_ENDOFMOTD (376)
+        let mut motd_lines = 0;
+        loop {
+            let msg = client.recv_timeout(Duration::from_millis(500)).await;
+            match msg {
+                Ok(m) => match &m.command {
+                    Command::Response(r, _) if r.code() == 372 => {
+                        motd_lines += 1;
+                    }
+                    Command::Response(r, _) if r.code() == 376 => {
+                        break;
+                    }
+                    _ => continue,
+                },
+                Err(_) => panic!("MOTD timed out without RPL_ENDOFMOTD"),
             }
-            assert!(motd_lines > 0, "MOTD should have at least one line");
         }
-        // ERR_NOMOTD (422) is valid - no MOTD configured
+        assert!(motd_lines > 0, "MOTD should have at least one line");
     }
+    // ERR_NOMOTD (422) is valid - no MOTD configured
 }
 
 #[tokio::test]

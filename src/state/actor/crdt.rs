@@ -393,7 +393,7 @@ impl ChannelActor {
                 // We use ServerId 000 because join_time is a scalar (Unix timestamp)
                 // and we don't have the original SID of the join easily accessible here.
                 // This is a simplified approximation but better than TS=0.
-                HybridTimestamp::new(join_time as i64 * 1000, 0, &ServerId::new("000"))
+                HybridTimestamp::new(join_time * 1000, 0, &ServerId::new("000"))
             } else {
                 base_ts
             };
@@ -472,7 +472,6 @@ impl ChannelActor {
     }
 }
 #[cfg(test)]
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::state::MemberModes;
@@ -533,11 +532,13 @@ mod tests {
         let t1 = HybridTimestamp::new(101, 0, &ServerId::new("001"));
         let t2 = HybridTimestamp::new(102, 0, &ServerId::new("001"));
 
-        let mut modes = MemberModes::default();
-        modes.op = true;
-        modes.op_ts = Some(t1);
-        modes.voice = true;
-        modes.voice_ts = Some(t2);
+        let modes = MemberModes {
+            op: true,
+            op_ts: Some(t1),
+            voice: true,
+            voice_ts: Some(t2),
+            ..Default::default()
+        };
 
         actor.members.insert("user1".to_string(), modes);
 
