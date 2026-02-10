@@ -123,7 +123,7 @@ impl LifecycleManager {
                 loop {
                     tokio::select! {
                         _ = interval.tick() => {
-                            matrix.user_manager.cleanup_whowas(7);
+                            matrix.user_manager.cleanup_whowas();
                             tracing::info!("WHOWAS cleanup completed");
                         }
                         _ = shutdown_rx.recv() => {

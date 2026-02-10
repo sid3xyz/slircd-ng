@@ -59,6 +59,7 @@ pub struct UserManager {
     // WHOWAS limits (Audit Finding #4 DoS protection)
     whowas_maxgroups: usize,
     whowas_groupsize: usize,
+    whowas_entry_ttl_days: i64,
     /// LRU order tracker: front = oldest, back = newest
     whowas_lru: Mutex<VecDeque<String>>,
 
@@ -84,6 +85,7 @@ impl UserManager {
 
             whowas_maxgroups: DEFAULT_WHOWAS_MAXGROUPS,
             whowas_groupsize: DEFAULT_WHOWAS_GROUPSIZE,
+            whowas_entry_ttl_days: 7,
             whowas_lru: Mutex::new(VecDeque::new()),
 
             max_local_users: std::sync::atomic::AtomicUsize::new(0),
@@ -100,9 +102,10 @@ impl UserManager {
     /// Configure WHOWAS limits from config.
     ///
     /// Call this after construction with values from `LimitsConfig`.
-    pub fn configure_whowas(&mut self, maxgroups: usize, groupsize: usize) {
+    pub fn configure_whowas(&mut self, maxgroups: usize, groupsize: usize, entry_ttl_days: i64) {
         self.whowas_maxgroups = maxgroups;
         self.whowas_groupsize = groupsize;
+        self.whowas_entry_ttl_days = entry_ttl_days;
     }
 
     /// Update the last_active timestamp for a user.
@@ -657,15 +660,36 @@ impl UserManager {
 
     /// Clean up expired WHOWAS entries.
     ///
-    /// Removes entries older than 7 days. Call this periodically from a
-    /// maintenance task to prevent unbounded growth.
-    pub fn cleanup_whowas(&self, max_age_days: i64) {
-        let cutoff = chrono::Utc::now().timestamp() - (max_age_days * 24 * 3600);
+    /// Removes entries older than `whowas_entry_ttl_days`. Called hourly by
+    /// the lifecycle maintenance task to prevent unbounded growth.
+    pub fn cleanup_whowas(&self) {
+        let cutoff = chrono::Utc::now().timestamp_millis()
+            - (self.whowas_entry_ttl_days * 24 * 3600 * 1000);
+
+        // Also clean up LRU tracker for removed nicks
+        let removed_nicks: Vec<String> = self
+            .whowas
+            .iter()
+            .filter_map(|entry| {
+                let all_expired = entry.value().iter().all(|e| e.logout_time <= cutoff);
+                if all_expired {
+                    Some(entry.key().clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         self.whowas.retain(|_, entries| {
             entries.retain(|e| e.logout_time > cutoff);
             !entries.is_empty()
         });
+
+        if !removed_nicks.is_empty()
+            && let Ok(mut lru) = self.whowas_lru.lock()
+        {
+            lru.retain(|n| !removed_nicks.contains(n));
+        }
     }
 }
 

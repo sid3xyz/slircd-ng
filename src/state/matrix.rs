@@ -248,6 +248,7 @@ impl Matrix {
         user_manager.configure_whowas(
             config.limits.whowas_maxgroups,
             config.limits.whowas_groupsize,
+            config.limits.whowas_entry_ttl_days,
         );
         user_manager.set_observer(sync_manager_arc.clone());
 
