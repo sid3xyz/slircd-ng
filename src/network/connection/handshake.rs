@@ -357,6 +357,7 @@ pub async fn run_handshake_loop(
                         match transport.upgrade_to_tls(acceptor.clone()).await {
                             Ok(()) => {
                                 unreg_state.is_tls = true;
+                                unreg_state.certfp = super::certfp_from_transport(transport);
                                 info!(uid = %uid, "STARTTLS upgrade successful");
                             }
                             Err(tls_err) => {

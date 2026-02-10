@@ -104,6 +104,11 @@ impl<S> ZeroCopyTransport<S> {
         }
         (self.stream, self.buffer)
     }
+
+    /// Get a reference to the underlying stream.
+    pub fn stream_ref(&self) -> &S {
+        &self.stream
+    }
 }
 
 impl<S: AsyncWrite + Unpin> ZeroCopyTransport<S> {
@@ -160,7 +165,7 @@ impl<S: AsyncWrite + Unpin> ZeroCopyTransport<S> {
         for message in messages {
             write!(&mut buffer, "{}", message).expect("fmt::Write to String cannot fail");
         }
-        
+
         self.stream.write_all(buffer.as_bytes()).await?;
         self.stream.flush().await
     }

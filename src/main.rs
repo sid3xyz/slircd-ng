@@ -58,6 +58,8 @@ async fn main() -> anyhow::Result<()> {
         e
     })?;
 
+    let _ = tokio_rustls::rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     // Initialize tracing based on config
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
@@ -313,7 +315,7 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move {
             while let Some((uid, reason)) = disconnect_rx.recv().await {
                 // Disconnect is asynchronous, but we should log if it somehow fails (unlikely since it returns Vec<String>)
-                 matrix.disconnect_user(&uid, &reason).await;
+                matrix.disconnect_user(&uid, &reason).await;
             }
         });
     }

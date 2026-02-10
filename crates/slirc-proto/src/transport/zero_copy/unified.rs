@@ -177,6 +177,27 @@ impl ZeroCopyTransportEnum {
         }
     }
 
+    /// Get the peer certificate DER bytes for TLS connections.
+    pub fn tls_peer_cert_der(&self) -> Option<Vec<u8>> {
+        match self {
+            Self::Tls(t) => {
+                let (_, conn) = t.stream_ref().get_ref();
+                conn.peer_certificates()
+                    .and_then(|certs| certs.first())
+                    .map(|cert| cert.as_ref().to_vec())
+            }
+            Self::ClientTls(t) => {
+                let (_, conn) = t.stream_ref().get_ref();
+                conn.peer_certificates()
+                    .and_then(|certs| certs.first())
+                    .map(|cert| cert.as_ref().to_vec())
+            }
+            #[cfg(feature = "tokio")]
+            Self::WebSocketTls(_) => None,
+            _ => None,
+        }
+    }
+
     /// Write a borrowed IRC message to the transport (zero-copy forwarding).
     ///
     /// This is optimized for S2S message forwarding and relay scenarios

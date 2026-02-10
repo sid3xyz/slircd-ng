@@ -40,6 +40,7 @@ use server_loop::run_server_loop;
 use crate::db::Database;
 use crate::handlers::Registry;
 use crate::state::{InitiatorData, Matrix, UnregisteredState};
+use sha2::{Digest, Sha256};
 use slirc_proto::Message;
 use slirc_proto::sync::clock::ServerId;
 use slirc_proto::transport::ZeroCopyTransportEnum;
@@ -65,6 +66,21 @@ pub struct Connection {
     starttls_acceptor: Option<TlsAcceptor>,
     /// Data for initiating a server connection.
     initiator_data: Option<InitiatorData>,
+}
+
+fn certfp_from_transport(transport: &ZeroCopyTransportEnum) -> Option<String> {
+    transport.tls_peer_cert_der().map(|der| format_certfp(&der))
+}
+
+fn format_certfp(der: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(der);
+    let digest = hasher.finalize();
+    digest
+        .iter()
+        .map(|byte| format!("{:02X}", byte))
+        .collect::<Vec<_>>()
+        .join(":")
 }
 
 impl Connection {
@@ -179,6 +195,7 @@ impl Connection {
         // Set +Z mode if TLS connection
         if is_tls {
             unreg_state.is_tls = true;
+            unreg_state.certfp = certfp_from_transport(&self.transport);
         }
 
         // Track unregistered connection count for LUSERS
