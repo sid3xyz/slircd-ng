@@ -26,8 +26,8 @@ impl ServerHandler for TbHandler {
 
         let (setter, topic) = if msg.args().len() >= 4 {
             (
-                msg.arg(2).unwrap().to_string(),
-                msg.arg(3).unwrap().to_string(),
+                msg.arg(2).ok_or(HandlerError::NeedMoreParams)?.to_string(),
+                msg.arg(3).ok_or(HandlerError::NeedMoreParams)?.to_string(),
             )
         } else {
             let t = msg.arg(2).ok_or(HandlerError::NeedMoreParams)?;
