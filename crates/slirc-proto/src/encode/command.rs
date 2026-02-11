@@ -462,7 +462,7 @@ impl IrcEncode for Command {
                 relay_from,
                 target,
                 text,
-            } => write_cmd_freeform(w, "RELAYMSG", &[relay_from, target, text]),
+            } => write_cmd_freeform(w, "RELAYMSG", &[target, relay_from, text]),
 
             // Standard Replies
             Command::FAIL(command, code, context) => {

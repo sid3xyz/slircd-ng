@@ -372,7 +372,7 @@ impl fmt::Display for Command {
                 relay_from,
                 target,
                 text,
-            } => write_cmd_freeform(f, "RELAYMSG", &[relay_from, target, text]).map(|_| ()),
+            } => write_cmd_freeform(f, "RELAYMSG", &[target, relay_from, text]).map(|_| ()),
             Command::FAIL(command, code, context) => {
                 write_standard_reply(f, "FAIL", command.as_str(), code.as_str(), context)
                     .map(|_| ())

@@ -13,7 +13,9 @@ async fn test_relaymsg_no_cap() {
         .await
         .expect("Failed to spawn server");
 
-    // 1. Client without capability
+    // Client without draft/relaymsg CAP should still be able to use RELAYMSG
+    // (the CAP only controls whether recipients get the draft/relaymsg tag),
+    // but will fail because they lack channel operator privileges.
     let mut client = server.connect("NoCap").await.expect("Failed to connect");
     client.register().await.expect("Failed to register");
 
@@ -26,7 +28,7 @@ async fn test_relaymsg_no_cap() {
             }
     }
 
-    // Attempt RELAYMSG
+    // Attempt RELAYMSG on a channel we're not in
     client
         .send(Command::Raw(
             "RELAYMSG #test other/net :hello".to_string(),
@@ -35,20 +37,22 @@ async fn test_relaymsg_no_cap() {
         .await
         .expect("Failed to send");
 
-    // Expect FAIL or UNKNOWN (421)
+    // Expect FAIL PRIVS_NEEDED (not in channel / not an op)
     let msg = client.recv().await.expect("Failed to recv");
-    match msg.command {
-        Command::Response(resp, _) if resp.code() == 421 => {
-            // ERR_UNKNOWNCOMMAND (expected)
+    let is_fail = match &msg.command {
+        Command::FAIL(cmd, code, _) => cmd == "RELAYMSG" && code == "PRIVS_NEEDED",
+        Command::Raw(cmd, args) => {
+            cmd == "FAIL"
+                && args.first().is_some_and(|a| a == "RELAYMSG")
+                && args.get(1).is_some_and(|a| a == "PRIVS_NEEDED")
         }
-        Command::FAIL(cmd, _, _) if cmd == "RELAYMSG" => {
-            // Also acceptable
-        }
-        _ => panic!(
-            "Expected ERR_UNKNOWNCOMMAND (421) for missing CAP, got: {:?}",
-            msg
-        ),
-    }
+        _ => false,
+    };
+    assert!(
+        is_fail,
+        "Expected FAIL RELAYMSG PRIVS_NEEDED, got: {:?}",
+        msg
+    );
 }
 
 #[tokio::test]

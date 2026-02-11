@@ -34,22 +34,18 @@ impl PostRegHandler for RelayMsgHandler {
         ctx: &mut Context<'_, RegisteredState>,
         msg: &MessageRef<'_>,
     ) -> HandlerResult {
-        // Extract RELAYMSG parameters
-        // Proto now correctly parses: RELAYMSG <target> <relay_from> <text>
-        let relay_from = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
-        let target = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
+        // Extract RELAYMSG parameters: RELAYMSG <target> <relay_from> <text>
+        let target = msg.arg(0).ok_or(HandlerError::NeedMoreParams)?;
+        let relay_from = msg.arg(1).ok_or(HandlerError::NeedMoreParams)?;
         let text = msg.arg(2).ok_or(HandlerError::NeedMoreParams)?;
 
         if relay_from.is_empty() || target.is_empty() || text.is_empty() {
             return Err(HandlerError::NeedMoreParams);
         }
 
-        // Enforce draft/relaymsg capability (Audit Fix)
-        if !ctx.state.capabilities.contains("draft/relaymsg") {
-            // If client hasn't enabled the CAP, we treat it as unknown command
-            // to avoid leaking existence/functionality.
-            return Err(HandlerError::UnknownCommand("RELAYMSG".to_string()));
-        }
+        // Note: The draft/relaymsg CAP controls whether recipients receive the
+        // `draft/relaymsg=<sender>` tag — it does NOT gate command usage.
+        // Channel operators can use RELAYMSG without requesting the CAP.
 
         // Validate relay_from nick format FIRST (before oper check)
         // Valid format: "nick/service" (e.g., "smt/discord")
