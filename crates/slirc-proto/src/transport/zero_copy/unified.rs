@@ -193,7 +193,14 @@ impl ZeroCopyTransportEnum {
                     .map(|cert| cert.as_ref().to_vec())
             }
             #[cfg(feature = "tokio")]
-            Self::WebSocketTls(_) => None,
+            Self::WebSocketTls(t) => {
+                let ws_stream = t.stream_ref();
+                let tls_stream = ws_stream.get_ref();
+                let (_, conn) = tls_stream.get_ref();
+                conn.peer_certificates()
+                    .and_then(|certs| certs.first())
+                    .map(|cert| cert.as_ref().to_vec())
+            }
             _ => None,
         }
     }

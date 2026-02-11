@@ -53,6 +53,11 @@ impl<S> ZeroCopyWebSocketTransport<S> {
     pub fn set_max_line_len(&mut self, len: usize) {
         self.max_line_len = len;
     }
+
+    /// Get a reference to the inner WebSocket stream.
+    pub fn stream_ref(&self) -> &WebSocketStream<S> {
+        &self.stream
+    }
 }
 
 impl<S> ZeroCopyWebSocketTransport<S>
