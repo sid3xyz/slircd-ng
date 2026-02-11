@@ -140,6 +140,8 @@ pub struct HotConfig {
     pub oper_blocks: Vec<OperBlock>,
     /// Admin info lines (RPL_ADMINLOC1, RPL_ADMINLOC2, RPL_ADMINEMAIL).
     pub admin_info: (Option<String>, Option<String>, Option<String>),
+    /// ZNC playback max messages per target (history.znc-maxmessages).
+    pub znc_maxmessages: Option<usize>,
 }
 
 impl HotConfig {
@@ -154,6 +156,7 @@ impl HotConfig {
                 config.server.admin_info2.clone(),
                 config.server.admin_email.clone(),
             ),
+            znc_maxmessages: config.history.znc_maxmessages,
         }
     }
 }

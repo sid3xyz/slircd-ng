@@ -285,8 +285,18 @@ impl ServerHandler for RoutedMessageHandler {
                 _ => return Ok(()),
             };
 
+            // Strip internal routing tags before delivery to local clients
+            let filtered_tags = tags.map(|tags| {
+                tags.into_iter()
+                    .filter(|tag| {
+                        let key = tag.0.as_ref();
+                        key != "x-target-uid" && key != "x-visible-target"
+                    })
+                    .collect::<Vec<_>>()
+            }).and_then(|tags| if tags.is_empty() { None } else { Some(tags) });
+
             let out_msg = Message {
-                tags,
+                tags: filtered_tags,
                 prefix: Some(source_mask),
                 command: cmd,
             };

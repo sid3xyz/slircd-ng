@@ -73,6 +73,9 @@ impl Playback {
             out = out.with_tag("time", Some(msg.timestamp_iso()));
         }
 
+        // Always include msgid so clients can correlate with original messages
+        out = out.with_tag("msgid", Some(msg.msgid.clone()));
+
         ServiceEffect::Reply {
             target_uid: uid.to_string(),
             msg: out,
@@ -268,7 +271,7 @@ impl Service for Playback {
             // play <channel> <start>
             (Some(tgt), Some(start), None) if tgt.starts_with('#') || tgt.starts_with('&') => {
                 if let Some(start_ns) = Self::parse_unix_ts_nanos(start) {
-                    let limit = 50; // ZNC playback default limit
+                    let limit = matrix.hot_config.read().znc_maxmessages.unwrap_or(50);
                     let q = HistoryQuery {
                         target: tgt.to_string(),
                         start: Some(start_ns + 1_000_000),

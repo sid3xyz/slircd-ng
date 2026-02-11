@@ -412,7 +412,7 @@ impl ChannelActor {
             }
 
             // Innovation 2: Routing tags for remote users
-            let is_target_remote = !target_uid.starts_with(self.server_id.as_str());
+            let is_target_remote = !target_uid.is_empty() && !target_uid.starts_with(self.server_id.as_str());
             if is_target_remote {
                 recipient_tags.push(Tag(
                     Cow::Owned("x-target-uid".to_string()),

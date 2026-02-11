@@ -265,10 +265,29 @@ impl PostRegHandler for NamesHandler {
 
         if let Some(channel_name) = target_channel {
             let channels: Vec<&str> = channel_name.split(',').collect();
-            for chan in channels {
-                // For specific channels, we ALWAYS send RPL_ENDOFNAMES per channel
-                self.process_single_channel_names(ctx, chan, nick, multi_prefix, true)
-                    .await?;
+            if channels.len() > 1 {
+                // Multi-channel NAMES: send RPL_NAMREPLY for each, then a single RPL_ENDOFNAMES
+                for chan in &channels {
+                    self.process_single_channel_names(ctx, chan, nick, multi_prefix, false)
+                        .await?;
+                }
+                // Single combined RPL_ENDOFNAMES with original comma-separated target
+                let end_names = server_reply(
+                    ctx.server_name(),
+                    Response::RPL_ENDOFNAMES,
+                    vec![
+                        nick.to_string(),
+                        channel_name.to_string(),
+                        "End of /NAMES list".to_string(),
+                    ],
+                );
+                ctx.sender.send(end_names).await?;
+            } else {
+                // Single channel NAMES: send RPL_NAMREPLY + RPL_ENDOFNAMES
+                for chan in &channels {
+                    self.process_single_channel_names(ctx, chan, nick, multi_prefix, true)
+                        .await?;
+                }
             }
             return Ok(());
         }

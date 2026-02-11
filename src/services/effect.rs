@@ -163,12 +163,17 @@ pub async fn apply_effect(
 async fn apply_effect_impl(
     matrix: &Arc<Matrix>,
     _nick: &str,
-    _sender: Option<&ResponseMiddleware<'_>>,
+    sender: Option<&ResponseMiddleware<'_>>,
     effect: ServiceEffect,
 ) {
     match effect {
         ServiceEffect::Reply { target_uid, msg } => {
-            if let Some(nick) = resolve_user_nick(matrix, &target_uid).await {
+            // Use the caller's ResponseMiddleware when available to ensure replies
+            // are routed to the correct session (important for multiclient/bouncer
+            // where get_first_sender may return a different session's sender).
+            if let Some(sender) = sender {
+                let _ = sender.send(msg).await;
+            } else if let Some(nick) = resolve_user_nick(matrix, &target_uid).await {
                 route_to_user(matrix, &target_uid, &nick, msg).await;
             }
         }

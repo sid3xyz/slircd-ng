@@ -130,7 +130,8 @@ impl HistoryProvider for RedbProvider {
             }
         }
 
-        let mut messages = Vec::with_capacity(filter.limit);
+        // Cap pre-allocation to avoid capacity overflow when limit is usize::MAX
+        let mut messages = Vec::with_capacity(filter.limit.min(1024));
 
         if filter.reverse {
             for item in range.rev() {

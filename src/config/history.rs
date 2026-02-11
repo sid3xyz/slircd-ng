@@ -16,6 +16,10 @@ pub struct HistoryConfig {
     /// Path to history database file.
     #[serde(default = "default_history_path")]
     pub path: String,
+    /// Maximum number of messages to return for ZNC `play <channel> <start>` form.
+    /// Defaults to 50 if not set.
+    #[serde(default, rename = "znc-maxmessages")]
+    pub znc_maxmessages: Option<usize>,
     /// Event type configuration.
     #[serde(default)]
     pub events: HistoryEventsConfig,
@@ -82,6 +86,7 @@ impl Default for HistoryConfig {
             backend: "none".to_string(),
             path: "history.db".to_string(),
             events: HistoryEventsConfig::default(),
+            znc_maxmessages: None,
         }
     }
 }

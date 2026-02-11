@@ -114,17 +114,16 @@ pub async fn process_message<'a>(
         debug!(error = ?e, "Handler error");
 
         if let crate::handlers::HandlerError::Quit(quit_msg) = e {
-            // Drain pending outgoing messages before quitting
+            // Collect all pending messages + ERROR into a single batch write.
+            // This ensures all messages are written in one TCP segment.
+            let mut batch: Vec<Message> = Vec::new();
             while let Ok(msg) = outgoing_rx.try_recv() {
-                if conn.transport.write_message(&msg).await.is_err() {
-                    return DispatchResult::WriteError;
-                }
+                batch.push((*msg).clone());
             }
-
             let error_reply = super::helpers::closing_link_error(&addr, quit_msg.as_deref());
-            if conn.transport.write_message(&error_reply).await.is_err() {
-                return DispatchResult::WriteError;
-            }
+            batch.push(error_reply);
+
+            let _ = conn.transport.write_messages(&batch).await;
             return DispatchResult::Quit(quit_msg);
         } else {
             // Other errors - send error reply

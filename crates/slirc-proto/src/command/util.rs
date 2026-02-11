@@ -68,11 +68,15 @@ pub fn needs_colon_prefix(s: &str) -> bool {
 }
 
 /// Validate a parameter for IRC injection safety.
+///
+/// Rejects CR and LF which would allow IRC line injection.
+/// NUL bytes are intentionally allowed — they are valid in IRC message content
+/// (e.g., METADATA values) and only problematic in C strings, not Rust strings.
 pub fn validate_param<S: IrcSink + ?Sized>(sink: &S, param: &str) -> Result<(), S::Error> {
     if param
         .as_bytes()
         .iter()
-        .any(|&b| b == b'\r' || b == b'\n' || b == 0)
+        .any(|&b| b == b'\r' || b == b'\n')
     {
         return Err(sink.return_error("Parameter contains invalid control characters"));
     }

@@ -274,6 +274,7 @@ impl UserManager {
     pub async fn add_local_user(&self, user: User) {
         let uid = user.uid.clone();
         let nick_lower = slirc_proto::irc_to_lower(&user.nick);
+        let is_invisible = user.modes.invisible;
 
         self.nicks
             .entry(nick_lower)
@@ -284,6 +285,11 @@ impl UserManager {
         // Update stats
         if let Some(stats) = &self.stats_manager {
             stats.user_connected();
+            // If user already has invisible mode (e.g., from default_user_modes),
+            // count them as invisible immediately.
+            if is_invisible {
+                stats.user_set_invisible();
+            }
         }
 
         // Notify observer (local change)
