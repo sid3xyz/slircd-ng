@@ -84,6 +84,24 @@ impl PostRegHandler for JoinHandler {
 
             // Parse channel list (comma-separated) and optional keys
             let channels = parse_channel_list(channels_str);
+
+            // Limit number of channels joined in a single command (DoS protection)
+            const MAX_JOIN_TARGETS: usize = 10;
+            if channels.len() > MAX_JOIN_TARGETS {
+                let nick = ctx.state.nick.clone();
+                let reply = server_reply(
+                    ctx.server_name(),
+                    Response::ERR_TOOMANYTARGETS,
+                    vec![
+                        nick,
+                        channels_str.to_string(),
+                        format!("Cannot join more than {} channels at once", MAX_JOIN_TARGETS),
+                    ],
+                );
+                ctx.sender.send(reply).await?;
+                return Ok(());
+            }
+
             let keys = parse_key_list(msg.arg(1), channels.len());
 
             for (i, channel_name) in channels.iter().enumerate() {

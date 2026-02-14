@@ -62,6 +62,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
 
         // Check for +draft/read-marker tag (Unified Read State)
         // Format: +draft/read-marker=2024-01-01T12:00:00.000Z
+        /* ReadMarkerManager removed temporarily
         if let Some((_, ts_val)) = msg.tags_iter().find(|(k, _)| *k == "+draft/read-marker")
             && !ts_val.is_empty()
         {
@@ -76,6 +77,7 @@ impl crate::handlers::core::traits::PostRegHandler for TagmsgHandler {
                 debug!(account = %account, target = %target, ts = %nanotime, "Updated read marker");
             }
         }
+        */
 
         // Generate msgid for history storage and echo-message (with dashes for IRCv3 compatibility)
         let msgid = Uuid::new_v4().to_string();
